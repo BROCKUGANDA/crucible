@@ -37,6 +37,11 @@ export interface WorkContext {
   iteration: number;
   /** the previous iteration's suite output, if any */
   lastOutput?: string;
+  /**
+   * The trial spec text. Carried here rather than re-fetched so an agent gets the
+   * same bytes the runner validated — and so a runner can wrap it once.
+   */
+  spec?: string;
 }
 
 export interface WorkResult {

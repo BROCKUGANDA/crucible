@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.26;
 
+import {ReputationBridge} from "./ReputationBridge.sol";
+
 /// @notice Reputation sink implemented by AlloyRegistry. Only CrucibleTrials may write.
 interface IAlloyRegistry {
     function recordWin(uint256 agentId, address operator, bool survivedBreak) external;
@@ -45,6 +47,7 @@ contract CrucibleTrials {
     error RevealClosed();
     error NothingToWithdraw();
     error TransferFailed();
+    error NotOwner();
 
     // ───────────────────────── types ──────────────────────────
     enum Status { Open, Assigned, Judging, Challenged, Settled }
@@ -112,6 +115,11 @@ contract CrucibleTrials {
     IAlloyRegistry public immutable alloy;
     bytes32 public immutable DOMAIN;
 
+    /// @notice Optional ERC-8004 reputation sink. Zero means "not wired"; settlement
+    /// then proceeds exactly as before, because a third-party registry being down must
+    /// never be able to block a verdict.
+    address public reputationBridge;
+
     uint256 public trialCount;
     uint256 public agentCount;
     uint256 public totalStakes; // Σ free agent stake balances
@@ -155,9 +163,22 @@ contract CrucibleTrials {
         treasury = treasury_;
         alloy = IAlloyRegistry(alloy_);
         for (uint256 i; i < argus_.length; ++i) isArgus[argus_[i]] = true;
+        owner = msg.sender;
         DOMAIN = _computeDomain();
         _guard = 1;
     }
+
+    /// @notice Wire (or unwire) the ERC-8004 reputation bridge. Owner-only, callable
+    /// after deploy because the registry address is a per-chain singleton that may not
+    /// exist at the moment Crucible is deployed.
+    function setReputationBridge(address bridge) external {
+        if (msg.sender != owner) revert NotOwner();
+        reputationBridge = bridge;
+    }
+
+    /// @dev Ownable-by-construction: the deployer is the only address that can wire
+    /// external reputation plumbing, and it holds no funds and no trial authority.
+    address public immutable owner;
 
     /// Split out of the constructor on purpose: `abi.encode` of five words plus two
     /// nested keccak256 calls overflows the 16-slot stack under the legacy codegen,
@@ -399,6 +420,8 @@ contract CrucibleTrials {
 
         alloy.recordWin(t.agentId, operator, hadBreak);
         t.verdict = Verdict.Paid;
+        // ERC-8004: a third-party registry must never be able to block a verdict.
+        _publishWin(id, t.agentId, hadBreak);
         emit VerdictFinalized(id, Verdict.Paid, reward - fee);
     }
 
@@ -418,7 +441,28 @@ contract CrucibleTrials {
 
         alloy.recordSlash(t.agentId, operator);
         t.verdict = Verdict.Slashed;
+        _publishSlash(id, t.agentId);
         emit VerdictFinalized(id, Verdict.Slashed, 0);
+    }
+
+    /// @dev A low-level call whose result is deliberately ignored is the only way to
+    /// make optional infrastructure non-blocking: a revert inside the bridge would
+    /// otherwise roll back the payout. A lost reputation signal can be backfilled via
+    /// ReputationBridge.backfill; a stuck verdict cannot be undone.
+    function _publishWin(uint256 id, uint256 agentId, bool survivedBreak) internal {
+        address bridge = reputationBridge;
+        if (bridge == address(0)) return;
+        (bool ok,) = bridge.call(
+            abi.encodeCall(ReputationBridge.reportWin, (id, agentId, survivedBreak))
+        );
+        ok;
+    }
+
+    function _publishSlash(uint256 id, uint256 agentId) internal {
+        address bridge = reputationBridge;
+        if (bridge == address(0)) return;
+        (bool ok,) = bridge.call(abi.encodeCall(ReputationBridge.reportSlash, (id, agentId)));
+        ok;
     }
 
     // ───────────────────────── ledger ─────────────────────────

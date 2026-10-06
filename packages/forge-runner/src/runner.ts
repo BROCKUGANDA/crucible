@@ -153,6 +153,7 @@ export class ForgeRunner {
           brief,
           iteration: state.iterations,
           lastOutput: state.lastOutput,
+          spec: specText,
         };
 
         const step = await this.runAgentStep(ctx);

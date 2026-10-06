@@ -1,17 +1,12 @@
 {
-  "name": "@crucible/forge-runner",
+  "name": "@crucible/agent-security",
   "version": "0.1.0",
-  "description": "ForgeRunner — the work-performing agent. Fetches a pinned spec, iterates against the pinned suite in a sealed sandbox, emits a signed RunArtifact.",
+  "description": "Security controls for running autonomous agents: credentialing, delegation, sandboxing, prompt-injection defence, observability and forensics.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "default": "./dist/index.js"
-    }
-  },
+  "exports": { ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" } },
   "files": ["dist"],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
@@ -19,9 +14,6 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@crucible/agent-security": "*",
-    "@crucible/smith": "*",
-    "json-canonicalize": "^3.0.1",
     "viem": "^2.21.55"
   },
   "devDependencies": {
