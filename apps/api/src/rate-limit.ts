@@ -1,3 +1,4 @@
+import { getConnInfo } from "@hono/node-server/conninfo";
 import type { Context, Next } from "hono";
 
 /**
@@ -96,16 +97,24 @@ export class RateLimiter {
 }
 
 /**
- * Hono middleware. Keys on the client IP when available, falling back to a shared
- * bucket because an unidentifiable request should never get a free pass it otherwise
- * would not have.
+ * Hono middleware.
+ *
+ * Identity is the hard part, and the naive version was wrong: reading `X-Forwarded-For`
+ * unconditionally means the client chooses which bucket it lands in, so 200 requests with 200
+ * distinct spoofed values is 200 fresh buckets and zero 429s. A header the caller writes is
+ * only evidence of anything once you have agreed who is allowed to write it.
+ *
+ * So forwarded headers are honoured only when `trustProxy` is set explicitly, which means the
+ * process is known to sit behind something that overwrites them (Cloudflare's `cf-connecting-ip`
+ * is the usual one). Without it the key is the socket peer — the one address this process can
+ * actually observe.
  *
  * `Retry-After` is the part that makes this a feature rather than a wall of 429s: a
- * well-behaved client waits and comes back, and an honest GUI backs off instead of
- * hammering.
+ * well-behaved client waits and comes back, and an honest GUI backs off instead of hammering.
  */
-export function rateLimit(config: RateLimitConfig) {
+export function rateLimit(config: RateLimitConfig & { trustProxy?: boolean }) {
   const limiter = new RateLimiter(config);
+  const trustProxy = config.trustProxy ?? false;
 
   // The sweep only matters if clients keep coming; an otherwise idle process leaks no
   // memory because there is no timer.
@@ -119,13 +128,14 @@ export function rateLimit(config: RateLimitConfig) {
   return async function middleware(c: Context, next: Next) {
     ensureSweeper();
 
-    const ip =
-      c.req.header("cf-connecting-ip") ??
-      c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ??
-      c.req.header("x-real-ip") ??
-      "shared";
+    const identity = trustProxy
+      ? c.req.header("cf-connecting-ip") ??
+        c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ??
+        c.req.header("x-real-ip") ??
+        socketAddress(c)
+      : socketAddress(c);
 
-    const verdict = limiter.consume(ip);
+    const verdict = limiter.consume(identity ?? "shared");
     if (verdict.allowed) {
       c.header("RateLimit-Limit", String(config.limit));
       c.header("RateLimit-Remaining", String(verdict.remaining));
@@ -139,4 +149,20 @@ export function rateLimit(config: RateLimitConfig) {
       429,
     );
   };
+}
+
+/**
+ * The peer address of the underlying socket, when there is one.
+ *
+ * `getConnInfo` only exists for a request that arrived through `@hono/node-server`; a test
+ * calling `app.request()` has no socket at all. Returning null rather than throwing lets the
+ * caller fall back to one shared bucket — the conservative answer, because an identity that
+ * cannot be established must not become an exemption.
+ */
+function socketAddress(c: Context): string | null {
+  try {
+    return getConnInfo(c).remote.address ?? null;
+  } catch {
+    return null;
+  }
 }

@@ -131,3 +131,33 @@ contract MockReputationRegistry {
         }
     }
 }
+
+/// @notice Test double for the ERC-8004 Identity Registry.
+/// @dev Holds to the one property Crucible depends on: `register(agentURI)` mints the
+/// attestation to `msg.sender`, which is why the operator — never CrucibleTrials — has
+/// to make the call. TokenIds start at 1 so a zero link stays impossible.
+contract MockIdentityRegistry {
+    event Registered(uint256 indexed agentId, string agentURI, address regAddr, string provider);
+    event AgentURIUpdated(uint256 indexed agentId, address agentAddress, string agentURI);
+
+    uint256 private _nextId;
+    mapping(uint256 => address) public ownerOf;
+    mapping(uint256 => string) public agentURI;
+
+    function register(string calldata uri) external returns (uint256 agentId) {
+        agentId = ++_nextId;
+        ownerOf[agentId] = msg.sender;
+        agentURI[agentId] = uri;
+        emit Registered(agentId, uri, msg.sender, "crucible-local-mock");
+    }
+
+    function setAgentURI(uint256 agentId, string calldata newURI) external {
+        require(msg.sender == ownerOf[agentId], "not owner");
+        agentURI[agentId] = newURI;
+        emit AgentURIUpdated(agentId, ownerOf[agentId], newURI);
+    }
+
+    function getVersion() external pure returns (string memory) {
+        return "local-mock";
+    }
+}

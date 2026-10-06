@@ -283,6 +283,26 @@ export const TRIALS_ABI = [
   },
   {
     type: "event",
+    name: "AgentRegistered",
+    inputs: [
+      { indexed: true, name: "agentId", type: "uint256" },
+      { indexed: true, name: "operator", type: "address" },
+      { indexed: false, name: "runner", type: "address" },
+      { indexed: false, name: "metadataURI", type: "string" },
+      { indexed: false, name: "stake", type: "uint256" },
+    ],
+  },
+  {
+    type: "event",
+    name: "TrialClaimed",
+    inputs: [
+      { indexed: true, name: "id", type: "uint256" },
+      { indexed: true, name: "agentId", type: "uint256" },
+      { indexed: false, name: "bond", type: "uint256" },
+    ],
+  },
+  {
+    type: "event",
     name: "RunSubmitted",
     inputs: [
       { indexed: true, name: "id", type: "uint256" },
@@ -302,11 +322,46 @@ export const TRIALS_ABI = [
   },
   {
     type: "event",
+    name: "DisputeOpened",
+    inputs: [{ indexed: true, name: "id", type: "uint256" }],
+  },
+  {
+    type: "event",
     name: "VerdictFinalized",
     inputs: [
       { indexed: true, name: "id", type: "uint256" },
       { indexed: false, name: "verdict", type: "uint8" },
       { indexed: false, name: "agentPayout", type: "uint256" },
+    ],
+  },
+  {
+    type: "event",
+    name: "StakeWithdrawn",
+    inputs: [
+      { indexed: true, name: "agentId", type: "uint256" },
+      { indexed: true, name: "to", type: "address" },
+      { indexed: false, name: "amount", type: "uint256" },
+    ],
+  },
+  {
+    type: "event",
+    name: "Withdrawn",
+    inputs: [
+      { indexed: true, name: "to", type: "address" },
+      { indexed: false, name: "amount", type: "uint256" },
+    ],
+  },
+  {
+    type: "event",
+    name: "IdentityRegistrySet",
+    inputs: [{ indexed: true, name: "registry", type: "address" }],
+  },
+  {
+    type: "event",
+    name: "IdentityLinked",
+    inputs: [
+      { indexed: true, name: "agentId", type: "uint256" },
+      { indexed: true, name: "identityAgentId", type: "uint256" },
     ],
   },
 ] as const;
