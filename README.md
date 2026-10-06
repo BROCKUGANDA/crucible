@@ -111,8 +111,12 @@ These tests are excluded from the default suite on purpose: they need a live RPC
 gate that depends on a third party's uptime is not a gate. CI runs them as a separate
 job.
 
-**Identity is not wired.** Reputation is written on settlement; `registerAgent` does not
-write an agentURI to the Identity registry. It is the one clear gap.
+**Identity is reachable now, not through Crucible.** reputation is written on settlement;
+the operator registers their own agent identity with the ERC-8004 Identity registry and
+Crucible records the link via `linkIdentity(agentId, identityAgentId)`. Verified on
+mainnet: the operator owns the attestation NFT and `trials.identityOf` reflects it.
+Crucible deliberately does not register on the operator's behalf, because the registry
+mints to `msg.sender`.
 
 ## The agent
 
@@ -291,9 +295,10 @@ Two properties it checks that a stub could not:
   in one iteration. That is evidence the loop works, not evidence it holds up on a real
   sponsor's repo. Re-run `npm run agent:live -- --task <spec>` before trusting it with
   anything that matters.
-- **ERC-8004 Identity is not wired.** Reputation is written on settlement; Identity
-  registration (`agentURI` + registration file) is not implemented. The addresses are
-  known and fork-tested.
+- **ERC-8004 Identity is link-only, not minted by Crucible.** The operator registers
+  their identity with the ERC-8004 Identity registry themselves (`register(agentURI)`
+  mints to the caller), and Crucible records the association via `linkIdentity`.
+  Verified on mainnet in `ForkTests.test_Fork_OperatorLinksARealIdentityRegistration`.
 - **26 npm advisories remain** (24 moderate, 2 high), all inside the wallet stack —
   `@walletconnect/*`, `@metamask/sdk`, `@reown/*`, `@base-org/*` — plus the pre-existing
   `postcss` and `next` pair. The wallet ones have no fix without dropping RainbowKit for

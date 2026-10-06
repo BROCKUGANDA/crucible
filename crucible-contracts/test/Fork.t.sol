@@ -5,7 +5,7 @@ import {Test, console} from "forge-std/Test.sol";
 import {CrucibleTrials} from "../contracts/CrucibleTrials.sol";
 import {AlloyRegistry} from "../contracts/AlloyRegistry.sol";
 import {ReputationBridge} from "../contracts/ReputationBridge.sol";
-import {IERC8004ReputationRegistry} from "../contracts/interfaces/IERC8004.sol";
+import {IERC8004IdentityRegistry, IERC8004ReputationRegistry} from "../contracts/interfaces/IERC8004.sol";
 
 /**
  * Fork tests against the real ERC-8004 Reputation Registry.
@@ -197,6 +197,26 @@ contract ForkTests is Test {
 
         CrucibleTrials.Trial memory t = trials.getTrial(id);
         assertEq(uint8(t.verdict), uint8(CrucibleTrials.Verdict.Paid));
+    }
+
+        // ── ERC-8004 Identity registration ────────────────────────────────────
+
+    function test_Fork_OperatorLinksARealIdentityRegistration() public isMainnetFork {
+        IERC8004IdentityRegistry identity = IERC8004IdentityRegistry(IDENTITY_REGISTRY);
+
+        // The operator registers the agent's identity with ERC-8004 directly. The
+        // registry mints the attestation to whoever calls, so the operator must be the
+        // caller -- which is also why Crucible cannot and does not do this for them.
+        vm.prank(operator);
+        uint256 identityAgentId = identity.register("ipfs://fork-agent");
+
+        assertGt(identityAgentId, 0, "identity registry minted no agent id");
+
+        vm.prank(operator);
+        trials.linkIdentity(agentId, identityAgentId);
+
+        assertEq(trials.identityOf(agentId), identityAgentId);
+        assertEq(identity.ownerOf(identityAgentId), operator, "operator should own the ERC-8004 identity NFT");
     }
 
     // ── helpers ───────────────────────────────────────────────────────────

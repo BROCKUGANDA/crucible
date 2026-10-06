@@ -33,12 +33,80 @@ function seededModel() {
 }
 
 const model = seededModel();
-const app = createApp({
-  getModel: () => model,
-  alloyState: (id) => ({ locked: id === 1, tokenUri: `data:x/${id}` }),
+// The app is constructed with rate limiting disabled for the route tests below: the
+// point of most of them is that a *200* comes back, and a 61st request in the same
+// test would be a 429, not a 200. The rate limiter is tested directly underneath.
+const app = createApp(
+  {
+    getModel: () => model,
+    alloyState: (id) => ({ locked: id === 1, tokenUri: `data:x/${id}` }),
+  },
+  { rateLimit: false },
+);
+
+describe("rate limiting", () => {
+  const limitedApp = createApp({ getModel: () => model }, { rateLimit: { limit: 2, windowMs: 60_000, burst: 0 } });
+
+  it("lets the first requests through and reports the ceiling", async () => {
+    const res1 = await limitedApp.request("/health", { headers: { "x-forwarded-for": "10.0.0.1" } });
+    expect(res1.status).toBe(200);
+    expect(res1.headers.get("RateLimit-Limit")).toBe("2");
+    expect(res1.headers.get("RateLimit-Remaining")).toBe("1");
+
+    const res2 = await limitedApp.request("/health", { headers: { "x-forwarded-for": "10.0.0.1" } });
+    expect(res2.status).toBe(200);
+    expect(res2.headers.get("RateLimit-Remaining")).toBe("0");
+  });
+
+  it("429s the one that exceeds the bucket and sets Retry-After", async () => {
+    const limited = createApp({ getModel: () => model }, { rateLimit: { limit: 1, windowMs: 60_000 } });
+    await limited.request("/health", { headers: { "x-forwarded-for": "10.0.0.9" } });
+
+    const res = await limited.request("/health", { headers: { "x-forwarded-for": "10.0.0.9" } });
+    expect(res.status).toBe(429);
+    expect(res.headers.get("Retry-After")).toBeTruthy();
+    const body = await res.json();
+    expect(body.error).toMatch(/too many/i);
+    expect(body.retryAfterMs).toBeGreaterThan(0);
+  });
+
+  it("keys buckets per client, so a busy client cannot starve a quiet one", async () => {
+    const limited = createApp({ getModel: () => model }, { rateLimit: { limit: 1, windowMs: 60_000 } });
+    await limited.request("/health", { headers: { "x-forwarded-for": "10.0.1.1" } });
+    // this one is blocked
+    const blocked = await limited.request("/health", { headers: { "x-forwarded-for": "10.0.1.1" } });
+    expect(blocked.status).toBe(429);
+    // a different client still gets through
+    const other = await limited.request("/health", { headers: { "x-forwarded-for": "10.0.1.2" } });
+    expect(other.status).toBe(200);
+  });
+
+  it("refuses an unidentifiable request rather than giving it a free pass", async () => {
+    const limited = createApp({ getModel: () => model }, { rateLimit: { limit: 1, windowMs: 60_000 } });
+    await limited.request("/health"); // no IP headers at all
+    const res = await limited.request("/health");
+    expect(res.status).toBe(429);
+  });
+
+  it("the limiter itself exposes the contract a well-behaved client needs", async () => {
+    // peek does not consume, so a client can ask "may I come back yet?" without
+    // burning the window. Retry-After is measured in real seconds of waiting.
+    const { RateLimiter } = await import("../src/rate-limit.js");
+    const rl = new RateLimiter({ limit: 10, windowMs: 10_000, burst: 0 });
+    const first = rl.consume("k");
+    expect(first.allowed).toBe(true);
+    expect(first.remaining).toBe(9);
+    for (let i = 0; i < 9; i++) rl.consume("k");
+    expect(rl.consume("k").allowed).toBe(false);
+    const peek = rl.peek("k");
+    expect(peek.allowed).toBe(false);
+    expect(peek.retryAfterMs).toBeGreaterThan(0);
+  });
 });
 
 describe("routes", () => {
+  // existing route tests run against the un-limited app above, so a 429 never
+  // masquerades as a route failure.
   it("serves health", async () => {
     const res = await app.request("/health");
     expect(res.status).toBe(200);

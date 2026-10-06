@@ -18,6 +18,7 @@ interface IAlloyRegistry {
 contract CrucibleTrials {
     // ───────────────────────── errors ─────────────────────────
     error ZeroTreasury();
+    error ZeroIdentity();
     error RewardTooSmall();
     error BadWindow();
     error BadDeadline();
@@ -132,6 +133,14 @@ contract CrucibleTrials {
     /// never be able to block a verdict.
     address public reputationBridge;
 
+    /// @notice Optional ERC-8004 Identity Registry. Zero means "not wired". When set,
+    /// an agent can link the identity registry attestation that they own it.
+    address public identityRegistry;
+
+    /// @notice Crucible agentId -> the ERC-8004 identity agentId that the operator
+    /// registered for the same agent. Zero means "no identity linked".
+    mapping(uint256 => uint256) public identityOf;
+
     uint256 public trialCount;
     uint256 public agentCount;
     uint256 public totalStakes; // Σ free agent stake balances
@@ -178,6 +187,8 @@ contract CrucibleTrials {
     event VerdictFinalized(uint256 indexed id, Verdict verdict, uint256 agentPayout);
     event StakeWithdrawn(uint256 indexed agentId, address indexed to, uint256 amount);
     event Withdrawn(address indexed to, uint256 amount);
+    event IdentityRegistrySet(address indexed registry);
+    event IdentityLinked(uint256 indexed agentId, uint256 indexed identityAgentId);
 
     /// @param treasury_ fee + burned-slash recipient
     /// @param alloy_ reputation registry (setForge called right after deploy)
@@ -206,6 +217,34 @@ contract CrucibleTrials {
     function setReputationBridge(address bridge) external {
         if (msg.sender != owner) revert NotOwner();
         reputationBridge = bridge;
+    }
+
+    /// @notice Point at the Identity registry that issued `identityAgentId` tokens.
+    /// Zero is allowed and meaningful: it deliberately unwires Identity too.
+    function setIdentityRegistry(address registry) external {
+        if (msg.sender != owner) revert NotOwner();
+        identityRegistry = registry;
+        emit IdentityRegistrySet(registry);
+    }
+
+    /**
+     * Link this agent to its ERC-8004 identity.
+     *
+     * Crucible cannot mint the identity NFT itself, because ERC-8004's
+     * `register(agentURI)` mints to `msg.sender`. The operator therefore registers the
+     * agent's identity directly with the Identity Registry's `register(...)` and passes
+     * the returned tokenId here. This function's job is to *record* that link so an
+     * indexer can follow a Crucible agentId to a resolvable on-chain identity.
+     *
+     * Resolved-value is deliberately not checked: the operator pays for the link
+     * regardless, and if they lie the only record that changes is meaningless. The
+     * identity itself must be verified through the registry, which is public.
+     */
+    function linkIdentity(uint256 agentId, uint256 identityAgentId) external {
+        if (agents[agentId].operator != msg.sender) revert NotOperator();
+        if (identityAgentId == 0) revert ZeroIdentity();
+        identityOf[agentId] = identityAgentId;
+        emit IdentityLinked(agentId, identityAgentId);
     }
 
     /// @dev Ownable-by-construction: the deployer is the only address that can wire
