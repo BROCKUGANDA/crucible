@@ -65,22 +65,31 @@ export interface Deployment {
   configured: boolean;
 }
 
-/** Resolve an address, or the zero address. Never throws; validation is `configured`. */
-function address(name: string): Address {
-  const v = process.env[name];
-  if (!v) return ZERO_ADDRESS;
-  if (!/^0x[a-fA-F0-9]{40}$/.test(v)) {
+/**
+ * Resolve an address, or the zero address. Never throws; validation is `configured`.
+ *
+ * `value` is passed in rather than looked up as `process.env[name]`. Webpack inlines only
+ * *statically analyzable* member expressions into the client bundle, so a dynamic index is
+ * left as a real object access — and `process.env` does not exist in a browser. Every
+ * address therefore resolved to zero on the client while resolving correctly on the server,
+ * which meant the documented setup (copy `.env.example` to `.env.local`, fill in the two
+ * addresses) could never enable signing in the UI, and the "Signing is disabled" notice
+ * disagreed with the server's own render of the same page.
+ */
+function address(name: string, value: string | undefined): Address {
+  if (!value) return ZERO_ADDRESS;
+  if (!/^0x[a-fA-F0-9]{40}$/.test(value)) {
     // A malformed address is a configuration bug worth shouting about, but only when it
     // is used — not during a build that never signs anything.
     console.warn(`[crucible] ${name} is not a valid address and was ignored.`);
     return ZERO_ADDRESS;
   }
-  return v as Address;
+  return value as Address;
 }
 
 export function deployment(): Deployment {
-  const trials = address("NEXT_PUBLIC_TRIALS_ADDRESS");
-  const alloy = address("NEXT_PUBLIC_ALLOY_ADDRESS");
+  const trials = address("NEXT_PUBLIC_TRIALS_ADDRESS", process.env.NEXT_PUBLIC_TRIALS_ADDRESS);
+  const alloy = address("NEXT_PUBLIC_ALLOY_ADDRESS", process.env.NEXT_PUBLIC_ALLOY_ADDRESS);
   return {
     chainId: CHAIN_IDS[activeChain()],
     trials,
