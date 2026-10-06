@@ -5,6 +5,7 @@ import {
   type WorkContext,
   type WorkResult,
 } from "@crucible/smith";
+import { withBackoff } from "@crucible/smith";
 
 /**
  * An LLM-backed agent for ForgeRunner.
@@ -362,21 +363,32 @@ export function anthropicClient(args: {
   const base = args.baseUrl ?? "https://api.anthropic.com";
   return {
     async complete({ system, prompt, temperature, maxTokens }) {
-      const res = await fetch(`${base}/v1/messages`, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "x-api-key": args.apiKey,
-          "anthropic-version": "2023-06-01",
+      // The Messages API throttles aggressively during load spikes. Backing off on 429s
+      // rather than failing the whole iteration is what makes a rate-limited run a
+      // slow run instead of a dead run.
+      const res = await withBackoff(
+        () =>
+          fetch(`${base}/v1/messages`, {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              "x-api-key": args.apiKey,
+              "anthropic-version": "2023-06-01",
+            },
+            body: JSON.stringify({
+              model: args.model ?? "claude-sonnet-4-5",
+              max_tokens: maxTokens ?? 8000,
+              temperature: temperature ?? 0.2,
+              system,
+              messages: [{ role: "user", content: prompt }],
+            }),
+          }),
+        {
+          operation: "anthropic.messages",
+          retries: 4,
+          baseMs: 400,
         },
-        body: JSON.stringify({
-          model: args.model ?? "claude-sonnet-4-5",
-          max_tokens: maxTokens ?? 8000,
-          temperature: temperature ?? 0.2,
-          system,
-          messages: [{ role: "user", content: prompt }],
-        }),
-      });
+      );
       if (!res.ok) {
         throw new Error(`anthropic API responded ${res.status}: ${await res.text()}`);
       }

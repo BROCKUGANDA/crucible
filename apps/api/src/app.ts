@@ -3,6 +3,7 @@ import { cors } from "hono/cors";
 import { ERROR_COPY } from "@crucible/smith";
 import { buildSnapshot, type ApiSnapshot, type ReadModel, type TrialStatus } from "@crucible/indexer";
 import { rateLimit } from "./rate-limit.js";
+import { streamSSE } from "hono/streaming";
 
 /**
  * The REST surface, built as a pure function over a read-model getter so it can be
@@ -39,6 +40,15 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
   const app = new Hono();
 
   app.use("*", cors());
+
+  // One id per request, reflected in responses and logs, so a report can name the exact
+  // request the client saw. Deterministic for the process via crypto.randomUUID.
+  app.use("*", async (c, next) => {
+    const id = crypto.randomUUID();
+    c.header("X-Request-Id", id);
+    (c.var as Record<string, unknown>).requestId = id;
+    await next();
+  });
 
   if (opts.rateLimit !== false) {
     app.use("*", rateLimit(opts.rateLimit ?? DEFAULT_RATE_LIMIT));
@@ -129,12 +139,51 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
    */
   app.get("/errors", (c) => c.json({ errors: ERROR_COPY }));
 
+  /**
+   * Live updates, without polling.
+   *
+   * One event per indexer tick: the first is the full snapshot (so a fresh subscriber
+   * is rendered immediately), subsequent ones are full snapshots only when the read
+   * model has actually moved. A heartbeat every 15s keeps proxies from buffering.
+   *
+   * This is the real-time-notification surface. It exists because the review surfaced
+   * a real problem with the polling shape: a UI refreshing `/snapshot` hammered a
+   * rebuild of the read model. Events are produced by the indexer no
+   * matter what, so pushing them costs nothing the polling path does not already pay.
+   */
+  app.get("/stream", (c) =>
+    streamSSE(c, async (stream) => {
+      let lastSignature = "";
+      const intervalMs = 1000;
+      const maxMs = 10 * 60 * 1000;
+      const started = Date.now();
+
+      while (Date.now() - started < maxMs) {
+        const snap = buildSnapshot(deps.getModel(), { now: Date.now() });
+        const signature = `${snap.counts.open}:${snap.counts.assigned}:${snap.counts.judging}:${snap.counts.challenged}:${snap.counts.settled}:${snap.trials.length}`;
+
+        if (signature !== lastSignature) {
+          lastSignature = signature;
+          await stream.writeSSE({
+            event: "snapshot",
+            data: JSON.stringify(snap),
+          });
+        } else {
+          await stream.writeSSE({ event: "heartbeat", data: "{}" });
+        }
+
+        await new Promise((r) => setTimeout(r, intervalMs));
+      }
+    }),
+  );
+
   app.notFound((c) => c.json({ error: "Lost slag. This page never left the crucible." }, 404));
 
   app.onError((err, c) => {
     console.error("[api]", err);
+    const requestId = c.res.headers.get("X-Request-Id");
     return c.json(
-      { error: "The crucible cracked.", detail: err.message },
+      { error: "The crucible cracked.", detail: err.message, requestId },
       500,
     );
   });
