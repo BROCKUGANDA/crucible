@@ -20,7 +20,7 @@ Open ──claim──> Assigned ──submitRun──> Judging ──fileBreak�
 
 ```bash
 npm install
-npm run demo          # anvil + deploy + the whole loop, ~90s, no RPC needed
+npm run demo          # anvil + deploy + the whole loop on chain, ~90s, no RPC needed
 ```
 
 Then, in two more terminals:
@@ -30,7 +30,10 @@ TRIALS_ADDRESS=0x… ALLOY_ADDRESS=0x… npm run api:dev
 NEXT_PUBLIC_API_URL=http://127.0.0.1:8787 npm run web:dev
 ```
 
-`npm run demo` prints the deployed addresses when it finishes.
+`npm run demo` prints the deployed addresses when it finishes. It broadcasts for real:
+two operators, four trials, two settled paid and one survived, one slashed, and each
+agent linked to an ERC-8004 identity it registered itself — so `/hall` opens on rows that
+quote the transaction behind every claim rather than an empty list.
 
 ## What is here
 
@@ -196,15 +199,23 @@ Alloy tiers: Iron (1) · Bronze (3) · Steel (10 & ≥1 survived) · Damascus (2
 ## Verification
 
 ```bash
-npm run contracts:test      # 85 Foundry tests, incl. 6 invariants and 18 for ERC-8004
-npm test                    # 379 TypeScript tests across 8 packages/apps
+npm run contracts:test      # 86 Foundry tests, incl. 6 invariants and 18 for ERC-8004
+npm test                    # 464 TypeScript tests across 8 packages/apps
 npm run build               # tsc for packages, next build for the web app
 npm run demo                # anvil + deploy + the whole loop, settles a real verdict
 npm run agent:live          # the real agent against a real model in a real sandbox
 ```
 
-**464 tests total.** Three more suites than the last count, none of them the ERC-8004
-fork tests — those are separate, and 3 more still if you have an RPC.
+**550 tests total** (464 TypeScript + 86 Foundry).
+
+Four of the 86 are the ERC-8004 fork tests, and they are counted here only in form: the
+`isMainnetFork` modifier returns early unless `block.chainid == 1`, so without
+`MAINNET_RPC_URL` they report as passing while asserting nothing. Run them for real with
+`forge test --fork-url $MAINNET_RPC_URL` before believing the registry claims.
+
+On Windows, `npm test` reaches the contracts suite through `cmd.exe`, which does not
+inherit a Git Bash `export PATH`; Foundry has to be on the system PATH or that one
+workspace fails to spawn `forge` while all 464 JS tests pass.
 
 Static analysis, with every finding triaged by hand in
 [`crucible-contracts/docs/slither-triage.md`](crucible-contracts/docs/slither-triage.md):
