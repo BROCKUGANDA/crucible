@@ -1,0 +1,102 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contracts:
+    name: Contracts (forge)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: crucible-contracts
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: foundry-rs/foundry-toolchain@v1
+
+      - name: forge fmt --check
+        run: forge fmt --check
+        continue-on-error: true
+
+      - name: build
+        run: forge build --sizes
+
+      - name: test
+        run: forge test -vv
+
+      - name: gas report
+        run: forge test --gas-report | tee gas-report.txt
+
+  node:
+    name: TypeScript (${{ matrix.package }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [smith, forge-runner, argus, indexer, warden, api, web]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: typecheck
+        run: npm run typecheck --workspace @crucible/${{ matrix.package }}
+
+      - name: test
+        run: npm run test --workspace @crucible/${{ matrix.package }}
+
+  build:
+    name: Build (next)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run build --workspace @crucible/web
+
+  audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      # Known-unfixable: the postcss advisory covers every released Next version
+      # through 16.3.0-preview. Fail only on anything not on that list.
+      - name: audit (ignoring known-unfixable next/postcss)
+        run: |
+          npm audit --json > audit.json || true
+          node -e "
+            const a = require('./audit.json');
+            const known = new Set(['postcss']);
+            const vulns = a.vulnerabilities || {};
+            const bad = Object.entries(vulns)
+              .filter(([name, v]) => !known.has(name))
+              .map(([name, v]) => name + '@' + v.severity);
+            if (bad.length) {
+              console.error('unacknowledged advisories: ' + bad.join(', '));
+              process.exit(1);
+            }
+            console.log('only known-unfixable advisories present');
+          "
+

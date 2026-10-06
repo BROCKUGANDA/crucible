@@ -1,0 +1,193 @@
+/* Industrial Forge — dark foundry, molten metal. Every state is a temperature. */
+
+:root {
+  --bg0: #0b0908;
+  --bg1: #141110;
+  --bg2: #1b1713;
+  --text: #ede4d6;
+  --dim: #b0a28d;
+  --faint: #7e7260;
+  --ember: #ff5a00;
+  --gold: #ffc46b;
+  --hot: #fff2dc;
+  --quench: #54d8c6;
+  --sear: #ff4b36;
+  --ash: #8e8577;
+
+  --font-display: "Bricolage Grotesque", system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  --ease-ignite: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-cool: cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-temper: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg0);
+  color: var(--text);
+  font-family: var(--font-display);
+  font-size: 16.5px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* the wordmark: molten gradient clip, tight tracking */
+.wordmark {
+  font-weight: 800;
+  letter-spacing: -0.035em;
+  background: linear-gradient(90deg, #ff5a00 0%, #ffc46b 55%, #fff2dc 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-size: 13.5px;
+  letter-spacing: -0.01em;
+}
+
+.kicker {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--faint);
+}
+
+.surface {
+  background: var(--bg1);
+  border: 1px solid var(--bg2);
+  border-radius: 10px;
+}
+
+.raised {
+  background: var(--bg2);
+  border-radius: 10px;
+}
+
+.btn {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 16.5px;
+  padding: 12px 20px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: transform 120ms var(--ease-ignite), filter 240ms var(--ease-ignite);
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--hot);
+  outline-offset: 2px;
+}
+
+.btn-primary {
+  background: linear-gradient(90deg, #ff5a00 0%, #ffc46b 100%);
+  color: #1a0d05;
+  font-weight: 800;
+}
+
+.btn-primary:hover {
+  filter: brightness(1.08);
+}
+
+.btn-primary:active {
+  transform: scale(0.98);
+}
+
+.btn-ghost {
+  background: transparent;
+  border-color: var(--bg2);
+  color: var(--text);
+}
+
+.btn:disabled {
+  background: var(--bg2);
+  color: var(--ash);
+  cursor: not-allowed;
+}
+
+/* Heating: an ember pulse while a tx is pending. */
+.heating {
+  animation: emberPulse 1.2s ease-in-out infinite;
+}
+
+@keyframes emberPulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 90, 0, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(255, 90, 0, 0);
+  }
+}
+
+/* Quenching: the vessel fills bottom-up while loading. */
+.quenching {
+  background: linear-gradient(
+    to top,
+    rgba(255, 90, 0, 0.85) 0%,
+    rgba(255, 196, 107, 0.6) 40%,
+    transparent 100%
+  );
+  background-size: 100% 0%;
+  background-repeat: no-repeat;
+  animation: fill 1.6s var(--ease-ignite) forwards;
+}
+
+@keyframes fill {
+  to {
+    background-size: 100% 100%;
+  }
+}
+
+/* Cold metal skeletons. */
+.skeleton {
+  background: var(--bg2);
+  border-radius: 6px;
+  animation: shimmer 2s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 0.85;
+  }
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

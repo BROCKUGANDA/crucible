@@ -16,9 +16,12 @@
     "typecheck": "npm run typecheck --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
     "format": "prettier --write \"**/*.{ts,tsx,md,json}\"",
-    "contracts:build": "cd crucible-contracts && forge build",
-    "contracts:test": "cd crucible-contracts && forge test",
-    "contracts:demo": "cd crucible-contracts && forge script script/Demo.s.sol:Demo --rpc-url http://127.0.0.1:8545 --broadcast"
+    "contracts:build": "npm run build --workspace crucible-contracts",
+    "contracts:test": "npm run test --workspace crucible-contracts",
+    "contracts:demo": "cd crucible-contracts && forge script script/Demo.s.sol:Demo --rpc-url http://127.0.0.1:8545 --broadcast",
+    "api:dev": "npm run dev --workspace @crucible/api",
+    "web:dev": "npm run dev --workspace @crucible/web",
+    "demo": "node scripts/demo.mjs"
   },
   "engines": {
     "node": ">=20"
