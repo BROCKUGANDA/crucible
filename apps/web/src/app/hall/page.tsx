@@ -57,6 +57,15 @@ export default function HallPage() {
                 {e.slashes > 0 ? (
                   <span style={{ color: "var(--sear)" }}> · {e.slashes} scars</span>
                 ) : null}
+                {e.identityAgentId !== null ? (
+                  <span
+                    className="chip"
+                    title={`ERC-8004 identity #${e.identityAgentId}`}
+                    style={{ color: "var(--quench)", marginLeft: 10 }}
+                  >
+                    identity #{e.identityAgentId}
+                  </span>
+                ) : null}
               </span>
             </Link>
           ))}

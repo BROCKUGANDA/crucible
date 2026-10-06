@@ -31,19 +31,49 @@ export function useSnapshot(pollMs = 4000): SnapshotState {
 
   useEffect(() => {
     let alive = true;
+
+    // 1. Try the live stream. EventSource reconnects on its own, so a dropped network
+    //    self-heals rather than stranding the UI.
+    let source: EventSource | null = null;
+    try {
+      source = new EventSource(`${API}/stream`);
+      source.addEventListener("snapshot", (e) => {
+        if (!alive) return;
+        try {
+          const data = JSON.parse((e as MessageEvent).data) as ApiSnapshot;
+          setState({ data, error: null, loading: false, serverNowMs: data.now });
+        } catch {
+          // a malformed event is not a lost signal; wait for the next
+        }
+      });
+      source.addEventListener("error", () => {
+        if (!alive) return;
+        setState((s) => ({
+          ...s,
+          error: "Signal lost — your forge keeps working locally. Reconnecting…",
+        }));
+        // Fall through to polling fallback below if the stream stays down.
+        source?.close();
+        source = null;
+        fallback();
+      });
+    } catch {
+      fallback();
+    }
+
+    // 2. Polling fallback: used when EventSource is unavailable or the stream opened
+    //    but never delivered. It is unreachable in the happy path, which is the point.
+    let pollTimer: ReturnType<typeof setInterval> | undefined;
     const controller = new AbortController();
 
-    async function load() {
+    async function poll() {
       try {
         const res = await fetch(`${API}/snapshot`, { signal: controller.signal });
         if (!res.ok) throw new Error(`api responded ${res.status}`);
         const data = (await res.json()) as ApiSnapshot;
-        if (alive) {
-          setState({ data, error: null, loading: false, serverNowMs: data.now });
-        }
+        if (alive) setState({ data, error: null, loading: false, serverNowMs: data.now });
       } catch (err) {
-        if (!alive) return;
-        if ((err as Error).name === "AbortError") return;
+        if (!alive || (err as Error).name === "AbortError") return;
         setState((s) => ({
           ...s,
           error: "Signal lost — your forge keeps working locally. Reconnecting…",
@@ -52,12 +82,17 @@ export function useSnapshot(pollMs = 4000): SnapshotState {
       }
     }
 
-    void load();
-    const timer = setInterval(load, pollMs);
+      function fallback() {
+      if (!alive || pollTimer) return;
+      void poll();
+      pollTimer = setInterval(poll, pollMs);
+    }
+
     return () => {
       alive = false;
+      source?.close();
+      if (pollTimer) clearInterval(pollTimer);
       controller.abort();
-      clearInterval(timer);
     };
   }, [pollMs]);
 
