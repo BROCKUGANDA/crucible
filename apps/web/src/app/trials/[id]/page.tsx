@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { Chrome, Quenching, SignalLost } from "@/components/Chrome";
+import { BreakPanel } from "@/components/BreakPanel";
 import { useSnapshot } from "@/lib/useSnapshot";
 import {
   formatDuration,
@@ -124,9 +125,11 @@ export default function TrialDetailPage() {
       ) : null}
 
       {trial.status === "judging" ? (
-        <Link className="btn btn-primary" href={`/bounties?trial=${trial.id}`} style={{ marginTop: 24 }}>
-          Break this run — stake {formatEth((Number(trial.rewardEth) / 100).toFixed(6))}
-        </Link>
+        <BreakPanel
+          trialId={trial.id}
+          rewardEth={trial.rewardEth}
+          bondEth={trial.bondEth}
+        />
       ) : null}
     </Chrome>
   );

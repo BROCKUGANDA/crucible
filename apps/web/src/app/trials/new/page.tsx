@@ -1,9 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { Chrome } from "@/components/Chrome";
+import { keccak256, stringToHex, type Hex } from "viem";
+import { useAccount } from "wagmi";
+import { Chrome, TxStates } from "@/components/Chrome";
+import { WrongNetworkNotice } from "@/components/Wallet";
 import { EMPTY_WIZARD, validateWizard, type WizardValues } from "@/lib/wizard";
-import { computeSigDeadline } from "@crucible/smith";
+import { buildCreateTrial, useTx } from "@/lib/useTx";
+import { deployment } from "@/lib/wagmi";
+import { parseEth } from "@/lib/eth";
 
 /**
  * Sponsor wizard — three steps, matching the flow in the PRD.
@@ -19,10 +24,15 @@ export default function NewTrialPage() {
   const [step, setStep] = useState(0);
   const result = validateWizard(values);
 
+  const { isConnected } = useAccount();
+  const dep = deployment();
+  const tx = useTx();
+
   const set = (k: keyof WizardValues, v: string) => setValues((s) => ({ ...s, [k]: v }));
 
   return (
     <Chrome>
+      <WrongNetworkNotice requiredChainId={dep.chainId} />
       <h1 style={{ fontSize: 28, marginTop: 0 }}>Light a trial</h1>
       <p className="kicker">{KICKERS[step]}</p>
 
@@ -82,44 +92,67 @@ export default function NewTrialPage() {
         </>
       ) : null}
 
-      <div style={{ display: "flex", gap: 12, marginTop: 28 }}>
+      <div style={{ display: "flex", gap: 12, marginTop: 28, alignItems: "center" }}>
         {step > 0 ? (
           <button className="btn btn-ghost" onClick={() => setStep((s) => s - 1)}>
             Back
           </button>
         ) : null}
         <button
-          className="btn btn-primary"
-          disabled={!result.ok}
+          className={tx.state === "heating" ? "btn btn-primary heating" : "btn btn-primary"}
+          disabled={!result.ok || tx.state === "heating"}
           onClick={() => {
             if (step < 2) {
               setStep((s) => s + 1);
               return;
             }
-            // T1/T2: escrow the reward, then createTrial. Both go from the wallet —
-            // the API deliberately holds no keys and cannot submit transactions.
-            alert(
-              "Two transactions: escrow, then lighting.\n\n" +
-                JSON.stringify(
-                  {
-                    spec: values.spec,
-                    testsCID: values.testsCID.trim(),
-                    rewardEth: values.rewardEth,
-                    deadlineHours: Number(values.deadlineHours),
-                    breakWindowHours: Number(values.breakWindowHours),
-                    sigDeadline: computeSigDeadline().toString(),
-                  },
-                  null,
-                  2,
-                ),
+            // T1: escrow the reward. The reward travels as msg.value on createTrial,
+            // so this is one transaction rather than the two the copy deck described —
+            // the contract takes the value directly.
+            const deadline = Math.floor(Date.now() / 1000) + Number(values.deadlineHours) * 3600;
+            tx.send(
+              buildCreateTrial({
+                specDigest: digestOf(values.spec),
+                testsDigest: digestOf(values.testsCID.trim()),
+                rewardWei: parseEth(values.rewardEth) ?? 0n,
+                deadline,
+                breakWindow: Number(values.breakWindowHours) * 3600,
+              }),
             );
           }}
         >
-          {step < 2 ? "Continue" : "Escrow & light trial"}
+          {step < 2
+            ? "Continue"
+            : tx.state === "heating"
+              ? "Lighting the trial…"
+              : "Escrow & light trial"}
         </button>
+        {step === 2 ? (
+          <span className="mono" style={{ color: "var(--faint)" }}>
+            {Number(values.rewardEth)} ETH escrowed on Sepolia
+          </span>
+        ) : null}
+        {!isConnected ? (
+          <span className="mono" style={{ color: "var(--ash)" }}>
+            Connect a wallet to light a trial
+          </span>
+        ) : null}
+      </div>
+
+      <div style={{ marginTop: 16 }}>
+        <TxStates state={tx.state} message={tx.message} hash={tx.hash} />
       </div>
     </Chrome>
   );
+}
+
+/**
+ * The contract commits to bytes32 digests of the pinned content, not to CID text.
+ * Hashing the text here is the honest thing to do when the indexer is not available to
+ * resolve the CID the sponsor actually pinned.
+ */
+function digestOf(text: string): Hex {
+  return keccak256(stringToHex(text));
 }
 
 function Field({

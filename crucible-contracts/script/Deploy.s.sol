@@ -66,9 +66,14 @@ contract DeployReputation is Script {
         vm.stopBroadcast();
 
         console.log("ReputationBridge", address(bridge));
-        console.log("reputationRegistry", registry == address(0) ? "unwired" : registry);
         if (registry == address(0)) {
-            console.log("settlements are unaffected; wire a registry later with setReputationRegistry");
+            // Not an error: reputation is the only path here that is allowed to fail
+            // closed. Settlements work either way; wire a registry later to turn
+            // reputation on.
+            console.log("reputationRegistry  unwired");
+            console.log("  settlements are unaffected; wire one later with setReputationRegistry");
+        } else {
+            console.log("reputationRegistry", registry);
         }
     }
 }

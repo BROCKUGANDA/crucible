@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { WalletButton, WalletNotConfiguredNotice } from "@/components/Wallet";
 
 export function Chrome({ children }: { children: ReactNode }) {
   return (
@@ -13,6 +14,8 @@ export function Chrome({ children }: { children: ReactNode }) {
           justifyContent: "space-between",
           padding: "20px 32px",
           borderBottom: "1px solid var(--bg1)",
+          flexWrap: "wrap",
+          gap: 16,
         }}
       >
         <Link href="/" aria-label="Crucible — home">
@@ -20,17 +23,20 @@ export function Chrome({ children }: { children: ReactNode }) {
             CRUCIBLE
           </span>
         </Link>
-        <nav
-          aria-label="Primary"
-          style={{ display: "flex", gap: 22, fontSize: 13.5 }}
-        >
-          <Link href="/trials">Trials</Link>
-          <Link href="/agents">Agents</Link>
-          <Link href="/bounties">The Break</Link>
-          <Link href="/hall">Hall</Link>
-          <Link href="/docs">Docs</Link>
-        </nav>
+        <div style={{ display: "flex", alignItems: "center", gap: 24 }}>
+          <nav aria-label="Primary" style={{ display: "flex", gap: 22, fontSize: 13.5 }}>
+            <Link href="/trials">Trials</Link>
+            <Link href="/agents">Agents</Link>
+            <Link href="/forge">Forge</Link>
+            <Link href="/bounties">The Break</Link>
+            <Link href="/hall">Hall</Link>
+            <Link href="/docs">Docs</Link>
+          </nav>
+          <WalletButton />
+        </div>
       </header>
+
+      <WalletNotConfiguredNotice />
 
       <main style={{ flex: 1, padding: "32px", maxWidth: 1180, width: "100%", margin: "0 auto" }}>
         {children}
@@ -45,11 +51,69 @@ export function Chrome({ children }: { children: ReactNode }) {
           borderTop: "1px solid var(--bg1)",
           fontSize: 12,
           color: "var(--faint)",
+          flexWrap: "wrap",
         }}
       >
         <span>Forged at the Colosseum Crypto World&apos;s Fair.</span>
         <span>Alloy is non-transferable. Trust should be too.</span>
       </footer>
+    </div>
+  );
+}
+
+/**
+ * The three transaction states, named in the copy deck.
+ * Heating = pending, Poured = confirmed, Doused = reverted.
+ */
+export function TxStates({
+  state,
+  message,
+  hash,
+}: {
+  state: "idle" | "heating" | "poured" | "doused";
+  message: string | null;
+  hash?: string | null;
+}) {
+  if (state === "idle") return null;
+
+  if (state === "heating") {
+    return (
+      <div className="surface heating" role="status" aria-live="polite" style={{ padding: 14 }}>
+        <span className="mono" style={{ color: "var(--gold)" }}>
+          Heating — waiting for the network…
+        </span>
+      </div>
+    );
+  }
+
+  if (state === "poured") {
+    return (
+      <div
+        className="surface"
+        role="status"
+        style={{ padding: 14, borderColor: "var(--quench)" }}
+      >
+        <span style={{ color: "var(--quench)" }}>Poured.</span>{" "}
+        <span style={{ color: "var(--dim)" }}>Confirmed on chain.</span>
+        {hash ? (
+          <a
+            className="mono"
+            href={`https://sepolia.etherscan.io/tx/${hash}`}
+            target="_blank"
+            rel="noreferrer"
+            style={{ display: "block", color: "var(--dim)", marginTop: 6 }}
+          >
+            {hash.slice(0, 10)}…{hash.slice(-6)}
+          </a>
+        ) : null}
+      </div>
+    );
+  }
+
+  return (
+    <div className="surface" role="alert" style={{ padding: 14, borderColor: "var(--sear)" }}>
+      <span style={{ color: "var(--sear)" }}>Doused.</span>{" "}
+      <span style={{ color: "var(--dim)" }}>{message}</span>
     </div>
   );
 }
