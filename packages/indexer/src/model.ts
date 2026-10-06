@@ -7,6 +7,10 @@ import { STATUS, VERDICT, TIER, TIER_NAMES } from "@crucible/smith";
  * plus the off-chain CID text the sponsor supplied at submission time. Anything the
  * chain cannot tell us (what the bytes32 digest *addresses*) is carried off-chain,
  * because a digest is one-way.
+ *
+ * The projection also keeps the log it read each fact from. A win count nobody can
+ * re-fetch is not evidence, so `VerdictFinalized` and `IdentityLinked` provenance is
+ * carried alongside the value — that is what lets /hall be checked rather than believed.
  */
 
 export type TrialStatus = "open" | "assigned" | "judging" | "challenged" | "settled";
@@ -38,6 +42,36 @@ export interface TrialRow {
   disputeOpenedAt: number | null;
 }
 
+/**
+ * One settled trial, with the log that settled it. This is the hall's evidence: a
+ * reader takes `txHash`, re-fetches the receipt, and checks the payout themselves
+ * instead of trusting this projection's arithmetic.
+ */
+export interface Settlement {
+  trialId: number;
+  verdict: VerdictKind;
+  txHash: string;
+  blockNumber: number;
+  /** `agentPayout` from the event, in wei */
+  payoutWei: bigint;
+  /** a skeptic filed a break against this run before it settled */
+  breakFiled: boolean;
+}
+
+/** Provenance of the ERC-8004 link, from the IdentityLinked log. */
+export interface IdentityProof {
+  identityAgentId: bigint;
+  txHash: string;
+  blockNumber: number;
+  /**
+   * The address whose log emitted the link — CrucibleTrials, *not* the ERC-8004
+   * registry. `IdentityLinked(agentId, identityAgentId)` carries no registry address,
+   * and the registry only appears in `IdentityRegistrySet`, which the indexer does not
+   * tail. A `registry` field here would be an invention, so the field says what it is.
+   */
+  emitter: string;
+}
+
 export interface AgentRow {
   id: number;
   operator: string;
@@ -49,9 +83,21 @@ export interface AgentRow {
   wins: number;
   survived: number;
   slashes: number;
-  tier: number;
+  /**
+   * No `tier` here, on purpose. A tier is `AlloyRegistry.records(agentId).tier`, written
+   * by `recordWin`/`recordSlash` and signalled only by `TierChanged`, which is emitted by
+   * the *registry* — a contract Scribe does not tail (it indexes CrucibleTrials only).
+   * This row used to carry `tier: TIER.Unforged`, set once at registration and never
+   * rewritten, so every hall row printed "Unforged" over an agent the chain had already
+   * moved to Iron. A projection cannot publish a fact it has no source for; the API gets
+   * the tier from the registry instead (see `api.ts`'s `AlloyState`).
+   */
   /** ERC-8004 identity tokenId, or null if the operator has not linked it */
   identityAgentId: bigint | null;
+  /** the link above, with the log proving it; null when nothing is linked */
+  identity: IdentityProof | null;
+  /** settled trials this agent was the runner in, newest first, capped at MAX_SETTLEMENTS */
+  settlements: Settlement[];
 }
 
 export interface RunRow {
@@ -74,6 +120,27 @@ export interface EventLike {
   args: Record<string, unknown>;
 }
 
+/**
+ * How much settlement history an agent carries. The hall shows a handful of proofs,
+ * not an audit log, and an agent that has settled 500 trials must not turn every
+ * snapshot into a megabyte. Oldest entries fall off the tail.
+ */
+export const MAX_SETTLEMENTS = 10;
+
+/**
+ * Move a trial forward, never back.
+ *
+ * Settlement is terminal on chain — `_settle` reverts `AlreadySettled` and no function
+ * returns a trial from there — so the projection refuses it too. Without this, a re-read
+ * `TrialClaimed` or `RunSubmitted` re-opens an already-settled trial and the duplicate
+ * `VerdictFinalized` behind it counts the win a second time: the guards in each case would
+ * only ever see the status the previous case had just reset.
+ */
+function advance(t: TrialRow, to: TrialStatus): void {
+  if (t.status === "settled") return;
+  t.status = to;
+}
+
 /** Deterministic event decoding from a log, without a viem client. */
 export function applyEvent(state: ReadModel, ev: EventLike): ReadModel {
   const next = cloneModel(state);
@@ -82,6 +149,11 @@ export function applyEvent(state: ReadModel, ev: EventLike): ReadModel {
   switch (ev.eventName) {
     case "TrialCreated": {
       const id = num(a.id);
+      // A re-read log must not reset a trial that has already moved on. The contract hands
+      // out ids from a counter, so a second TrialCreated for the same id is never a real
+      // second event — it is the same log arriving twice, from an overlapping shard or a
+      // reorg. Keeping the existing row is what makes ingest replay-safe.
+      if (next.trials.has(id)) break;
       next.trials.set(id, {
         id,
         sponsor: str(a.sponsor),
@@ -109,6 +181,10 @@ export function applyEvent(state: ReadModel, ev: EventLike): ReadModel {
     }
     case "AgentRegistered": {
       const id = num(a.agentId);
+      // `registerAgent` reverts `AlreadyRegistered`, so a repeat of this log is a re-read,
+      // not a re-registration. Recreating the row here would zero the agent's wins, scars
+      // and settlement receipts — the projection quietly forgetting what the chain knows.
+      if (next.agents.has(id)) break;
       next.agents.set(id, {
         id,
         operator: str(a.operator),
@@ -119,21 +195,34 @@ export function applyEvent(state: ReadModel, ev: EventLike): ReadModel {
         wins: 0,
         survived: 0,
         slashes: 0,
-        tier: TIER.Unforged,
         identityAgentId: null,
+        identity: null,
+        settlements: [],
       });
       break;
     }
     case "IdentityLinked": {
       const t = next.agents.get(num(a.agentId));
-      if (t) t.identityAgentId = big(a.identityAgentId);
+      if (t) {
+        const identityAgentId = big(a.identityAgentId);
+        // Re-linking replaces the proof rather than appending: the chain's current
+        // `identityOf[agentId]` is the last link, and a hall row must not advertise a
+        // tokenId the contract no longer holds.
+        t.identityAgentId = identityAgentId;
+        t.identity = {
+          identityAgentId,
+          txHash: ev.transactionHash,
+          blockNumber: Number(ev.blockNumber),
+          emitter: ev.address,
+        };
+      }
       break;
     }
     case "TrialClaimed": {
       const t = next.trials.get(num(a.id));
       if (t) {
         t.agentId = num(a.agentId);
-        t.status = "assigned";
+        advance(t, "assigned");
       }
       break;
     }
@@ -144,7 +233,7 @@ export function applyEvent(state: ReadModel, ev: EventLike): ReadModel {
         t.agentId = num(a.agentId);
         t.runHash = str(a.runHash);
         t.runAt = Number(ev.blockNumber);
-        t.status = "judging";
+        advance(t, "judging");
       }
       next.runs.set(id, {
         trialId: id,
@@ -163,7 +252,7 @@ export function applyEvent(state: ReadModel, ev: EventLike): ReadModel {
         t.breakSkeptic = str(a.skeptic);
         t.breakStakeWei = big(a.stake);
         t.breakProofCID = str(a.proofCID);
-        t.status = "challenged";
+        advance(t, "challenged");
         t.disputeOpenedAt = Number(ev.blockNumber);
       }
       break;
@@ -175,7 +264,14 @@ export function applyEvent(state: ReadModel, ev: EventLike): ReadModel {
     }
     case "VerdictFinalized": {
       const t = next.trials.get(num(a.id));
-      if (t) {
+      // The one transition in the protocol that *adds* to a counter, so the one a duplicate
+      // can inflate. A trial settles once on chain (`_settle` reverts `AlreadySettled`) and
+      // the contract has no path back, so an already-settled row means this log has already
+      // been applied — from an overlapping shard, or from a reorg that re-mined the block
+      // under a new tx hash. Skipping keeps a replay from minting reputation the chain never
+      // awarded.
+      if (!t || t.status === "settled") break;
+      {
         t.status = "settled";
         t.verdict = verdictName(num(a.verdict));
 
@@ -190,6 +286,20 @@ export function applyEvent(state: ReadModel, ev: EventLike): ReadModel {
           } else if (t.verdict === "slashed") {
             agent.slashes += 1;
           }
+
+          // Every settled verdict is recorded, not just the flattering ones: a hall row
+          // that can only produce receipts for wins is a hall row that cannot be checked.
+          agent.settlements = [
+            {
+              trialId: t.id,
+              verdict: t.verdict,
+              txHash: ev.transactionHash,
+              blockNumber: Number(ev.blockNumber),
+              payoutWei: big(a.agentPayout),
+              breakFiled: t.breakSkeptic !== null,
+            },
+            ...agent.settlements,
+          ].slice(0, MAX_SETTLEMENTS);
         }
       }
       break;
@@ -270,16 +380,23 @@ export function listTrials(model: ReadModel, filter?: TrialStatus): TrialRow[] {
   return filter ? all.filter((t) => t.status === filter) : all;
 }
 
+/**
+ * One hall row as the projection can honestly make it: counters, and the logs behind
+ * them. The tier is deliberately absent — see the note on `AgentRow` — and the API
+ * attaches it from `AlloyRegistry` at render time (`api.ts`'s `toApiHallEntry`).
+ */
 export interface HallEntry {
   agentId: number;
   operator: string;
-  tier: number;
-  tierName: string;
   wins: number;
   survived: number;
   slashes: number;
   /** ERC-8004 identity tokenId, or null when not linked */
   identityAgentId: bigint | null;
+  /** the IdentityLinked log behind the id above; null when nothing is linked */
+  identity: IdentityProof | null;
+  /** the settled trials behind the counters, newest first */
+  settlements: Settlement[];
 }
 
 /** /hall — ranked by wins, then survived, then fewest slashes. */
@@ -289,12 +406,14 @@ export function hall(model: ReadModel): HallEntry[] {
     .map((a) => ({
       agentId: a.id,
       operator: a.operator,
-      tier: a.tier,
-      tierName: TIER_NAMES[a.tier] ?? "Unforged",
       wins: a.wins,
       survived: a.survived,
       slashes: a.slashes,
       identityAgentId: a.identityAgentId,
+      // Copies, not the projection's own objects: a hall entry is handed to a caller
+      // who may serialise or mutate it, and neither may reach back into the read model.
+      identity: a.identity ? { ...a.identity } : null,
+      settlements: a.settlements.map((s) => ({ ...s })),
     }))
     .sort((x, y) => y.wins - x.wins || y.survived - x.survived || x.slashes - y.slashes);
 }
@@ -313,7 +432,20 @@ export function deadlineEndsIn(row: TrialRow, nowSeconds: number): number | null
 function cloneModel(m: ReadModel): ReadModel {
   return {
     trials: new Map([...m.trials].map(([k, v]) => [k, { ...v }])),
-    agents: new Map([...m.agents].map(([k, v]) => [k, { ...v }])),
+    // `{ ...v }` alone is a bug waiting to happen now that AgentRow holds an object and
+    // an array of objects: the spread copies the *references*, so two snapshots would
+    // share one Settlement and one IdentityProof, and `applyEvent` mutates the clone it
+    // returns. Copy those nested values so every snapshot owns its own evidence.
+    agents: new Map(
+      [...m.agents].map(([k, v]) => [
+        k,
+        {
+          ...v,
+          identity: v.identity ? { ...v.identity } : null,
+          settlements: v.settlements.map((s) => ({ ...s })),
+        },
+      ]),
+    ),
     runs: new Map([...m.runs].map(([k, v]) => [k, { ...v }])),
     pendingTimestamps: new Map(m.pendingTimestamps),
   };

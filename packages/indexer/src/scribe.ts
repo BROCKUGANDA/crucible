@@ -60,6 +60,12 @@ const EVENT_NAMES = [
   "IdentityLinked",
 ] as const;
 
+// viem `getLogs` needs the full ABI event shape, not bare names.
+const EVENTS = TRIALS_ABI.filter(
+  (item): item is Extract<typeof item, { type: "event"; name: string }> =>
+    item.type === "event" && EVENT_NAMES.includes(item.name as (typeof EVENT_NAMES)[number]),
+);
+
 export class Scribe {
   readonly client: PublicClient;
   private model: ReadModel = emptyModel();
@@ -147,7 +153,7 @@ export class Scribe {
         () =>
           this.client.getLogs({
             address: this.cfg.trialsAddress,
-            events: [...EVENT_NAMES],
+            events: EVENTS,
             fromBlock: from,
             toBlock: to,
           }),
@@ -196,10 +202,20 @@ export class Scribe {
   }
 }
 
+/**
+ * A viem-decoded log carries its values on `args`, keyed by the ABI input names.
+ *
+ * `data` is the raw hex topics-and-topics payload, not a decoded record: iterating it
+ * yields index→character pairs, so every `args.id` / `args.verdict` lookup came back
+ * undefined and the coercion helpers turned the whole read model into zeros. A live
+ * chain indexed through the old path produced a plausible-looking, entirely empty
+ * projection — which is why this is asserted against a decoded fixture rather than
+ * left to the replay tests, which build `args` by hand.
+ */
 export function toEventLike(log: Log): EventLike {
-  const l = log as Log & { eventName?: string };
+  const l = log as Log & { eventName?: string; args?: Record<string, unknown> };
   const args: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(l.data ?? {})) args[k] = v;
+  for (const [k, v] of Object.entries(l.args ?? {})) args[k] = v;
   return {
     blockNumber: l.blockNumber ?? 0n,
     transactionHash: l.transactionHash ?? "",
