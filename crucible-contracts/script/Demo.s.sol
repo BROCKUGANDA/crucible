@@ -61,13 +61,12 @@ contract Demo is Script {
         uint256 agentA = _forgeAgent(pkOperatorA, "ipfs://manifestA");
         uint256 agentB = _forgeAgent(pkOperatorB, "ipfs://manifestB");
 
-        // The uncontested trial runs last: settling it needs the clock pushed past the
-        // break window, and a warped node timestamp is a moving reference for every
-        // signature deadline computed after it.
+        // Every trial here settles through an Argus vote, which needs no clock travel and
+        // therefore produces the same chain on a fresh Anvil and a week-old one.
         _paidWithstand(agentA, pkOperatorA, keccak256("spec-1"), keccak256("tests-1"));
         _paidWithstand(agentB, pkOperatorB, keccak256("spec-2"), keccak256("tests-2"));
         _slashed(agentB, pkOperatorB, keccak256("spec-3"), keccak256("tests-3"));
-        _paidUncontested(agentA, pkOperatorA, keccak256("spec-4"), keccak256("tests-4"));
+        _paidWithstand(agentA, pkOperatorA, keccak256("spec-4"), keccak256("tests-4"));
 
         console.log("2. identity links");
         _linkIdentity(agentA, pkOperatorA, "ipfs://identityA");
@@ -157,11 +156,16 @@ contract Demo is Script {
     }
 
     /// Nobody attacks; the window closes and silence settles it as acceptance.
+    /// Nobody attacks; the window closes and silence settles it as acceptance.
+    ///
+    /// Not used by the seed. `finalize` needs the node's clock past `runAt + breakWindow`,
+    /// and `vm.warp` moves the *next mined block* while the check below runs against a
+    /// timestamp the script cannot see in advance — so it passed on a node that had been
+    /// left running for hours and reverted on a fresh one. The path is covered by
+    /// `test_Finalize_*` in the contract suite; a demo that only works on a stale chain is
+    /// worse than one that skips it.
     function _paidUncontested(uint256 agentId, uint256 operatorPk, bytes32 spec, bytes32 tests) internal {
         uint256 id = _claimAndSubmit(agentId, operatorPk, spec, tests, keccak256("RunArtifact{quiet}"));
-        // Past the deadline for the *stored* runAt, which is the mined timestamp and can
-        // sit hours behind the one the script reads. Two days clears the 12-hour window
-        // whatever the wall clock did between the two transactions.
         vm.warp(block.timestamp + 2 days);
         vm.broadcast(pkRelayer); // finalize is permissionless; the relayer is the bystander
         trials.finalize(id);
