@@ -17,6 +17,7 @@ import {
   type EventLike,
   type ReadModel,
 } from "./model.js";
+import { RpcThrottler, withBackoff } from "@crucible/smith";
 
 /**
  * Live tailing of CrucibleTrials.
@@ -34,6 +35,16 @@ export interface IndexerConfig {
   fromBlock?: bigint;
   /** block interval to poll */
   pollMs?: number;
+  /**
+   * Blocks per backfill shard. 0 disables sharding (one big `getLogs`).
+   *
+   * "Sharding" here means partitioning the catch-up window by block range, not a second
+   * database. A single `getLogs` over months of blocks can be tens of thousands of
+   * events, which is slow and often larger than the RPC's response cap. Windowing it
+   * into shards lets the gaps be fetched in parallel (still through `rpc`, one ceiling)
+   * and keeps every individual call small.
+   */
+  shardSizeBlocks?: bigint;
 }
 
 const EVENT_NAMES = [
@@ -54,6 +65,8 @@ export class Scribe {
   private cursor: bigint;
   private readonly blockTimes = new Map<bigint, number>();
   private running = false;
+  /** One ceiling on concurrent RPC calls for the whole indexer. */
+  private readonly rpc = new RpcThrottler(8);
 
   constructor(private readonly cfg: IndexerConfig) {
     this.client = createPublicClient({
@@ -69,7 +82,9 @@ export class Scribe {
 
   /** Backfill from genesis (or fromBlock) to head, in one pass. */
   async sync(): Promise<ReadModel> {
-    const head = await this.client.getBlockNumber();
+    const head = await this.rpc.run(() =>
+      withBackoff(() => this.client.getBlockNumber(), { operation: "scribe.getBlockNumber" }),
+    );
     if (this.cursor > head) return this.model;
     const events = await this.fetchLogs(this.cursor, head);
     if (events.length > 0) {
@@ -101,12 +116,43 @@ export class Scribe {
   }
 
   private async fetchLogs(from: bigint, to: bigint): Promise<EventLike[]> {
-    const logs = (await this.client.getLogs({
-      address: this.cfg.trialsAddress,
-      events: [...EVENT_NAMES],
-      fromBlock: from,
-      toBlock: to,
-    })) as Log[];
+    const shard = this.cfg.shardSizeBlocks ?? 0n;
+
+    // No sharding configured: one honest call, same as before.
+    if (shard <= 0n || to - from < shard) {
+      return this.fetchLogsWindow(from, to);
+    }
+
+    const windows: [bigint, bigint][] = [];
+    for (let start = from; start <= to; start += shard) {
+      windows.push([start, start + shard - 1n > to ? to : start + shard - 1n]);
+    }
+
+    // Parallel across shards, still bounded by the single RPC throttler.
+    const groups = await Promise.all(
+      windows.map(([f, t]) => this.fetchLogsWindow(f, t)),
+    );
+
+    const merged = groups
+      .flat()
+      .sort((a, b) => (a.blockNumber < b.blockNumber ? -1 : a.blockNumber > b.blockNumber ? 1 : a.logIndex - b.logIndex));
+
+    return merged;
+  }
+
+  private async fetchLogsWindow(from: bigint, to: bigint): Promise<EventLike[]> {
+    const logs = (await this.rpc.run(() =>
+      withBackoff(
+        () =>
+          this.client.getLogs({
+            address: this.cfg.trialsAddress,
+            events: [...EVENT_NAMES],
+            fromBlock: from,
+            toBlock: to,
+          }),
+        { operation: "scribe.getLogs" },
+      ),
+    )) as Log[];
     return logs.map(toEventLike);
   }
 
@@ -116,8 +162,12 @@ export class Scribe {
       blocks.map(async (b) => {
         if (this.blockTimes.has(b)) return;
         try {
-          const blk = await this.client.getBlock({ blockNumber: b });
-          this.blockTimes.set(b, Number(blk.timestamp));
+          await this.rpc.run(() =>
+            withBackoff(
+              () => this.client.getBlock({ blockNumber: b }).then((blk) => blk.timestamp),
+              { operation: "scribe.getBlock" },
+            ).then((ts) => this.blockTimes.set(b, Number(ts))),
+          );
         } catch {
           // A missing timestamp leaves the row on its block number; the next
           // hydrate pass fills it in.

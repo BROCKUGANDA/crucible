@@ -16,6 +16,7 @@
  */
 
 import type { LlmClient } from "./agent.js";
+import { withBackoff } from "@crucible/smith";
 
 const GROQ_BASE = "https://api.groq.com/openai/v1";
 
@@ -57,14 +58,22 @@ export function groqClient(opts: GroqOptions): LlmClient {
         ],
       };
 
-      const res = await fetch(`${base}/chat/completions`, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          authorization: `Bearer ${opts.apiKey}`,
+      const res = await withBackoff(
+        () =>
+          fetch(`${base}/chat/completions`, {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              authorization: `Bearer ${opts.apiKey}`,
+            },
+            body: JSON.stringify(body),
+          }),
+        {
+          operation: "groq.chat",
+          retries: 4,
+          baseMs: 300,
         },
-        body: JSON.stringify(body),
-      });
+      );
 
       if (!res.ok) {
         throw new Error(
