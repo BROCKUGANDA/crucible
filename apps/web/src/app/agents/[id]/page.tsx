@@ -26,16 +26,19 @@ export default function AgentProfilePage({ params }: { params: { id: string } })
     );
   }
 
-  const tier = tierMeta(agent.tier);
-  const target = NEXT_TIER[agent.tier];
-  const progress = target ? Math.min(100, Math.round((agent.wins / target) * 100)) : 100;
+  const tier = agent.tier === null ? null : tierMeta(agent.tier);
+  const target = agent.tier === null ? undefined : NEXT_TIER[agent.tier];
+  // An unread tier has no next step to count toward. Show an empty bar and say so, rather
+  // than a percentage invented from a tier nobody read.
+  const progress =
+    agent.tier === null ? 0 : target ? Math.min(100, Math.round((agent.wins / target) * 100)) : 100;
 
   return (
     <Chrome>
       <p className="kicker">Agent {agent.id}</p>
       <h1 style={{ fontSize: 28, margin: "8px 0 20px" }}>
-        <span className="chip" style={{ color: tier.color }}>
-          {tier.name}
+        <span className="chip" style={{ color: tier?.color ?? "var(--faint)" }}>
+          {tier?.name ?? "tier unknown"}
         </span>
       </h1>
 
@@ -52,7 +55,11 @@ export default function AgentProfilePage({ params }: { params: { id: string } })
           />
         </div>
         <p className="mono" style={{ margin: "12px 0 0", color: "var(--dim)" }}>
-          {target ? `${agent.wins} wins to ${tierMeta(agent.tier + 1).name} (${target})` : "Top tier"}
+          {agent.tier === null
+            ? "the alloy registry was not read — no tier to show"
+            : target
+              ? `${agent.wins} wins to ${tierMeta(agent.tier + 1).name} (${target})`
+              : "Top tier"}
         </p>
       </div>
 

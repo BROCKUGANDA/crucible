@@ -42,6 +42,21 @@ export function activeChainDef(): Chain {
   return activeChain() === "foundry" ? foundry : sepolia;
 }
 
+/**
+ * The explorer URL for a transaction on the active chain, or null when that chain has no
+ * explorer to name.
+ *
+ * Derived from the chain definition rather than written out per call site, because the
+ * first version of this hardcoded Sepolia and pointed Anvil hashes at it — a link that
+ * opens a page saying the transaction never happened. That is worse than no link: it looks
+ * like verification. A null is honest, and the caller renders "no explorer".
+ */
+export function explorerTxUrl(hash: string, chain: Chain = activeChainDef()): string | null {
+  const base = chain.blockExplorers?.default?.url;
+  if (!base || !/^0x[0-9a-fA-F]{64}$/.test(hash)) return null;
+  return `${base.replace(/\/$/, "")}/tx/${hash}`;
+}
+
 export interface Deployment {
   chainId: number;
   trials: Address;

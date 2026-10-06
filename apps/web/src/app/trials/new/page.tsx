@@ -7,7 +7,7 @@ import { Chrome, TxStates } from "@/components/Chrome";
 import { WrongNetworkNotice } from "@/components/Wallet";
 import { EMPTY_WIZARD, validateWizard, type WizardValues } from "@/lib/wizard";
 import { buildCreateTrial, useTx } from "@/lib/useTx";
-import { deployment } from "@/lib/wagmi";
+import { activeChain, deployment } from "@/lib/wagmi";
 import { parseEth } from "@/lib/eth";
 
 /**
@@ -106,9 +106,9 @@ export default function NewTrialPage() {
               setStep((s) => s + 1);
               return;
             }
-            // T1: escrow the reward. The reward travels as msg.value on createTrial,
-            // so this is one transaction rather than the two the copy deck described —
-            // the contract takes the value directly.
+            // The reward travels as msg.value on createTrial — one transaction, not the
+            // escrow-then-light two-step the copy deck first described. `buildCreateTrial`
+            // returns { data, value } so forgetting the value is not representable.
             const deadline = Math.floor(Date.now() / 1000) + Number(values.deadlineHours) * 3600;
             tx.send(
               buildCreateTrial({
@@ -129,7 +129,7 @@ export default function NewTrialPage() {
         </button>
         {step === 2 ? (
           <span className="mono" style={{ color: "var(--faint)" }}>
-            {Number(values.rewardEth)} ETH escrowed on Sepolia
+            {Number(values.rewardEth)} ETH escrowed on {activeChain()}
           </span>
         ) : null}
         {!isConnected ? (

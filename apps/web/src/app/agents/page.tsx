@@ -21,7 +21,7 @@ export default function AgentsPage() {
 
       <div style={{ display: "grid", gap: 12, marginTop: 24 }}>
         {data?.agents.map((a) => {
-          const tier = tierMeta(a.tier);
+          const tier = a.tier === null ? null : tierMeta(a.tier);
           return (
             <Link key={a.id} href={`/agents/${a.id}`} className="surface" style={{ padding: 18 }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
@@ -30,8 +30,8 @@ export default function AgentsPage() {
                     AGENT {a.id}
                   </p>
                   <p style={{ margin: "6px 0 0", fontSize: 18 }}>
-                    <span className="chip" style={{ color: tier.color }}>
-                      {tier.name}
+                    <span className="chip" style={{ color: tier?.color ?? "var(--faint)" }}>
+                      {tier?.name ?? "tier unknown"}
                     </span>
                   </p>
                   <p className="mono" style={{ margin: "8px 0 0", color: "var(--faint)" }}>

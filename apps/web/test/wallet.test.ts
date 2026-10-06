@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { keccak256, stringToHex, decodeFunctionData } from "viem";
 import { TRIALS_ABI } from "@crucible/smith";
+import { foundry, sepolia } from "wagmi/chains";
 import {
   buildClaimTrial,
   buildCreateTrial,
@@ -11,7 +12,7 @@ import {
   buildWithdraw,
   decodeRevert,
 } from "../src/lib/useTx";
-import { shortAddress } from "../src/lib/wagmi";
+import { explorerTxUrl, shortAddress } from "../src/lib/wagmi";
 import { validateWizard, EMPTY_WIZARD } from "../src/lib/wizard";
 
 const RUNNER = "0x1111111111111111111111111111111111111111";
@@ -21,7 +22,7 @@ describe("transaction builders", () => {
   // decoding round-trips rather than asserting raw hex length: a length check would
   // pass even if the arguments were encoded in the wrong order
   it("encodes createTrial and decodes back to the same arguments", () => {
-    const data = buildCreateTrial({
+    const { data } = buildCreateTrial({
       specDigest: HASH,
       testsDigest: HASH,
       rewardWei: 10n ** 17n,
@@ -39,6 +40,38 @@ describe("transaction builders", () => {
     expect(args[1]).toBe(HASH);
     expect(args[2]).toBe(1_800_000_000n);
     expect(args[3]).toBe(43_200n);
+  });
+
+  /**
+   * `createTrial` is payable and reverts `RewardTooSmall()` unless `msg.value` covers the
+   * reward, so the reward travels as value rather than as an argument. A builder that
+   * returns bare calldata compiles, decodes, and can never land — which is exactly what it
+   * did while this suite only checked the calldata.
+   */
+  it("escrows the reward as msg.value on createTrial", () => {
+    const { value } = buildCreateTrial({
+      specDigest: HASH,
+      testsDigest: HASH,
+      rewardWei: 1_000_000_000_000_000_000n,
+      deadline: 1_800_000_000,
+      breakWindow: 43_200,
+    });
+    expect(value).toBe(1_000_000_000_000_000_000n);
+  });
+
+  // The three other ways value leaves the wallet, pinned so a refactor cannot quietly
+  // drop one and still pass every decode test.
+  it("carries value on registerAgent and fileBreak", () => {
+    expect(buildRegisterAgent({ metadataURI: "ipfs://x", runner: RUNNER, stakeWei: 42n }).value).toBe(42n);
+    expect(buildFileBreak(3, HASH, 7n).value).toBe(7n);
+  });
+
+  it("carries no value on the actions that are not payable", () => {
+    // claimTrial moves an already-escrowed bond; finalize and withdraw pay *out*.
+    const claim = buildClaimTrial(3);
+    expect(typeof claim).toBe("string");
+    expect(typeof buildFinalize(3)).toBe("string");
+    expect(typeof buildWithdraw()).toBe("string");
   });
 
   it("encodes registerAgent with the metadata string and runner", () => {
@@ -173,5 +206,35 @@ describe("wizard to transaction", () => {
     });
     expect(v.ok).toBe(true);
     expect(v.bondEth).toBe("0.1000");
+  });
+});
+
+/**
+ * A proof link that resolves to a page saying the transaction does not exist is worse than
+ * no link, so the explorer is chosen by chain and refuses when there is nothing to choose.
+ */
+describe("explorerTxUrl", () => {
+  const HASH = `0x${"ab".repeat(32)}`;
+
+  it("links a full hash on a chain that declares an explorer", () => {
+    const url = explorerTxUrl(HASH, sepolia);
+    expect(url).toBe(`${sepolia.blockExplorers!.default.url}/tx/${HASH}`);
+  });
+
+  it("refuses rather than guessing on a chain with no explorer", () => {
+    expect(explorerTxUrl(HASH, foundry)).toBeNull();
+  });
+
+  it("refuses a truncated or malformed hash", () => {
+    // The UI shows `0x58b1…d94a0f`; a link built from the *label* would 404 confidently.
+    expect(explorerTxUrl("0x58b1…d94a0f", sepolia)).toBeNull();
+    expect(explorerTxUrl("", sepolia)).toBeNull();
+    expect(explorerTxUrl(`0x${"ab".repeat(31)}`, sepolia)).toBeNull();
+  });
+
+  it("does not double the slash when the base ends with one", () => {
+    const base = sepolia.blockExplorers!.default.url;
+    const withSlash = { ...sepolia, blockExplorers: { default: { url: `${base}/`, name: "x", apiUrl: "" } } };
+    expect(explorerTxUrl(HASH, withSlash)).toBe(`${base}/tx/${HASH}`);
   });
 });
