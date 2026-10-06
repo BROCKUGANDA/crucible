@@ -29,6 +29,7 @@ contract CrucibleTrials {
     error NotAssigned();
     error NotJudging();
     error NotChallenged();
+    error SelfBreak();
     error NotFinalizable();
     error NotReclaimable();
     error DeadlinePassed();
@@ -309,18 +310,30 @@ contract CrucibleTrials {
     }
 
     /// @notice Sponsor reclaims reward if no agent delivered a run by deadline. Bond returns to agent.
+    ///
+    /// @dev `Open` is reclaimable as well as `Assigned`. An unclaimed trial has no bond and
+    /// no agent, so only the reward comes back — but without this branch the money has no
+    /// exit at all: `finalize` needs `Judging|Challenged`, `claimTrial` is welded shut at the
+    /// deadline, and the reward sits in escrow forever. A sponsor that priced a trial too
+    /// high to attract an agent loses the whole reward to its own optimism.
     function reclaimExpired(uint256 id) external {
         Trial storage t = trials[id];
-        if (t.status != Status.Assigned) revert NotReclaimable();
+        if (t.status != Status.Assigned && t.status != Status.Open) revert NotReclaimable();
         if (block.timestamp < uint256(uint64(t.timestamps >> 64))) revert DeadlineNotPassed();
+        bool wasClaimed = t.status == Status.Assigned;
         t.status = Status.Settled;
         t.verdict = Verdict.Refunded;
-        escrowed -= uint256(t.reward) + t.bond;
-        totalStakes += t.bond;
-        agents[t.agentId].stake += t.bond;
-        agents[t.agentId].active -= 1;
+        escrowed -= uint256(t.reward);
         credit[t.sponsor] += t.reward;
         totalPending += t.reward;
+        if (wasClaimed) {
+            // The bond is only in escrow once an agent has claimed; returning a bond that
+            // was never taken would mint stake out of the protocol's own balance.
+            escrowed -= t.bond;
+            totalStakes += t.bond;
+            agents[t.agentId].stake += t.bond;
+            agents[t.agentId].active -= 1;
+        }
         emit VerdictFinalized(id, Verdict.Refunded, 0);
     }
 
@@ -393,9 +406,16 @@ contract CrucibleTrials {
 
     // ───────────────────────── skeptic ────────────────────────
     /// @notice One break slot per trial (v1). Opening a break opens the Argus dispute clock.
+    ///
+    /// @dev Neither the sponsor nor the assigned agent may break the trial. The sponsor
+    /// buying its own "survived an attack" record is the whole reputation model for the price
+    /// of 1% of the reward, refundable on a win — and a win pays the sponsor's own money back
+    /// to it plus the skeptic stake, so it is also net positive. The agent has the same
+    /// motive through a wallet it controls.
     function fileBreak(uint256 id, bytes32 proofCID) external payable {
         Trial storage t = trials[id];
         if (t.status != Status.Judging) revert NotJudging();
+        if (msg.sender == t.sponsor || msg.sender == agents[t.agentId].operator) revert SelfBreak();
         if (block.timestamp > _windowEnd(t)) revert WindowClosed();
         if (msg.value < uint256(t.reward) / BREAK_STAKE_DEN || msg.value > type(uint128).max) revert StakeTooSmall();
         t.breakSkeptic = msg.sender;

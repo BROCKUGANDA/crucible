@@ -431,11 +431,22 @@ contract CrucibleTrialsTest is Base {
         trials.reclaimExpired(id);
     }
 
-    function test_Reclaim_RevertNotAssigned() public {
+    /**
+     * This test used to assert that reclaiming an *unclaimed* trial reverts — which was the
+     * fund lock, written down as an expectation. The cases that must still refuse are "too
+     * early" and "already settled", and they are what is checked now.
+     */
+    function test_Reclaim_RevertBeforeDeadlineAndAfterSettlement() public {
         vm.deal(sponsor, REWARD);
         vm.prank(sponsor);
         uint256 id = trials.createTrial{value: REWARD}(SPEC, TESTS, uint64(block.timestamp + 2 days), WINDOW);
+
+        vm.expectRevert(CrucibleTrials.DeadlineNotPassed.selector);
+        trials.reclaimExpired(id);
+
         vm.warp(block.timestamp + 2 days + 1);
+        trials.reclaimExpired(id);
+
         vm.expectRevert(CrucibleTrials.NotReclaimable.selector);
         trials.reclaimExpired(id);
     }
@@ -601,5 +612,92 @@ contract CrucibleTrialsTest is Base {
         assertLe(trials.credit(skeptic), bond + bStake); // slashing never exceeds the bond
         assertGe(trials.getAgent(aid).stake, 1000 ether - bond);
     }
-}
+    // ── an abandoned trial must not become a trap ─────────────────────────
+    /**
+     * A trial nobody claimed used to be a one-way door: `finalize` needs a submitted run,
+     * `claimTrial` is closed past the deadline, and `reclaimExpired` demanded `Assigned`.
+     * The reward stayed in escrow forever, so a sponsor that priced a job too high to
+     * attract an agent lost the whole amount to its own optimism.
+     */
+    function test_Reclaim_UnclaimedTrialReturnsTheReward() public {
+        vm.deal(sponsor, REWARD);
+        vm.prank(sponsor);
+        uint256 id = trials.createTrial{value: REWARD}(SPEC, TESTS, uint64(block.timestamp + 2 days), WINDOW);
+        assertEq(trials.escrowed(), REWARD, "reward should be the only thing escrowed");
 
+        vm.warp(block.timestamp + 3 days);
+        trials.reclaimExpired(id); // permissionless, like finalize
+
+        assertEq(uint8(trials.getTrial(id).status), uint8(CrucibleTrials.Status.Settled));
+        assertEq(uint8(trials.getTrial(id).verdict), uint8(CrucibleTrials.Verdict.Refunded));
+        assertEq(trials.credit(sponsor), REWARD);
+        assertEq(trials.escrowed(), 0, "nothing may remain escrowed once reclaimed");
+        assertEq(address(trials).balance, REWARD, "the ETH is owed, not yet withdrawn");
+    }
+
+    /**
+     * The unclaimed path has no agent, so it must not touch agent accounting at all. The
+     * old shared body would have run `agents[0].active -= 1` against the zero agent.
+     */
+    function test_Reclaim_UnclaimedTrialTouchesNoAgent() public {
+        vm.deal(sponsor, REWARD);
+        vm.prank(sponsor);
+        uint256 id = trials.createTrial{value: REWARD}(SPEC, TESTS, uint64(block.timestamp + 2 days), WINDOW);
+        uint256 aid = _register(1 ether);
+        uint256 stakeBefore = trials.getAgent(aid).stake;
+
+        vm.warp(block.timestamp + 3 days);
+        trials.reclaimExpired(id);
+
+        assertEq(trials.getAgent(aid).stake, stakeBefore, "an unclaimed trial owes no bond");
+        assertEq(trials.getAgent(aid).active, 0);
+        assertEq(trials.totalStakes(), 1 ether, "the registered stake was never at risk");
+    }
+
+    function test_Reclaim_BondStillReturnsToTheAgentWhenClaimed() public {
+        (uint256 id, uint256 aid) = _liveTrial();
+        assertEq(trials.escrowed(), REWARD + 0.2 ether, "reward plus bond");
+
+        vm.warp(block.timestamp + 3 days);
+        trials.reclaimExpired(id);
+
+        assertEq(trials.escrowed(), 0);
+        assertEq(trials.credit(sponsor), REWARD);
+        assertEq(trials.getAgent(aid).stake, 1 ether, "the bond comes back");
+        assertEq(trials.getAgent(aid).active, 0);
+    }
+
+    // ── nobody may attack their own trial ─────────────────────────────────
+    /**
+     * A sponsor filing a break against its own trial buys a "survived an attack" record —
+     * the only gate between Iron and Steel — for 1% of a reward it then gets back, plus the
+     * skeptic stake it also paid itself. It is net positive before the reputation is worth
+     * anything, which is exactly why it has to be a revert rather than a discouragement.
+     */
+    function test_FileBreak_RevertSponsorSelfBreak() public {
+        (uint256 id,) = _liveTrial();
+        _submitRun(id);
+        vm.deal(sponsor, 1 ether);
+        vm.prank(sponsor);
+        vm.expectRevert(CrucibleTrials.SelfBreak.selector);
+        trials.fileBreak{value: 0.01 ether}(id, keccak256("my own trial, my own attack"));
+    }
+
+    function test_FileBreak_RevertOperatorSelfBreak() public {
+        (uint256 id,) = _liveTrial();
+        _submitRun(id);
+        vm.deal(operator, 1 ether);
+        vm.prank(operator);
+        vm.expectRevert(CrucibleTrials.SelfBreak.selector);
+        trials.fileBreak{value: 0.01 ether}(id, keccak256("attacking my own run to move the stake"));
+    }
+
+    function test_FileBreak_UnrelatedSkepticStillBreaks() public {
+        // The guard must not become a wall: a third party is the whole point of the role.
+        (uint256 id,) = _liveTrial();
+        _submitRun(id);
+        _fileBreak(id);
+        assertEq(uint8(trials.getTrial(id).status), uint8(CrucibleTrials.Status.Challenged));
+    }
+
+}
