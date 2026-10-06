@@ -459,6 +459,7 @@ export const ERROR_COPY = {
   NotAssigned: "No claim to submit against — claim the trial first.",
   NotJudging: "Nothing to challenge — no run on the table.",
   NotChallenged: "No open dispute on this trial.",
+  SelfBreak: "You cannot break a trial you sponsored or were assigned.",
   NotFinalizable: "This trial isn't ready to quench.",
   NotReclaimable: "Only trials past deadline with no run can be reclaimed.",
   DeadlinePassed: "The fire's out — submission deadline passed.",
