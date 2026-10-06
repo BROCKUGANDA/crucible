@@ -14,17 +14,27 @@ The API previously had none. Every route is a read, but reads are not free:
 indexer thread that trails the chain. One client looping on `/snapshot` would starve
 every other request and the chain sync behind them.
 
-- `apps/api/src/rate-limit.ts`: per-IP token bucket, `60 req/min` sustained with a
-  `20`-token burst. Refills continuously (not in discrete bursts), so a client pounding
-  at a steady rate gets a steady answer rather than a wall.
+- `apps/api/src/rate-limit.ts`: token bucket keyed on the socket peer, `60 req/min`
+  sustained with a `20`-token burst. Refills continuously (not in discrete bursts), so a
+  client pounding at a steady rate gets a steady answer rather than a wall.
+- Identity comes from the connection, not from a header. It used to read
+  `cf-connecting-ip` / `X-Forwarded-For` / `x-real-ip` first, which are all
+  caller-writable: 200 requests carrying 200 distinct spoofed values produced 200 fresh
+  buckets and zero 429s, so the limiter was decoration. Forwarded headers are honoured
+  only with `TRUST_PROXY=1`, which asserts that something in front overwrites them.
 - Bounds: `limit`, `windowMs`, and `burst` are validated at construction; a bucket can
   never go negative or fractional.
 - `Retry-After` is surfaced on a 429 so a well-behaved client backs off instead of
   hammering. Standard rate-limit headers on 200s.
 - An unidentifiable request falls into a *shared* bucket rather than being waved through,
-  because "no IP" is an attack, not a feature. It fails closed.
+  because "no identity" is an attack, not a feature. It fails closed.
 - Buckets are swept once they are full, so the map does not grow without bound.
 - Overridable per app so tests can toggle it off and the demo can loosen it.
+- `/stream` is one request that never ends, so the limiter cannot see what it spends: a
+  subscriber costs one token at connect and then rebuilds the read model on a timer. It
+  now shares one rebuild per tick across every subscriber and stops when the request
+  signal aborts — previously an abandoned tab kept a 1 Hz loop alive for ten minutes, and
+  hono only wires its own abort listener on old Bun, so `stream.onAbort` never fired.
 
 Not fixed, by design: a load balancer would give each instance its own bucket, which is
 no longer a true global ceiling. The honest note in the source says to swap the `Map`
@@ -116,3 +126,55 @@ its own test is in the file.
 - **`@wagmi` advisory set is unchanged.** RainbowKit 2.2.11 pins `wagmi ^2.9`, and the
   only fix is the wagmi-3 major, which would drop the modal a judge actually sees.
   Documented, not swapped away.
+## The live-chain pass — what the first real index exposed
+
+Everything above was written against tests. This pass ran the actual stack: Anvil, the
+seeded protocol, the API, the browser. Four of these produced no error and no output —
+they produced a plausible-looking empty, which is worse.
+
+| Found | Symptom | Cause | Status |
+| --- | --- | --- | --- |
+| Log decoding | `/hall` answered `[]` on a chain with four settled trials | `toEventLike` iterated `log.data` (raw hex) instead of viem's decoded `args`, so every argument coerced to zero | fixed, `scribe.test.ts` encodes and decodes real logs |
+| ABI drift | No agent ever entered the read model | `AgentRegistered` declared `metadataURI, runner` where the Solidity says `runner, metadataURI`; parameter order changes topic0, so the logs decoded as unknown | fixed, plus `abi-drift.test.ts` compares every ABI event to the `.sol` source |
+| The demo never reached a chain | 0 logs after `npm run demo` | `vm.prank`/`deal`/`warp` are EVM cheatcodes; against an RPC they do nothing to the sender, so the "replay" ran in a simulation. There was no `startBroadcast` at all | fixed — real Anvil keys derived from the published dev mnemonic, and an ERC-8004 registry wired so the identity link exists to be quoted |
+| Ingest was not replay-safe | A duplicate log double-counted a win | Overlapping shards and reorgs re-apply `VerdictFinalized`; a re-read `AgentRegistered` reset counters it had already earned | fixed — settlement is terminal, so the projection refuses to walk a trial backwards |
+| A skipped chain, forever | `/health` `ok:true`, `/hall` `[]`, HTTP 200, permanently | `getLogs` answering `[]` is indistinguishable from a node that has no answer, and the cursor advanced either way | fixed — the cursor only crosses a window each block's `logsBloom` vouches for; `/health` reports `indexedTo`/`head`/`syncError` and returns 503 when stalled |
+| Every countdown read zero | "break window closes in 0s" with 10 hours left | `useCountdown` subtracts the server clock from an absolute epoch; the API sent a remaining duration, so the result was deeply negative and clamped | fixed — `deadlineAt`/`breakWindowEndsAt`, absolute seconds, null when nothing counts down |
+| Sponsor path could not execute | `createTrial` always reverted `RewardTooSmall` | `buildCreateTrial` returned bare calldata with no `msg.value`; the round-trip tests only ever inspected calldata | fixed, with value assertions on all three payable builders |
+| Hydration mismatch on every page with a header | React discarded and rebuilt the tree | The unconfigured-deployment notice depends on `NEXT_PUBLIC_*` reaching the bundle, which is not guaranteed to agree between the server's `process.env` and the client's compile-time inlining | fixed — the notice mounts client-side only |
+
+The pattern worth naming: each of these was invisible because the failure mode was
+*emptiness*, and emptiness is also what a quiet system looks like. A guard that can only
+fire on an exception cannot see any of them. That is why the fixes are mostly assertions
+that a thing must be non-empty to be believed, and why the bloom check asks the blocks
+rather than asking `getLogs` again.
+
+## Still open from this pass, by severity
+
+Not fixed here, listed so nobody has to rediscover them.
+
+- **CRITICAL, contracts** — a trial that is never claimed locks the sponsor's ETH with no
+  exit. `reclaimExpired` requires `Assigned`, `finalize` requires `Judging|Challenged`, and
+  `claimTrial` welds shut at the deadline. Reproduced: 1 ETH, warped ten years, all three
+  paths revert, `escrowed` never drops.
+- **HIGH, contracts** — `ReputationBridge` writes ERC-8004 feedback keyed by the *Crucible*
+  agentId instead of `identityOf[agentId]`, so a slash lands on an unrelated wallet's
+  identity and the offender's own identity hears nothing. The existing test seeds the mock
+  with the same conflation, which is why it passes.
+- **HIGH, contracts** — a sponsor can `fileBreak` on its own trial. Net +0.05 ETH on a win,
+  and it is the cheap route to farming `survived`, which is the only gate between Iron and
+  Steel.
+- **HIGH, contracts** — the Argus seat set is unvalidated. With one seat, that seat voting
+  to slash still settles `Paid` on timeout: 100% of the jury said break and the protocol
+  paid. `ARGUS_THRESHOLD` is a fixed 2, so it is unreachable.
+- **HIGH, indexer** — `applyEvent` deep-clones the entire model per log: 1,000 trials
+  replays in 10s, 4,000 in 73s. Quadratic, and it cannot tail a busy chain.
+- **HIGH, indexer** — no persistence. A restart re-scans from `FROM_BLOCK`, and there is no
+  recoverable cursor. Documented as the intended shape (Ponder is the production index),
+  but it is a real limit, not a detail.
+- **MEDIUM, web** — `/agents/[id]` renders its not-found state while loading, because
+  `!agent` conflates "absent" with "not yet". The four panels on `/trials/[id]` are
+  unstyled spans with no handler — they look like tabs and do nothing.
+- **Environment** — `npm test` fails on Windows unless Foundry is on the *system* PATH:
+  npm spawns `cmd.exe`, which does not inherit a Git Bash `export`. The contracts suite
+  passes when it is.
