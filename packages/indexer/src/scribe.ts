@@ -57,6 +57,7 @@ const EVENT_NAMES = [
   "VerdictFinalized",
   "StakeWithdrawn",
   "Withdrawn",
+  "IdentityLinked",
 ] as const;
 
 export class Scribe {

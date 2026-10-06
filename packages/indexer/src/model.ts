@@ -50,6 +50,8 @@ export interface AgentRow {
   survived: number;
   slashes: number;
   tier: number;
+  /** ERC-8004 identity tokenId, or null if the operator has not linked it */
+  identityAgentId: bigint | null;
 }
 
 export interface RunRow {
@@ -118,7 +120,13 @@ export function applyEvent(state: ReadModel, ev: EventLike): ReadModel {
         survived: 0,
         slashes: 0,
         tier: TIER.Unforged,
+        identityAgentId: null,
       });
+      break;
+    }
+    case "IdentityLinked": {
+      const t = next.agents.get(num(a.agentId));
+      if (t) t.identityAgentId = big(a.identityAgentId);
       break;
     }
     case "TrialClaimed": {
@@ -170,6 +178,19 @@ export function applyEvent(state: ReadModel, ev: EventLike): ReadModel {
       if (t) {
         t.status = "settled";
         t.verdict = verdictName(num(a.verdict));
+
+        // The hall exists because of this counter. A paid trial increments wins, and a
+        // paid trial that had a break filed against it increments survived — that is
+        // the "quoted the whole attack and held" signal. A slash increments scars.
+        const agent = t.agentId !== null ? next.agents.get(t.agentId) : undefined;
+        if (agent) {
+          if (t.verdict === "paid") {
+            agent.wins += 1;
+            if (t.breakSkeptic !== null) agent.survived += 1;
+          } else if (t.verdict === "slashed") {
+            agent.slashes += 1;
+          }
+        }
       }
       break;
     }
@@ -257,6 +278,8 @@ export interface HallEntry {
   wins: number;
   survived: number;
   slashes: number;
+  /** ERC-8004 identity tokenId, or null when not linked */
+  identityAgentId: bigint | null;
 }
 
 /** /hall — ranked by wins, then survived, then fewest slashes. */
@@ -271,6 +294,7 @@ export function hall(model: ReadModel): HallEntry[] {
       wins: a.wins,
       survived: a.survived,
       slashes: a.slashes,
+      identityAgentId: a.identityAgentId,
     }))
     .sort((x, y) => y.wins - x.wins || y.survived - x.survived || x.slashes - y.slashes);
 }

@@ -14,6 +14,7 @@ import {
   weiToEth,
   type EventLike,
 } from "../src/index.js";
+import { toApiHallEntry } from "../src/api.js";
 
 const SPONSOR = "0x1111111111111111111111111111111111111111";
 const OPERATOR = "0x2222222222222222222222222222222222222222";
@@ -193,6 +194,32 @@ describe("hall", () => {
     m.agents.get(1)!.wins = 5;
     const order = hall(m).map((e) => e.agentId);
     expect(order).toEqual([1, 3, 2]);
+  });
+
+  it("carries the linked ERC-8004 identity onto the hall entry, and serialises it", () => {
+    // IdentityLinked is what connects a settlement to an agent's on-chain identity, so
+    // the hall row — the proof a judge checks for — must surface it.
+    const m = replay([
+      ...fullStory(),
+      {
+        // Must come after AgentRegistered (block 101) and the verdict (105), or the
+        // projection has no agent to attach this to.
+        blockNumber: 110n,
+        transactionHash: "0x" + "33".repeat(32),
+        logIndex: 0,
+        address: "0x4444444444444444444444444444444444444444" as `0x${string}`,
+        eventName: "IdentityLinked",
+        args: { agentId: 1n, identityAgentId: 4242n },
+      },
+    ]);
+
+    const entry = hall(m)[0]!;
+    expect(entry.identityAgentId).toBe(4242n);
+
+    // The API must be JSON-safe; a bigint leaking through JSON.stringify throws.
+    const apiRow = toApiHallEntry(entry);
+    expect(apiRow.identityAgentId).toBe("4242");
+    expect(() => JSON.stringify(apiRow)).not.toThrow();
   });
 });
 

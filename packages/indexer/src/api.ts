@@ -117,15 +117,24 @@ export function toApiAgent(
   };
 }
 
-export function toApiHallEntry(e: HallEntry): HallEntry & { alloyLocked: true } {
-  return { ...e, alloyLocked: true };
+export interface ApiHallEntry extends Omit<HallEntry, "identityAgentId"> {
+  /** ERC-8004 identity tokenId serialised as a string, or null */
+  identityAgentId: string | null;
+}
+
+export function toApiHallEntry(e: HallEntry): ApiHallEntry & { alloyLocked: true } {
+  return {
+    ...e,
+    identityAgentId: e.identityAgentId === null ? null : e.identityAgentId.toString(),
+    alloyLocked: true,
+  };
 }
 
 export interface ApiSnapshot {
   now: number;
   trials: ApiTrial[];
   agents: ApiAgent[];
-  hall: (HallEntry & { alloyLocked: true })[];
+  hall: (ApiHallEntry & { alloyLocked: true })[];
   counts: Record<TrialStatus | "all", number>;
 }
 
@@ -158,7 +167,7 @@ export function buildSnapshot(
     now: opts.now,
     trials,
     agents,
-    hall: hall(model).map((e) => ({ ...e, alloyLocked: true })),
+    hall: hall(model).map((e) => toApiHallEntry(e)),
     counts,
   };
 }
