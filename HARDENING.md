@@ -153,17 +153,16 @@ rather than asking `getLogs` again.
 
 Not fixed here, listed so nobody has to rediscover them.
 
-- **CRITICAL, contracts** — a trial that is never claimed locks the sponsor's ETH with no
-  exit. `reclaimExpired` requires `Assigned`, `finalize` requires `Judging|Challenged`, and
-  `claimTrial` welds shut at the deadline. Reproduced: 1 ETH, warped ten years, all three
-  paths revert, `escrowed` never drops.
+- ~~**CRITICAL, contracts** — a trial that is never claimed locks the sponsor's ETH.~~
+  **Fixed** — `Open` past the deadline is reclaimable and returns only the reward. The test
+  that had been asserting the lock as expected behaviour is replaced with the rejections that
+  should hold.
 - **HIGH, contracts** — `ReputationBridge` writes ERC-8004 feedback keyed by the *Crucible*
   agentId instead of `identityOf[agentId]`, so a slash lands on an unrelated wallet's
   identity and the offender's own identity hears nothing. The existing test seeds the mock
   with the same conflation, which is why it passes.
-- **HIGH, contracts** — a sponsor can `fileBreak` on its own trial. Net +0.05 ETH on a win,
-  and it is the cheap route to farming `survived`, which is the only gate between Iron and
-  Steel.
+- ~~**HIGH, contracts** — a sponsor can `fileBreak` on its own trial.~~ **Fixed** — sponsor
+  and assigned operator are both rejected with `SelfBreak`; an unrelated skeptic still breaks.
 - **HIGH, contracts** — the Argus seat set is unvalidated. With one seat, that seat voting
   to slash still settles `Paid` on timeout: 100% of the jury said break and the protocol
   paid. `ARGUS_THRESHOLD` is a fixed 2, so it is unreachable.
