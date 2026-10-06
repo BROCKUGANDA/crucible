@@ -10,10 +10,12 @@ contract AlloyRegistry {
     event Transfer(address indexed from, address indexed to, uint256 indexed tokenId); // ERC-721
     event Locked(uint256 indexed tokenId); // ERC-5192
     event TierChanged(uint256 indexed agentId, uint8 tier);
+    event ForgeSet(address indexed forge);
 
     error NotForge();
     error NotOwner();
     error ForgeAlreadySet();
+    error ZeroForge();
     error NotMinted();
 
     struct Record {
@@ -41,10 +43,17 @@ contract AlloyRegistry {
     }
 
     /// @notice One-time wiring; AlloyRegistry deploys before CrucibleTrials (circular ref).
+    ///
+    /// @dev Rejects the zero address and emits an event. Without the check, an accidental
+    /// `setForge(address(0))` would lock the registry permanently: `forge != address(0)`
+    /// is the one-time guard below, so a zero write consumes the only chance to wire it.
+    /// `onlyForge` would then be permanently uncallable and no agent could ever earn alloy.
     function setForge(address forge_) external {
         if (msg.sender != owner) revert NotOwner();
+        if (forge_ == address(0)) revert ZeroForge();
         if (forge != address(0)) revert ForgeAlreadySet();
         forge = forge_;
+        emit ForgeSet(forge_);
     }
 
     function recordWin(uint256 agentId, address operator, bool survivedBreak) external onlyForge {
@@ -101,7 +110,9 @@ contract AlloyRegistry {
     }
 
     function _uriStats(Record memory r) internal pure returns (string memory) {
-        return string.concat(',"wins":', _itoa(r.wins), ',"survived":', _itoa(r.survived), ',"slashes":', _itoa(r.slashes), "}");
+        return string.concat(
+            ',"wins":', _itoa(r.wins), ',"survived":', _itoa(r.survived), ',"slashes":', _itoa(r.slashes), "}"
+        );
     }
 
     // ── internals ──

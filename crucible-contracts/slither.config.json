@@ -1,0 +1,5 @@
+{
+  "filter_paths": "lib|test|mocks|script",
+  "exclude_dependencies": true,
+  "exclude": "naming-convention,uninitialized-local,shadowing-local,missing-inheritance"
+}

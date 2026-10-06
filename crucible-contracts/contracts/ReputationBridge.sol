@@ -34,11 +34,7 @@ contract ReputationBridge {
 
     event ReputationRegistrySet(address indexed registry);
     event FeedbackPublished(
-        uint256 indexed agentId,
-        uint256 indexed trialsId,
-        int128 value,
-        bool survivedBreak,
-        uint64 feedbackIndex
+        uint256 indexed agentId, uint256 indexed trialsId, int128 value, bool survivedBreak, uint64 feedbackIndex
     );
 
     error NotTrials();
@@ -98,16 +94,17 @@ contract ReputationBridge {
         if (registry == address(0)) revert NoReputationRegistry();
 
         string memory uri = string.concat("crucible://trials/", _toString(trialsId));
-        IERC8004ReputationRegistry(registry).giveFeedback(
-            agentId,
-            value,
-            VALUE_DECIMALS,
-            TAG1,
-            TAG2,
-            uri,
-            uri,
-            bytes32(0) // content-addressed URI: the spec says feedbackHash is optional
-        );
+        IERC8004ReputationRegistry(registry)
+            .giveFeedback(
+                agentId,
+                value,
+                VALUE_DECIMALS,
+                TAG1,
+                TAG2,
+                uri,
+                uri,
+                bytes32(0) // content-addressed URI: the spec says feedbackHash is optional
+            );
 
         lastFeedbackIndex[agentId] = IERC8004ReputationRegistry(registry).getLastIndex(agentId, address(this));
         emit FeedbackPublished(agentId, trialsId, value, survivedBreak, lastFeedbackIndex[agentId]);

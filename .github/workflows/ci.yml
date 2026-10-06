@@ -36,6 +36,52 @@ jobs:
       - name: gas report
         run: forge test --gas-report | tee gas-report.txt
 
+  # Static analysis. Findings are triaged by hand in docs/slither-triage.md -- this job
+  # proves nothing NEW appeared, it does not decide what is acceptable.
+  slither:
+    name: Static analysis (slither)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: crucible-contracts
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: foundry-rs/foundry-toolchain@v1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install slither-analyzer
+
+      - name: slither
+        # Fails on any detector not already excluded in slither.config.json. Every
+        # suppression is justified in that file; adding one requires justifying it
+        # there too, which is the entire point.
+        run: slither .
+
+  # Fork tests prove the ERC-8004 bridge works against the registry as actually
+  # deployed, which a mock cannot. Separate from the default suite because it needs a
+  # live RPC, and a gate that depends on a third party's uptime is not a gate.
+  fork:
+    name: Fork tests (ERC-8004 mainnet)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: crucible-contracts
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: foundry-rs/foundry-toolchain@v1
+
+      - name: fork tests
+        run: forge test --fork-url ${{ secrets.MAINNET_RPC_URL }} --match-contract ForkTests -vv
+
   node:
     name: TypeScript (${{ matrix.package }})
     runs-on: ubuntu-latest
@@ -99,4 +145,3 @@ jobs:
             }
             console.log('only known-unfixable advisories present');
           "
-

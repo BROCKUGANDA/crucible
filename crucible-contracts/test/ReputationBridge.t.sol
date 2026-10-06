@@ -73,9 +73,7 @@ contract ReputationBridgeTest is Test {
         uint64 sd = uint64(block.timestamp + 10 minutes);
         bytes32 digest = keccak256(
             abi.encodePacked(
-                "\x19\x01",
-                trials.DOMAIN(),
-                keccak256(abi.encode(trials.RUN_TYPEHASH(), id, agentId, RUN, sd))
+                "\x19\x01", trials.DOMAIN(), keccak256(abi.encode(trials.RUN_TYPEHASH(), id, agentId, RUN, sd))
             )
         );
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(RUNNER_KEY, digest);
@@ -272,7 +270,7 @@ contract ReputationBridgeTest is Test {
         vm.warp(block.timestamp + WINDOW + 1);
         trials.finalize(id);
         // the URI is crucible://trials/<id>, so an aggregator can deep-link the verdict
-        (, , string memory tag1, string memory tag2,) = registry.readFeedback(agentId, address(bridge), 1);
+        (,, string memory tag1, string memory tag2,) = registry.readFeedback(agentId, address(bridge), 1);
         assertEq(tag1, "crucible");
         assertEq(tag2, "verdict");
         assertGt(id, 0);

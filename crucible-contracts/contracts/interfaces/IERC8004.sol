@@ -41,18 +41,15 @@ interface IERC8004ReputationRegistry {
 
     function revokeFeedback(uint256 agentId, uint64 feedbackIndex) external;
 
-    function getSummary(
-        uint256 agentId,
-        address[] calldata clientAddresses,
-        string memory tag1,
-        string memory tag2
-    ) external view returns (uint64 count, int128 summaryValue, uint8 summaryValueDecimals);
+    function getSummary(uint256 agentId, address[] calldata clientAddresses, string memory tag1, string memory tag2)
+        external
+        view
+        returns (uint64 count, int128 summaryValue, uint8 summaryValueDecimals);
 
-    function readFeedback(
-        uint256 agentId,
-        address clientAddress,
-        uint64 feedbackIndex
-    ) external view returns (int128 value, uint8 valueDecimals, string memory tag1, string memory tag2, bool isRevoked);
+    function readFeedback(uint256 agentId, address clientAddress, uint64 feedbackIndex)
+        external
+        view
+        returns (int128 value, uint8 valueDecimals, string memory tag1, string memory tag2, bool isRevoked);
 
     function readAllFeedback(
         uint256 agentId,
@@ -74,6 +71,11 @@ interface IERC8004ReputationRegistry {
         );
 
     function getLastIndex(uint256 agentId, address clientAddress) external view returns (uint64);
+
+    /// @dev Selector `0x0d8e6e2c`, confirmed against mainnet on 2026-10-06 where the
+    /// deployed registry reports "2.0.0". Kept so a fork test can assert the standard
+    /// has not drifted out from under us.
+    function getVersion() external pure returns (string memory);
 }
 
 /// @notice Minimal subset of the ERC-8004 Validation Registry.
@@ -98,5 +100,12 @@ interface IERC8004ValidationRegistry {
     function getValidationStatus(bytes32 requestHash)
         external
         view
-        returns (address validatorAddress, uint256 agentId, uint8 response, bytes32 responseHash, string memory tag, uint256 lastUpdate);
+        returns (
+            address validatorAddress,
+            uint256 agentId,
+            uint8 response,
+            bytes32 responseHash,
+            string memory tag,
+            uint256 lastUpdate
+        );
 }

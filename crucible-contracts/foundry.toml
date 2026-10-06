@@ -17,3 +17,20 @@ runs = 512
 
 [rpc_endpoints]
 sepolia = "${SEPOLIA_RPC_URL}"
+mainnet = "${MAINNET_RPC_URL}"
+
+# Fork tests are opt-in, not part of the default gate.
+#
+# Two reasons. They need a live RPC, and CI should not depend on a third party's uptime
+# to know the contracts are sound. And they are the slow ones. What they buy — proof that
+# the ERC-8004 bridge works against the registry as actually deployed, rather than
+# against our mock — is exactly what a unit test cannot tell you.
+#
+#   MAINNET_RPC_URL=https://... forge test --fork-url mainnet --fork-block-number <n> \
+#     --match-contract Fork
+[profile.fork.fuzz]
+runs = 32
+
+[profile.fork.invariant]
+runs = 32
+depth = 32

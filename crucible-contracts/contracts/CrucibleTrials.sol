@@ -17,6 +17,7 @@ interface IAlloyRegistry {
 /// All payouts use a pull ledger (`credit` + `withdraw`); the contract never pushes ETH.
 contract CrucibleTrials {
     // ───────────────────────── errors ─────────────────────────
+    error ZeroTreasury();
     error RewardTooSmall();
     error BadWindow();
     error BadDeadline();
@@ -50,8 +51,19 @@ contract CrucibleTrials {
     error NotOwner();
 
     // ───────────────────────── types ──────────────────────────
-    enum Status { Open, Assigned, Judging, Challenged, Settled }
-    enum Verdict { None, Paid, Slashed, Refunded }
+    enum Status {
+        Open,
+        Assigned,
+        Judging,
+        Challenged,
+        Settled
+    }
+    enum Verdict {
+        None,
+        Paid,
+        Slashed,
+        Refunded
+    }
 
     /// The four timestamps are packed into one slot rather than stored as four
     /// uint64 fields. This is not only gas: a 16-field struct exceeds the 16-slot
@@ -143,8 +155,19 @@ contract CrucibleTrials {
     }
 
     // ───────────────────────── events ─────────────────────────
-    event TrialCreated(uint256 indexed id, address indexed sponsor, bytes32 specCID, bytes32 testsCID, uint256 reward, uint256 bond, uint64 deadline, uint64 breakWindow);
-    event AgentRegistered(uint256 indexed agentId, address indexed operator, address runner, string metadataURI, uint256 stake);
+    event TrialCreated(
+        uint256 indexed id,
+        address indexed sponsor,
+        bytes32 specCID,
+        bytes32 testsCID,
+        uint256 reward,
+        uint256 bond,
+        uint64 deadline,
+        uint64 breakWindow
+    );
+    event AgentRegistered(
+        uint256 indexed agentId, address indexed operator, address runner, string metadataURI, uint256 stake
+    );
     event RunnerSet(uint256 indexed agentId, address runner);
     event TrialClaimed(uint256 indexed id, uint256 indexed agentId, uint256 bond);
     event RunSubmitted(uint256 indexed id, uint256 indexed agentId, bytes32 runHash);
@@ -160,9 +183,14 @@ contract CrucibleTrials {
     /// @param alloy_ reputation registry (setForge called right after deploy)
     /// @param argus_ fixed 3 dispute seats in v1 (2-of-3 commit-reveal)
     constructor(address treasury_, address alloy_, address[] memory argus_) {
+        // A zero treasury would route every protocol fee and every burned slash to an
+        // address nobody controls — irrecoverably, since there is no setter.
+        if (treasury_ == address(0)) revert ZeroTreasury();
         treasury = treasury_;
         alloy = IAlloyRegistry(alloy_);
-        for (uint256 i; i < argus_.length; ++i) isArgus[argus_[i]] = true;
+        for (uint256 i; i < argus_.length; ++i) {
+            isArgus[argus_[i]] = true;
+        }
         owner = msg.sender;
         DOMAIN = _computeDomain();
         _guard = 1;
@@ -171,6 +199,10 @@ contract CrucibleTrials {
     /// @notice Wire (or unwire) the ERC-8004 reputation bridge. Owner-only, callable
     /// after deploy because the registry address is a per-chain singleton that may not
     /// exist at the moment Crucible is deployed.
+    ///
+    /// @dev address(0) is a meaningful value here, not a mistake: it deliberately
+    /// *unwires* the bridge. Slither flags the missing zero-check; keeping the behaviour
+    /// is the point — an owner must be able to turn reputation off without a redeploy.
     function setReputationBridge(address bridge) external {
         if (msg.sender != owner) revert NotOwner();
         reputationBridge = bridge;
@@ -184,7 +216,8 @@ contract CrucibleTrials {
     /// nested keccak256 calls overflows the 16-slot stack under the legacy codegen,
     /// which then breaks every external `new CrucibleTrials(...)` call site too.
     function _computeDomain() internal view returns (bytes32) {
-        return keccak256(abi.encode(_DOMAIN_TYPEHASH, keccak256("Crucible"), keccak256("1"), block.chainid, address(this)));
+        return
+            keccak256(abi.encode(_DOMAIN_TYPEHASH, keccak256("Crucible"), keccak256("1"), block.chainid, address(this)));
     }
 
     // ───────────────────────── sponsor ────────────────────────
@@ -257,8 +290,9 @@ contract CrucibleTrials {
         if (msg.value < MIN_BOND || msg.value > type(uint128).max) revert StakeTooSmall();
         if (agentIdOf[msg.sender] != 0) revert AlreadyRegistered();
         agentId = ++agentCount;
-        agents[agentId] =
-            Agent({operator: msg.sender, runner: runner, metadataURI: metadataURI, stake: uint128(msg.value), active: 0});
+        agents[agentId] = Agent({
+            operator: msg.sender, runner: runner, metadataURI: metadataURI, stake: uint128(msg.value), active: 0
+        });
         agentIdOf[msg.sender] = agentId;
         totalStakes += msg.value;
         emit AgentRegistered(agentId, msg.sender, runner, metadataURI, msg.value);
@@ -375,7 +409,9 @@ contract CrucibleTrials {
             Dispute storage d = _disputes[id];
             if (block.timestamp < uint256(d.openedAt) + DISPUTE_TIMEOUT) revert DisputeUnresolved();
             _settle(id, true); // burden of proof is on the skeptic
-        } else revert NotFinalizable();
+        } else {
+            revert NotFinalizable();
+        }
     }
 
     /// Split across three frames rather than one: a single frame holding the trial pointer,
@@ -418,8 +454,16 @@ contract CrucibleTrials {
             totalPending += bStake;
         }
 
-        alloy.recordWin(t.agentId, operator, hadBreak);
+        // State first, external calls last.
+        //
+        // Slither's `reentrancy-no-eth` flags `t.verdict` being written after
+        // `alloy.recordWin`. AlloyRegistry is our own contract and cannot reenter, so this
+        // is not exploitable today — but writing the verdict before the call costs
+        // nothing, makes checks-effects-interactions hold on its face, and means a future
+        // change to AlloyRegistry cannot quietly reopen it. `_settle` has already set
+        // `t.status = Settled`, so there is a second, independent guard.
         t.verdict = Verdict.Paid;
+        alloy.recordWin(t.agentId, operator, hadBreak);
         // ERC-8004: a third-party registry must never be able to block a verdict.
         _publishWin(id, t.agentId, hadBreak);
         emit VerdictFinalized(id, Verdict.Paid, reward - fee);
@@ -439,8 +483,10 @@ contract CrucibleTrials {
         credit[treasury] += bond - skepticCut;
         totalPending += reward + bond + bStake;
 
-        alloy.recordSlash(t.agentId, operator);
+        // Same ordering rationale as _settleWin: the verdict is written before the external
+        // call, so the state a reentrant frame would observe is already final.
         t.verdict = Verdict.Slashed;
+        alloy.recordSlash(t.agentId, operator);
         _publishSlash(id, t.agentId);
         emit VerdictFinalized(id, Verdict.Slashed, 0);
     }
@@ -452,9 +498,7 @@ contract CrucibleTrials {
     function _publishWin(uint256 id, uint256 agentId, bool survivedBreak) internal {
         address bridge = reputationBridge;
         if (bridge == address(0)) return;
-        (bool ok,) = bridge.call(
-            abi.encodeCall(ReputationBridge.reportWin, (id, agentId, survivedBreak))
-        );
+        (bool ok,) = bridge.call(abi.encodeCall(ReputationBridge.reportWin, (id, agentId, survivedBreak)));
         ok;
     }
 
@@ -490,7 +534,11 @@ contract CrucibleTrials {
         return agents[id];
     }
 
-    function disputeOf(uint256 id) external view returns (uint64 openedAt, bool revealStarted, uint8 votesBreak, uint8 votesAgent) {
+    function disputeOf(uint256 id)
+        external
+        view
+        returns (uint64 openedAt, bool revealStarted, uint8 votesBreak, uint8 votesAgent)
+    {
         Dispute storage d = _disputes[id];
         return (d.openedAt, d.revealStarted, d.votesBreak, d.votesAgent);
     }
@@ -503,8 +551,7 @@ contract CrucibleTrials {
     // ───────────────────────── internals ──────────────────────
     /// secp256k1 group order / 2 — the EIP-2 upper bound. A signature with s above
     /// this is the malleable twin of a valid signature and must be rejected.
-    uint256 private constant _SECP256K1_HALF_N =
-        0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF5D576E7357A4501DDFE92F46681B20A0;
+    uint256 private constant _SECP256K1_HALF_N = 0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF5D576E7357A4501DDFE92F46681B20A0;
 
     /// Split into three frames on purpose: one frame holding digest + r + s + v + the
     /// calldata offset overflows the 16-slot stack under solc's legacy codegen, which
