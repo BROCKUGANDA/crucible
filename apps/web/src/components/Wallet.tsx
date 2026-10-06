@@ -2,7 +2,7 @@
 
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { useAccount, useConnect, useDisconnect, useSwitchChain } from "wagmi";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   activeChain,
   CHAIN_IDS,
@@ -137,10 +137,20 @@ export function WrongNetworkNotice({ requiredChainId }: { requiredChainId: numbe
 /**
  * A one-line explanation when the app is running without a deployment behind it. Shown
  * in development only — a read-only demo should not look broken.
+ *
+ * Rendered only after mount. Whether the deployment resolves depends on `NEXT_PUBLIC_*`
+ * reaching the bundle, and that is not guaranteed to be identical on the two sides of
+ * hydration in dev — the server reads `process.env` directly while the client gets values
+ * inlined at compile time. A notice that appears on one side and not the other is a
+ * hydration mismatch on every page that mounts Chrome, and React's recovery is to throw
+ * away and rebuild the whole tree.
  */
 export function WalletNotConfiguredNotice() {
   const [dismissed, setDismissed] = useState(false);
-  if (dismissed || deployment().configured) return null;
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
+  if (!mounted || dismissed || deployment().configured) return null;
   if (process.env.NODE_ENV === "production") return null;
 
   return (

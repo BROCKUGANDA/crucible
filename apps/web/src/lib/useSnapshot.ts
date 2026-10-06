@@ -102,8 +102,15 @@ export function useSnapshot(pollMs = 4000): SnapshotState {
 /**
  * Seconds until an absolute server-clock timestamp.
  *
- * Returns null when there is nothing to count down to, so a caller can render an
- * em dash instead of a misleading "0s".
+ * `targetSeconds` is a unix epoch in seconds — `deadlineAt`, `breakWindowEndsAt` — never a
+ * remaining duration. A duration in the payload is a fact about the instant the server built
+ * it, and subtracting the server's `now` from it yields nonsense: this hook once received
+ * `coolsInSec: 2587702` and rendered "cools in 0s", because 2587702 minus "now" is deeply
+ * negative. Every countdown on the site read closed, including the skeptic window the whole
+ * dispute mechanism depends on.
+ *
+ * Returns null when there is nothing to count down to, so a caller can render an em dash
+ * instead of a misleading "0s".
  */
 export function useCountdown(
   targetSeconds: number | null,

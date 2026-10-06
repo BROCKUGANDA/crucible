@@ -55,7 +55,7 @@ function BreakRow({
   trial: NonNullable<ReturnType<typeof useSnapshot>["data"]>["trials"][number];
   serverNowMs: number | null;
 }) {
-  const left = useCountdown(trial.breakWindowEndsInSec, serverNowMs);
+  const left = useCountdown(trial.breakWindowEndsAt, serverNowMs);
   const reward = Number(trial.rewardEth);
   const bond = Number(trial.bondEth);
   const minStake = reward / 100;

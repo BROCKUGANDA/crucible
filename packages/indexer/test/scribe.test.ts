@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { decodeAbiParameters, encodeAbiParameters, encodeEventTopics, parseEventLogs } from "viem";
+import { createServer } from "node:http";
+import { keccak256, hexToBytes, toHex, decodeAbiParameters, encodeAbiParameters, encodeEventTopics, parseEventLogs } from "viem";
 import { TRIALS_ABI } from "@crucible/smith";
-import { toEventLike } from "../src/scribe.js";
+import { bloomMayContain, Scribe, toEventLike } from "../src/scribe.js";
+import { foundry } from "viem/chains";
 import { applyEvent, emptyModel } from "../src/model.js";
 
 /**
@@ -56,6 +58,75 @@ function liveLog(eventName: string, values: Record<string, unknown>) {
     args: decoded.args,
     data,
     topics,
+  };
+}
+
+/**
+ * A JSON-RPC node that answers `eth_getLogs` with nothing while its blocks say otherwise —
+ * the exact shape of a truncated, pruned, or lying RPC response. `quietBlocks` flips the
+ * blocks' logsBloom to empty, which is what a genuinely idle chain looks like from here.
+ */
+async function lyingNode(opts: { logs: unknown[]; quietBlocks?: boolean }): Promise<{
+  url: string;
+  address: `0x${string}`;
+  trialTopic: `0x${string}`;
+  close: () => void;
+}> {
+  const trialTopic = encodeEventTopics({ abi: TRIALS_ABI, eventName: "TrialCreated" })[0] as `0x${string}`;
+  const digest = hexToBytes(keccak256(trialTopic));
+  const bloom = new Uint8Array(256);
+  if (!opts.quietBlocks) {
+    for (let i = 0; i < 3; i++) {
+      const bit = (((digest[i * 2] ?? 0) << 8) | (digest[i * 2 + 1] ?? 0)) & 0x7ff;
+      bloom[255 - (bit >> 3)] |= 1 << (bit & 7);
+    }
+  }
+
+  const address = "0x9fe46736679d2d9a65f0992f2272de9f3c7fa6e0" as `0x${string}`;
+  const server = createServer((req, res) => {
+    let body = "";
+    req.on("data", (c) => (body += c));
+    req.on("end", () => {
+      const { id, method } = JSON.parse(body || "{}") as { id: number; method: string };
+      const result =
+        method === "eth_blockNumber"
+          ? "0x6"
+          : method === "eth_getLogs"
+            ? opts.logs
+            : method === "eth_chainId"
+              ? "0x7a69"
+              : {
+                  number: "0x1",
+                  hash: `0x${"11".repeat(32)}`,
+                  parentHash: `0x${"22".repeat(32)}`,
+                  nonce: "0x0",
+                  sha3Uncles: `0x${"33".repeat(32)}`,
+                  logsBloom: toHex(bloom),
+                  transactionsRoot: `0x${"44".repeat(32)}`,
+                  stateRoot: `0x${"55".repeat(32)}`,
+                  receiptsRoot: `0x${"66".repeat(32)}`,
+                  miner: `0x${"00".repeat(20)}`,
+                  difficulty: "0x0",
+                  totalDifficulty: "0x0",
+                  extraData: "0x",
+                  gasLimit: "0x1c9c380",
+                  gasUsed: "0x0",
+                  timestamp: "0x67000000",
+                  transactions: [],
+                  uncles: [],
+                  baseFeePerGas: "0x0",
+                };
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ jsonrpc: "2.0", id, result }));
+    });
+  });
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  const port = (server.address() as { port: number }).port;
+  return {
+    url: `http://127.0.0.1:${port}`,
+    address,
+    trialTopic,
+    close: () => server.close(),
   };
 }
 
@@ -145,5 +216,66 @@ describe("toEventLike", () => {
     expect(e.args).toEqual({});
     expect(e.blockNumber).toBe(0n);
     expect(e.transactionHash).toBe("");
+  });
+});
+
+/**
+ * The cursor must not walk across a range it got no answer for.
+ *
+ * `getLogs` replying `[]` is the same bytes whether the chain is quiet or the node is
+ * truncating, pruned, or having a bad afternoon, and the old code advanced the cursor either
+ * way: one such reply skipped the whole history permanently and `/hall` answered `[]` with a
+ * 200. These drive a Scribe against a node that lies by omission and check it notices.
+ */
+describe("bloom cross-check on a quiet window", () => {
+  it("reads a real log bloom as possibly containing the event, and an empty one as not", () => {
+    const topic = encodeEventTopics({ abi: TRIALS_ABI, eventName: "TrialCreated" })[0] as `0x${string}`;
+    // A bloom built the way a client would test it: three 11-bit positions from keccak(topic).
+    const digest = keccak256(topic);
+    const bytes = hexToBytes(digest);
+    const bloom = new Uint8Array(256);
+    for (let i = 0; i < 3; i++) {
+      const bit = (((bytes[i * 2] ?? 0) << 8) | (bytes[i * 2 + 1] ?? 0)) & 0x7ff;
+      bloom[255 - (bit >> 3)] |= 1 << (bit & 7);
+    }
+    expect(bloomMayContain(toHex(bloom), topic)).toBe(true);
+    expect(bloomMayContain(`0x${"00".repeat(256)}`, topic)).toBe(false);
+  });
+
+  it("refuses to advance the cursor when the blocks say there was something to find", async () => {
+    const node = await lyingNode({ logs: [] });
+    const scribe = new Scribe({
+      trialsAddress: node.address,
+      alloyAddress: node.address,
+      chain: foundry,
+      rpcUrl: node.url,
+      fromBlock: 0n,
+    });
+
+    const before = scribe.status.indexedTo;
+    await scribe.sync();
+    const after = scribe.status.indexedTo;
+
+    expect(node.trialTopic).toBeTruthy();
+    expect(after).toBe(before);
+    expect(scribe.status.syncError).toContain("logsBloom");
+    expect(scribe.state.trials.size).toBe(0);
+    node.close();
+  });
+
+  it("does advance when every block in the window says nothing was there", async () => {
+    const node = await lyingNode({ logs: [], quietBlocks: true });
+    const scribe = new Scribe({
+      trialsAddress: node.address,
+      alloyAddress: node.address,
+      chain: foundry,
+      rpcUrl: node.url,
+      fromBlock: 0n,
+    });
+
+    await scribe.sync();
+    expect(scribe.status.indexedTo).toBe(7n);
+    expect(scribe.status.syncError).toBeNull();
+    node.close();
   });
 });

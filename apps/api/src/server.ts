@@ -143,6 +143,7 @@ const app = createApp({
   // read model cannot infer either — this process is the only party that knows them.
   proofSource: { chain: foundry.name, chainId: foundry.id, trialsAddress },
   alloyState: (agentId) => alloyById.get(agentId) ?? UNKNOWN_ALLOY,
+  indexStatus: () => scribe.status,
 }, {
   // Off by default: forwarded headers are caller-writable, so trusting them lets a loop
   // mint a new bucket per request. Set TRUST_PROXY=1 only behind something that overwrites

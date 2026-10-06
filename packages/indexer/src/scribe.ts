@@ -1,10 +1,14 @@
 import { TRIALS_ABI } from "@crucible/smith";
 import {
   createPublicClient,
+  encodeEventTopics,
   getAddress,
+  hexToBytes,
   http,
+  keccak256,
   type Address,
   type Chain,
+  type Hex,
   type Log,
   type PublicClient,
 } from "viem";
@@ -66,12 +70,54 @@ const EVENTS = TRIALS_ABI.filter(
     item.type === "event" && EVENT_NAMES.includes(item.name as (typeof EVENT_NAMES)[number]),
 );
 
+/** Every topic0 this indexer would accept, for the block-bloom cross-check below. */
+const TOPIC0S: `0x${string}`[] = EVENTS.map(
+  (e) => encodeEventTopics({ abi: TRIALS_ABI, eventName: e.name })[0] as `0x${string}`,
+);
+
+/**
+ * Does this block's logsBloom possibly contain `topic`?
+ *
+ * A bloom is a set of three bits derived from keccak256(topic), and it answers "maybe" or
+ * "definitely not" — never "yes". That asymmetry is exactly what makes it useful here: a
+ * "definitely not" for every block in a window is independent evidence that an empty
+ * `getLogs` was the truth rather than a node that answered nothing.
+ */
+export function bloomMayContain(bloom: Hex, topic: `0x${string}`): boolean {
+  const bytes = hexToBytes(bloom);
+  // keccak256 over the raw 32 bytes of the topic, exactly as the log bloom defines it.
+  const digest = hexToBytes(keccak256(topic));
+
+  for (let i = 0; i < 3; i++) {
+    // Three 11-bit offsets into a 2048-bit filter, from six big-endian bytes.
+    const pair = ((digest[i * 2] ?? 0) << 8) | (digest[i * 2 + 1] ?? 0);
+    const bit = pair & 0x7ff;
+    const byte = bytes[255 - (bit >> 3)] ?? 0;
+    if (((byte >> (bit & 7)) & 1) === 0) return false;
+  }
+  return true;
+}
+
+/** How far the bloom cross-check will walk a quiet window, in blocks. */
+const BLOOM_PROBE_LIMIT = 64n;
+
+export interface ScribeStatus {
+  /** highest block the node reported */
+  head: bigint | null;
+  /** first block not yet ingested; the index covers everything below it */
+  indexedTo: bigint;
+  /** why the last tick did not advance, or null when it did */
+  syncError: string | null;
+}
+
 export class Scribe {
   readonly client: PublicClient;
   private model: ReadModel = emptyModel();
   private cursor: bigint;
   private readonly blockTimes = new Map<bigint, number>();
   private running = false;
+  private head: bigint | null = null;
+  private syncError: string | null = null;
   /** One ceiling on concurrent RPC calls for the whole indexer. */
   private readonly rpc = new RpcThrottler(8);
 
@@ -87,19 +133,74 @@ export class Scribe {
     return this.model;
   }
 
+  /**
+   * What the index actually covers, so a reader can tell an empty chain apart from an
+   * indexer that stopped listening. Without this the API answers `200 ok:true` with zero
+   * trials either way, and a silently-empty leaderboard is indistinguishable from a quiet
+   * protocol — which is the difference between a demo and an outage nobody notices.
+   */
+  get status(): ScribeStatus {
+    return { head: this.head, indexedTo: this.cursor, syncError: this.syncError };
+  }
+
   /** Backfill from genesis (or fromBlock) to head, in one pass. */
   async sync(): Promise<ReadModel> {
     const head = await this.rpc.run(() =>
       withBackoff(() => this.client.getBlockNumber(), { operation: "scribe.getBlockNumber" }),
     );
+    this.head = head;
     if (this.cursor > head) return this.model;
     const events = await this.fetchLogs(this.cursor, head);
+
     if (events.length > 0) {
       await this.recordBlockTimes(events);
       this.model = replay(events, this.model);
+      this.cursor = head + 1n;
+      this.syncError = null;
+      return this.model;
     }
-    this.cursor = head + 1n;
+
+    // An empty answer is the dangerous one: `getLogs` cannot distinguish "there were no
+    // events" from "this node has no answer for that range", and the old code advanced the
+    // cursor either way. One such reply — a truncated response, a pruned archive node, a
+    // proxy with a cap — skipped the entire chain permanently and `/hall` answered `[]` with
+    // HTTP 200. So the cursor only moves across a quiet window once the blocks themselves
+    // say nothing was there to find.
+    if (await this.windowIsQuiet(this.cursor, head)) {
+      this.cursor = head + 1n;
+      this.syncError = null;
+    } else {
+      this.syncError = `getLogs returned nothing for blocks ${this.cursor}–${head} but a logsBloom there may contain a Crucible event`;
+      console.error(`[scribe] refusing to advance cursor: ${this.syncError}`);
+    }
     return this.model;
+  }
+
+  /**
+   * Independent evidence that a window really held no matching events.
+   *
+   * Reads the blocks' `logsBloom` rather than asking the same `getLogs` again — a second
+   * identical answer from the same node proves nothing. Windows wider than the probe limit
+   * are treated as *not* confirmed, because advancing on a partial check is the same bug
+   * wearing a lab coat; the caller re-reads the whole range next tick instead.
+   */
+  private async windowIsQuiet(from: bigint, to: bigint): Promise<boolean> {
+    const width = to - from + 1n;
+    if (width <= 0n) return true;
+    if (width > BLOOM_PROBE_LIMIT) return false;
+
+    for (let n = from; n <= to; n++) {
+      const block = await this.rpc.run(() =>
+        withBackoff(
+          () => this.client.getBlock({ blockNumber: n }),
+          { operation: "scribe.getBlock" },
+        ),
+      );
+      const bloom = block.logsBloom;
+      if (!bloom || bloom === "0x") continue;
+      if (TOPIC0S.some((t) => bloomMayContain(bloom, t))) return false;
+    }
+    return true;
   }
 
   /** Poll until aborted. Resolves when stop() is called. */
