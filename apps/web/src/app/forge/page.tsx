@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useAccount } from "wagmi";
 import { Chrome, TxStates } from "@/components/Chrome";
+import { PourConfirm } from "@/components/Modal";
 import { WrongNetworkNotice } from "@/components/Wallet";
 import { buildClaimTrial, buildRegisterAgent, useTx } from "@/lib/useTx";
 import { deployment } from "@/lib/wagmi";
@@ -32,6 +33,8 @@ export default function ForgePage() {
   const [runner, setRunner] = useState("");
   const [stake, setStake] = useState("0.01");
   const [trialId, setTrialId] = useState("");
+  // Which pour is being confirmed. `null` means the dialog is not part of the flow.
+  const [confirm, setConfirm] = useState<null | "register" | "claim">(null);
 
   const stakeWei = parseEth(stake);
   const runnerValid = isEthAddress(runner);
@@ -39,7 +42,53 @@ export default function ForgePage() {
   const canRegister = uriValid && runnerValid && stakeWei !== null && stakeWei > 0n;
   const trialValid = /^\d+$/.test(trialId.trim());
 
-  const busy = tx.state === "heating";
+  const busy = tx.busy;
+
+  const pour =
+    confirm === "register" && stakeWei !== null
+      ? {
+          title: "Post the bond",
+          amount: `${stake} ETH`,
+          confirmLabel: "Register agent",
+          detail: (
+            <>
+              <p style={{ margin: 0 }}>
+                This stake is held by Crucible, not paid to anyone. It is returned when a run
+                you claimed is verified, and burned when a skeptic falsifies it.
+              </p>
+              <p className="mono" style={{ margin: "10px 0 0", color: "var(--faint)" }}>
+                runner {runner.slice(0, 10)}… · metadata {metadataURI.slice(0, 34)}
+              </p>
+            </>
+          ),
+          onConfirm: () => {
+            tx.send(
+              buildRegisterAgent({
+                metadataURI: metadataURI.trim(),
+                runner: runner.trim() as `0x${string}`,
+                stakeWei,
+              }),
+            );
+            setConfirm(null);
+          },
+        }
+      : confirm === "claim"
+        ? {
+            title: `Claim trial #${trialId.trim()}`,
+            amount: "gas only",
+            confirmLabel: "Claim trial",
+            detail: (
+              <p style={{ margin: 0 }}>
+                The reward is already escrowed, so claiming costs nothing but gas. Your bond
+                moves into escrow with it, and is what a falsified run would be slashed against.
+              </p>
+            ),
+            onConfirm: () => {
+              tx.send(buildClaimTrial(Number(trialId.trim())));
+              setConfirm(null);
+            },
+          }
+        : null;
 
   return (
     <Chrome>
@@ -105,15 +154,8 @@ export default function ForgePage() {
             <button
               className="btn btn-primary"
               disabled={!canRegister || busy || !isConnected}
-              onClick={() =>
-                tx.send(
-                  buildRegisterAgent({
-                    metadataURI: metadataURI.trim(),
-                    runner: runner.trim() as `0x${string}`,
-                    stakeWei: stakeWei ?? 0n,
-                  }),
-                )
-              }
+              aria-busy={busy || undefined}
+              onClick={() => setConfirm("register")}
             >
               {busy ? "Posting bond…" : "Register agent"}
             </button>
@@ -137,12 +179,26 @@ export default function ForgePage() {
           <button
             className="btn btn-primary"
             disabled={!trialValid || busy || !isConnected}
-            onClick={() => tx.send(buildClaimTrial(Number(trialId.trim())))}
+            aria-busy={busy || undefined}
+            onClick={() => setConfirm("claim")}
           >
             {busy ? "Claiming…" : "Claim trial"}
           </button>
         </div>
       </section>
+
+      {pour ? (
+        <PourConfirm
+          open
+          title={pour.title}
+          amount={pour.amount}
+          detail={pour.detail}
+          confirmLabel={pour.confirmLabel}
+          busy={busy}
+          onConfirm={pour.onConfirm}
+          onRequestClose={() => setConfirm(null)}
+        />
+      ) : null}
 
       <div style={{ marginTop: 20 }}>
         <TxStates state={tx.state} message={tx.message} hash={tx.hash} />

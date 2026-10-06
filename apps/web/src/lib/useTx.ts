@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   useAccount,
   useConfig,
@@ -40,6 +40,8 @@ export interface UseTxResult {
   error: string | null;
   /** the decoded message, ready to show */
   message: string | null;
+  /** true between `send` and a terminal state; every call site must disable on this */
+  busy: boolean;
   send: (request: TxRequest, to?: Address) => void;
   reset: () => void;
 }
@@ -55,19 +57,31 @@ export function useTx(): UseTxResult {
     query: { enabled: Boolean(hash) },
   });
 
+  // None of Crucible's write functions are idempotent: `createTrial` twice is two trials
+  // and two escrows, `claimTrial` twice is a revert at best and a second bond at worst.
+  // A disabled button is not a guard — it depends on every caller remembering to wire it,
+  // and a double click that lands in the same frame as the state update beats React. This
+  // is a ref because the check has to see the value the *previous* line wrote, in the same
+  // tick, which state can never do.
+  const inFlight = useRef(false);
+
   // Receipt -> terminal state. Done in an effect rather than during render: setting
   // state while rendering is only legal for the component's *own* derived state, and
   // it is fragile enough that a reviewer has to stop and check.
   useEffect(() => {
     if (state !== "heating") return;
-    if (isSuccess) setState("poured");
-    else if (isError) {
+    if (isSuccess) {
+      inFlight.current = false;
+      setState("poured");
+    } else if (isError) {
+      inFlight.current = false;
       setError(decodeRevert(receiptError));
       setState("doused");
     }
   }, [isSuccess, isError, receiptError, state]);
 
   const reset = useCallback(() => {
+    inFlight.current = false;
     setState("idle");
     setError(null);
     setHash(null);
@@ -75,6 +89,8 @@ export function useTx(): UseTxResult {
 
   const send = useCallback(
     (request: TxRequest, to?: Address) => {
+      if (inFlight.current) return;
+
       // Refuse here, not at import time — see wagmi.ts. If there is no deployment
       // behind this app, saying so at the moment of signing is far more useful than
       // sending value into the zero address.
@@ -90,6 +106,7 @@ export function useTx(): UseTxResult {
         typeof request === "string" ? { data: request, value: undefined } : request;
 
       const dep = deployment();
+      inFlight.current = true;
       setState("heating");
       setError(null);
       setHash(null);
@@ -104,6 +121,7 @@ export function useTx(): UseTxResult {
       })
         .then((txHash) => setHash(txHash))
         .catch((err) => {
+          inFlight.current = false;
           setError(decodeRevert(err));
           setState("doused");
         });
@@ -111,7 +129,7 @@ export function useTx(): UseTxResult {
     [sendTransactionAsync],
   );
 
-  return { state, hash, error, message: error, send, reset };
+  return { state, hash, error, message: error, busy: state === "heating", send, reset };
 }
 
 /**
@@ -151,19 +169,28 @@ export function decodeRevert(err: unknown): string {
 
 // ── action builders ─────────────────────────────────────────────────────
 
-/** T1/T2 — escrow the reward and light the trial. */
+/**
+ * T1 — escrow the reward and light the trial.
+ *
+ * The reward is `msg.value`, not an argument: `createTrial` is payable and reverts
+ * `RewardTooSmall()` when the value does not cover it, so a builder returning bare calldata
+ * would produce a transaction that compiles, signs, decodes, and can never land.
+ */
 export function buildCreateTrial(args: {
   specDigest: Hex;
   testsDigest: Hex;
   rewardWei: bigint;
   deadline: number;
   breakWindow: number;
-}): Hex {
-  return encodeFunctionData({
-    abi: TRIALS_ABI,
-    functionName: "createTrial",
-    args: [args.specDigest, args.testsDigest, BigInt(args.deadline), BigInt(args.breakWindow)],
-  });
+}): { data: Hex; value: bigint } {
+  return {
+    data: encodeFunctionData({
+      abi: TRIALS_ABI,
+      functionName: "createTrial",
+      args: [args.specDigest, args.testsDigest, BigInt(args.deadline), BigInt(args.breakWindow)],
+    }),
+    value: args.rewardWei,
+  };
 }
 
 export function buildRegisterAgent(args: { metadataURI: string; runner: Address; stakeWei: bigint }) {

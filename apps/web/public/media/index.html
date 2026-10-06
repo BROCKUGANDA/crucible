@@ -1,0 +1,495 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Crucible — icon &amp; media sheet</title>
+<meta name="description" content="Every Crucible mark at every size, on both grounds, in real contexts. Generated from one master geometry by apps/web/scripts/build-icons.mjs.">
+<style>
+/* Tokens copied from apps/web/src/app/globals.css. This sheet is a print of the
+   brand, not a consumer of the app bundle, so it restates them rather than
+   importing anything. No CDN fonts, no scripts: it must open from file://.
+   The app names "Bricolage Grotesque" and "JetBrains Mono" but never ships them
+   (no @font-face, no next/font), so on this page they resolve to the same
+   system fallbacks they resolve to in the app today. The raster deliverables
+   (og.png, the PNGs) are rendered from the real vendored TTFs. */
+:root{
+  --bg0:#0b0908; --bg1:#141110; --bg2:#1b1713;
+  --text:#ede4d6; --dim:#b0a28d; --faint:#7e7260;
+  --ember:#ff5a00; --gold:#ffc46b; --hot:#fff2dc;
+  --quench:#54d8c6; --sear:#ff4b36; --ash:#8e8577;
+  --font-display:"Bricolage Grotesque",system-ui,-apple-system,sans-serif;
+  --font-mono:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,monospace;
+  --ease-ignite:cubic-bezier(0.16,1,0.3,1);
+  --paper:#e8e0d2;
+}
+*{box-sizing:border-box}
+body{
+  margin:0; padding:0 0 96px; background:var(--bg0); color:var(--text);
+  font-family:var(--font-display); font-size:16px; line-height:1.6;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:1180px;margin:0 auto;padding:0 28px}
+a{color:var(--gold)}
+.mono{font-family:var(--font-mono);font-size:13px}
+.kicker{font-family:var(--font-mono);font-size:11.5px;text-transform:uppercase;letter-spacing:.14em;color:var(--faint)}
+h1{font-size:40px;font-weight:800;letter-spacing:-.035em;margin:6px 0 2px;line-height:1.05}
+h1 .ember{color:var(--ember)}
+h2{font-size:23px;font-weight:700;letter-spacing:-.02em;margin:0 0 4px}
+h3{font-family:var(--font-mono);font-size:12.5px;font-weight:500;text-transform:uppercase;letter-spacing:.1em;color:var(--faint);margin:0 0 10px}
+p{margin:0 0 14px;color:var(--dim);max-width:74ch}
+code{font-family:var(--font-mono);font-size:.88em;color:var(--gold);background:var(--bg2);padding:1px 5px;border-radius:4px}
+header.top{border-bottom:1px solid var(--bg2);padding:34px 0 26px;margin-bottom:44px;background:linear-gradient(180deg,var(--bg1),var(--bg0))}
+.lockup{display:flex;align-items:center;gap:20px}
+.lockup img{width:76px;height:76px;flex:none}
+section{margin:0 0 58px}
+.lede{border-left:3px solid var(--ember);padding-left:16px;margin:0 0 26px;color:var(--dim);max-width:80ch}
+
+/* ---- the size matrix ---- */
+.matrix{overflow-x:auto;border:1px solid var(--bg2);border-radius:10px;background:var(--bg1)}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{padding:0;text-align:center;vertical-align:middle;border-bottom:1px solid var(--bg2)}
+th{padding:11px 10px;font-family:var(--font-mono);font-size:11px;font-weight:500;letter-spacing:.06em;color:var(--faint);text-transform:uppercase;white-space:nowrap}
+td.rowhead,th.rowhead{text-align:left;padding:12px 14px;white-space:nowrap;color:var(--text);font-family:var(--font-mono);font-size:12px;letter-spacing:0;text-transform:none;border-right:1px solid var(--bg2)}
+td.rowhead span{display:block;color:var(--faint);font-size:10.5px}
+td.cell{padding:14px 10px;min-width:74px}
+.ground{display:grid;place-items:center;width:100%;height:100%;margin:0 auto;padding:9px;border-radius:6px}
+.ground.dark{background:var(--bg0);border:1px solid var(--bg2)}
+.ground.light{background:var(--paper)}
+.ground img{display:block;image-rendering:auto}
+.ground img.px{image-rendering:pixelated}
+caption{caption-side:top;text-align:left;padding:13px 14px;color:var(--faint);font-family:var(--font-mono);font-size:11.5px}
+
+/* ---- anatomy ---- */
+.anatomy{display:grid;grid-template-columns:minmax(280px,1fr) minmax(280px,1fr);gap:30px;align-items:start}
+@media(max-width:820px){.anatomy{grid-template-columns:1fr}}
+.diagram{background:var(--bg1);border:1px solid var(--bg2);border-radius:10px;padding:18px}
+.diagram svg{display:block;width:100%;height:auto}
+dl.spec{margin:0;font-family:var(--font-mono);font-size:12.5px}
+dl.spec div{display:grid;grid-template-columns:11ch 1fr;gap:10px;padding:6px 0;border-bottom:1px solid var(--bg2)}
+dl.spec dt{color:var(--faint)}
+dl.spec dd{margin:0;color:var(--text)}
+dl.spec dd b{color:var(--gold);font-weight:500}
+
+/* ---- 1:1 gallery: stacked grounds, each figure sized to its own art ---- */
+.gallery{display:flex;flex-wrap:wrap;gap:18px;margin:0 0 8px}
+.gallery figure{margin:0;flex:0 0 auto;background:var(--bg1);border:1px solid var(--bg2);border-radius:10px;padding:14px}
+.gallery .pair{display:flex;gap:10px;align-items:stretch}
+.gallery .ground{flex:none;width:auto;height:auto;padding:10px;border-radius:8px;display:grid;place-items:center}
+.gallery figcaption{font-family:var(--font-mono);font-size:11px;color:var(--faint);margin-top:11px;line-height:1.55}
+.gallery figcaption b{display:block;color:var(--text);font-weight:500;font-size:12px}
+
+/* ---- probes ---- */
+.probes{display:grid;grid-template-columns:repeat(auto-fill,minmax(380px,1fr));gap:16px}
+.probe{background:var(--bg1);border:1px solid var(--bg2);border-radius:10px;padding:14px;text-align:center}
+/* width/height attributes carry the true 10x magnification; do not stretch them */
+.probe img{display:block;margin:0 auto 10px;max-width:100%;height:auto;background:var(--bg0);border-radius:4px}
+.probe figcaption{font-family:var(--font-mono);font-size:11px;color:var(--faint);line-height:1.5}
+.probe figcaption b{color:var(--text);font-weight:500;display:block;font-size:12px}
+
+/* ---- verdict callout ---- */
+.note{background:var(--bg1);border:1px solid var(--bg2);border-left:3px solid var(--gold);border-radius:8px;padding:14px 18px;margin:0 0 22px;color:var(--dim)}
+.note.bad{border-left-color:var(--sear)}
+.note.good{border-left-color:var(--quench)}
+.note strong{color:var(--text)}
+
+/* ---- contexts ---- */
+.contexts{display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:22px}
+.ctx{background:var(--bg1);border:1px solid var(--bg2);border-radius:12px;padding:18px}
+/* fake browser tab strip */
+.browser{background:#26221f;border-radius:8px 8px 0 0;overflow:hidden;font-family:var(--font-mono)}
+.tabstrip{display:flex;align-items:stretch;gap:2px;padding:7px 7px 0;background:#1b1713}
+.tab{display:flex;align-items:center;gap:8px;background:#332d28;border-radius:7px 7px 0 0;padding:8px 14px;font-size:11.5px;color:#cfc4b4;max-width:230px;white-space:nowrap;overflow:hidden}
+.tab.active{background:#453d36;color:#f2eade}
+.tab img{width:16px;height:16px;flex:none;border-radius:0}
+.tab img.round{border-radius:50%}
+.tab .x{margin-left:auto;color:#8d8175}
+.omni{display:flex;align-items:center;gap:9px;background:#453d36;padding:8px 12px;font-size:11.5px;color:#cfc4b4}
+.omni .padlock{color:#9c9084;vertical-align:-2px;margin-right:2px}
+.omni .url{color:#f2eade}
+.omni .dots{margin-left:auto;letter-spacing:2px;color:#9c9084}
+/* fake phone home screen */
+.phone{background:#000;border:9px solid #2b2723;border-radius:34px;padding:16px 12px 18px;text-align:center}
+.notch{width:82px;height:5px;background:#2b2723;border-radius:3px;margin:0 auto 16px}
+.phone .wall{background:radial-gradient(120% 90% at 50% 0%,#1f1a16,#0b0908 70%);border-radius:18px;padding:18px 10px 14px}
+.tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:14px 8px}
+.tile{display:flex;flex-direction:column;align-items:center;gap:6px;font-family:var(--font-mono);font-size:9px;color:#d8ccbb}
+.tile .frame{width:56px;height:56px;overflow:hidden;display:grid;place-items:center;background:#000}
+.tile .frame img{width:100%;height:100%;display:block}
+.tile.squircle .frame{border-radius:22.5%}
+.tile.circle .frame{border-radius:50%}
+.tile.rect .frame{border-radius:6px}
+/* maskable safe-zone overlay */
+.safe{position:relative;display:inline-block}
+.safe .zone{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:60%;height:60%;border:2px dashed var(--quench);border-radius:50%;pointer-events:none}
+.safe .zone.s80{width:80%;height:80%;border-color:var(--gold)}
+.legend{display:flex;flex-wrap:wrap;gap:18px;margin-top:14px;font-family:var(--font-mono);font-size:11px;color:var(--faint)}
+.legend i{display:inline-block;width:11px;height:11px;border-radius:50%;margin-right:6px;vertical-align:-1px}
+
+/* ---- files table ---- */
+.files{width:100%;font-family:var(--font-mono);font-size:12px}
+.files th,.files td{border-bottom:1px solid var(--bg2);padding:9px 11px;text-align:left;white-space:nowrap}
+.files td.n{text-align:right;color:var(--dim)}
+.files td.purpose{color:var(--gold)}
+.files tr:last-child td{border-bottom:0}
+footer{border-top:1px solid var(--bg2);margin-top:20px;padding-top:26px;color:var(--faint)}
+ol{color:var(--dim);padding-left:22px}
+li{margin-bottom:7px}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap lockup">
+    <img src="../crucible-mark.svg" alt="Crucible mark" width="76" height="76">
+    <div>
+      <div class="kicker">Icon &amp; media sheet · foundry build</div>
+      <h1>CRUCIB<span class="ember">L</span>E</h1>
+      <div class="mono" style="color:var(--faint)">one master geometry · every size, both grounds, real contexts</div>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+<p class="lede">Nothing on this page was redrawn by eye. Every file is composed from the six numbers in
+<code>GEO</code> inside <code>apps/web/scripts/build-icons.mjs</code>; sizes are transforms on that one
+polygon, and the colours are parsed out of <code>src/app/globals.css</code> at build time. Regenerate the
+whole set with <code>npm run icons --workspace @crucible/web</code>.</p>
+
+<!-- ============================================================ anatomy -->
+<section>
+  <h2>1 · The master mark</h2>
+  <p>An anvil-horn chevron rising out of the slag with an ember suspended in its core. The polygon is a
+  wedge, not a parallel stroke: thickest at the feet, drawing to a point at the apex. That taper is the horn.</p>
+
+  <div class="anatomy">
+    <div class="diagram">
+      <svg viewBox="0 0 512 512" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg">
+        <rect width="512" height="512" fill="#0b0908"/>
+        <g stroke="#1b1713" stroke-width="1">
+          <path d="M256 0V512M0 256H512M128 0V512M384 0V512M0 128H512M0 384H512"/>
+        </g>
+        <path d="M256 96 96 368 160 368 256 160 352 368 416 368Z" fill="#ff5a00"/>
+        <circle cx="256" cy="312" r="30" fill="#ffc46b"/>
+        <g fill="none" stroke="#54d8c6" stroke-width="1.5" stroke-dasharray="5 4">
+          <circle cx="256" cy="256" r="195.3"/>
+        </g>
+        <g fill="none" stroke="#fff2dc" stroke-width="1">
+          <path d="M256 96v-60M96 368H36M256 160v-24"/>
+          <path d="M96 404H416M96 396v16M416 396v16"/>
+        </g>
+        <g fill="#fff2dc" font-family="ui-monospace,monospace" font-size="15">
+          <text x="264" y="34">apexY 96</text>
+          <text x="10" y="384">baseY 368</text>
+          <text x="264" y="130">notchY 160</text>
+          <text x="296" y="318">ember r30</text>
+          <text x="256" y="430" text-anchor="middle" font-size="13">halfBase 160 · width 320</text>
+        </g>
+        <g fill="#54d8c6" font-family="ui-monospace,monospace" font-size="13">
+          <text x="14" y="248">MARK_EXTENT 195.3u — the only number a safe zone needs</text>
+        </g>
+      </svg>
+    </div>
+
+    <div>
+      <h3>Geometry, defined once</h3>
+      <dl class="spec">
+        <div><dt>canvas</dt><dd>512 × 512 units</dd></div>
+        <div><dt>apexY</dt><dd><b>96</b> — top point, on the centre line</dd></div>
+        <div><dt>baseY</dt><dd><b>368</b> — the two feet sit here</dd></div>
+        <div><dt>halfBase</dt><dd><b>160</b> — half the width at the base</dd></div>
+        <div><dt>arm</dt><dd><b>64</b> — arm thickness, measured horizontally at the base</dd></div>
+        <div><dt>notchY</dt><dd><b>160</b> — inner apex, how deep the notch cuts</dd></div>
+        <div><dt>ember</dt><dd><b>cx 256 · cy 312 · r 30</b> — inside the notch, clear of the feet</dd></div>
+        <div><dt>plate r</dt><dd><b>0.1875</b> of canvas (the canonical corner radius)</dd></div>
+        <div><dt>frame</dt><dd>inset <b>0.03125</b> · r <b>0.171875</b> · stroke <b>0.03125</b></dd></div>
+        <div><dt>extent</dt><dd><b>195.3u</b> worst-case radius — drives every safe zone</dd></div>
+      </dl>
+    </div>
+  </div>
+
+  <div class="note" style="margin-top:24px">
+    <strong>Two divergences found and fixed.</strong> The old <code>favicon.svg</code> and
+    <code>icon.svg</code> shared the chevron path exactly, but the plate corner radius was
+    <b>0.219</b> of canvas in one and <b>0.1875</b> in the other, and the ember frame's inset was
+    <b>4.7%</b> versus <b>3.1%</b>. Both files also painted the plate <code>#0b0705</code> and the
+    chevron <code>#ff7a1a</code> — two colours that are not in the token set at all. The plate is now
+    <code>--bg0</code>, the chevron <code>--ember</code>, the ember <code>--gold</code>, and the radii
+    are one ratio read from one place.
+  </div>
+
+  <div class="note good">
+    <strong>The ember moved.</strong> It used to sit at <code>cy 352 r 36</code>, which hangs 20 units
+    <em>below</em> the feet line — so at 16px the dot and the base fused into one warm smear. Seating it
+    at <code>cy 312 r 30</code> inside the notch keeps it a discrete core at 16px <em>and</em> at 32px.
+    Verified by rasterising four candidate positions at both sizes and looking.
+  </div>
+</section>
+
+<!-- ============================================================ matrix -->
+<section>
+  <h2>2 · Every file, every size, both grounds</h2>
+  <p>Each cell is the real asset drawn at that many CSS pixels. SVGs are the vector; the <code>.png</code>
+  rows are the delivered rasters scaled by the browser, which is exactly what a launcher does to them.
+  Dark ground is <code>--bg0</code>, light ground is warm paper <code>#e8e0d2</code>. The tables below are
+  written by the build script from the files actually on disk.</p>
+
+  <div class="matrix">
+    <table>
+      <caption>ON CHARCOAL · 16 / 32 / 48 / 128 css px</caption>
+      <thead>
+        <tr><th class="rowhead">asset</th><th>16</th><th>32</th><th>48</th><th>128</th></tr>
+      </thead>
+      <tbody>
+        <!-- @begin:dark -->
+        <tr><td class="rowhead">crucible-mark.svg<span>master mark · transparent</span></td><td class="cell"><span class="ground dark"><img src="../crucible-mark.svg" width="16" height="16" alt=""></span></td><td class="cell"><span class="ground dark"><img src="../crucible-mark.svg" width="32" height="32" alt=""></span></td><td class="cell"><span class="ground dark"><img src="../crucible-mark.svg" width="48" height="48" alt=""></span></td><td class="cell"><span class="ground dark"><img src="../crucible-mark.svg" width="128" height="128" alt=""></span></td></tr>
+        <tr><td class="rowhead">crucible-mark-mono.svg<span>tiny-size cut · ember dropped</span></td><td class="cell"><span class="ground dark"><img src="../crucible-mark-mono.svg" width="16" height="16" alt=""></span></td><td class="cell"><span class="ground dark"><img src="../crucible-mark-mono.svg" width="32" height="32" alt=""></span></td><td class="cell"><span class="ground dark"><img src="../crucible-mark-mono.svg" width="48" height="48" alt=""></span></td><td class="cell"><span class="ground dark"><img src="../crucible-mark-mono.svg" width="128" height="128" alt=""></span></td></tr>
+        <tr><td class="rowhead">favicon.svg<span>full-bleed plate · no frame</span></td><td class="cell"><span class="ground dark"><img src="../favicon.svg" width="16" height="16" alt=""></span></td><td class="cell"><span class="ground dark"><img src="../favicon.svg" width="32" height="32" alt=""></span></td><td class="cell"><span class="ground dark"><img src="../favicon.svg" width="48" height="48" alt=""></span></td><td class="cell"><span class="ground dark"><img src="../favicon.svg" width="128" height="128" alt=""></span></td></tr>
+        <tr><td class="rowhead">icon.svg<span>brand plate + ember frame</span></td><td class="cell"><span class="ground dark"><img src="../icon.svg" width="16" height="16" alt=""></span></td><td class="cell"><span class="ground dark"><img src="../icon.svg" width="32" height="32" alt=""></span></td><td class="cell"><span class="ground dark"><img src="../icon.svg" width="48" height="48" alt=""></span></td><td class="cell"><span class="ground dark"><img src="../icon.svg" width="128" height="128" alt=""></span></td></tr>
+        <tr><td class="rowhead">icon-maskable.svg<span>purpose maskable · 60% safe zone</span></td><td class="cell"><span class="ground dark"><img src="../icon-maskable.svg" width="16" height="16" alt=""></span></td><td class="cell"><span class="ground dark"><img src="../icon-maskable.svg" width="32" height="32" alt=""></span></td><td class="cell"><span class="ground dark"><img src="../icon-maskable.svg" width="48" height="48" alt=""></span></td><td class="cell"><span class="ground dark"><img src="../icon-maskable.svg" width="128" height="128" alt=""></span></td></tr>
+        <tr><td class="rowhead">apple-touch-icon.png<span>iOS ignores SVG favicons</span></td><td class="cell"><span class="ground dark"><img src="../apple-touch-icon.png" width="16" height="16" alt=""></span></td><td class="cell"><span class="ground dark"><img src="../apple-touch-icon.png" width="32" height="32" alt=""></span></td><td class="cell"><span class="ground dark"><img src="../apple-touch-icon.png" width="48" height="48" alt=""></span></td><td class="cell"><span class="ground dark"><img src="../apple-touch-icon.png" width="128" height="128" alt=""></span></td></tr>
+        <tr><td class="rowhead">icon-192.png<span>purpose any</span></td><td class="cell"><span class="ground dark"><img src="../icon-192.png" width="16" height="16" alt=""></span></td><td class="cell"><span class="ground dark"><img src="../icon-192.png" width="32" height="32" alt=""></span></td><td class="cell"><span class="ground dark"><img src="../icon-192.png" width="48" height="48" alt=""></span></td><td class="cell"><span class="ground dark"><img src="../icon-192.png" width="128" height="128" alt=""></span></td></tr>
+        <tr><td class="rowhead">icon-512.png<span>purpose any</span></td><td class="cell"><span class="ground dark"><img src="../icon-512.png" width="16" height="16" alt=""></span></td><td class="cell"><span class="ground dark"><img src="../icon-512.png" width="32" height="32" alt=""></span></td><td class="cell"><span class="ground dark"><img src="../icon-512.png" width="48" height="48" alt=""></span></td><td class="cell"><span class="ground dark"><img src="../icon-512.png" width="128" height="128" alt=""></span></td></tr>
+        <tr><td class="rowhead">icon-maskable-192.png<span>purpose maskable</span></td><td class="cell"><span class="ground dark"><img src="../icon-maskable-192.png" width="16" height="16" alt=""></span></td><td class="cell"><span class="ground dark"><img src="../icon-maskable-192.png" width="32" height="32" alt=""></span></td><td class="cell"><span class="ground dark"><img src="../icon-maskable-192.png" width="48" height="48" alt=""></span></td><td class="cell"><span class="ground dark"><img src="../icon-maskable-192.png" width="128" height="128" alt=""></span></td></tr>
+        <tr><td class="rowhead">icon-maskable-512.png<span>purpose maskable</span></td><td class="cell"><span class="ground dark"><img src="../icon-maskable-512.png" width="16" height="16" alt=""></span></td><td class="cell"><span class="ground dark"><img src="../icon-maskable-512.png" width="32" height="32" alt=""></span></td><td class="cell"><span class="ground dark"><img src="../icon-maskable-512.png" width="48" height="48" alt=""></span></td><td class="cell"><span class="ground dark"><img src="../icon-maskable-512.png" width="128" height="128" alt=""></span></td></tr>
+        <!-- @end:dark -->
+      </tbody>
+    </table>
+  </div>
+
+  <div class="matrix" style="margin-top:22px">
+    <table>
+      <caption>ON PAPER · 16 / 32 / 48 / 128 css px — the transparent marks must not vanish on a light tab bar</caption>
+      <thead>
+        <tr><th class="rowhead">asset</th><th>16</th><th>32</th><th>48</th><th>128</th></tr>
+      </thead>
+      <tbody>
+        <!-- @begin:light -->
+        <tr><td class="rowhead">crucible-mark.svg<span>master mark · transparent</span></td><td class="cell"><span class="ground light"><img src="../crucible-mark.svg" width="16" height="16" alt=""></span></td><td class="cell"><span class="ground light"><img src="../crucible-mark.svg" width="32" height="32" alt=""></span></td><td class="cell"><span class="ground light"><img src="../crucible-mark.svg" width="48" height="48" alt=""></span></td><td class="cell"><span class="ground light"><img src="../crucible-mark.svg" width="128" height="128" alt=""></span></td></tr>
+        <tr><td class="rowhead">crucible-mark-mono.svg<span>tiny-size cut · ember dropped</span></td><td class="cell"><span class="ground light"><img src="../crucible-mark-mono.svg" width="16" height="16" alt=""></span></td><td class="cell"><span class="ground light"><img src="../crucible-mark-mono.svg" width="32" height="32" alt=""></span></td><td class="cell"><span class="ground light"><img src="../crucible-mark-mono.svg" width="48" height="48" alt=""></span></td><td class="cell"><span class="ground light"><img src="../crucible-mark-mono.svg" width="128" height="128" alt=""></span></td></tr>
+        <tr><td class="rowhead">favicon.svg<span>full-bleed plate · no frame</span></td><td class="cell"><span class="ground light"><img src="../favicon.svg" width="16" height="16" alt=""></span></td><td class="cell"><span class="ground light"><img src="../favicon.svg" width="32" height="32" alt=""></span></td><td class="cell"><span class="ground light"><img src="../favicon.svg" width="48" height="48" alt=""></span></td><td class="cell"><span class="ground light"><img src="../favicon.svg" width="128" height="128" alt=""></span></td></tr>
+        <tr><td class="rowhead">icon.svg<span>brand plate + ember frame</span></td><td class="cell"><span class="ground light"><img src="../icon.svg" width="16" height="16" alt=""></span></td><td class="cell"><span class="ground light"><img src="../icon.svg" width="32" height="32" alt=""></span></td><td class="cell"><span class="ground light"><img src="../icon.svg" width="48" height="48" alt=""></span></td><td class="cell"><span class="ground light"><img src="../icon.svg" width="128" height="128" alt=""></span></td></tr>
+        <tr><td class="rowhead">icon-maskable.svg<span>purpose maskable · 60% safe zone</span></td><td class="cell"><span class="ground light"><img src="../icon-maskable.svg" width="16" height="16" alt=""></span></td><td class="cell"><span class="ground light"><img src="../icon-maskable.svg" width="32" height="32" alt=""></span></td><td class="cell"><span class="ground light"><img src="../icon-maskable.svg" width="48" height="48" alt=""></span></td><td class="cell"><span class="ground light"><img src="../icon-maskable.svg" width="128" height="128" alt=""></span></td></tr>
+        <tr><td class="rowhead">apple-touch-icon.png<span>iOS ignores SVG favicons</span></td><td class="cell"><span class="ground light"><img src="../apple-touch-icon.png" width="16" height="16" alt=""></span></td><td class="cell"><span class="ground light"><img src="../apple-touch-icon.png" width="32" height="32" alt=""></span></td><td class="cell"><span class="ground light"><img src="../apple-touch-icon.png" width="48" height="48" alt=""></span></td><td class="cell"><span class="ground light"><img src="../apple-touch-icon.png" width="128" height="128" alt=""></span></td></tr>
+        <tr><td class="rowhead">icon-192.png<span>purpose any</span></td><td class="cell"><span class="ground light"><img src="../icon-192.png" width="16" height="16" alt=""></span></td><td class="cell"><span class="ground light"><img src="../icon-192.png" width="32" height="32" alt=""></span></td><td class="cell"><span class="ground light"><img src="../icon-192.png" width="48" height="48" alt=""></span></td><td class="cell"><span class="ground light"><img src="../icon-192.png" width="128" height="128" alt=""></span></td></tr>
+        <tr><td class="rowhead">icon-512.png<span>purpose any</span></td><td class="cell"><span class="ground light"><img src="../icon-512.png" width="16" height="16" alt=""></span></td><td class="cell"><span class="ground light"><img src="../icon-512.png" width="32" height="32" alt=""></span></td><td class="cell"><span class="ground light"><img src="../icon-512.png" width="48" height="48" alt=""></span></td><td class="cell"><span class="ground light"><img src="../icon-512.png" width="128" height="128" alt=""></span></td></tr>
+        <tr><td class="rowhead">icon-maskable-192.png<span>purpose maskable</span></td><td class="cell"><span class="ground light"><img src="../icon-maskable-192.png" width="16" height="16" alt=""></span></td><td class="cell"><span class="ground light"><img src="../icon-maskable-192.png" width="32" height="32" alt=""></span></td><td class="cell"><span class="ground light"><img src="../icon-maskable-192.png" width="48" height="48" alt=""></span></td><td class="cell"><span class="ground light"><img src="../icon-maskable-192.png" width="128" height="128" alt=""></span></td></tr>
+        <tr><td class="rowhead">icon-maskable-512.png<span>purpose maskable</span></td><td class="cell"><span class="ground light"><img src="../icon-maskable-512.png" width="16" height="16" alt=""></span></td><td class="cell"><span class="ground light"><img src="../icon-maskable-512.png" width="32" height="32" alt=""></span></td><td class="cell"><span class="ground light"><img src="../icon-maskable-512.png" width="48" height="48" alt=""></span></td><td class="cell"><span class="ground light"><img src="../icon-maskable-512.png" width="128" height="128" alt=""></span></td></tr>
+        <!-- @end:light -->
+      </tbody>
+    </table>
+  </div>
+
+  <h3 style="margin-top:30px">At 1:1 — 180 / 192 / 512, both grounds, actual size</h3>
+  <div class="gallery">
+    <!-- @begin:big -->
+    <figure><div class="pair"><span class="ground dark"><img src="../crucible-mark.svg" width="512" height="512" alt=""></span><span class="ground light"><img src="../crucible-mark.svg" width="512" height="512" alt=""></span></div><figcaption><b>crucible-mark.svg</b>master mark · transparent · both grounds, drawn 1:1 at 512px</figcaption></figure>
+    <figure><div class="pair"><span class="ground dark"><img src="../crucible-mark-mono.svg" width="512" height="512" alt=""></span><span class="ground light"><img src="../crucible-mark-mono.svg" width="512" height="512" alt=""></span></div><figcaption><b>crucible-mark-mono.svg</b>tiny-size cut · ember dropped · both grounds, drawn 1:1 at 512px</figcaption></figure>
+    <figure><div class="pair"><span class="ground dark"><img src="../favicon.svg" width="512" height="512" alt=""></span><span class="ground light"><img src="../favicon.svg" width="512" height="512" alt=""></span></div><figcaption><b>favicon.svg</b>full-bleed plate · no frame · both grounds, drawn 1:1 at 512px</figcaption></figure>
+    <figure><div class="pair"><span class="ground dark"><img src="../icon.svg" width="512" height="512" alt=""></span><span class="ground light"><img src="../icon.svg" width="512" height="512" alt=""></span></div><figcaption><b>icon.svg</b>brand plate + ember frame · both grounds, drawn 1:1 at 512px</figcaption></figure>
+    <figure><div class="pair"><span class="ground dark"><img src="../icon-maskable.svg" width="512" height="512" alt=""></span><span class="ground light"><img src="../icon-maskable.svg" width="512" height="512" alt=""></span></div><figcaption><b>icon-maskable.svg</b>purpose maskable · 60% safe zone · both grounds, drawn 1:1 at 512px</figcaption></figure>
+    <figure><div class="pair"><span class="ground dark"><img src="../apple-touch-icon.png" width="180" height="180" alt=""></span><span class="ground light"><img src="../apple-touch-icon.png" width="180" height="180" alt=""></span></div><figcaption><b>apple-touch-icon.png</b>iOS ignores SVG favicons · both grounds, drawn 1:1 at 180px</figcaption></figure>
+    <figure><div class="pair"><span class="ground dark"><img src="../icon-192.png" width="192" height="192" alt=""></span><span class="ground light"><img src="../icon-192.png" width="192" height="192" alt=""></span></div><figcaption><b>icon-192.png</b>purpose any · both grounds, drawn 1:1 at 192px</figcaption></figure>
+    <figure><div class="pair"><span class="ground dark"><img src="../icon-512.png" width="512" height="512" alt=""></span><span class="ground light"><img src="../icon-512.png" width="512" height="512" alt=""></span></div><figcaption><b>icon-512.png</b>purpose any · both grounds, drawn 1:1 at 512px</figcaption></figure>
+    <figure><div class="pair"><span class="ground dark"><img src="../icon-maskable-192.png" width="192" height="192" alt=""></span><span class="ground light"><img src="../icon-maskable-192.png" width="192" height="192" alt=""></span></div><figcaption><b>icon-maskable-192.png</b>purpose maskable · both grounds, drawn 1:1 at 192px</figcaption></figure>
+    <figure><div class="pair"><span class="ground dark"><img src="../icon-maskable-512.png" width="512" height="512" alt=""></span><span class="ground light"><img src="../icon-maskable-512.png" width="512" height="512" alt=""></span></div><figcaption><b>icon-maskable-512.png</b>purpose maskable · both grounds, drawn 1:1 at 512px</figcaption></figure>
+        <!-- @end:big -->
+  </div>
+
+  <p class="mono" style="color:var(--faint);margin-top:14px">
+    <span style="color:var(--gold)">▸</span> 512 is the only size where the brand frame and its 16-unit
+    stroke are both fully resolved. Below 48px the frame is sub-pixel mush, which is why it appears on
+    <code>icon.svg</code> and nowhere else.
+  </p>
+</section>
+
+<!-- ============================================================ tiny -->
+<section>
+  <h2>3 · The 16px question, answered honestly</h2>
+  <p>These are not scaled-up vectors. Each is the file rasterised to that many real pixels and then blown
+  up 10× with nearest-neighbour, so you are looking at the actual pixels a browser paints.</p>
+
+  <div class="note bad">
+    <strong>Yes, the mark loses the ember at 16px on a 1× display.</strong> A 30-unit dot is 0.94 device
+    pixels wide there; it cannot survive as a shape, only as a smudge of warmth. So the set ships
+    <code>crucible-mark-mono.svg</code> for hard tiny sizes: the ember is dropped, the arms go
+    <b>1.31×</b> thicker so each leg clears a whole pixel, and the stance widens with a shallower notch so
+    the two feet stay separate. All three are multipliers on the same <code>GEO</code>, not a redraw.
+    <br><br>
+    <code>favicon.svg</code> still carries the full mark, because an SVG favicon is rasterised at 32px on
+    every HiDPI desktop and the ember is unmistakable there. Where you must have a 16px <em>raster</em>,
+    use the mono.
+  </div>
+
+  <div class="probes">
+    <figure class="probe">
+      <img src="probe-favicon-16.png" alt="favicon.svg rasterised at sixteen pixels, shown at ten times size" width="160" height="160">
+      <figcaption><b>favicon.svg @ 16 · x10</b>ember and gold core, blown together</figcaption>
+    </figure>
+    <figure class="probe">
+      <img src="probe-favicon-32.png" alt="favicon.svg rasterised at thirty-two pixels, shown at ten times size" width="320" height="320">
+      <figcaption><b>favicon.svg @ 32 · x10</b>the core reads as a discrete ember</figcaption>
+    </figure>
+    <figure class="probe">
+      <img src="probe-mono-16.png" alt="crucible-mark-mono.svg rasterised at sixteen pixels, shown at ten times size" width="160" height="160">
+      <figcaption><b>mono @ 16 · x10</b>silhouette holds, feet separate</figcaption>
+    </figure>
+    <figure class="probe">
+      <img src="probe-mono-32.png" alt="crucible-mark-mono.svg rasterised at thirty-two pixels, shown at ten times size" width="320" height="320">
+      <figcaption><b>mono @ 32 · x10</b>heavier, blunter, deliberately not the brand mark</figcaption>
+    </figure>
+    <figure class="probe">
+      <img src="probe-mark-16.png" alt="crucible-mark.svg rasterised at sixteen pixels, shown at ten times size" width="160" height="160">
+      <figcaption><b>mark @ 16 · x10</b>transparent, for comparison</figcaption>
+    </figure>
+    <figure class="probe">
+      <img src="probe-mark-32.png" alt="crucible-mark.svg rasterised at thirty-two pixels, shown at ten times size" width="320" height="320">
+      <figcaption><b>mark @ 32 · x10</b>transparent, for comparison</figcaption>
+    </figure>
+  </div>
+</section>
+
+<!-- ============================================================ contexts -->
+<section>
+  <h2>4 · Real contexts</h2>
+  <p>How it actually looks where it ships: a browser tab at 16px square, the same icon forced through a
+  circular mask, and a phone home screen where the launcher crops the plate into a squircle or a circle.</p>
+
+  <div class="contexts">
+    <div class="ctx">
+      <h3>Browser tabs · 16px</h3>
+      <div class="browser">
+        <div class="tabstrip">
+          <div class="tab active"><img src="../favicon.svg" alt="" width="16" height="16">Crucible — trust is earned under heat<span class="x">&times;</span></div>
+          <div class="tab"><img src="../favicon.svg" alt="" class="round" width="16" height="16">masked to a circle<span class="x">&times;</span></div>
+          <div class="tab"><img src="../crucible-mark-mono.svg" alt="" width="16" height="16">mono, on charcoal<span class="x">&times;</span></div>
+        </div>
+        <div class="omni"><svg class="padlock" width="11" height="13" viewBox="0 0 11 13" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg"><path d="M2.2 5.4V3.9a3.3 3.3 0 0 1 6.6 0v1.5" fill="none" stroke="currentColor" stroke-width="1.4"/><rect x="0.8" y="5.4" width="9.4" height="6.8" rx="1.3" fill="currentColor"/></svg><span class="url">localhost:3000/trials</span><span class="dots">&#8942;</span></div>
+      </div>
+      <p class="mono" style="color:var(--faint);margin:12px 0 0">The second tab is the same file with
+      <code>border-radius:50%</code> — SVG favicons get no mask treatment from the browser, so the plate is
+      a full-bleed square and the mark is scaled to <b>1.061×</b> to sit inside the inscribed circle
+      (207.2u of 256u). The brand frame is deliberately absent: a square rule clipped by a circle reads as
+      damage.</p>
+    </div>
+
+    <div class="ctx">
+      <h3>Phone home screen</h3>
+      <div class="phone">
+        <div class="notch"></div>
+        <div class="wall">
+          <div class="tiles">
+            <div class="tile squircle"><span class="frame"><img src="../icon-192.png" alt="Crucible icon, iOS squircle mask" width="56" height="56"></span>Crucible</div>
+            <div class="tile circle"><span class="frame"><img src="../icon-192.png" alt="Crucible icon, circular mask" width="56" height="56"></span>icon-192</div>
+            <div class="tile circle"><span class="frame"><img src="../icon-maskable-192.png" alt="Crucible maskable icon, circular mask" width="56" height="56"></span>maskable</div>
+            <div class="tile squircle"><span class="frame"><img src="../apple-touch-icon.png" alt="Crucible apple touch icon" width="56" height="56"></span>apple</div>
+            <div class="tile rect"><span class="frame"><img src="../icon-192.png" alt="Crucible icon, unmasked square" width="56" height="56"></span>unmasked</div>
+            <div class="tile rect"><span class="frame"><img src="../icon-maskable-512.png" alt="Crucible maskable icon, unmasked square" width="56" height="56"></span>mask 512</div>
+            <div class="tile circle"><span class="frame"><img src="../icon.svg" alt="icon.svg forced through a circular mask, showing the frame being cut away" width="56" height="56"></span>icon.svg</div>
+            <div class="tile circle"><span class="frame"><img src="../favicon.svg" alt="favicon.svg through a circular mask" width="56" height="56"></span>favicon</div>
+          </div>
+        </div>
+      </div>
+      <p class="mono" style="color:var(--faint);margin:12px 0 0">Row 7 is the failure this set exists to
+      prevent: <code>icon.svg</code> through a circular crop loses its brand frame and half the plate.
+      That is what <code>purpose: maskable</code> is for — the platform crops it, so the mark is pulled to
+      <b>0.739×</b> and the charcoal bleeds to every edge.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ safe zone -->
+<section>
+  <h2>5 · The maskable safe zone</h2>
+  <p>Maskable means the platform crops the art, so the art must be drawn to survive the crop. Left is
+  <code>icon.svg</code> (purpose <em>any</em>), right is <code>icon-maskable.svg</code> (purpose
+  <em>maskable</em>) with the guaranteed-visible circles drawn over it.</p>
+
+  <div class="contexts">
+    <div class="ctx" style="text-align:center">
+      <span class="safe"><img src="../icon.svg" alt="icon.svg with the 60% and 80% safe-zone circles overlaid" width="200" height="200"><span class="zone"></span><span class="zone s80"></span></span>
+      <p class="mono" style="color:var(--faint);margin:12px 0 0"><b style="color:var(--text)">icon.svg</b> — the
+      mark clears a 60% circle but the frame does not. Correct for <em>any</em>, wrong for masking.</p>
+    </div>
+    <div class="ctx" style="text-align:center">
+      <span class="safe"><img src="../icon-maskable.svg" alt="icon-maskable.svg with the 60% and 80% safe-zone circles overlaid" width="200" height="200"><span class="zone"></span><span class="zone s80"></span></span>
+      <p class="mono" style="color:var(--faint);margin:12px 0 0"><b style="color:var(--text)">icon-maskable.svg</b>
+      — mark radius 144.3u against a 153.6u budget, so it survives even the tightest 60% crop with slack.</p>
+    </div>
+  </div>
+  <div class="legend">
+    <span><i style="background:var(--gold)"></i>80% — the Android "inner safe zone" diameter</span>
+    <span><i style="background:var(--quench)"></i>60% — the practical circle a 512 canvas yields</span>
+  </div>
+</section>
+
+<!-- ============================================================ og -->
+<section>
+  <h2>6 · Social card</h2>
+  <p><code>og.png</code>, 1200×630, rendered straight from an authored SVG — no HTML, no screenshot, no
+  browser in the loop. The wordmark is set in the real vendored Bricolage Grotesque TTF, fit to the text
+  column by measurement rather than by eye.</p>
+  <div class="diagram" style="padding:0;overflow:hidden;border-radius:10px">
+    <img src="../og.png" alt="Crucible social card: the mark, the wordmark CRUCIBLE in a molten gradient, the line trust is earned under heat, and the tagline" width="1200" height="630" style="display:block;width:100%;height:auto">
+  </div>
+  <div class="note" style="margin-top:18px">
+    <strong>On the weight of that wordmark.</strong> The app's <code>.wordmark</code> rule asks for
+    font-weight 800. <code>Bricolage Grotesque</code> ships only as a variable TTF, and
+    <code>resvg-js</code> renders a variable font's default instance and ignores
+    <code>font-weight</code> — so a straight request gives Regular. Rather than swap in a generic bold,
+    the script forges the weight: a same-colour stroke laid <em>under</em> the fill
+    (<code>paint-order: stroke</code>) grows the outline outward by half its width, and the brand's tight
+    <code>-0.035em</code> tracking is then given that stroke back so the counters stay open. Without the
+    compensation the letters fuse.
+  </div>
+</section>
+
+<!-- ============================================================ files -->
+<section>
+  <h2>7 · Manifest of everything produced</h2>
+  <p>Measured from the files on disk at build time — this table is rewritten by
+  <code>build-icons.mjs</code> on every run, so it cannot go stale.</p>
+  <div class="matrix">
+    <table class="files">
+      <thead><tr><th>file</th><th>kind</th><th>dims</th><th>bytes</th><th>purpose / note</th></tr></thead>
+      <!-- @begin:files -->
+        <tr><td>crucible-mark.svg</td><td>svg</td><td>512 × 512 vb</td><td class="n">255</td><td class="purpose">master mark, transparent — the geometry everything else derives from</td></tr>
+        <tr><td>crucible-mark-mono.svg</td><td>svg</td><td>512 × 512 vb</td><td class="n">234</td><td class="purpose">tiny-size cut — ember dropped, arms 1.31x, stance widened</td></tr>
+        <tr><td>favicon.svg</td><td>svg</td><td>512 × 512 vb</td><td class="n">369</td><td class="purpose">full-bleed plate, mark at 1.061x, no frame: survives a square AND a circle</td></tr>
+        <tr><td>icon.svg</td><td>svg</td><td>512 × 512 vb</td><td class="n">406</td><td class="purpose">the brand plate — rounded charcoal, ember frame, canonical mark</td></tr>
+        <tr><td>icon-maskable.svg</td><td>svg</td><td>512 × 512 vb</td><td class="n">369</td><td class="purpose">purpose maskable — mark inside the 60% safe zone, bleed to all edges</td></tr>
+        <tr><td>icon-192.png</td><td>png</td><td>192 × 192</td><td class="n">5,586</td><td class="purpose">manifest purpose any — small launcher slot</td></tr>
+        <tr><td>icon-512.png</td><td>png</td><td>512 × 512</td><td class="n">16,744</td><td class="purpose">manifest purpose any — Play Store / A2HS hero</td></tr>
+        <tr><td>icon-maskable-192.png</td><td>png</td><td>192 × 192</td><td class="n">2,260</td><td class="purpose">manifest purpose maskable — cropped by the platform</td></tr>
+        <tr><td>icon-maskable-512.png</td><td>png</td><td>512 × 512</td><td class="n">7,374</td><td class="purpose">manifest purpose maskable — cropped by the platform</td></tr>
+        <tr><td>apple-touch-icon.png</td><td>png</td><td>180 × 180</td><td class="n">2,475</td><td class="purpose">apple-touch-icon — iOS wants a real PNG at 180</td></tr>
+        <tr><td>og.png</td><td>png</td><td>1200 × 630</td><td class="n">62,982</td><td class="purpose">social card, rendered from an authored SVG — no browser, no screenshot</td></tr>
+        <tr><td>media/probe-favicon-16.png</td><td>png</td><td>160 × 160</td><td class="n">683</td><td class="purpose">PROOF ONLY — favicon rasterised at 16px, blown up x10 nearest-neighbour</td></tr>
+        <tr><td>media/probe-favicon-32.png</td><td>png</td><td>320 × 320</td><td class="n">1,860</td><td class="purpose">PROOF ONLY — favicon rasterised at 32px, blown up x10 nearest-neighbour</td></tr>
+        <tr><td>media/probe-mark-16.png</td><td>png</td><td>160 × 160</td><td class="n">547</td><td class="purpose">PROOF ONLY — mark rasterised at 16px, blown up x10 nearest-neighbour</td></tr>
+        <tr><td>media/probe-mark-32.png</td><td>png</td><td>320 × 320</td><td class="n">1,401</td><td class="purpose">PROOF ONLY — mark rasterised at 32px, blown up x10 nearest-neighbour</td></tr>
+        <tr><td>media/probe-mono-16.png</td><td>png</td><td>160 × 160</td><td class="n">604</td><td class="purpose">PROOF ONLY — mono rasterised at 16px, blown up x10 nearest-neighbour</td></tr>
+        <tr><td>media/probe-mono-32.png</td><td>png</td><td>320 × 320</td><td class="n">1,499</td><td class="purpose">PROOF ONLY — mono rasterised at 32px, blown up x10 nearest-neighbour</td></tr>
+        <tr><td>manifest.webmanifest</td><td>webmanifest</td><td>—</td><td class="n">992</td><td class="purpose">name/short_name, start_url /, display standalone, colours from globals.css, any + maskable icons</td></tr>
+        <!-- @end:files -->
+    </table>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap" style="padding:0">
+    <h2 style="font-size:19px">Regenerate</h2>
+    <ol class="mono" style="font-size:12.5px">
+      <li><code>npm run icons --workspace @crucible/web</code> — reads the tokens, emits the 6 SVGs, rasterises the 7 PNGs, writes <code>manifest.webmanifest</code>, rewrites the table above.</li>
+      <li>Output is deterministic: <code>@resvg/resvg-js</code> with <code>loadSystemFonts: false</code> and the two TTFs in <code>apps/web/scripts/fonts/</code>, so any machine gets byte-identical PNGs.</li>
+      <li>If the theme changes <code>--bg0</code> or <code>--ember</code>, re-run and the whole set follows. It parses them out of <code>globals.css</code> and throws rather than guessing.</li>
+    </ol>
+    <p class="mono" style="color:var(--faint);margin-top:18px">Fonts vendored under the SIL Open Font
+    License 1.1 — see <code>OFL-bricolage.txt</code> and <code>OFL-jetbrains.txt</code> beside them.</p>
+  </div>
+</footer>
+
+</div>
+</body>
+</html>

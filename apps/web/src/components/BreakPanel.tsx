@@ -6,6 +6,8 @@ import { keccak256, stringToHex, type Hex } from "viem";
 import { buildFileBreak, useTx } from "@/lib/useTx";
 import { formatWei, parseEth } from "@/lib/eth";
 import { WrongNetworkNotice } from "@/components/Wallet";
+import { PourConfirm } from "@/components/Modal";
+import { TxStates } from "@/components/Chrome";
 import { deployment } from "@/lib/wagmi";
 
 /**
@@ -48,12 +50,13 @@ export function BreakPanel({
 
   const [stakeText, setStakeText] = useState(() => (minStakeWei > 0n ? formatWei(minStakeWei, 18) : ""));
   const [proof, setProof] = useState("");
+  const [confirming, setConfirming] = useState(false);
 
   const stakeWei = parseEth(stakeText);
   const proofOk = proof.trim().length > 0;
   const stakeOk = stakeWei !== null && stakeWei >= minStakeWei;
 
-  const busy = tx.state === "heating";
+  const busy = tx.busy;
   const canSend = proofOk && stakeOk && !busy && isConnected && dep.configured;
 
   return (
@@ -111,7 +114,7 @@ export function BreakPanel({
         <label style={{ display: "grid", gap: 6 }}>
           <span className="kicker">Proof</span>
           <textarea
-            className="input"
+            className="textarea"
             value={proof}
             onChange={(e) => setProof(e.target.value)}
             rows={4}
@@ -129,9 +132,8 @@ export function BreakPanel({
           <button
             className="btn btn-primary"
             disabled={!canSend}
-            onClick={() =>
-              tx.send(buildFileBreak(trialId, digestOf(proof), stakeWei ?? 0n))
-            }
+            aria-busy={busy || undefined}
+            onClick={() => setConfirming(true)}
           >
             {busy ? "Filing the break…" : `File the break on trial ${trialId}`}
           </button>
@@ -157,8 +159,36 @@ export function BreakPanel({
       </div>
 
       <div style={{ marginTop: 16 }}>
-        <TxStatus state={tx.state} message={tx.message} hash={tx.hash} />
+        <TxStates state={tx.state} message={tx.message} hash={tx.hash} />
       </div>
+
+      {/* The filing is the one action in the app where being wrong costs the caller money
+          outright, so the amount and the loss are restated at the moment of commitment. */}
+      <PourConfirm
+        open={confirming}
+        title={`Break trial ${trialId}`}
+        amount={`${stakeText} ETH`}
+        confirmLabel="File the break"
+        busy={busy}
+        onRequestClose={() => setConfirming(false)}
+        onConfirm={() => {
+          tx.send(buildFileBreak(trialId, digestOf(proof), stakeWei ?? 0n));
+          setConfirming(false);
+        }}
+        detail={
+          <>
+            <p style={{ margin: 0 }}>
+              If Argus reproduces your failure you take{" "}
+              <span style={{ color: "var(--quench)" }}>{formatWei(payoutWei, 18)} ETH</span> from
+              the agent&apos;s bond. If it does not, half of this stake pays the agent and the
+              other half is burned.
+            </p>
+            <p className="mono" style={{ margin: "10px 0 0", color: "var(--faint)" }}>
+              proof digest {digestOf(proof).slice(0, 14)}…
+            </p>
+          </>
+        }
+      />
     </section>
   );
 }
@@ -170,40 +200,4 @@ export function BreakPanel({
  */
 function digestOf(proof: string): Hex {
   return keccak256(stringToHex(proof.trim()));
-}
-
-/** Local copy of the transaction banner, so this component stands alone. */
-function TxStatus({
-  state,
-  message,
-  hash,
-}: {
-  state: "idle" | "heating" | "poured" | "doused";
-  message: string | null;
-  hash?: string | null;
-}) {
-  if (state === "idle") return null;
-
-  if (state === "heating") {
-    return (
-      <p role="status" aria-live="polite" className="mono" style={{ color: "var(--gold)" }}>
-        Heating — waiting for the network…
-      </p>
-    );
-  }
-
-  if (state === "poured") {
-    return (
-      <p role="status" className="mono" style={{ color: "var(--quench)" }}>
-        Filed. The claim is now contestable.
-        {hash ? ` ${hash.slice(0, 10)}…${hash.slice(-6)}` : null}
-      </p>
-    );
-  }
-
-  return (
-    <p role="alert" style={{ color: "var(--sear)" }}>
-      Doused. <span style={{ color: "var(--dim)" }}>{message}</span>
-    </p>
-  );
 }

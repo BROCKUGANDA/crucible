@@ -166,8 +166,15 @@ export const TIER_META: readonly TierMeta[] = [
   { name: "Damascus", color: forge.hot },
 ];
 
-/** Tiers are 0-4; anything else falls back to Unforged rather than throwing. */
-export function tierMeta(tier: number): TierMeta {
+/**
+ * Tiers are 0-4. A null means the API could not read the registry for this agent, and the
+ * UI says so: falling back to "Unforged" would render an unmeasured agent as a measured
+ * one, which is the difference between a leaderboard and a guess.
+ */
+const TIER_UNKNOWN: TierMeta = { name: "Tier unread", color: forge.text.faint };
+
+export function tierMeta(tier: number | null): TierMeta {
+  if (tier === null) return TIER_UNKNOWN;
   return TIER_META[tier] ?? TIER_META[0]!;
 }
 
