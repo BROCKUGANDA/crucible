@@ -200,15 +200,15 @@ Alloy tiers: Iron (1) · Bronze (3) · Steel (10 & ≥1 survived) · Damascus (2
 
 ```bash
 npm run contracts:test      # 86 Foundry tests, incl. 6 invariants and 18 for ERC-8004
-npm test                    # 464 TypeScript tests across 8 packages/apps
+npm test                    # 468 TypeScript tests across 8 packages/apps
 npm run build               # tsc for packages, next build for the web app
 npm run demo                # anvil + deploy + the whole loop, settles a real verdict
 npm run agent:live          # the real agent against a real model in a real sandbox
 ```
 
-**550 tests total** (464 TypeScript + 86 Foundry).
+**560 tests total** (468 TypeScript + 92 Foundry).
 
-Four of the 86 are the ERC-8004 fork tests, and they are counted here only in form: the
+Four of the 92 are the ERC-8004 fork tests, and they are counted here only in form: the
 `isMainnetFork` modifier returns early unless `block.chainid == 1`, so without
 `MAINNET_RPC_URL` they report as passing while asserting nothing. Run them for real with
 `forge test --fork-url $MAINNET_RPC_URL` before believing the registry claims.

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 import { keccak256, stringToHex, decodeFunctionData } from "viem";
 import { TRIALS_ABI } from "@crucible/smith";
 import { foundry, sepolia } from "wagmi/chains";
@@ -236,5 +236,91 @@ describe("explorerTxUrl", () => {
     const base = sepolia.blockExplorers!.default.url;
     const withSlash = { ...sepolia, blockExplorers: { default: { url: `${base}/`, name: "x", apiUrl: "" } } };
     expect(explorerTxUrl(HASH, withSlash)).toBe(`${base}/tx/${HASH}`);
+  });
+});
+
+/**
+ * `address()` used to do `process.env[name]`. Webpack inlines only static member
+ * expressions into the client bundle, so a dynamic index survives as a real object access
+ * against a `process.env` that does not exist in a browser — every deployment address
+ * resolved to zero on the client while resolving fine on the server. The visible symptom
+ * was the "Signing is disabled" notice on a build that had been configured exactly as the
+ * README says, and a hydration mismatch on every page that mounts the header.
+ */
+describe("deployment resolution", () => {
+  const keys = ["NEXT_PUBLIC_TRIALS_ADDRESS", "NEXT_PUBLIC_ALLOY_ADDRESS"] as const;
+
+  async function reload() {
+    vi.resetModules();
+    return (await import("../src/lib/wagmi.js")).deployment();
+  }
+
+  it("is configured when both addresses are present", async () => {
+    process.env.NEXT_PUBLIC_TRIALS_ADDRESS = "0x9fe46736679d2d9a65f0992f2272de9f3c7fa6e0";
+    process.env.NEXT_PUBLIC_ALLOY_ADDRESS = "0xe7f1725e7734ce288f8367e1bb143e90bb3f0512";
+    const dep = await reload();
+    expect(dep.configured).toBe(true);
+    expect(dep.trials).toBe("0x9fe46736679d2d9a65f0992f2272de9f3c7fa6e0");
+  });
+
+  it("refuses to sign against the zero address when one is missing", async () => {
+    process.env.NEXT_PUBLIC_TRIALS_ADDRESS = "0x9fe46736679d2d9a65f0992f2272de9f3c7fa6e0";
+    delete process.env.NEXT_PUBLIC_ALLOY_ADDRESS;
+    const dep = await reload();
+    expect(dep.configured).toBe(false);
+    expect(dep.alloy).toBe("0x0000000000000000000000000000000000000000");
+  });
+
+  it("ignores a malformed address rather than sending value into it", async () => {
+    process.env.NEXT_PUBLIC_TRIALS_ADDRESS = "0x123";
+    process.env.NEXT_PUBLIC_ALLOY_ADDRESS = "0xe7f1725e7734ce288f8367e1bb143e90bb3f0512";
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const dep = await reload();
+    expect(dep.configured).toBe(false);
+    expect(dep.trials).toBe("0x0000000000000000000000000000000000000000");
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  afterAll(() => {
+    for (const k of keys) delete process.env[k];
+  });
+});
+
+/**
+ * The one check that does catch the bug these tests describe.
+ *
+ * Vitest runs in Node, where `process.env[name]` works, so no behavioural test written here
+ * can fail against a dynamic lookup — only the browser bundle can. Grepping the source for
+ * the pattern is the difference between a guard and a description, and it is the pattern
+ * Next.js documents as unsupported in client code.
+ */
+describe("client env access", () => {
+  it("contains no dynamic process.env reads", async () => {
+    const { readdirSync, readFileSync, statSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const offenders: string[] = [];
+
+    const walk = (dir: string) => {
+      for (const entry of readdirSync(dir)) {
+        const full = join(dir, entry);
+        if (statSync(full).isDirectory()) walk(full);
+        else if (/\.tsx?$/.test(entry)) {
+          const src = readFileSync(full, "utf8");
+          for (const [i, raw] of src.split("\n").entries()) {
+            const line = raw.trim();
+            // Comments are allowed to describe the pattern — that is how the next reader
+            // learns why it is banned. Skip them whole rather than stripping the marker
+            // and matching the sentence underneath it.
+            if (line.startsWith("*") || line.startsWith("/*") || line.startsWith("//")) continue;
+            const code = line.replace(/\/\/.*$/, "");
+            if (/process\.env\s*\[/.test(code)) offenders.push(`${entry}:${i + 1}: ${code.trim()}`);
+          }
+        }
+      }
+    };
+    walk(new URL("../src", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1"));
+
+    expect(offenders).toEqual([]);
   });
 });
