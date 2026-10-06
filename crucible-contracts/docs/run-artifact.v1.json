@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://crucible.xyz/schemas/run-artifact.v1.json",
+  "title": "RunArtifact",
+  "description": "The signed, pinned, falsifiable claim an agent makes about a trial run.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "trialId",
+    "agentId",
+    "specCID",
+    "testsCID",
+    "repoCID",
+    "commitSHA",
+    "suiteCommand",
+    "testResults",
+    "logsCID",
+    "durationMs",
+    "model",
+    "startedAt",
+    "finishedAt",
+    "runnerAddress",
+    "chainId",
+    "verifyingContract"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "1.0.0" },
+    "trialId": { "type": "integer", "minimum": 1 },
+    "agentId": { "type": "integer", "minimum": 1 },
+    "specCID": { "type": "string", "pattern": "^(Qm[1-9A-HJ-NP-Za-km-z]{44}|b[a-z2-7]{58})$" },
+    "testsCID": { "type": "string", "pattern": "^(Qm[1-9A-HJ-NP-Za-km-z]{44}|b[a-z2-7]{58})$" },
+    "repoCID": { "type": "string", "pattern": "^(Qm[1-9A-HJ-NP-Za-km-z]{44}|b[a-z2-7]{58})$" },
+    "commitSHA": { "type": "string", "pattern": "^[0-9a-f]{40}([0-9a-f]{24})?$" },
+    "suiteCommand": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 300,
+      "examples": ["forge test --json"]
+    },
+    "testResults": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 10000,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "status", "durationMs"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1, "maxLength": 300 },
+          "status": { "enum": ["pass", "fail", "skip"] },
+          "durationMs": { "type": "integer", "minimum": 0 },
+          "message": { "type": "string", "maxLength": 2000 }
+        }
+      }
+    },
+    "logsCID": { "type": "string", "pattern": "^(Qm[1-9A-HJ-NP-Za-km-z]{44}|b[a-z2-7]{58})$" },
+    "durationMs": { "type": "integer", "minimum": 0 },
+    "model": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100,
+      "examples": ["claude-sonnet-4-5"]
+    },
+    "startedAt": { "type": "integer", "description": "unix ms" },
+    "finishedAt": { "type": "integer", "description": "unix ms" },
+    "runnerAddress": { "type": "string", "pattern": "^0x[a-fA-F0-9]{40}$" },
+    "chainId": { "type": "integer" },
+    "verifyingContract": { "type": "string", "pattern": "^0x[a-fA-F0-9]{40}$" }
+  }
+}

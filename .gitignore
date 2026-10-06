@@ -1,0 +1,24 @@
+# deps
+node_modules/
+.pnpm-store/
+
+# build output
+dist/
+.next/
+out/
+*.tsbuildinfo
+
+# foundry
+crucible-contracts/out/
+crucible-contracts/cache/
+crucible-contracts/broadcast/
+crucible-contracts/lib/
+
+# env
+.env
+.env.*
+!.env.example
+
+# editors / os
+.DS_Store
+Thumbs.db

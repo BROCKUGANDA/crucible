@@ -1,0 +1,19 @@
+[profile.default]
+solc = "0.8.26"
+optimizer = true
+optimizer_runs = 10_000
+# Required, not cosmetic: `getTrial`/`getAgent` return 15-field structs by memory, and the
+# EIP-712 / settle paths hold many live locals. Under solc's legacy codegen that overflows
+# the 16-slot stack the moment any external file references the contract.
+via_ir = true
+fs_permissions = [{ access = "read", path = "./" }]
+
+[invariant]
+runs = 128
+depth = 64
+
+[fuzz]
+runs = 512
+
+[rpc_endpoints]
+sepolia = "${SEPOLIA_RPC_URL}"

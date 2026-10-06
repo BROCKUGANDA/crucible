@@ -1,0 +1,21 @@
+# Foundry build output
+out/
+cache/
+broadcast/
+
+# forge-std is vendored on disk (no submodule) so the repo builds offline,
+# but it is not ours to version.
+lib/
+
+# env
+.env
+.env.*
+!.env.example
+
+# node
+node_modules/
+.pnpm-store/
+
+# editors / os
+.DS_Store
+Thumbs.db

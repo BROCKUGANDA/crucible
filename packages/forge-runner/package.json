@@ -1,0 +1,31 @@
+{
+  "name": "@crucible/forge-runner",
+  "version": "0.1.0",
+  "description": "ForgeRunner — the work-performing agent. Fetches a pinned spec, iterates against the pinned suite in a sealed sandbox, emits a signed RunArtifact.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@crucible/smith": "*",
+    "json-canonicalize": "^3.0.1",
+    "viem": "^2.21.55"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.7",
+    "typescript": "^5.7.3",
+    "vitest": "^5.0.3"
+  }
+}
