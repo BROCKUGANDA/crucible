@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { ERROR_COPY } from "@crucible/smith";
 import { buildSnapshot, type ApiSnapshot, type ReadModel, type TrialStatus } from "@crucible/indexer";
+import { rateLimit } from "./rate-limit.js";
 
 /**
  * The REST surface, built as a pure function over a read-model getter so it can be
@@ -22,10 +23,26 @@ export interface ApiDeps {
 
 const VALID_STATUSES: TrialStatus[] = ["open", "assigned", "judging", "challenged", "settled"];
 
-export function createApp(deps: ApiDeps): Hono {
+/**
+ * The default ceiling. 60/min per IP with a small burst is enough for a real UI to
+ * poll `/snapshot` every few seconds, and far too much for a loop. Overridable per app
+ * so tests and the demo can move it, because a test that cannot make requests is not a
+ * test.
+ */
+const DEFAULT_RATE_LIMIT = { limit: 60, windowMs: 60_000, burst: 20 } as const;
+
+export interface ApiOptions {
+  rateLimit?: { limit: number; windowMs: number; burst?: number } | false;
+}
+
+export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
   const app = new Hono();
 
   app.use("*", cors());
+
+  if (opts.rateLimit !== false) {
+    app.use("*", rateLimit(opts.rateLimit ?? DEFAULT_RATE_LIMIT));
+  }
 
   app.get("/health", (c) =>
     c.json({ ok: true, trials: deps.getModel().trials.size }),
