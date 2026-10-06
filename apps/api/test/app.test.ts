@@ -370,3 +370,40 @@ describe("/stream", () => {
     expect(reads()).toBe(settled);
   });
 });
+
+/**
+ * A health endpoint that answers `ok: true` for an index that stopped listening is the
+ * reason a silently-empty leaderboard can run for an evening without anyone noticing.
+ */
+describe("/health", () => {
+  it("reports 503 when the indexer refused to advance", async () => {
+    const stalled = createApp(
+      {
+        getModel: () => model,
+        indexStatus: () => ({
+          head: 6n,
+          indexedTo: 0n,
+          syncError: "getLogs returned nothing for blocks 0–6 but a logsBloom there may contain a Crucible event",
+        }),
+      },
+      { rateLimit: false },
+    );
+    const res = await stalled.request("/health");
+    expect(res.status).toBe(503);
+    const body = await res.json();
+    expect(body.ok).toBe(false);
+    expect(body.indexedTo).toBe(0);
+    expect(body.head).toBe(6);
+    expect(String(body.syncError)).toContain("logsBloom");
+  });
+
+  it("stays 200 while the index is moving", async () => {
+    const fine = createApp(
+      { getModel: () => model, indexStatus: () => ({ head: 42n, indexedTo: 42n, syncError: null }) },
+      { rateLimit: false },
+    );
+    const res = await fine.request("/health");
+    expect(res.status).toBe(200);
+    expect((await res.json()).ok).toBe(true);
+  });
+});

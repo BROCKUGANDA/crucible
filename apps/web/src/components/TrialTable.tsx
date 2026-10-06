@@ -32,8 +32,8 @@ export function TrialTable({
 function TrialRow({ trial, serverNowMs }: { trial: ApiTrial; serverNowMs: number | null }) {
   const status = statusMeta(trial.status);
   const verdict = verdictMeta(trial.verdict);
-  const cools = useCountdown(trial.coolsInSec ?? trial.deadline, serverNowMs);
-  const breakLeft = useCountdown(trial.breakWindowEndsInSec, serverNowMs);
+  const cools = useCountdown(trial.deadlineAt, serverNowMs);
+  const breakLeft = useCountdown(trial.breakWindowEndsAt, serverNowMs);
 
   return (
     <Link href={`/trials/${trial.id}`} className="surface" style={{ display: "block", padding: 18 }}>

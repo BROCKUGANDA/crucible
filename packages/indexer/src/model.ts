@@ -419,14 +419,26 @@ export function hall(model: ReadModel): HallEntry[] {
 }
 
 /** Seconds until the break window closes; null when not applicable. */
-export function breakWindowEndsIn(row: TrialRow, nowSeconds: number): number | null {
+/**
+ * When the break window closes, as an absolute unix second — not "seconds remaining".
+ *
+ * A remaining-duration is a fact about the moment the snapshot was built, so it starts
+ * decaying the instant it leaves the server, and a client that renders it against its own
+ * clock gets a number that is already wrong. The API sends the deadline and the client
+ * subtracts the server's own `now`, which is the only clock that decides the question.
+ *
+ * Null when there is no window to close: `judging` is the only status with a live break
+ * window, and `runAt` is null until a run lands.
+ */
+export function breakWindowEndsAt(row: TrialRow): number | null {
   if (row.status !== "judging" || row.runAt === null) return null;
-  return Math.max(0, row.runAt + row.breakWindow - nowSeconds);
+  return row.runAt + row.breakWindow;
 }
 
-export function deadlineEndsIn(row: TrialRow, nowSeconds: number): number | null {
+/** When the submission deadline passes, absolute, or null once the trial has settled. */
+export function deadlineEndsAt(row: TrialRow): number | null {
   if (row.status === "settled") return null;
-  return Math.max(0, row.deadline - nowSeconds);
+  return row.deadline;
 }
 
 function cloneModel(m: ReadModel): ReadModel {

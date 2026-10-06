@@ -1,7 +1,7 @@
 import { TIER_NAMES } from "@crucible/smith";
 import {
-  breakWindowEndsIn,
-  deadlineEndsIn,
+  breakWindowEndsAt,
+  deadlineEndsAt,
   hall,
   listTrials,
   type AgentRow,
@@ -39,8 +39,9 @@ export interface ApiTrial {
   breakStakeEth: string | null;
   status: TrialStatus;
   verdict: string;
-  coolsInSec: number | null;
-  breakWindowEndsInSec: number | null;
+  /** absolute unix seconds, not a remaining duration: see model.ts `deadlineEndsAt` */
+  deadlineAt: number | null;
+  breakWindowEndsAt: number | null;
   /** true when the sponsor has not disclosed the CID text yet */
   awaitingDisclosure: boolean;
 }
@@ -100,7 +101,7 @@ export function weiToEth(wei: bigint): string {
   return `${negative ? "-" : ""}${whole}${frac ? `.${frac}` : ""}`;
 }
 
-export function toApiTrial(row: TrialRow, model: ReadModel, nowSeconds: number): ApiTrial {
+export function toApiTrial(row: TrialRow, model: ReadModel): ApiTrial {
   const agent = row.agentId !== null ? model.agents.get(row.agentId) : undefined;
   return {
     id: row.id,
@@ -122,8 +123,8 @@ export function toApiTrial(row: TrialRow, model: ReadModel, nowSeconds: number):
     breakStakeEth: row.breakStakeWei === null ? null : weiToEth(row.breakStakeWei),
     status: row.status,
     verdict: row.verdict,
-    coolsInSec: deadlineEndsIn(row, nowSeconds),
-    breakWindowEndsInSec: breakWindowEndsIn(row, nowSeconds),
+    deadlineAt: deadlineEndsAt(row),
+    breakWindowEndsAt: breakWindowEndsAt(row),
     awaitingDisclosure: row.specCID === null || row.testsCID === null,
   };
 }
@@ -239,8 +240,7 @@ export function buildSnapshot(
     alloyState?: (agentId: number) => AlloyState;
   },
 ): ApiSnapshot {
-  const nowSeconds = Math.floor(opts.now / 1000);
-  const trials = listTrials(model).map((t) => toApiTrial(t, model, nowSeconds));
+  const trials = listTrials(model).map((t) => toApiTrial(t, model));
 
   const counts: ApiSnapshot["counts"] = {
     all: trials.length,

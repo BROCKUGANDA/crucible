@@ -6,6 +6,7 @@ import {
   type AlloyState,
   type ApiSnapshot,
   type ReadModel,
+  type ScribeStatus,
   type TrialStatus,
 } from "@crucible/indexer";
 import { rateLimit } from "./rate-limit.js";
@@ -39,6 +40,12 @@ export interface ApiDeps {
    * chain is worse than no proof.
    */
   proofSource?: { chain: string; chainId: number; trialsAddress: string };
+  /**
+   * How far the index actually reaches, and why it may have stopped. Supplied by the host
+   * process because the read model itself cannot know — it is a Map, and an empty Map looks
+   * identical whether the chain is quiet or the indexer refused to read it.
+   */
+  indexStatus?: () => ScribeStatus;
 }
 
 const VALID_STATUSES: TrialStatus[] = ["open", "assigned", "judging", "challenged", "settled"];
@@ -124,9 +131,24 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
     app.use("*", rateLimit({ ...limits, trustProxy: limits.trustProxy ?? opts.trustProxy ?? false }));
   }
 
-  app.get("/health", (c) =>
-    c.json({ ok: true, trials: deps.getModel().trials.size }),
-  );
+  app.get("/health", (c) => {
+    const index = deps.indexStatus?.() ?? null;
+    const stalled = index?.syncError != null;
+    return c.json(
+      {
+        ok: !stalled,
+        trials: deps.getModel().trials.size,
+        // `ok: true` with an empty index is the report that hides an outage. These three
+        // fields are what tells a quiet chain apart from an indexer that stopped listening,
+        // and they are only honest because Scribe refuses to advance across a window it
+        // could not confirm was empty.
+        indexedTo: index ? Number(index.indexedTo) : null,
+        head: index?.head === null || index?.head === undefined ? null : Number(index.head),
+        syncError: index?.syncError ?? null,
+      },
+      stalled ? 503 : 200,
+    );
+  });
 
   /** One payload the whole UI can render from. */
   app.get("/snapshot", (c) => {

@@ -3,9 +3,9 @@ import {
   applyEvent,
   attachCids,
   attachSignatures,
-  breakWindowEndsIn,
+  breakWindowEndsAt,
   buildSnapshot,
-  deadlineEndsIn,
+  deadlineEndsAt,
   emptyModel,
   hall,
   hydrateTimestamps,
@@ -160,25 +160,25 @@ describe("countdowns", () => {
     const m = replay(fullStory().slice(0, 3));
     const t = listTrials(m)[0]!;
     expect(t.status).toBe("assigned");
-    expect(deadlineEndsIn(t, 1_699_000_000)).toBe(1_000_000);
+    expect(deadlineEndsAt(t)).toBe(1_700_000_000);
   });
 
   it("never returns a negative countdown", () => {
     const m = replay(fullStory().slice(0, 3));
     const t = listTrials(m)[0]!;
-    expect(deadlineEndsIn(t, 1_900_000_000)).toBe(0);
+    expect(deadlineEndsAt(t)).toBe(1_700_000_000);
   });
 
   it("stops the run countdown once settled", () => {
     const m = replay(fullStory());
-    expect(deadlineEndsIn(listTrials(m)[0]!, 1_700_000_001)).toBeNull();
+    expect(deadlineEndsAt(listTrials(m)[0]!)).toBeNull();
   });
 
   it("counts down the break window only while judging", () => {
     const m = replay(fullStory());
     const t = listTrials(m)[0]!;
     // status is settled, so no break countdown
-    expect(breakWindowEndsIn(t, 1_700_000_000)).toBeNull();
+    expect(breakWindowEndsAt(t)).toBeNull();
   });
 });
 

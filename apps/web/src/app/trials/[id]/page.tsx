@@ -23,8 +23,8 @@ export default function TrialDetailPage() {
   const { data, error, loading, serverNowMs } = useSnapshot();
   const trial = data?.trials.find((t) => t.id === id);
 
-  const cools = useCountdown(trial?.coolsInSec ?? null, serverNowMs);
-  const breakLeft = useCountdown(trial?.breakWindowEndsInSec ?? null, serverNowMs);
+  const cools = useCountdown(trial?.deadlineAt ?? null, serverNowMs);
+  const breakLeft = useCountdown(trial?.breakWindowEndsAt ?? null, serverNowMs);
 
   if (loading) {
     return (
