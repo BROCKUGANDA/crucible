@@ -199,8 +199,21 @@ export class Sandbox {
   async applyPatch(patch: string): Promise<{ ok: boolean; message: string }> {
     const patchPath = join(this.repoDir, ".crucible-agent.patch");
     await writeFile(patchPath, patch, "utf8");
+
+    // `--recount` recomputes hunk line counts from the patch body instead of trusting
+    // the `@@ -a,b +c,d @@` header.
+    //
+    // This is not leniency for its own sake — it was added because a real model got it
+    // wrong. qwen3.8-27b returned a hunk headed `@@ -7,6 +7,7 @@` whose body was
+    // `-7,5 +7,8`, and git rejected the whole patch as corrupt. Models are good at
+    // content and bad at arithmetic; making the loop hostage to that is a bad trade.
+    //
+    // It does NOT weaken the guard this system depends on: `--recount` still matches
+    // context lines byte-for-byte and still refuses a patch that does not apply, so a
+    // diff aiming at the pinned suite still fails here. Only the counts are ignored.
     const r = await this.exec("git", [
       "apply",
+      "--recount",
       "--whitespace=nowarn",
       "-p1",
       ".crucible-agent.patch",

@@ -42,6 +42,20 @@ export interface WorkContext {
    * same bytes the runner validated — and so a runner can wrap it once.
    */
   spec?: string;
+  /**
+   * Current contents of the files the agent is allowed to edit, keyed by repo-relative
+   * path.
+   *
+   * This exists because a unified diff is not a description of a change — it is the
+   * change plus verbatim context lines. An agent asked to emit one without being shown
+   * the file has to reconstruct those lines from imagination, and gets them subtly
+   * wrong: the patch then fails to apply, or worse, applies somewhere unintended.
+   *
+   * The runner populates this from the sandbox, and deliberately excludes the pinned
+   * suite — the agent can read the tests through the suite output, but it is not handed
+   * their contents to copy from.
+   */
+  files?: Record<string, string>;
 }
 
 export interface WorkResult {

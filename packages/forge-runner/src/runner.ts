@@ -95,6 +95,15 @@ export interface RunOutcome {
   failure?: ForgeFailure;
 }
 
+/**
+ * Files offered to the agent as patch context.
+ *
+ * Fixed and small on purpose. Handing an agent a whole repository tree would blow the
+ * context window and, worse, would include the pinned suite it is told not to touch.
+ * The trial's own layout decides the real list; these are the defaults.
+ */
+const EDITABLE_GLOBS = ["src/Forge.sol"] as const;
+
 /** Mutable per-run state. Scoped to one run() call — never module-level. */
 interface RunState {
   iterations: number;
@@ -154,6 +163,7 @@ export class ForgeRunner {
           iteration: state.iterations,
           lastOutput: state.lastOutput,
           spec: specText,
+          files: await this.collectEditableFiles(sandbox),
         };
 
         const step = await this.runAgentStep(ctx);
@@ -314,6 +324,34 @@ export class ForgeRunner {
       }
       throw classify(err);
     }
+  }
+
+  /**
+ * Read the files an agent is allowed to edit, for inclusion in the prompt.
+ *
+ * A unified diff carries verbatim context lines, so an agent that cannot see the file
+ * cannot produce one that applies. This hands it the source — but never the pinned
+ * suite, which is the one thing it must not copy from.
+ *
+ * Best-effort throughout: a file that cannot be read is simply absent, because a
+ * transient read error must not abort a run that is otherwise fine.
+ */
+private async collectEditableFiles(
+    sandbox: Sandbox,
+  ): Promise<Record<string, string>> {
+    const out: Record<string, string> = {};
+
+    for (const rel of EDITABLE_GLOBS) {
+      let text: string;
+      try {
+        text = await sandbox.readFile(rel);
+      } catch {
+        continue;
+      }
+      if (text) out[rel] = text;
+    }
+
+    return out;
   }
 
   private async runAgentStep(ctx: WorkContext): Promise<WorkResult> {
