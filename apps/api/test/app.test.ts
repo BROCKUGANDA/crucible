@@ -342,20 +342,117 @@ describe("/stream", () => {
     ac.abort();
   });
 
-  it("rebuilds the read model once a tick, not once a tick per subscriber", async () => {
-    const { app, reads } = appCountingReads();
+  /**
+   * Rebuilds counted through `alloyState`, not by watching `getModel`. Building a snapshot
+   * calls the host once per agent, so it observes the expensive work directly — and
+   * `getModel` now has to run every tick just to read the version, so a call counter there
+   * would measure the cheap path and pass on a regression.
+   */
+  function appCountingRebuilds() {
+    const model = hallModel();
+    let rebuilds = 0;
+    const app = createApp(
+      {
+        getModel: () => model,
+        alloyState: (id) => {
+          rebuilds += 1;
+          return { tier: id === 1 ? 1 : null, locked: id === 1, tokenUri: null };
+        },
+      },
+      { rateLimit: false },
+    );
+    return { app, model, rebuilds: () => rebuilds };
+  }
+
+  /**
+   * Three open streams on an idle chain must cost what one costs. The previous shape
+   * rebuilt the read model once a second *per subscriber*, so ten tabs was sixty rebuilds a
+   * minute for a chain that had not moved — and the rate limiter could not see it, because a
+   * stream is one request.
+   */
+  it("shares one rebuild across every subscriber", async () => {
+    const { app, rebuilds } = appCountingRebuilds();
     const controllers = [new AbortController(), new AbortController(), new AbortController()];
 
     await Promise.all(controllers.map((c) => openStream(app, c.signal)));
-    const afterHandshake = reads();
-    await new Promise((r) => setTimeout(r, 2_300));
+    const afterHandshake = rebuilds();
 
-    // Three subscribers over ~2 ticks. Per-subscriber rebuilding would put this at 6-9
-    // above the handshake count; the shared tick keeps it to the number of ticks.
-    const growth = reads() - afterHandshake;
-    expect(growth).toBeLessThanOrEqual(4);
+    await new Promise((r) => setTimeout(r, 2_500));
+    expect(rebuilds() - afterHandshake).toBe(0);
     controllers.forEach((c) => c.abort());
   });
+
+  /**
+   * The version counter is what makes an idle chain free. It also must not move for a
+   * duplicate log — the replay guards reject one without changing a counter, so a reorg
+   * invalidates nothing.
+   */
+  it("does not rebuild while the read model is idle, and does when it moves", async () => {
+    const { app, model, rebuilds } = appCountingRebuilds();
+    const ac = new AbortController();
+    await openStream(app, ac.signal);
+    const idle = rebuilds();
+
+    await new Promise((r) => setTimeout(r, 2_500));
+    expect(rebuilds()).toBe(idle);
+
+    model.version += 1;
+    await new Promise((r) => setTimeout(r, 2_500));
+    expect(rebuilds()).toBeGreaterThan(idle);
+    ac.abort();
+  }, 20_000);
+
+  /**
+   * A subscriber is pushed to only when content changed. A version bump that altered nothing
+   * visible must not emit — otherwise the gate just moves the waste from CPU to the wire.
+   *
+   * Frames are drained sequentially rather than raced against a timer. A `reader.read()`
+   * that loses a race is still pending, and it will quietly consume the next frame — so the
+   * assertion that follows it times out looking like a product bug when the stream actually
+   * delivered.
+   */
+  /**
+   * A subscriber is pushed to when content changes.
+   *
+   * Over a real socket rather than `app.request()`. The in-process `ReadableStream` hono
+   * builds for a synthetic Request surfaces only its first chunk to a reader, so asserting a
+   * second frame there tests the harness rather than the route — it failed while the same
+   * sequence through `@hono/node-server` delivered the update within a tick.
+   */
+  it("pushes an update to a connected subscriber over a real socket", async () => {
+    const { serve } = await import("@hono/node-server");
+    const { app, model } = appCountingRebuilds();
+    const port = 8899;
+    const server = await new Promise<ReturnType<typeof serve>>((res) => {
+      const s = serve({ fetch: app.fetch, port }, () => res(s));
+    });
+
+    try {
+      const ac = new AbortController();
+      const res = await fetch(`http://127.0.0.1:${port}/stream`, { signal: ac.signal });
+      const reader = res.body!.getReader();
+      const dec = new TextDecoder();
+      const grab = (ms: number) =>
+        Promise.race([
+          reader.read().then((r) => dec.decode(r.value)),
+          new Promise<string>((r) => setTimeout(() => r("<none>"), ms)),
+        ]);
+
+      const first = await grab(4_000);
+      expect(first).toContain("event: snapshot");
+      expect(first).not.toContain('"id":2');
+
+      model.trials.set(2, { ...model.trials.get(1)!, id: 2 });
+      model.version += 1;
+
+      const next = await grab(5_000);
+      expect(next).toContain("event: snapshot");
+      expect(next).toContain('"id":2');
+      ac.abort();
+    } finally {
+      server.close();
+    }
+  }, 30_000);
 
   it("stops working when the subscriber goes away", async () => {
     const { app, reads } = appCountingReads();

@@ -1,5 +1,4 @@
 import { Hono } from "hono";
-import { cors } from "hono/cors";
 import { ERROR_COPY } from "@crucible/smith";
 import {
   buildSnapshot,
@@ -10,6 +9,15 @@ import {
   type TrialStatus,
 } from "@crucible/indexer";
 import { rateLimit } from "./rate-limit.js";
+import {
+  bodyLimit,
+  corsPolicy,
+  enforceHttps,
+  requestTimeout,
+  resolveSecurity,
+  securityHeaders,
+  type SecurityConfig,
+} from "./security.js";
 import { streamSSE } from "hono/streaming";
 
 /**
@@ -66,12 +74,38 @@ export interface ApiOptions {
    * by default would let one loop mint a fresh bucket per request.
    */
   trustProxy?: boolean;
+  /**
+   * Transport-layer policy: browser origins, response headers, body ceiling, request
+   * timeout, plaintext. Explicit values here beat `ALLOWED_ORIGINS` and friends in the
+   * environment, which beat `DEFAULT_SECURITY`. See `security.ts` for what each buys and
+   * what it does not.
+   */
+  security?: Partial<SecurityConfig>;
+}
+
+/**
+ * Fold the options that belong to both subsystems.
+ *
+ * `trustProxy` is a single assertion — "something in front of this process overwrites the
+ * forwarded headers" — and it has to be the same assertion in the rate limiter and in the
+ * TLS detector. Two independent flags would let a deployment believe `X-Forwarded-For` while
+ * refusing `X-Forwarded-Proto`, or the reverse, and the second one is how a plaintext request
+ * mints an HSTS pinning header for a hostname.
+ */
+function securityOverrides(opts: ApiOptions): Partial<SecurityConfig> {
+  const overrides: Partial<SecurityConfig> = { ...opts.security };
+  if (overrides.trustProxy === undefined && opts.trustProxy !== undefined) {
+    overrides.trustProxy = opts.trustProxy;
+  }
+  return overrides;
 }
 
 export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
   const app = new Hono();
 
   const TICK_MS = 1000;
+  /** Ceiling on how long a cached stream payload may go without a fresh `now`. */
+  const MAX_TICK_AGE_MS = 30_000;
 
   /**
    * The snapshot every stream subscriber is served from, rebuilt at most once a tick for
@@ -83,14 +117,28 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
    * `alloyState` is included because this is the payload the UI actually renders — leaving it
    * out made the live view disagree with a refresh, the same defect that lived on `/hall`.
    */
-  let tick: { builtAt: number; signature: string; payload: string } | null = null;
+  let tick: { builtAt: number; version: number; signature: string; payload: string } | null = null;
 
   function sharedTick(): { signature: string; payload: string } {
     const now = Date.now();
-    if (!tick || now - tick.builtAt >= TICK_MS) {
-      const snap = buildSnapshot(deps.getModel(), { now, alloyState: deps.alloyState });
+    // Read the model exactly once per tick. Asking twice would make the cheap path cost
+    // the same as the expensive one, and the difference is the entire point of the gate.
+    const model = deps.getModel();
+    const version = model.version;
+    // Rebuild when the read model moved. The version counter is the right trigger because
+    // it does not move for a duplicate log — so a reorg that re-applies a settled verdict
+    // invalidates nothing, exactly as it changes no counter.
+    //
+    // `MAX_TICK_AGE_MS` is a safety valve, not a feature: the payload's only remaining
+    // clock-dependent field is `now`, and the client re-anchors and counts locally between
+    // snapshots, so a stale one is harmless today. It stops being harmless the moment
+    // somebody adds a second derived timestamp, and a periodic refresh is cheaper than
+    // discovering that.
+    if (!tick || version !== tick.version || now - tick.builtAt >= MAX_TICK_AGE_MS) {
+      const snap = buildSnapshot(model, { now, alloyState: deps.alloyState });
       tick = {
         builtAt: now,
+        version,
         signature: `${snap.counts.open}:${snap.counts.assigned}:${snap.counts.judging}:${snap.counts.challenged}:${snap.counts.settled}:${snap.trials.length}`,
         payload: JSON.stringify(snap),
       };
@@ -114,7 +162,20 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
     }
   }
 
-  app.use("*", cors());
+  /**
+   * Order is the whole design, so it is written down once.
+   *
+   *   request id -> security headers -> CORS -> plaintext gate -> rate limit -> body
+   *   ceiling -> timeout -> routes
+   *
+   * The id is outermost because a report has to be able to name a request that was refused
+   * before it reached a route. The headers are next because a 403, a 429 and a 500 are
+   * responses too — and because they are set *before* the handler runs, they also survive
+   * the error handler, which lives outside this chain entirely. CORS before the gates so a
+   * refusal is still legible to the browser that asked. Rate limit before body limit: a
+   * client already over budget should not get a second middleware to spend time on.
+   */
+  const security = resolveSecurity(securityOverrides(opts), process.env);
 
   // One id per request, reflected in responses and logs, so a report can name the exact
   // request the client saw. Deterministic for the process via crypto.randomUUID.
@@ -125,12 +186,23 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
     await next();
   });
 
+  app.use("*", securityHeaders(security));
+  app.use("*", corsPolicy(security));
+  if (security.enforceHttps) app.use("*", enforceHttps(security));
+
   if (opts.rateLimit !== false) {
     const limits: { limit: number; windowMs: number; burst?: number; trustProxy?: boolean } =
       opts.rateLimit ?? DEFAULT_RATE_LIMIT;
     app.use("*", rateLimit({ ...limits, trustProxy: limits.trustProxy ?? opts.trustProxy ?? false }));
   }
 
+  app.use("*", bodyLimit(security));
+  app.use("*", requestTimeout(security));
+
+  /**
+   * Liveness, plus the reach of the index. `/ready` is the gate a balancer acts on; this is
+   * the sentence an operator reads.
+   */
   app.get("/health", (c) => {
     const index = deps.indexStatus?.() ?? null;
     const stalled = index?.syncError != null;
@@ -147,6 +219,63 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
         syncError: index?.syncError ?? null,
       },
       stalled ? 503 : 200,
+    );
+  });
+
+  /**
+   * Readiness, which is not health.
+   *
+   * `/health` answers "this process is up, and here is how far the index reaches" — the
+   * sentence a human reads when something looks wrong. `/ready` answers the only question a
+   * load balancer can act on: "if I route traffic here, does the caller get a complete read
+   * model *now*?" It fails closed on the three things health merely reports: no index status
+   * supplied, the last tick failed, and the cursor further behind the head than the
+   * tolerance allows.
+   *
+   * The distinction has teeth. An instance whose first `sync()` has not landed is alive,
+   * answers `/health` 200 with `indexedTo: 0`, and would render an empty Hall of Alloy to the
+   * first visitor — the exact outage the index-reach fields were added to make visible.
+   * Readiness is where something other than a human can act on it.
+   */
+  app.get("/ready", (c) => {
+    const index = deps.indexStatus?.() ?? null;
+    const trials = deps.getModel().trials.size;
+
+    if (!index) {
+      return c.json(
+        {
+          ready: false,
+          reason: "the host supplied no index status; cannot claim the read model is complete",
+          trials,
+        },
+        503,
+      );
+    }
+
+    const head = index.head === null || index.head === undefined ? null : Number(index.head);
+    const indexedTo = Number(index.indexedTo);
+    const lag = head === null ? null : Math.max(0, head - indexedTo);
+
+    const reasons: string[] = [];
+    if (index.syncError) reasons.push(`last sync tick failed: ${index.syncError}`);
+    if (head === null) reasons.push("the chain head has never been read");
+    else if (lag !== null && lag > security.readyMaxLag) {
+      reasons.push(`index is ${lag} blocks behind the head, tolerance is ${security.readyMaxLag}`);
+    }
+
+    const ready = reasons.length === 0;
+    return c.json(
+      {
+        ready,
+        reason: ready ? null : reasons.join("; "),
+        head,
+        indexedTo,
+        lag,
+        maxLag: security.readyMaxLag,
+        syncError: index.syncError ?? null,
+        trials,
+      },
+      ready ? 200 : 503,
     );
   });
 

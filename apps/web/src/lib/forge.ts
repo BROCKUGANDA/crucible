@@ -217,7 +217,10 @@ export const ERROR_COPY = {
   CommitMismatch: "Reveal doesn't match your sealed commitment.",
   AlreadyCommitted: "You already sealed a verdict for this dispute.",
   AlreadyRevealed: "You already cast your verdict.",
-  RevealClosed: "Reveals have started — commits are locked.",
+  CommitClosed: "The commit window closed — this seat can no longer seal its vote.",
+  BadArgusSeatCount: "The Argus seat set must be exactly three addresses (2-of-3).",
+  DuplicateArgusSeat: "Argus seats must be distinct — one key counted twice is not two votes.",
+  ZeroArgusSeat: "Argus seats cannot be the zero address; it would silently lower the quorum.",
   NothingToWithdraw: "Nothing to withdraw yet.",
   TransferFailed: "The network refused the transfer. Nothing was lost — try again.",
 } as const;

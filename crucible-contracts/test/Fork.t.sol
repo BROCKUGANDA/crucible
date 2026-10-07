@@ -34,9 +34,10 @@ contract ForkTests is Test {
     /// ERC-8004 Reputation Registry, Ethereum mainnet.
     address constant REPUTATION_REGISTRY = 0x8004BAa17C55a88189AE136b182e5fdA19dE9b63;
 
-    /// Identity Registry. Not used by the bridge — reputation is keyed by agentId — but
-    /// recorded here because a judge will ask, and it is the registry `agentURI`
-    /// registration belongs to (see the README's Identity gap).
+    /// Identity Registry. The bridge does not write to this contract, but it resolves
+    /// through it: an ERC-8004 tokenId is minted here by the operator, and
+    /// `trials.linkIdentity` records which tokenId a Crucible agent's reputation belongs
+    /// to. Without that link the bridge has no correct subject and skips the write.
     address constant IDENTITY_REGISTRY = 0x8004A169FB4a3325136EB29fA0ceB6D2e539a432;
 
     /// @dev Pinned, and deliberately a recent mainnet block. Both registries have been
@@ -122,6 +123,17 @@ contract ForkTests is Test {
     // ── end to end: win path writes real reputation ───────────────────────
 
     function test_Fork_SettledWinPublishesToTheRealRegistry() public isMainnetFork {
+        IERC8004IdentityRegistry identity = IERC8004IdentityRegistry(IDENTITY_REGISTRY);
+
+        // The operator registers a real ERC-8004 identity and links it. Until that link
+        // exists the bridge has no correct subject to write about, and it skips — which is
+        // the behaviour, not a workaround: the registry keys feedback by the tokenId the
+        // Identity Registry minted, never by a Crucible agent count.
+        vm.prank(operator);
+        uint256 identityAgentId = identity.register("ipfs://fork-agent");
+        vm.prank(operator);
+        trials.linkIdentity(agentId, identityAgentId);
+
         bytes32 spec = keccak256("fork-spec");
         bytes32 tests = keccak256("fork-tests");
         uint256 reward = 1 ether;
@@ -152,10 +164,12 @@ contract ForkTests is Test {
         CrucibleTrials.Trial memory t = trials.getTrial(id);
         assertEq(uint8(t.verdict), uint8(CrucibleTrials.Verdict.Paid), "trial should have been paid");
 
-        // The point of the whole file: the real registry now knows about this agent.
+        // The point of the whole file: the real registry now knows about this agent — at
+        // the id *it* chose, not the one Crucible happened to hand out.
         IERC8004ReputationRegistry reg = IERC8004ReputationRegistry(REPUTATION_REGISTRY);
-        uint256 lastIndex = reg.getLastIndex(agentId, address(bridge));
+        uint256 lastIndex = reg.getLastIndex(identityAgentId, address(bridge));
         assertGt(lastIndex, 0, "bridge published no feedback to the real registry");
+        assertEq(reg.getLastIndex(agentId, address(bridge)), 0, "bridge wrote against the Crucible id");
     }
 
     // ── the resilience claim, proved rather than asserted ─────────────────
@@ -199,7 +213,7 @@ contract ForkTests is Test {
         assertEq(uint8(t.verdict), uint8(CrucibleTrials.Verdict.Paid));
     }
 
-        // ── ERC-8004 Identity registration ────────────────────────────────────
+    // ── ERC-8004 Identity registration ────────────────────────────────────
 
     function test_Fork_OperatorLinksARealIdentityRegistration() public isMainnetFork {
         IERC8004IdentityRegistry identity = IERC8004IdentityRegistry(IDENTITY_REGISTRY);

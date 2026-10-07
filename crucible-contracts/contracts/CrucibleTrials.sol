@@ -3,6 +3,13 @@ pragma solidity 0.8.26;
 
 import {ReputationBridge} from "./ReputationBridge.sol";
 
+/// @notice The one read CrucibleTrials needs from an ERC-8004 Identity Registry: who a
+/// tokenId belongs to. Declared locally, like the other external interfaces here, so the
+/// contracts build with no external dependency.
+interface IIdentityOwnership {
+    function ownerOf(uint256 agentId) external view returns (address);
+}
+
 /// @notice Reputation sink implemented by AlloyRegistry. Only CrucibleTrials may write.
 interface IAlloyRegistry {
     function recordWin(uint256 agentId, address operator, bool survivedBreak) external;
@@ -19,6 +26,7 @@ contract CrucibleTrials {
     // ───────────────────────── errors ─────────────────────────
     error ZeroTreasury();
     error ZeroIdentity();
+    error IdentityNotOwned();
     error RewardTooSmall();
     error BadWindow();
     error BadDeadline();
@@ -47,10 +55,13 @@ contract CrucibleTrials {
     error CommitMismatch();
     error AlreadyCommitted();
     error AlreadyRevealed();
-    error RevealClosed();
+    error CommitClosed();
     error NothingToWithdraw();
     error TransferFailed();
     error NotOwner();
+    error BadArgusSeatCount();
+    error DuplicateArgusSeat();
+    error ZeroArgusSeat();
 
     // ───────────────────────── types ──────────────────────────
     enum Status {
@@ -117,6 +128,24 @@ contract CrucibleTrials {
     uint256 public constant MIN_BREAK_WINDOW = 1 hours;
     uint256 public constant MAX_BREAK_WINDOW = 7 days;
     uint256 public constant DISPUTE_TIMEOUT = 3 days;
+
+    /// @notice How long after a dispute opens an Argus seat may still seal a commitment.
+    ///
+    /// @dev Commits used to be closed by the first *reveal*. That let one seat decide every
+    /// dispute by itself: seal a commitment, reveal it immediately, and the other two can
+    /// never seal one — quorum becomes unreachable by construction, and the timeout settles
+    /// in the agent's favour. A deadline closes commits on the clock instead of on somebody
+    /// else's move. The cost, and it is real: a seat that sleeps past this window forfeits
+    /// its vote even if nobody revealed, which it did not used to. Reveals stay open for the
+    /// rest of DISPUTE_TIMEOUT, so a seat that sealed on time is never rushed.
+    uint256 public constant COMMIT_WINDOW = 24 hours;
+
+    /// @notice Argus votes needed to resolve a dispute, out of exactly `ARGUS_THRESHOLD + 1`
+    /// seats — the seat count the constructor refuses to deploy any other way.
+    /// @dev A `constant`, so changing the quorum is a recompile and a fresh deployment, not
+    /// an owner call. `ARGUS_THRESHOLD + 1` is therefore the only seat set that is a majority
+    /// of itself; validation below is pinned to this value rather than to a literal 3 so the
+    /// two cannot drift apart inside one compilation.
     uint256 public constant ARGUS_THRESHOLD = 2; // 2-of-3 seats
 
     bytes32 public constant RUN_TYPEHASH =
@@ -139,7 +168,8 @@ contract CrucibleTrials {
     address public identityRegistry;
 
     /// @notice Crucible agentId -> the ERC-8004 identity agentId that the operator
-    /// registered for the same agent. Zero means "no identity linked".
+    /// registered for the same agent. Zero means "no identity linked", and is the value
+    /// `ReputationBridge` reads to decide whether it may write at all.
     mapping(uint256 => uint256) public identityOf;
 
     uint256 public trialCount;
@@ -193,19 +223,48 @@ contract CrucibleTrials {
 
     /// @param treasury_ fee + burned-slash recipient
     /// @param alloy_ reputation registry (setForge called right after deploy)
-    /// @param argus_ fixed 3 dispute seats in v1 (2-of-3 commit-reveal)
+    /// @param argus_ exactly `ARGUS_THRESHOLD + 1` distinct, non-zero dispute seats
+    /// (2-of-3 commit-reveal in v1)
+    ///
+    /// @dev The seat set is validated rather than trusted, because a jury that cannot reach
+    /// quorum is invisible until it fails. Reproduced against deployed bytecode: deployed
+    /// with one seat, that seat commits and reveals `breakWins = true`, `votesBreak == 1`
+    /// never reaches the hard-coded threshold of 2, the dispute is never resolved on votes,
+    /// and `finalize` at the timeout settles with `agentWins = true` — a jury that voted
+    /// 100% to slash, paid the agent. Ten seats was the mirror case: a 2-of-10 quorum is a
+    /// fifth of the jury, and the eight silent seats let the timeout override it.
+    /// Both are now undeployable.
     constructor(address treasury_, address alloy_, address[] memory argus_) {
         // A zero treasury would route every protocol fee and every burned slash to an
         // address nobody controls — irrecoverably, since there is no setter.
         if (treasury_ == address(0)) revert ZeroTreasury();
+        if (argus_.length != ARGUS_THRESHOLD + 1) revert BadArgusSeatCount();
         treasury = treasury_;
         alloy = IAlloyRegistry(alloy_);
-        for (uint256 i; i < argus_.length; ++i) {
-            isArgus[argus_[i]] = true;
-        }
+        _setArgusSeats(argus_);
         owner = msg.sender;
         DOMAIN = _computeDomain();
         _guard = 1;
+    }
+
+    /// Split out of the constructor for the same reason `_computeDomain` is: the seat loop
+    /// plus the immutable writes plus the domain hash overflow the 16-slot stack under solc's
+    /// legacy codegen, which is also the configuration `forge coverage` forces.
+    function _setArgusSeats(address[] memory argus_) private {
+        for (uint256 i; i < argus_.length; ++i) {
+            address seat = argus_[i];
+            // A zero seat is a seat nobody holds: commits against it can never be made, so
+            // it silently lowers the quorum the whole design depends on.
+            if (seat == address(0)) revert ZeroArgusSeat();
+            // Duplicates are not two votes, they are one key counted twice — and they also
+            // shrink the pool of independent voters below the threshold. Comparison is
+            // O(n²) over an array of exactly ARGUS_THRESHOLD + 1 elements; a mapping would
+            // cost more than the invariant is worth here.
+            for (uint256 j; j < i; ++j) {
+                if (argus_[j] == seat) revert DuplicateArgusSeat();
+            }
+            isArgus[seat] = true;
+        }
     }
 
     /// @notice Wire (or unwire) the ERC-8004 reputation bridge. Owner-only, callable
@@ -234,16 +293,41 @@ contract CrucibleTrials {
      * Crucible cannot mint the identity NFT itself, because ERC-8004's
      * `register(agentURI)` mints to `msg.sender`. The operator therefore registers the
      * agent's identity directly with the Identity Registry's `register(...)` and passes
-     * the returned tokenId here. This function's job is to *record* that link so an
-     * indexer can follow a Crucible agentId to a resolvable on-chain identity.
+     * the returned tokenId here. This function's job is to *record* that link, and the
+     * record is load-bearing in two places: an indexer follows a Crucible agentId to a
+     * resolvable on-chain identity, and `ReputationBridge` resolves it as the subject of
+     * every ERC-8004 write. An agent that has not linked simply earns no on-chain
+     * reputation signal — the bridge skips the write and emits `FeedbackSkipped` rather
+     * than grading whichever unrelated agent holds that tokenId.
      *
-     * Resolved-value is deliberately not checked: the operator pays for the link
-     * regardless, and if they lie the only record that changes is meaningless. The
-     * identity itself must be verified through the registry, which is public.
+     * When an Identity Registry is wired, the tokenId is checked against it: the caller
+     * must own the identity they are pointing at.
+     *
+     * This check exists because the record became load-bearing. `ReputationBridge` writes
+     * every ERC-8004 grade to whatever id this function records, so without it an operator
+     * could link a *victim's* identity, then take a slash and have the negative feedback
+     * land on the victim. That is not a self-inflicted misroute — it is a way to damage an
+     * unrelated agent's reputation with no more effort than one transaction, and the
+     * public `IdentityLinked` audit trail does not undo the harm, it only names the
+     * attacker afterwards.
+     *
+     * When no registry is wired (`identityRegistry == address(0)`) there is nothing to ask,
+     * and linking stays permitted: the wiring is per-chain plumbing the owner may
+     * deliberately unwire, and refusing to link at all would make an unwired deployment
+     * unable to publish identity for its whole uptime. The link is then unverifiable, which
+     * is a property of that deployment, not of this function.
      */
     function linkIdentity(uint256 agentId, uint256 identityAgentId) external {
         if (agents[agentId].operator != msg.sender) revert NotOperator();
         if (identityAgentId == 0) revert ZeroIdentity();
+        if (identityRegistry != address(0)) {
+            // Deliberately not wrapped: a registry that reverts must block the link rather
+            // than let an unverifiable one through, and unlike settlement this is not on a
+            // path where availability outranks correctness — nothing is lost by retrying.
+            if (IIdentityOwnership(identityRegistry).ownerOf(identityAgentId) != msg.sender) {
+                revert IdentityNotOwned();
+            }
+        }
         identityOf[agentId] = identityAgentId;
         emit IdentityLinked(agentId, identityAgentId);
     }
@@ -430,11 +514,15 @@ contract CrucibleTrials {
 
     // ───────────────────────── argus ──────────────────────────
     /// @param commit keccak256(abi.encodePacked(id, breakWins, salt))
+    ///
+    /// @dev Sealing is open for `COMMIT_WINDOW` from the dispute opening, and not gated on
+    /// the other seats' behaviour. See `COMMIT_WINDOW` for why the old gate — "no commits
+    /// once anyone has revealed" — let one seat disenfranchise the other two.
     function commitVote(uint256 id, bytes32 commit) external {
         if (!isArgus[msg.sender]) revert NotArgus();
         if (trials[id].status != Status.Challenged) revert NotChallenged();
         Dispute storage d = _disputes[id];
-        if (d.revealStarted) revert RevealClosed();
+        if (block.timestamp >= uint256(d.openedAt) + COMMIT_WINDOW) revert CommitClosed();
         if (d.commits[msg.sender] != bytes32(0)) revert AlreadyCommitted();
         d.commits[msg.sender] = commit;
         emit VoteCommitted(id, msg.sender);
@@ -449,6 +537,9 @@ contract CrucibleTrials {
         if (d.revealed[msg.sender]) revert AlreadyRevealed();
         if (keccak256(abi.encodePacked(id, breakWins, salt)) != d.commits[msg.sender]) revert CommitMismatch();
         d.revealed[msg.sender] = true;
+        // Informational only since the commit-window fix: readers use it to see that a
+        // dispute has entered the open phase. It must not gate commits again — see
+        // `COMMIT_WINDOW`.
         d.revealStarted = true;
         if (breakWins) ++d.votesBreak;
         else ++d.votesAgent;
