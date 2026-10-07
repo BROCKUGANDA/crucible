@@ -38,8 +38,10 @@ const trialsAddress = required("TRIALS_ADDRESS") as `0x${string}`;
 const alloyAddress = required("ALLOY_ADDRESS") as `0x${string}`;
 const sweepMs = Number(process.env.SWEEP_MS ?? 15_000);
 
+// `||` not `??`: compose always sets PRIVATE_KEY, but may set it to the empty
+// string when no KEEPER_PRIVATE_KEY is configured — empty must fall through too.
 const account = privateKeyToAccount(
-  (process.env.PRIVATE_KEY ?? DEMO_RELAYER_KEY) as `0x${string}`,
+  (process.env.PRIVATE_KEY || DEMO_RELAYER_KEY) as `0x${string}`,
 );
 
 const scribe = new Scribe({
@@ -74,7 +76,13 @@ async function sweep(): Promise<void> {
   if (sweeping) return;
   sweeping = true;
   try {
-    const result = await warden.sweep(scribe.state, Math.floor(Date.now() / 1000));
+    // The decision clock is the CHAIN's clock, not this host's: the demo chain is
+    // warpable (that is the whole point of a demo), and a keeper that compares
+    // window deadlines against wall-clock time would sit on its hands for the
+    // two hours a test warp put between them.
+    const block = await crucible.publicClient.getBlock();
+    const nowSeconds = Number(block.timestamp);
+    const result = await warden.sweep(scribe.state, nowSeconds);
     lastSweepAt = Date.now();
     lastSweepActed = result.acted.length;
     if (result.acted.length > 0) console.log(`[keeper] acted on ${result.acted.length} trial(s)`);
