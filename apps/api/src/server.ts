@@ -1,9 +1,10 @@
 import { serve } from "@hono/node-server";
 import { foundry } from "viem/chains";
-import { createPublicClient, http } from "viem";
+import { createPublicClient, http, keccak256, toHex } from "viem";
 import { Scribe, UNKNOWN_ALLOY, type AlloyState } from "@crucible/indexer";
 import { ALLOY_ABI } from "@crucible/smith";
 import { createApp } from "./app.js";
+import { dlq } from "./dlq.js";
 import { resolveSecurity } from "./security.js";
 
 /**
@@ -42,6 +43,10 @@ const scribe = new Scribe({
   chain: foundry,
   rpcUrl,
   fromBlock: process.env.FROM_BLOCK ? BigInt(process.env.FROM_BLOCK) : 0n,
+  // Every failure the indexer survives lands in the dead-letter queue — a sync tick
+  // that could not advance, a window it refused to cross — so /health tells an
+  // operator the indexer is struggling without anyone reading this process's stdout.
+  onError: (kind, detail) => dlq.push(`scribe.${kind}`, detail),
 });
 
 /**
@@ -68,8 +73,18 @@ const alloyById = new Map<number, AlloyState>();
  */
 async function readAlloy(agentId: number): Promise<AlloyState> {
   const args = [BigInt(agentId)] as const;
+  // "NotMinted" is the registry saying *this agent has no alloy yet* — an answer, not a
+  // failure, and the common state for a fresh agent. The selector check keeps that
+  // answer quiet while every other revert (RPC down, pruned node, bad address) lands in
+  // the dead-letter queue instead of vanishing into a null.
+  const notMintedSelector = keccak256(toHex("NotMinted()")).slice(0, 10);
   const attempt = <T>(read: () => Promise<T>): Promise<T | null> =>
-    read().catch(() => null);
+    read().catch((err) => {
+      const text = err instanceof Error ? `${err.message} ${(err.cause as Error | undefined)?.message ?? ""}` : String(err);
+      if (text.includes("NotMinted") || text.includes(notMintedSelector)) return null;
+      dlq.push("alloy.read", `agent ${agentId}: ${text.slice(0, 200)}`);
+      return null;
+    });
 
   const [record, isLocked, tokenUri] = await Promise.all([
     attempt(() =>

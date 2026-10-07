@@ -61,7 +61,7 @@ export function ScrubHud({
 
       <dl className="scrub-hud__stats mono">
         <div>
-          <dt>Trials</dt>
+          <dt>Posted</dt>
           <dd>{trials ?? "—"}</dd>
         </div>
         <div>

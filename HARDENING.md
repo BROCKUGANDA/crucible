@@ -82,6 +82,19 @@ later receipt cannot get lost.
 
 ## Runtime & production hardening
 
+- **Dead-letter queue.** Every background failure the API process survives — a sync
+  tick that could not advance (`scribe.sync`), a window it refused to cross
+  (`scribe.stall`), an alloy registry read that failed (`alloy.read`, with
+  NotMinted kept quiet as the legitimate no-alloy answer), an SSE frame a dead
+  client refused (`sse`) — lands in a bounded 100-entry dead-letter ring
+  (`apps/api/src/dlq.ts`). `/health` reports `dlq.size` plus the last entry, so a
+  growing count is an operator's alarm rather than a log line nobody reads.
+- **Distributed rate limiting is a known gap with a known path.** The limiter is
+  per-process memory: correct for the single-process demo, wrong once the API
+  scales horizontally. The documented upgrade is an Upstash Redis (or equivalent)
+  sliding-window store behind the same `rateLimit` interface — no credentials are
+  configured in this deployment, so the in-memory limiter stands until a vault
+  holds them. Wiring it is a store swap, not a rewrite.
 - **No secrets in the client bundle.** All chain addresses come from `NEXT_PUBLIC_*`,
   which is fine — they are on-chain data. No API keys are, by construction. `wagmi`
   holds no key, and `GROQ_API_KEY`/`ANTHROPIC_API_KEY` are read only in the Node
