@@ -1,0 +1,20 @@
+# VPS edge override: stack with the server and anvil reachable only on the docker
+# network. The host's existing Caddy (the shared reverse proxy on 80/443) is
+# attached to this project's network and proxies crucible.<host> to `web:3000`
+# and <host>/api/* to `api:8787` by service name, so nothing here publishes a
+# host port — the origin is unreachable except through the proxy, which is what
+# keeps a Cloudflare-or-Let's-Encrypt edge trustworthy.
+#
+#   docker compose -f compose.yaml -f compose.vps.yaml up -d --build
+#
+# `!reset []` replaces compose.yaml's ports lists instead of merging with them
+# (compose 2.24+; the tag is what makes a no-publish override possible at all).
+services:
+  anvil:
+    ports: !reset []
+
+  api:
+    ports: !reset []
+
+  web:
+    ports: !reset []
