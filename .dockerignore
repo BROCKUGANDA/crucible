@@ -1,0 +1,24 @@
+# What may never enter a build image: secrets, local state, and anything the
+# images rebuild from source anyway.
+.git
+.env
+.env.*
+apps/web/.env.local
+
+# dependency and build output — every image reinstalls/rebuilds these
+**/node_modules
+**/.next
+**/dist
+**/*.tsbuildinfo
+**/coverage
+
+# foundry build output and broadcast history — the seed container compiles fresh
+crucible-contracts/out
+crucible-contracts/cache
+crucible-contracts/broadcast
+
+# repo tooling and prose no image reads
+docs
+.github
+scripts
+*.md

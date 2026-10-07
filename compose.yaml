@@ -1,0 +1,87 @@
+name: crucible
+
+# The demo stack from scripts/demo.mjs, as containers: a fresh anvil, a one-shot
+# seed that deploys the demo loop and publishes the addresses that actually landed,
+# the API + indexer reading that chain, and the Next.js app. The anvil chain is
+# deliberately stateless — every `compose up` is a fresh, deterministic chain, and
+# the seed re-runs. Host ports are published so a browser on the host can reach
+# everything; the web bundle's NEXT_PUBLIC_* constants are baked at build time from
+# the same values in .env (see apps/web/Dockerfile).
+
+services:
+  anvil:
+    image: ghcr.io/foundry-rs/foundry:latest
+    entrypoint: ["anvil"]
+    command: ["--host", "0.0.0.0", "--port", "8545", "--silent"]
+    ports:
+      - "${ANVIL_HOST_PORT:-8555}:8545"
+    healthcheck:
+      test: ["CMD-SHELL", "cast block-number --rpc-url http://127.0.0.1:8545 >/dev/null"]
+      interval: 2s
+      timeout: 3s
+      retries: 60
+
+  seed:
+    build:
+      context: .
+      dockerfile: crucible-contracts/Dockerfile
+    environment:
+      SEED_RPC_URL: http://anvil:8545
+      EXPECTED_TRIALS_ADDRESS: ${TRIALS_ADDRESS:-}
+      EXPECTED_ALLOY_ADDRESS: ${ALLOY_ADDRESS:-}
+    volumes:
+      - deployed:/run/crucible
+    depends_on:
+      anvil:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    environment:
+      NODE_ENV: production
+      PORT: 8787
+      RPC_URL: http://anvil:8545
+      TRIALS_ADDRESS: ${TRIALS_ADDRESS:-}
+      ALLOY_ADDRESS: ${ALLOY_ADDRESS:-}
+      FROM_BLOCK: "0"
+    ports:
+      - "${API_HOST_PORT:-8787}:8787"
+    volumes:
+      - deployed:/run/crucible:ro
+    depends_on:
+      anvil:
+        condition: service_healthy
+      seed:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8787/health >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://127.0.0.1:8787}
+        NEXT_PUBLIC_CHAIN: ${NEXT_PUBLIC_CHAIN:-foundry}
+        NEXT_PUBLIC_TRIALS_ADDRESS: ${TRIALS_ADDRESS:-}
+        NEXT_PUBLIC_ALLOY_ADDRESS: ${ALLOY_ADDRESS:-}
+        NEXT_PUBLIC_ANVIL_RPC: http://127.0.0.1:${ANVIL_HOST_PORT:-8555}
+    ports:
+      - "${WEB_HOST_PORT:-3000}:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/ >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+volumes:
+  deployed:
