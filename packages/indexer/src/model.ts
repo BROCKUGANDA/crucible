@@ -144,6 +144,28 @@ function advance(t: TrialRow, to: TrialStatus): void {
 /** Deterministic event decoding from a log, without a viem client. */
 export function applyEvent(state: ReadModel, ev: EventLike): ReadModel {
   const next = cloneModel(state);
+  if (didMutate(next, ev)) next.version += 1;
+  return next;
+}
+
+/**
+ * `applyEvent` without the clone: it mutates `state` and returns the same object.
+ *
+ * The per-event clone made a backfill quadratic — `replay` copied the entire growing model
+ * once per log, so 4,000 trials cost 55 seconds against 231ms for 250, which is 16x the work
+ * for 238x the time. The clone buys nothing here either: the batch is applied synchronously
+ * with no `await` inside it, so the event loop cannot yield mid-batch and no request can ever
+ * observe a half-applied model. Atomicity came from single-threadedness, not from copying.
+ *
+ * Keep using the pure `applyEvent` when a caller needs its own snapshot of one step.
+ */
+export function applyEventInto(state: ReadModel, ev: EventLike): ReadModel {
+  if (didMutate(state, ev)) state.version += 1;
+  return state;
+}
+
+/** Applies `ev` to `state` in place. Returns true when the model actually changed. */
+function didMutate(next: ReadModel, ev: EventLike): boolean {
   const a = ev.args;
 
   switch (ev.eventName) {
@@ -153,7 +175,7 @@ export function applyEvent(state: ReadModel, ev: EventLike): ReadModel {
       // out ids from a counter, so a second TrialCreated for the same id is never a real
       // second event — it is the same log arriving twice, from an overlapping shard or a
       // reorg. Keeping the existing row is what makes ingest replay-safe.
-      if (next.trials.has(id)) break;
+      if (next.trials.has(id)) return false;
       next.trials.set(id, {
         id,
         sponsor: str(a.sponsor),
@@ -176,15 +198,14 @@ export function applyEvent(state: ReadModel, ev: EventLike): ReadModel {
         verdict: "none",
         disputeOpenedAt: null,
       });
-      next.pendingTimestamps.set(id, ev.blockNumber);
-      break;
+      return true;
     }
     case "AgentRegistered": {
       const id = num(a.agentId);
       // `registerAgent` reverts `AlreadyRegistered`, so a repeat of this log is a re-read,
       // not a re-registration. Recreating the row here would zero the agent's wins, scars
       // and settlement receipts — the projection quietly forgetting what the chain knows.
-      if (next.agents.has(id)) break;
+      if (next.agents.has(id)) return false;
       next.agents.set(id, {
         id,
         operator: str(a.operator),
@@ -199,7 +220,7 @@ export function applyEvent(state: ReadModel, ev: EventLike): ReadModel {
         identity: null,
         settlements: [],
       });
-      break;
+      return true;
     }
     case "IdentityLinked": {
       const t = next.agents.get(num(a.agentId));
@@ -215,16 +236,16 @@ export function applyEvent(state: ReadModel, ev: EventLike): ReadModel {
           blockNumber: Number(ev.blockNumber),
           emitter: ev.address,
         };
+        return true;
       }
-      break;
+      return false;
     }
     case "TrialClaimed": {
       const t = next.trials.get(num(a.id));
-      if (t) {
-        t.agentId = num(a.agentId);
-        advance(t, "assigned");
-      }
-      break;
+      if (!t) return false;
+      t.agentId = num(a.agentId);
+      advance(t, "assigned");
+      return true;
     }
     case "RunSubmitted": {
       const id = num(a.id);
@@ -244,23 +265,23 @@ export function applyEvent(state: ReadModel, ev: EventLike): ReadModel {
         txHash: ev.transactionHash,
         artifactCID: null,
       });
-      break;
+      return true;
     }
     case "BreakFiled": {
       const t = next.trials.get(num(a.id));
-      if (t) {
-        t.breakSkeptic = str(a.skeptic);
-        t.breakStakeWei = big(a.stake);
-        t.breakProofCID = str(a.proofCID);
-        advance(t, "challenged");
-        t.disputeOpenedAt = Number(ev.blockNumber);
-      }
-      break;
+      if (!t) return false;
+      t.breakSkeptic = str(a.skeptic);
+      t.breakStakeWei = big(a.stake);
+      t.breakProofCID = str(a.proofCID);
+      advance(t, "challenged");
+      t.disputeOpenedAt = Number(ev.blockNumber);
+      return true;
     }
     case "DisputeOpened": {
       const t = next.trials.get(num(a.id));
-      if (t) t.disputeOpenedAt = Number(ev.blockNumber);
-      break;
+      if (!t) return false;
+      t.disputeOpenedAt = Number(ev.blockNumber);
+      return true;
     }
     case "VerdictFinalized": {
       const t = next.trials.get(num(a.id));
@@ -270,7 +291,7 @@ export function applyEvent(state: ReadModel, ev: EventLike): ReadModel {
       // been applied — from an overlapping shard, or from a reorg that re-mined the block
       // under a new tx hash. Skipping keeps a replay from minting reputation the chain never
       // awarded.
-      if (!t || t.status === "settled") break;
+      if (!t || t.status === "settled") return false;
       {
         t.status = "settled";
         t.verdict = verdictName(num(a.verdict));
@@ -302,20 +323,28 @@ export function applyEvent(state: ReadModel, ev: EventLike): ReadModel {
           ].slice(0, MAX_SETTLEMENTS);
         }
       }
-      break;
+      return true;
     }
     default:
-      break;
+      return false;
   }
-  return next;
+  return true;
 }
 
 export interface ReadModel {
   trials: Map<number, TrialRow>;
   agents: Map<number, AgentRow>;
   runs: Map<number, RunRow>;
-  /** trialId -> block, so a hydrate pass can attach real timestamps */
-  pendingTimestamps: Map<number, bigint>;
+  /**
+   * Bumped once per log that actually changed something. A consumer that rebuilds a
+   * projection of this model — the API's per-tick snapshot — can skip the rebuild when the
+   * version is unchanged, which is the difference between rebuilding a 5 MB payload once a
+   * second forever and rebuilding it when the chain moved.
+   *
+   * Duplicate logs do not bump it. That is the whole point: the same guard that stops a
+   * reorg from double-counting a win also stops a reorg from invalidating every cache.
+   */
+  version: number;
 }
 
 export function emptyModel(): ReadModel {
@@ -323,12 +352,20 @@ export function emptyModel(): ReadModel {
     trials: new Map(),
     agents: new Map(),
     runs: new Map(),
-    pendingTimestamps: new Map(),
+    version: 0,
   };
 }
 
+/**
+ * Fold a batch of logs into a model. `into` is **mutated** and returned — see
+ * `applyEventInto` for why this is safe and what the previous per-event clone cost. A caller
+ * that needs to keep the original passes `cloneModel(original)` as `into`.
+ */
 export function replay(events: EventLike[], into: ReadModel = emptyModel()): ReadModel {
-  return events.reduce(applyEvent, into);
+  for (const ev of events) {
+    if (didMutate(into, ev)) into.version += 1;
+  }
+  return into;
 }
 
 /**
@@ -336,13 +373,22 @@ export function replay(events: EventLike[], into: ReadModel = emptyModel()): Rea
  * frontend's countdowns depend on `deadline`/`runAt` being real seconds — using a
  * block number there would produce nonsense countdowns.
  */
-export function hydrateTimestamps(model: ReadModel, blockTime: Map<bigint, number>): ReadModel {
-  for (const t of model.trials.values()) {
+export function hydrateTimestamps(
+  model: ReadModel,
+  blockTime: Map<bigint, number>,
+  /** Restrict the pass to these trials. Without it a per-tick hydrate is O(all trials). */
+  onlyTrialIds?: Iterable<number>,
+): ReadModel {
+  const targets = onlyTrialIds
+    ? [...onlyTrialIds].map((id) => model.trials.get(id)).filter((t): t is TrialRow => t !== undefined)
+    : model.trials.values();
+  for (const t of targets) {
     t.createdAt = blockTime.get(BigInt(t.createdAt)) ?? t.createdAt;
     t.runAt = t.runAt === null ? null : (blockTime.get(BigInt(t.runAt)) ?? t.runAt);
     t.disputeOpenedAt =
       t.disputeOpenedAt === null ? null : (blockTime.get(BigInt(t.disputeOpenedAt)) ?? t.disputeOpenedAt);
   }
+  model.version += 1;
   return model;
 }
 
@@ -360,6 +406,10 @@ export function attachCids(
     if (!t) continue;
     if (d.specCID) t.specCID = d.specCID;
     if (d.testsCID) t.testsCID = d.testsCID;
+    // Off-chain attachments change what a reader sees, so they move the version like any
+    // other write — otherwise a cached snapshot would keep serving "awaiting disclosure"
+    // after the disclosure had arrived.
+    model.version += 1;
   }
   return model;
 }
@@ -370,7 +420,9 @@ export function attachSignatures(
 ): ReadModel {
   for (const s of sigs) {
     const r = model.runs.get(s.trialId);
-    if (r) r.signature = s.signature;
+    if (!r) continue;
+    r.signature = s.signature;
+    model.version += 1;
   }
   return model;
 }
@@ -459,7 +511,7 @@ function cloneModel(m: ReadModel): ReadModel {
       ]),
     ),
     runs: new Map([...m.runs].map(([k, v]) => [k, { ...v }])),
-    pendingTimestamps: new Map(m.pendingTimestamps),
+    version: m.version,
   };
 }
 

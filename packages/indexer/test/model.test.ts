@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   applyEvent,
+  applyEventInto,
   attachCids,
   attachSignatures,
   breakWindowEndsAt,
@@ -633,5 +634,94 @@ describe("ingest idempotency", () => {
     expect(model.agents.get(1)?.wins).toBe(2);
     expect(model.agents.get(1)?.settlements).toHaveLength(2);
     expect(model.agents.get(1)!.settlements[0]!.trialId).toBe(2);
+  });
+});
+
+/**
+ * Two properties the projection owes its consumers, both cheap to lose.
+ *
+ * `version` is how the API knows whether to rebuild a snapshot. If a duplicate log bumped
+ * it, a reorg would invalidate every cache on the box while changing nothing; if a real
+ * write failed to bump it, the UI would freeze on stale data forever.
+ */
+describe("model version", () => {
+  it("advances once per log that changed something", () => {
+    const m = replay(fullStory());
+    expect(m.version).toBe(6);
+  });
+
+  it("does not advance for a duplicate log", () => {
+    const m = replay(fullStory());
+    const settled = m.version;
+    // the exact re-play that used to double-count a win must also not churn the cache
+    applyEventInto(m, fullStory().at(-1)!);
+    expect(m.version).toBe(settled);
+    expect(m.agents.get(1)?.wins).toBe(1);
+  });
+
+  it("advances when off-chain disclosure arrives", () => {
+    const m = replay(fullStory());
+    const before = m.version;
+    attachCids(m, [{ trialId: 1, specCID: "bafyrei.spec", testsCID: "bafyrei.tests" }]);
+    expect(m.version).toBeGreaterThan(before);
+    expect(m.trials.get(1)?.specCID).toBe("bafyrei.spec");
+  });
+});
+
+/**
+ * The scaling gate.
+ *
+ * `applyEvent` used to clone the whole model per log, so a backfill was quadratic: 250
+ * trials replayed in 231ms and 4,000 in 55 seconds, measured on this machine. That is not
+ * a slow start, it is an indexer that cannot tail a chain that anyone is actually using.
+ *
+ * Asserted as an absolute budget rather than a ratio because a ratio under CI noise is a
+ * coin flip; this one has ~50x headroom on the fixed code and fails by 27x on the old.
+ */
+describe("backfill cost", () => {
+  function storyEvents(count: number): EventLike[] {
+    const out: EventLike[] = [];
+    for (let id = 1; id <= count; id++) {
+      const b = BigInt(id * 10);
+      out.push(
+        ev("TrialCreated", {
+          id: BigInt(id), sponsor: SPONSOR, specCID: "0x" + "aa".repeat(32), testsCID: "0x" + "bb".repeat(32),
+          reward: 10n ** 18n, bond: 2n * 10n ** 17n, deadline: 1_700_000_000 + id, breakWindow: 43_200n,
+        }, b),
+        ev("AgentRegistered", {
+          agentId: BigInt(id), operator: OPERATOR, runner: OPERATOR,
+          metadataURI: "ipfs://m", stake: 10n ** 18n,
+        }, b + 1n),
+        ev("TrialClaimed", { id: BigInt(id), agentId: BigInt(id), bond: 2n * 10n ** 17n }, b + 2n),
+        ev("RunSubmitted", { id: BigInt(id), agentId: BigInt(id), runHash: "0x" + "cc".repeat(32) }, b + 3n),
+        ev("VerdictFinalized", { id: BigInt(id), verdict: 1, agentPayout: 95n * 10n ** 16n }, b + 4n),
+      );
+    }
+    return out;
+  }
+
+  it("replays 4,000 trials inside a budget a quadratic fold cannot meet", () => {
+    const events = storyEvents(4000);
+    const started = performance.now();
+    const model = replay(events, emptyModel());
+    const elapsed = performance.now() - started;
+
+    expect(model.trials.size).toBe(4000);
+    expect(model.agents.get(4000)?.wins).toBe(1);
+    // 24,000 logs in under two seconds; the per-event clone took 55s for this volume.
+    expect(elapsed).toBeLessThan(2000);
+  });
+
+  it("grows roughly linearly, not with the square", () => {
+    const time = (n: number) => {
+      const started = performance.now();
+      replay(storyEvents(n), emptyModel());
+      return performance.now() - started;
+    };
+    time(500); // warm the JIT so the small sample is not dominated by first-run compile
+    const small = time(1000);
+    const large = time(4000);
+    // 4x the logs. Quadratic would be ~16x the time; allow generous slack for noise.
+    expect(large).toBeLessThan(small * 8);
   });
 });

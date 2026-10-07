@@ -155,6 +155,20 @@ export class Scribe {
     if (events.length > 0) {
       await this.recordBlockTimes(events);
       this.model = replay(events, this.model);
+      // Applied per batch, not once at startup. `createdAt` and `runAt` are written as block
+      // numbers and only become seconds here, so a trial that arrived after boot would keep
+      // a block number as its timestamp — and `breakWindowEndsAt` is `runAt + breakWindow`,
+      // which turns into a countdown from 1970. The old code called `hydrate()` once, in
+      // server startup, and the comment in `recordBlockTimes` promised "the next hydrate
+      // pass" that nothing ever ran.
+      const touched = new Set<number>();
+      for (const e of events) {
+        const id = Number(e.args.id ?? NaN);
+        if (Number.isInteger(id)) touched.add(id);
+      }
+      hydrateTimestamps(this.model, this.blockTimes, touched);
+      // Bounded to one batch: every entry here has now been applied to a row.
+      this.blockTimes.clear();
       this.cursor = head + 1n;
       this.syncError = null;
       return this.model;
@@ -277,8 +291,9 @@ export class Scribe {
             ).then((ts) => this.blockTimes.set(b, Number(ts))),
           );
         } catch {
-          // A missing timestamp leaves the row on its block number; the next
-          // hydrate pass fills it in.
+          // A missing timestamp leaves that row on its block number for this tick. The row
+          // is not marked hydrated, so the next sync re-reads the block and applies it —
+          // `blockTimes` is only cleared for entries that were actually consumed below.
         }
       }),
     );
@@ -286,7 +301,8 @@ export class Scribe {
 
   /** Replace timestamps with real seconds after a sync. */
   hydrate(): ReadModel {
-    this.model = hydrateTimestamps(this.model, this.blockTimes);
+    hydrateTimestamps(this.model, this.blockTimes);
+    this.blockTimes.clear();
     return this.model;
   }
 
