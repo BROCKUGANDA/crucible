@@ -99,6 +99,14 @@ jobs:
 
       - run: npm ci
 
+      # `api` and `web` import the workspace packages through their package `exports`,
+      # which point at `dist/` — and `dist/` is gitignored. Without this step a clean
+      # checkout fails typecheck with "Cannot find module '@crucible/smith'", so the job
+      # could only ever pass on a machine that had already built. `prepare` does this on
+      # `npm install` locally; CI is explicit about it instead.
+      - name: build workspace libraries
+        run: npm run build:libs
+
       - name: typecheck
         run: npm run typecheck --workspace @crucible/${{ matrix.package }}
 
@@ -115,6 +123,7 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
+      - run: npm run build:libs
       - run: npm run build --workspace @crucible/web
 
   audit:
