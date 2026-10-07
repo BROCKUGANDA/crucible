@@ -9,6 +9,7 @@ import {
   type TrialStatus,
 } from "@crucible/indexer";
 import { rateLimit } from "./rate-limit.js";
+import { dlq } from "./dlq.js";
 import {
   bodyLimit,
   corsPolicy,
@@ -157,7 +158,10 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
     try {
       await stream.writeSSE(frame);
       return true;
-    } catch {
+    } catch (err) {
+      // A client that vanishes mid-stream is routine; a pattern of them is not. The
+      // DLQ turns "the stream felt flaky" into a count an operator can alert on.
+      dlq.push("sse", err instanceof Error ? err.message : "frame delivery failed");
       return false;
     }
   }
@@ -217,6 +221,9 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
         indexedTo: index ? Number(index.indexedTo) : null,
         head: index?.head === null || index?.head === undefined ? null : Number(index.head),
         syncError: index?.syncError ?? null,
+        // Failures the process survived — failed syncs, failed registry reads, SSE
+        // frames a dead client refused. A size that only grows is an operator's alarm.
+        dlq: dlq.summary(),
       },
       stalled ? 503 : 200,
     );

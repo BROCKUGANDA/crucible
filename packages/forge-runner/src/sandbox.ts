@@ -261,6 +261,14 @@ export class Sandbox {
         "--network=none",
         `--memory=${this.spec.memory}`,
         `--cpus=${this.spec.cpus}`,
+        // Fork-bomb, host-write, and privilege-escalation caps. The work directory is
+        // the only writable path; everything else in the image is read-only, and a
+        // runaway process count dies at 128 instead of taking the host with it.
+        "--pids-limit=128",
+        "--read-only",
+        "--tmpfs=/tmp:size=64m",
+        "--user=1000:1000",
+        "--security-opt=no-new-privileges",
         `-v`,
         `${workDir}:/work`,
         "-w",

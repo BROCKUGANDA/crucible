@@ -26,10 +26,23 @@ import type {
  * call, not established at registration — a policy that can drift at runtime is not a
  * sandbox.
  */
+/** One guarded invocation, as the trace records it. Never carries raw input: the
+ * arguments of a money-touching call are exactly what does not belong in a log. */
+export interface ToolTraceEntry {
+  at: number;
+  tool: string;
+  ok: boolean;
+  reason?: string;
+  ms: number;
+}
+
 export class Toolbox {
   private readonly policies = new Map<string, ToolPolicy>();
   private readonly granted = new Map<string, Set<string>>();
   private readonly calls = new Map<string, number>();
+  /** Per-session invocation traces: bounded, recorded even when the caller never wires onLog. */
+  private readonly traces = new Map<string, ToolTraceEntry[]>();
+  private static readonly TRACE_CAP = 50;
 
   constructor(private readonly tools: {
     invoke(name: string, args: Record<string, unknown>): Promise<unknown>;
@@ -66,6 +79,11 @@ export class Toolbox {
 
   /**
    * Invoke a tool through the full guard chain. This is the only path to a capability.
+   *
+   * The invocation is traced unconditionally — tool, outcome, reason, duration, never
+   * the raw input — so an operator can read what an agent actually did even when no
+   * audit sink was wired. Denied calls are traced hardest of all: an agent probing the
+   * guard is the behaviour worth seeing.
    */
   async call(args: {
     principal: Principal;
@@ -83,6 +101,57 @@ export class Toolbox {
      * id, which the caller's queue has never seen — so an action a human just approved
      * would be denied by a request nobody was ever shown.
      */
+    approvalAlreadySatisfied?: boolean;
+    onLog?: (e: LogInput) => void;
+  }): Promise<{ ok: true; output: unknown } | { ok: false; reason: string }> {
+    const started = Date.now();
+    const result = await this.guardedCall(args);
+    const trace = this.traces.get(args.sessionId) ?? [];
+    trace.push({
+      at: started,
+      tool: args.tool,
+      ok: result.ok,
+      ...(result.ok ? {} : { reason: result.reason }),
+      ms: Date.now() - started,
+    });
+    if (trace.length > Toolbox.TRACE_CAP) trace.shift();
+    this.traces.set(args.sessionId, trace);
+    return result;
+  }
+
+  /** What this principal may call, with each tool's policy — the agent's tool list. */
+  toolsFor(principalId: string): Array<{
+    name: string;
+    requiredScopes: readonly Permission[];
+    maxCallsPerSession?: number;
+    riskWeight: number;
+    alwaysNeedsApproval: boolean;
+  }> {
+    return [...(this.granted.get(principalId) ?? [])]
+      .map((name) => this.policies.get(name))
+      .filter((p): p is ToolPolicy => p !== undefined)
+      .map((p) => ({
+        name: p.name,
+        requiredScopes: p.requiredScopes,
+        maxCallsPerSession: p.maxCallsPerSession,
+        riskWeight: p.riskWeight,
+        alwaysNeedsApproval: p.alwaysNeedsApproval === true,
+      }));
+  }
+
+  /** The session's invocation trace, oldest first. */
+  traceFor(sessionId: string): readonly ToolTraceEntry[] {
+    return [...(this.traces.get(sessionId) ?? [])];
+  }
+
+  private async guardedCall(args: {
+    principal: Principal;
+    credentialScopes: readonly Permission[];
+    tool: string;
+    input: Record<string, unknown>;
+    sessionId: string;
+    risk?: RiskAssessment;
+    approval?: (r: ApprovalRequest) => Promise<boolean>;
     approvalAlreadySatisfied?: boolean;
     onLog?: (e: LogInput) => void;
   }): Promise<{ ok: true; output: unknown } | { ok: false; reason: string }> {
@@ -162,6 +231,7 @@ export class Toolbox {
     for (const key of [...this.calls.keys()]) {
       if (key.startsWith(`${sessionId}:`)) this.calls.delete(key);
     }
+    this.traces.delete(sessionId);
   }
 }
 

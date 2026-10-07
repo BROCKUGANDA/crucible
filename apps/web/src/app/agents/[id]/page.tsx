@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { use, useEffect, useRef } from "react";
-import { Chrome, Quenching } from "@/components/Chrome";
+import { Chrome, Quenching, SignalLost } from "@/components/Chrome";
 import { useSnapshot } from "@/lib/useSnapshot";
 import { formatEth, shortHash, tierMeta } from "@/lib/forge";
 
@@ -14,7 +14,7 @@ export default function AgentProfilePage({ params }: { params: Promise<{ id: str
   // generated PageProps — so the unwrap has to be here, not in a cast.
   const { id: rawId } = use(params);
   const id = Number(rawId);
-  const { data, loading } = useSnapshot();
+  const { data, error, loading } = useSnapshot();
   const agent = data?.agents.find((a) => a.id === id);
   const trials = data?.trials.filter((t) => t.agentId === id) ?? [];
 
@@ -25,6 +25,16 @@ export default function AgentProfilePage({ params }: { params: Promise<{ id: str
     return (
       <Chrome>
         <Quenching label={`drawing agent ${rawId} from the fire…`} />
+      </Chrome>
+    );
+  }
+
+  // A dead index is not a missing agent — the roster cannot know whether id exists
+  // until the stream comes back, so say that instead of sentencing the agent to void.
+  if (error && !data) {
+    return (
+      <Chrome>
+        <SignalLost message={error} />
       </Chrome>
     );
   }

@@ -25,6 +25,8 @@ import {
   leastPrivilegeScopes,
   maskSensitive,
   replayTrace,
+  sealMemory,
+  verifyMemorySeal,
   sanitizeInput,
   scanRetrieved,
   scanUntrusted,
@@ -1248,3 +1250,87 @@ describe("AgentOrchestrator", () => {
   });
 });
 
+
+// ── tool list & invocation trace ─────────────────────────────────────────
+describe("toolbox tool list and trace", () => {
+  it("toolsFor returns only granted tools with their policies", () => {
+    const toolbox = new Toolbox({ invoke: async () => ({}) });
+    toolbox.register({ name: "read", requiredScopes: ["trial:read"], riskWeight: 0 });
+    toolbox.register({ name: "run", requiredScopes: ["trial:run"], riskWeight: 3, maxCallsPerSession: 2 });
+    toolbox.grant("a", "read");
+    toolbox.grant("a", "run");
+    const list = toolbox.toolsFor("a");
+    expect(list.map((t) => t.name).sort()).toEqual(["read", "run"]);
+    expect(list.find((t) => t.name === "run")?.maxCallsPerSession).toBe(2);
+    expect(list.find((t) => t.name === "read")?.riskWeight).toBe(0);
+    // an ungranted principal sees nothing — the tool list is per-principal truth
+    expect(toolbox.toolsFor("nobody")).toEqual([]);
+  });
+
+  it("traces every invocation, including denials, without the raw input", async () => {
+    const toolbox = new Toolbox({ invoke: async (name) => ({ called: name }) });
+    toolbox.register({ name: "ok", requiredScopes: ["trial:read"], riskWeight: 0 });
+    toolbox.grant("a", "ok");
+    await toolbox.call({ principal: { id: "a", kind: "agent", role: "operator" }, credentialScopes: ["trial:read"], tool: "ok", input: { secret: "never-log-me" }, sessionId: "s1" });
+    // denied: not granted
+    toolbox.register({ name: "no", requiredScopes: ["trial:read"], riskWeight: 0 });
+    await toolbox.call({ principal: { id: "a", kind: "agent", role: "operator" }, credentialScopes: [], tool: "no", input: {}, sessionId: "s1" });
+    // denied: unknown tool
+    await toolbox.call({ principal: { id: "a", kind: "agent", role: "operator" }, credentialScopes: [], tool: "ghost", input: {}, sessionId: "s1" });
+
+    const trace = toolbox.traceFor("s1");
+    expect(trace.map((t) => t.tool)).toEqual(["ok", "no", "ghost"]);
+    expect(trace[0].ok).toBe(true);
+    expect(trace[1].ok).toBe(false);
+    expect(trace[1].reason).toContain("has not been granted");
+    expect(trace[2].reason).toContain("not registered");
+    // the raw input never enters the trace — the record is operational, not a data copy
+    expect(JSON.stringify(trace)).not.toContain("never-log-me");
+    // another session's trace is its own
+    expect(toolbox.traceFor("s2")).toEqual([]);
+    toolbox.resetSession("s1");
+    expect(toolbox.traceFor("s1")).toEqual([]);
+  });
+});
+
+// ── memory seal ──────────────────────────────────────────────────────────
+describe("memory seal", () => {
+  const record = (over: Partial<MemoryRecordRecordShape> = {}) => ({
+    id: "mem_1",
+    key: "spec",
+    value: { a: 1, b: [2, 3] },
+    provenance: "chain" as const,
+    at: 1000,
+    immutable: true,
+    ...over,
+  });
+  type MemoryRecordRecordShape = {
+    id: string; key: string; value: unknown;
+    provenance: "user" | "tool" | "inference" | "chain";
+    source?: string; at: number; immutable: boolean;
+  };
+
+  it("seals identically across serializations and flags any tamper", () => {
+    const records = [record(), record({ id: "mem_2", key: "run", value: "ok", provenance: "inference", immutable: false, at: 2000 })];
+    const seal = sealMemory(records);
+    // same state, new objects: identical seal
+    expect(verifyMemorySeal(structuredClone(records), seal)).toBe(true);
+    // a changed value
+    const forged = structuredClone(records);
+    (forged[1].value as string) = "forged";
+    expect(verifyMemorySeal(forged, seal)).toBe(false);
+    // a changed provenance — spoofing chain provenance is the attack that matters
+    const spoofed = structuredClone(records);
+    spoofed[1].provenance = "chain";
+    expect(verifyMemorySeal(spoofed, seal)).toBe(false);
+    // a shifted timestamp — insertion order is part of the past, and editing it is an edit
+    const shifted = structuredClone(records);
+    shifted[1].at = 2500;
+    expect(verifyMemorySeal(shifted, seal)).toBe(false);
+    // array order itself is normalized: reordering the serialization is not an edit,
+    // because the seal canonicalizes on (at, id)
+    expect(verifyMemorySeal([...records].reverse(), seal)).toBe(true);
+    // a deleted record
+    expect(verifyMemorySeal(records.slice(1), seal)).toBe(false);
+  });
+});

@@ -81,6 +81,40 @@ Do not report to this project expecting payment.
 - Rate-limit evasion at a scale that requires a botnet, where the rate limiter already
   documents that it is process-local and not a global ceiling behind a load balancer.
 
+## Cryptography posture
+
+**In transit.** Every byte a visitor sends or reads moves over TLS 1.3: through
+Cloudflare's edge where a hostname is proxied, or terminated directly by Caddy
+(origin CA or Let's Encrypt) where it is not. Caddy 2.11 is built on a Go
+toolchain whose TLS 1.3 server stack enables the **X25519MLKEM768 hybrid
+(ML-KEM-768 + X25519)** by default, so connections to the origin negotiate a
+post-quantum key exchange whenever the client offers one — no configuration, and
+worth re-verifying against your own build (`openssl s_client -groups` listing
+`MLKEM768`). The API itself serves plaintext and relies on that termination; it
+is reachable only on the docker network, never on a public interface.
+
+**At rest.** Be honest about what exists. This deployment is deliberately
+stateless: the read model lives in process memory, trials and reputation live on
+the chain (protected by the chain's own consensus, not by us), and the only
+durable secrets are the environment file (`0600`, outside every image) and Caddy's
+certificate volume. There is nothing at rest today that a disk image would
+expose. The moment the production shape lands — a Postgres read model, KMS-held
+grader keys, object storage for artifacts — **encryption at rest stops being a
+paragraph and becomes work**: full-disk encryption plus field-level encryption for
+anything a regulator would name, keys in a KMS with rotation, and the DLQ/log
+surfaces audited for accidentally-persisted secrets.
+
+**Post-quantum.** Split by what is actually attackable. *Key exchange* is the
+solvable half today: the hybrid ML-KEM-768 above means a store-now-decrypt-later
+adversary against session traffic already faces a PQC term. *Signatures* are not:
+every transaction on the demo chain — and Ethereum itself — signs with ECDSA
+secp256k1, which a cryptographically relevant quantum computer breaks. That
+migration belongs to the chain and the wallets, not this repository; the honest
+preparations here are (1) never asserting a signature scheme in application data
+that a post-quantum chain could not swap out, and (2) the grader/settlement design
+(see HARDENING.md) keeping signing behind an epoch boundary, so a future ML-DSA
+grader key is a rotation, not a redesign.
+
 ## Deployment notes
 
 - **The API holds no keys and cannot submit a transaction.** Every route is a read.

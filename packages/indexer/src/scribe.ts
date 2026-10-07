@@ -40,6 +40,12 @@ export interface IndexerConfig {
   /** block interval to poll */
   pollMs?: number;
   /**
+   * Called for every failure the indexer survives — a dropped sync tick, a window it
+   * refused to advance across. The API feeds this into its dead-letter queue, so an
+   * operator sees a failing indexer without reading this process's stdout.
+   */
+  onError?: (kind: string, detail: string) => void;
+  /**
    * Blocks per backfill shard. 0 disables sharding (one big `getLogs`).
    *
    * "Sharding" here means partitioning the catch-up window by block range, not a second
@@ -186,6 +192,7 @@ export class Scribe {
     } else {
       this.syncError = `getLogs returned nothing for blocks ${this.cursor}–${head} but a logsBloom there may contain a Crucible event`;
       console.error(`[scribe] refusing to advance cursor: ${this.syncError}`);
+      this.cfg.onError?.("stall", this.syncError);
     }
     return this.model;
   }
@@ -227,7 +234,9 @@ export class Scribe {
       } catch (err) {
         // A dropped RPC must not kill the indexer; the next tick retries from the
         // same cursor, and the gap is re-scanned rather than skipped.
-        console.error(`[scribe] sync failed: ${(err as Error).message}`);
+        const detail = (err as Error).message;
+        console.error(`[scribe] sync failed: ${detail}`);
+        this.cfg.onError?.("sync", detail);
       }
       await new Promise((r) => setTimeout(r, interval));
     }
