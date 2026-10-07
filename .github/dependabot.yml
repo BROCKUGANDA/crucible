@@ -1,0 +1,37 @@
+# Dependency update automation.
+#
+# Scoped narrowly on purpose. The contracts workspace has no npm dependencies worth
+# grouping, and `crucible-contracts/lib/` is Foundry-managed (`forge install`), not npm.
+
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: "Africa/Nairobi"
+    open-pull-requests-limit: 10
+    # Major bumps on wallet/RPC stacks routinely break the build for non-obvious
+    # reasons; keep them separate from the routine patch noise so a reviewer can
+    # tell a chore from a decision.
+    groups:
+      patch-and-minor:
+        update-types: ["patch", "minor"]
+    ignore:
+      # RainbowKit 2.x pins wagmi ^2.9; the wagmi 3 major would drop the connect
+      # modal. Recorded in HARDENING.md as a deliberate, documented constraint.
+      - dependency-name: "wagmi"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@rainbow-me/rainbowkit"
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: "Africa/Nairobi"
+    open-pull-requests-limit: 5

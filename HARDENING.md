@@ -159,17 +159,31 @@ Not fixed here, listed so nobody has to rediscover them.
   **Fixed** — `Open` past the deadline is reclaimable and returns only the reward. The test
   that had been asserting the lock as expected behaviour is replaced with the rejections that
   should hold.
-- **HIGH, contracts** — `ReputationBridge` writes ERC-8004 feedback keyed by the *Crucible*
-  agentId instead of `identityOf[agentId]`, so a slash lands on an unrelated wallet's
-  identity and the offender's own identity hears nothing. The existing test seeds the mock
-  with the same conflation, which is why it passes.
+- ~~**HIGH, contracts** — `ReputationBridge` writes ERC-8004 feedback keyed by the
+  Crucible agentId.~~ **Fixed** — it resolves `identityOf[agentId]` and publishes to that,
+  and skips the write with a `FeedbackSkipped` event when an agent has no linked identity
+  rather than grading whoever happens to hold that tokenId. The fixture was the bug's alibi:
+  the test seeded the mock so Crucible ids and ERC-8004 ids were the same numbers. Splitting
+  the two spaces made ten previously-green tests fail at once.
+- **HIGH, contracts (new)** — `linkIdentity` recorded any tokenId the caller named. Harmless
+  while the record was only an indexer hint; once the bridge wrote reputation *through* it,
+  an operator could link a victim's identity, take a slash, and have the negative feedback
+  land on the victim. **Fixed** — when an Identity Registry is wired, `ownerOf(tokenId)` must
+  equal the caller. Unwired deployments keep the old permissive behaviour, documented as a
+  property of that configuration rather than an oversight.
 - ~~**HIGH, contracts** — a sponsor can `fileBreak` on its own trial.~~ **Fixed** — sponsor
   and assigned operator are both rejected with `SelfBreak`; an unrelated skeptic still breaks.
-- **HIGH, contracts** — the Argus seat set is unvalidated. With one seat, that seat voting
-  to slash still settles `Paid` on timeout: 100% of the jury said break and the protocol
-  paid. `ARGUS_THRESHOLD` is a fixed 2, so it is unreachable.
-- **HIGH, indexer** — `applyEvent` deep-clones the entire model per log: 1,000 trials
-  replays in 10s, 4,000 in 73s. Quadratic, and it cannot tail a busy chain.
+- ~~**HIGH, contracts** — the Argus seat set is unvalidated.~~ **Fixed** — the constructor
+  requires exactly `ARGUS_THRESHOLD + 1` distinct non-zero seats, so a jury that can never
+  reach quorum cannot be deployed. Related: the first reveal used to close commits for the
+  other two seats, letting one voter disenfranchise the rest and hand the dispute to the
+  timeout. Commits now close on a 24-hour deadline instead — the cost is that a seat which
+  misses the window forfeits its vote, but no other seat can cause that for it.
+- ~~**HIGH, indexer** — `applyEvent` deep-clones the entire model per log.~~ **Fixed** —
+  measured 250 trials at 231ms and 4,000 at 55s, which is 16x the work for 238x the time.
+  `replay` now folds into the target once: 4,000 trials in 13ms, and a timer armed for 50ms
+  is blocked 3ms instead of the whole replay. Two scaling tests pin it and fail by 20x
+  against the old code.
 - **HIGH, indexer** — no persistence. A restart re-scans from `FROM_BLOCK`, and there is no
   recoverable cursor. Documented as the intended shape (Ponder is the production index),
   but it is a real limit, not a detail.
@@ -179,3 +193,58 @@ Not fixed here, listed so nobody has to rediscover them.
 - **Environment** — `npm test` fails on Windows unless Foundry is on the *system* PATH:
   npm spawns `cmd.exe`, which does not inherit a Git Bash `export`. The contracts suite
   passes when it is.
+
+## The release pass — threading, I/O and GC
+
+The owner asked specifically about I/O threading, worker threads, and garbage collection.
+Measured answers, including the thing that was deliberately *not* built.
+
+- **I/O is already off the critical path.** Every RPC call goes through viem's async
+  transport, bounded by an explicit `RpcThrottler(8)` ceiling with jittered `withBackoff`.
+  There is no synchronous I/O in a request path to move.
+- **The CPU work that blocked the loop is gone.** The only long synchronous work was the
+  quadratic replay. At 13ms for 4,000 trials a backfill no longer starves the loop; measured
+  lag went from the whole replay to 3ms.
+- **A worker thread was considered and not built.** At measured scale the numbers do not
+  justify it: a snapshot for a realistically-sized deployment builds in tens of
+  milliseconds, and moving it off-thread means copying a multi-megabyte payload across a
+  structured-clone boundary to save less than that copy costs. Shipping it anyway would have
+  been a shape, not a fix. The honest crossover is around 40,000 trials, where a build
+  approaches a second — and the correct change there is a persisted index (Ponder), not a
+  thread.
+- **GC pressure was removed at the source rather than tuned.** Deleting the never-read
+  `pendingTimestamps` map, clearing `blockTimes` after each batch, and dropping one full
+  model clone per log cut measured heap growth from 31.8 MB to 4.3 MB across the same
+  4,000-trial backfill. No `--max-old-space-size` and no manual `global.gc()` were added,
+  because neither addresses an allocation that no longer happens.
+- **What remains genuinely unbounded:** the read model grows with protocol history and
+  `/snapshot` serialises all of it (5.1 MB at 4,000 trials). That is a persistence and
+  pagination question — the same one that makes Ponder the intended production index — not
+  something a thread or a GC flag fixes.
+
+## The release pass — repository hygiene
+
+- A full-history scan found no secret ever committed: only the three `.env.example` files,
+  all empty-valued. No keys, certificates, dumps, or personal data.
+- `package.json` declared MIT with no `LICENSE` in the repository. Metadata does not
+  license anything; the MIT text is now present and names the vendored OFL fonts and
+  `forge-std` as third-party terms that survive redistribution.
+- `npm run lint` delegated with `--if-present` to workspaces that define no `lint` script,
+  so it reported success having examined nothing. Removed rather than dressed up with a
+  formatter it does not use. Formatting stays available via `npm run format` and is not
+  enforced; `format:check` currently differs on ~90 files and should be landed as its own
+  commit if it is ever made a gate.
+- `engines` was unpinned at the top (`>=20`). Now `>=20 <27` — CI runs 20 and development is
+  on 26, so a ceiling below 26 would have contradicted the machine it is written on.
+- The empty `infra/` directory was removed; it contained nothing and implied a deployment
+  story the project does not have.
+- `.gitignore` gained `build/`, `coverage/`, `*.lcov`, `*.log`, `npm-debug.log*`, `.idea/`,
+  `.vscode/`, `*.swp`, and `apps/web/.env.local`. `.next/`, `dist/`, `out/` and the env
+  rules were already present.
+- Dependabot is configured for npm and Actions, with major bumps on wagmi and RainbowKit
+  ignored — RainbowKit 2.x pins `wagmi ^2.9` and the 3.x major would drop the connect modal,
+  a constraint recorded above rather than silently upgraded.
+- Added `SECURITY.md`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `CHANGELOG.md`, `SUPPORT.md`.
+  `SECURITY.md` states plainly that this is unaudited demo software whose contracts hold
+  escrowed ETH with no upgrade or pause path, and that a settlement bug is therefore not
+  recoverable by anyone.

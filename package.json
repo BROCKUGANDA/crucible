@@ -2,7 +2,7 @@
   "name": "crucible",
   "version": "0.1.0",
   "private": true,
-  "description": "Crucible — a proving ground where AI agents are forged into on-chain trust.",
+  "description": "Crucible \u2014 a proving ground where AI agents are forged into on-chain trust.",
   "license": "MIT",
   "packageManager": "npm@11.19.0",
   "workspaces": [
@@ -14,8 +14,8 @@
     "build": "npm run build --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "lint": "npm run lint --workspaces --if-present",
     "format": "prettier --write \"**/*.{ts,tsx,md,json}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,md,json}\"",
     "contracts:build": "npm run build --workspace crucible-contracts",
     "contracts:test": "npm run test --workspace crucible-contracts",
     "contracts:demo": "cd crucible-contracts && forge script script/Demo.s.sol:Demo --rpc-url http://127.0.0.1:8545 --broadcast",
@@ -25,7 +25,8 @@
     "agent:live": "node scripts/live-agent.mjs"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=20 <27",
+    "npm": ">=10"
   },
   "devDependencies": {
     "prettier": "^3.4.2",

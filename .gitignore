@@ -22,3 +22,12 @@ crucible-contracts/lib/
 # editors / os
 .DS_Store
 Thumbs.db
+build/
+coverage/
+*.lcov
+*.log
+npm-debug.log*
+.idea/
+.vscode/
+*.swp
+apps/web/.env.local
