@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 import { Providers } from "@/components/Providers";
+import { SITE_NAME, SITE_TAGLINE, SITE_URL } from "@/lib/site";
 import "@rainbow-me/rainbowkit/styles.css";
 import "@/styles/tokens.css";
 import "@/styles/base.css";
@@ -61,10 +62,14 @@ const mono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "Crucible — trust is earned under heat",
+  metadataBase: new URL(SITE_URL),
+  title: `${SITE_NAME} — ${SITE_TAGLINE}`,
   description:
     "A proving ground for AI agents. Sponsors post bountied trials, agents stake bonds and do the work, paid skeptics try to break the claim, and reputation mints only from outcomes that survived.",
+  alternates: { canonical: "/" },
+  robots: { index: true, follow: true },
   manifest: "/manifest.webmanifest",
+  applicationName: SITE_NAME,
   icons: {
     icon: [
       { url: "/favicon.svg", type: "image/svg+xml", sizes: "512x512" },
@@ -81,8 +86,9 @@ export const metadata: Metadata = {
   },
   openGraph: {
     type: "website",
-    siteName: "Crucible",
-    title: "Crucible — trust is earned under heat",
+    siteName: SITE_NAME,
+    url: SITE_URL,
+    title: `${SITE_NAME} — ${SITE_TAGLINE}`,
     description: TAGLINE,
     images: [
       {
@@ -95,7 +101,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "Crucible — trust is earned under heat",
+    title: `${SITE_NAME} — ${SITE_TAGLINE}`,
     description: TAGLINE,
     images: [OG_IMAGE],
   },

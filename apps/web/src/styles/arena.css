@@ -137,9 +137,12 @@
 
 /* ------------------------------------------------------------------ hero furniture */
 
+/* The hero nav lives top-LEFT, one rail-height below the fixed HUD ruler — the
+ * HUD's live stats own the top-right corner, and anything sharing it collides the
+ * moment the page scrolls. */
 .arena__nav {
   position: absolute;
-  inset: var(--pad) var(--pad) auto auto;
+  inset: calc(var(--pad) + 1.6rem) auto auto var(--pad);
   display: flex;
   gap: var(--s-4);
   font-size: var(--fs-micro);
@@ -181,16 +184,72 @@
 }
 
 .arena__foot {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--s-4) var(--s-6);
+  align-items: start;
+  /* Clearance for the fixed HUD's bottom strip: the counter and act label live
+   * there, and the footer's last line must end above them. */
+  padding: var(--s-6) var(--pad) calc(var(--pad) + 3.5rem);
+  border-top: 1px solid color-mix(in oklab, var(--bronze) 30%, transparent);
+  color: var(--faint);
+}
+
+.arena__foot__brand {
+  display: grid;
+  gap: var(--s-1);
+}
+
+.arena__foot__mark {
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: var(--track-roman);
+  color: var(--marble);
+}
+
+.arena__foot__line,
+.arena__foot__nav a {
+  font-size: var(--fs-micro);
+  letter-spacing: var(--track-micro);
+  text-transform: uppercase;
+}
+
+.arena__foot__nav {
   display: flex;
   flex-wrap: wrap;
-  justify-content: space-between;
-  gap: var(--s-3);
-  padding: var(--s-5) var(--pad);
-  border-top: 1px solid color-mix(in oklab, var(--bronze) 30%, transparent);
+  gap: var(--s-3) var(--s-4);
+  justify-content: end;
+}
+
+.arena__foot__nav a {
+  color: var(--dim);
+  border-bottom: 1px solid transparent;
+  transition: color var(--t-tap) var(--ease-ignite), border-color var(--t-tap) var(--ease-ignite);
+}
+
+.arena__foot__nav a:hover,
+.arena__foot__nav a:focus-visible {
+  color: var(--marble);
+  border-bottom-color: var(--gold);
+}
+
+.arena__foot__legal {
+  grid-column: 1 / -1;
+  margin: 0;
+  max-width: 68ch;
   font-size: var(--fs-micro);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  line-height: 1.6;
   color: var(--faint);
+}
+
+@media (max-width: 700px) {
+  .arena__foot {
+    grid-template-columns: 1fr;
+  }
+
+  .arena__foot__nav {
+    justify-content: start;
+  }
 }
 
 /* ------------------------------------------------------------------ the hero (act 0) */

@@ -47,6 +47,30 @@
   color: var(--marble);
 }
 
+/* A scrim behind the top strip so content scrolling beneath the HUD fades out
+ * instead of colliding with the ruler and the live stats. Same night tone the
+ * act scrims use, so the fade reads as depth, not as a bar. */
+.scrub-hud::before {
+  content: "";
+  position: fixed;
+  inset: 0 0 auto 0;
+  height: calc(var(--pad) + 4.5rem);
+  pointer-events: none;
+  background: linear-gradient(rgba(10, 8, 7, 0.92) 12%, rgba(10, 8, 7, 0.55) 55%, transparent);
+}
+
+/* The mirror at the bottom: the counter, the crowd key and the act label own the
+ * last strip of the viewport, so the footer fades out beneath them instead of
+ * printing through them. */
+.scrub-hud::after {
+  content: "";
+  position: fixed;
+  inset: auto 0 0 0;
+  height: calc(var(--pad) + 3.5rem);
+  pointer-events: none;
+  background: linear-gradient(to top, rgba(10, 8, 7, 0.92) 12%, rgba(10, 8, 7, 0.55) 55%, transparent);
+}
+
 .scrub-hud__rail {
   grid-column: 1 / -1;
   grid-row: 1;
