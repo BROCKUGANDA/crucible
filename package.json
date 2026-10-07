@@ -11,7 +11,7 @@
     "crucible-contracts"
   ],
   "scripts": {
-    "build:libs": "npm run build --workspace @crucible/smith && npm run build --workspace @crucible/indexer && npm run build --workspace @crucible/argus && npm run build --workspace @crucible/warden && npm run build --workspace @crucible/agent-security && npm run build --workspace @crucible/forge-runner",
+    "build:libs": "npm run build --workspace @crucible/smith && npm run build --workspace @crucible/agent-security && npm run build --workspace @crucible/forge-runner && npm run build --workspace @crucible/indexer && npm run build --workspace @crucible/argus && npm run build --workspace @crucible/warden",
     "prepare": "npm run build:libs",
     "build": "npm run build --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
