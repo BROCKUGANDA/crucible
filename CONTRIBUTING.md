@@ -23,7 +23,7 @@ was found, what was fixed, and **what is still open** — is in [`HARDENING.md`]
 | Node.js | `>=20 <27` (CI runs 20; development is on 26) |
 | npm | `>=10` (the lockfile was written by 11.x) |
 | Foundry | required for `crucible-contracts` and for `npm run demo` |
-| Git | for the `forge-std` submodule-style dependency |
+| Git | `forge-std` is a pinned submodule; clone with `--recurse-submodules` |
 
 Install Foundry with `curl -L https://foundry.paradigm.xyz \| bash` then `foundryup`.
 
@@ -38,9 +38,18 @@ The fast path is one command — it starts a local chain, deploys, and replays t
 loop including a settled verdict and an ERC-8004 identity link:
 
 ```bash
+git clone --recurse-submodules <repo-url> && cd crucible
 npm install
 npm run demo
 ```
+
+Two things that step is doing behind the name. `forge-std` arrives as a pinned git
+submodule — without it the contracts workspace cannot compile, and a clone that omitted
+`--recurse-submodules` needs `git submodule update --init --recursive` before anything
+Foundry-related will work. And `npm install` runs `prepare`, which builds the TypeScript
+workspace packages to `dist/`; `api` and `web` import them through package `exports` that
+point there, so skipping it makes `npm test` fail with "Cannot find module
+'@crucible/smith'" on a tree that is otherwise perfectly healthy.
 
 It prints the deployed addresses and leaves Anvil running. Then, in two more terminals:
 

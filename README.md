@@ -42,9 +42,13 @@ Then start the API and web app as shown below and open `/hall`.
 ## Quick start
 
 ```bash
-npm install
+git clone --recurse-submodules <repo-url> && cd crucible
+npm install           # also builds the workspace packages; see CONTRIBUTING.md
 npm run demo          # anvil + deploy + the whole loop on chain, ~90s, no RPC needed
 ```
+
+The `--recurse-submodules` is not decoration: `forge-std` is a pinned submodule and the
+contracts will not compile without it.
 
 Then, in two more terminals:
 
