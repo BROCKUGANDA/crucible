@@ -3,6 +3,15 @@ pragma solidity 0.8.26;
 
 import {IERC8004ReputationRegistry, IERC8004IdentityRegistry} from "./interfaces/IERC8004.sol";
 
+/// @notice The one read the bridge needs from CrucibleTrials: the Crucible agentId ->
+/// ERC-8004 tokenId map written by `linkIdentity`.
+/// @dev Declared here instead of importing CrucibleTrials, which imports this contract.
+/// The dependency the bridge really has is "an address that answers `identityOf`", not
+/// the whole state machine.
+interface ITrialsIdentity {
+    function identityOf(uint256 agentId) external view returns (uint256);
+}
+
 /// @title ReputationBridge
 /// @notice Writes Crucible outcomes into an ERC-8004 Reputation Registry.
 ///
@@ -11,6 +20,12 @@ import {IERC8004ReputationRegistry, IERC8004IdentityRegistry} from "./interfaces
 /// operator speak. Only this bridge — called by CrucibleTrials at settlement, or by
 /// an Argus seat when a verdict lands — can write, so `clientAddress` on-chain is
 /// always a neutral reporter rather than the party being judged.
+///
+/// The second design point, and the one this contract used to get wrong: a Crucible
+/// agentId is `++agentCount`, while an ERC-8004 tokenId is minted by the *Identity*
+/// Registry. They are unrelated number spaces, and the reputation registry will accept
+/// feedback for whichever agent happens to own the number passed to it. Every write
+/// here therefore resolves `identityOf[crucibleAgentId]` first and grades that.
 ///
 /// Feedback is opt-in per deployment: if `reputationRegistry` is unset, every call
 /// is a silent no-op rather than a revert. A Crucible deployment should never be
@@ -29,13 +44,24 @@ contract ReputationBridge {
     address public immutable trials;
     IERC8004ReputationRegistry public reputationRegistry;
 
-    /// Feedback index per agent, so a later revoke knows what to revoke.
+    /// Feedback index per Crucible agent, so a later revoke knows what to revoke. The
+    /// key is Crucible's own id; the value is the registry index for that agent's
+    /// linked identity. They are not interchangeable — see `_publish`.
     mapping(uint256 => uint64) public lastFeedbackIndex;
 
     event ReputationRegistrySet(address indexed registry);
     event FeedbackPublished(
-        uint256 indexed agentId, uint256 indexed trialsId, int128 value, bool survivedBreak, uint64 feedbackIndex
+        uint256 indexed agentId,
+        uint256 indexed trialsId,
+        uint256 identityAgentId,
+        int128 value,
+        bool survivedBreak,
+        uint64 feedbackIndex
     );
+    /// @notice A verdict settled for an agent with no linked ERC-8004 identity, so the
+    /// write was skipped. Skipping is the correct outcome — but a bridge that does
+    /// nothing silently is indistinguishable from a bridge that worked, so it says so.
+    event FeedbackSkipped(uint256 indexed agentId, uint256 indexed trialsId, int128 value);
 
     error NotTrials();
     error UnauthorizedReporter();
@@ -64,6 +90,8 @@ contract ReputationBridge {
     /**
      * Publish a paid verdict.
      *
+     * @param agentId the *Crucible* agent id; the ERC-8004 subject is resolved from it.
+     *
      * Value encodes survived-ness on a 0-1000 scale, weighted so that surviving an
      * attack is worth strictly more than a quiet win — an agent that has been
      * attacked and held is the whole point of the protocol.
@@ -76,6 +104,7 @@ contract ReputationBridge {
 
     /// Publish a slash. Value is negative and always larger in magnitude than a slash
     /// for an untested agent, so reputation decays faster the more it was trusted.
+    /// @param agentId the *Crucible* agent id; the ERC-8004 subject is resolved from it.
     function reportSlash(uint256 trialsId, uint256 agentId) external {
         _authorize();
         _publish(trialsId, agentId, -int128(400), false);
@@ -83,6 +112,7 @@ contract ReputationBridge {
 
     /// Anyone may publish for an already-settled trial. Useful for an indexer
     /// backfilling if a settlement happened before the registry was wired.
+    /// @param agentId the *Crucible* agent id; the ERC-8004 subject is resolved from it.
     function backfill(uint256 trialsId, uint256 agentId, int128 value) external {
         if (value == 0 || value > MAX_VALUE || value < -MAX_VALUE) revert ValueOutOfRange();
         _publish(trialsId, agentId, value, value > 0);
@@ -93,10 +123,24 @@ contract ReputationBridge {
         // A missing or unavailable registry degrades the *signal*, never the verdict.
         if (registry == address(0)) revert NoReputationRegistry();
 
+        // The subject of the write is the ERC-8004 identity the operator registered, not
+        // the Crucible id. Passing `agentId` through instead graded whichever unrelated
+        // agent happened to own that tokenId, while the agent actually judged heard
+        // nothing — a signal delivered to the wrong party, not merely an imprecise one.
+        uint256 identityAgentId = ITrialsIdentity(trials).identityOf(agentId);
+        if (identityAgentId == 0) {
+            // No linked identity means there is no correct subject to write about. Writing
+            // against ERC-8004 agent 0 would be inventing one. Skip, and emit it: the
+            // verdict must never depend on this call succeeding, so a bridge that returns
+            // quietly would be indistinguishable from one that published.
+            emit FeedbackSkipped(agentId, trialsId, value);
+            return;
+        }
+
         string memory uri = string.concat("crucible://trials/", _toString(trialsId));
         IERC8004ReputationRegistry(registry)
             .giveFeedback(
-                agentId,
+                identityAgentId,
                 value,
                 VALUE_DECIMALS,
                 TAG1,
@@ -106,8 +150,10 @@ contract ReputationBridge {
                 bytes32(0) // content-addressed URI: the spec says feedbackHash is optional
             );
 
-        lastFeedbackIndex[agentId] = IERC8004ReputationRegistry(registry).getLastIndex(agentId, address(this));
-        emit FeedbackPublished(agentId, trialsId, value, survivedBreak, lastFeedbackIndex[agentId]);
+        // Keyed by the Crucible agent, read back for the identity that was written.
+        uint64 index = IERC8004ReputationRegistry(registry).getLastIndex(identityAgentId, address(this));
+        lastFeedbackIndex[agentId] = index;
+        emit FeedbackPublished(agentId, trialsId, identityAgentId, value, survivedBreak, index);
     }
 
     /// CrucibleTrials at settlement, or an Argus seat acting for it. Not the operator:

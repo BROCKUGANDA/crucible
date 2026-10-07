@@ -1,17 +1,33 @@
 "use client";
 
 import Link from "next/link";
-import { Chrome } from "@/components/Chrome";
+import { use } from "react";
+import { Chrome, Quenching } from "@/components/Chrome";
 import { useSnapshot } from "@/lib/useSnapshot";
 import { formatEth, shortHash, tierMeta } from "@/lib/forge";
 
 const NEXT_TIER = [1, 3, 10, 25] as const;
 
-export default function AgentProfilePage({ params }: { params: { id: string } }) {
-  const id = Number(params.id);
-  const { data } = useSnapshot();
+export default function AgentProfilePage({ params }: { params: Promise<{ id: string }> }) {
+  // Next 15 hands route params to client components as a Promise. Reading `params.id`
+  // directly type-checks under `tsc --noEmit` and fails `next build`, which validates the
+  // generated PageProps — so the unwrap has to be here, not in a cast.
+  const { id: rawId } = use(params);
+  const id = Number(rawId);
+  const { data, loading } = useSnapshot();
   const agent = data?.agents.find((a) => a.id === id);
   const trials = data?.trials.filter((t) => t.agentId === id) ?? [];
+
+  // Absent and unknown are different answers. `!agent` alone is true while the first
+  // snapshot is still in flight, so a valid agent id painted "Lost slag." for a beat and
+  // then resolved — a not-found page that lies.
+  if (loading && !data) {
+    return (
+      <Chrome>
+        <Quenching label={`drawing agent ${rawId} from the fire…`} />
+      </Chrome>
+    );
+  }
 
   if (!agent) {
     return (

@@ -376,20 +376,37 @@ contract CrucibleTrialsTest is Base {
         trials.revealVote(id, true, keccak256("WRONG"));
     }
 
-    function test_Dispute_RevealLockedAfterFirstReveal() public {
+    /**
+     * This test asserted the lockout as expected behaviour: once any seat revealed, the
+     * others could no longer seal, so one seat that revealed first decided the dispute by
+     * default. Commits now close on a deadline instead, which binds in the one direction
+     * that matters — a seat that sleeps through the window forfeits, and the reason is the
+     * clock rather than another seat's move. That is the price the deadline charges, and it
+     * is bounded: it can no longer be inflicted on somebody who was ready to vote.
+     */
+    function test_Dispute_CommitsCloseAtTheCommitDeadline() public {
         (uint256 id,) = _liveTrial();
         _submitRun(id);
         _fileBreak(id);
         bytes32 salt = keccak256("salt");
+        bytes32 commit = keccak256(abi.encodePacked(id, true, salt));
+
         vm.prank(a1);
-        trials.commitVote(id, keccak256(abi.encodePacked(id, false, salt)));
+        trials.commitVote(id, commit);
+        vm.prank(a1);
+        trials.revealVote(id, true, salt); // one vote is below the threshold, no quorum
+
+        (uint64 openedAt,,,) = trials.disputeOf(id);
+        vm.warp(uint256(openedAt) + trials.COMMIT_WINDOW());
+
         vm.prank(a2);
-        trials.commitVote(id, keccak256(abi.encodePacked(id, false, salt)));
-        vm.prank(a1);
-        trials.revealVote(id, false, salt);
-        vm.prank(a3); // late commit after reveal phase started
-        vm.expectRevert(CrucibleTrials.RevealClosed.selector);
-        trials.commitVote(id, keccak256(abi.encodePacked(id, false, salt)));
+        vm.expectRevert(CrucibleTrials.CommitClosed.selector);
+        trials.commitVote(id, commit);
+
+        // a lone vote cannot change the outcome, and the dispute keeps its normal exit
+        vm.warp(uint256(openedAt) + trials.DISPUTE_TIMEOUT() + 1);
+        trials.finalize(id);
+        assertEq(uint8(trials.getTrial(id).verdict), uint8(CrucibleTrials.Verdict.Paid));
     }
 
     function test_Dispute_FinalizeRevertBeforeTimeout() public {
@@ -612,6 +629,7 @@ contract CrucibleTrialsTest is Base {
         assertLe(trials.credit(skeptic), bond + bStake); // slashing never exceeds the bond
         assertGe(trials.getAgent(aid).stake, 1000 ether - bond);
     }
+
     // ── an abandoned trial must not become a trap ─────────────────────────
     /**
      * A trial nobody claimed used to be a one-way door: `finalize` needs a submitted run,
@@ -700,4 +718,120 @@ contract CrucibleTrialsTest is Base {
         assertEq(uint8(trials.getTrial(id).status), uint8(CrucibleTrials.Status.Challenged));
     }
 
+    // ── the Argus seat set must be a jury that can actually reach quorum ──────
+    /**
+     * Reproduced against the deployed bytecode: deploy with ONE seat, have that seat commit
+     * and reveal `breakWins = true`. `votesBreak == 1` never reaches the hard-coded
+     * `ARGUS_THRESHOLD` of 2, so the dispute is never resolved on votes; then at
+     * `openedAt + DISPUTE_TIMEOUT` anyone calls `finalize`, which settles with
+     * `agentWins = true` ("the burden of proof is on the skeptic"). 100% of the jury voted
+     * to slash and the protocol paid the agent.
+     *
+     * `ARGUS_THRESHOLD` is a `constant`, so the only seat set that is coherent with it is
+     * exactly `ARGUS_THRESHOLD + 1`: three. Smaller cannot reach quorum at all; larger makes
+     * quorum a fraction of the jury the contract never agreed to — see the ten-seat case,
+     * where a 2-of-10 vote is a 20% quorum that the timeout overrides.
+     */
+    function test_Constructor_RejectsOneSeat() public {
+        address[] memory seats = new address[](1);
+        seats[0] = a1;
+        vm.expectRevert(CrucibleTrials.BadArgusSeatCount.selector);
+        new CrucibleTrials(makeAddr("treasury"), address(alloy), seats);
+    }
+
+    function test_Constructor_RejectsNoSeats() public {
+        address[] memory seats = new address[](0);
+        vm.expectRevert(CrucibleTrials.BadArgusSeatCount.selector);
+        new CrucibleTrials(makeAddr("treasury"), address(alloy), seats);
+    }
+
+    function test_Constructor_RejectsTwoSeats() public {
+        address[] memory seats = new address[](2);
+        seats[0] = a1;
+        seats[1] = a2;
+        vm.expectRevert(CrucibleTrials.BadArgusSeatCount.selector);
+        new CrucibleTrials(makeAddr("treasury"), address(alloy), seats);
+    }
+
+    /// Ten seats with a threshold of 2 is the auditor's second repro: two vote to slash,
+    /// eight never vote, quorum decides nothing, and the timeout pays the agent.
+    function test_Constructor_RejectsMoreSeatsThanTheThresholdCanCarry() public {
+        address[] memory seats = new address[](10);
+        for (uint256 i; i < seats.length; ++i) {
+            seats[i] = makeAddr(string(abi.encodePacked("seat-", vm.toString(i))));
+        }
+        vm.expectRevert(CrucibleTrials.BadArgusSeatCount.selector);
+        new CrucibleTrials(makeAddr("treasury"), address(alloy), seats);
+    }
+
+    /// A duplicated seat is one vote counted twice by two keys that are the same key.
+    function test_Constructor_RejectsDuplicateSeats() public {
+        address[] memory seats = new address[](3);
+        seats[0] = a1;
+        seats[1] = a2;
+        seats[2] = a1;
+        vm.expectRevert(CrucibleTrials.DuplicateArgusSeat.selector);
+        new CrucibleTrials(makeAddr("treasury"), address(alloy), seats);
+    }
+
+    function test_Constructor_RejectsZeroAddressSeat() public {
+        address[] memory seats = new address[](3);
+        seats[0] = a1;
+        seats[1] = address(0);
+        seats[2] = a3;
+        vm.expectRevert(CrucibleTrials.ZeroArgusSeat.selector);
+        new CrucibleTrials(makeAddr("treasury"), address(alloy), seats);
+    }
+
+    /// Not a repro — the positive guard, so the rejections above cannot be satisfied by a
+    /// check that simply refuses everything.
+    function test_Constructor_AcceptsTheSeatSetTheThresholdAssumes() public {
+        address[] memory seats = new address[](3);
+        seats[0] = a1;
+        seats[1] = a2;
+        seats[2] = a3;
+        CrucibleTrials fresh = new CrucibleTrials(makeAddr("treasury"), address(alloy), seats);
+        assertEq(uint256(fresh.ARGUS_THRESHOLD()) + 1, seats.length);
+        assertTrue(fresh.isArgus(a1));
+        assertTrue(fresh.isArgus(a2));
+        assertTrue(fresh.isArgus(a3));
+        assertFalse(fresh.isArgus(skeptic));
+    }
+
+    /**
+     * The other half of the same defect, and the one a seat can exploit on its own:
+     * `revealVote` set `revealStarted` on the FIRST reveal, and `commitVote` refused once
+     * it was set. A single seat that committed and revealed immediately therefore locked
+     * the other two out of the dispute permanently — quorum became unreachable by
+     * construction, and the timeout paid the agent. One key decided every dispute, by
+     * voting first rather than by being right.
+     */
+    function test_Dispute_EarlyRevealDoesNotLockOutTheOtherSeats() public {
+        (uint256 id, uint256 aid) = _liveTrial();
+        _submitRun(id);
+        _fileBreak(id);
+
+        bytes32 salt = keccak256("salt");
+        bytes32 commit = keccak256(abi.encodePacked(id, true, salt));
+
+        vm.prank(a1);
+        trials.commitVote(id, commit);
+        vm.prank(a1);
+        trials.revealVote(id, true, salt); // a1 reveals first, with nobody else sealed yet
+
+        // a2 and a3 had no chance to commit before that reveal — they must still be able to
+        vm.prank(a2);
+        trials.commitVote(id, commit);
+        vm.prank(a3);
+        trials.commitVote(id, commit);
+        vm.prank(a2);
+        trials.revealVote(id, true, salt); // 2-of-3: quorum, and the break is proven
+
+        assertEq(uint8(trials.getTrial(id).verdict), uint8(CrucibleTrials.Verdict.Slashed));
+        assertEq(trials.credit(sponsor), REWARD); // the refund the jury voted for
+        assertEq(trials.getAgent(aid).stake, 0.8 ether); // bond gone
+        (,, uint8 votesBreak, uint8 votesAgent) = trials.disputeOf(id);
+        assertEq(votesBreak, 2);
+        assertEq(votesAgent, 0);
+    }
 }

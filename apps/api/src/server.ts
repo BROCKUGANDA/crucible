@@ -4,6 +4,7 @@ import { createPublicClient, http } from "viem";
 import { Scribe, UNKNOWN_ALLOY, type AlloyState } from "@crucible/indexer";
 import { ALLOY_ABI } from "@crucible/smith";
 import { createApp } from "./app.js";
+import { resolveSecurity } from "./security.js";
 
 /**
  * API + indexer in one process.
@@ -137,6 +138,15 @@ setInterval(() => {
   });
 }, ALLOY_TTL_MS);
 
+const trustProxy = process.env.TRUST_PROXY === "1";
+
+/**
+ * Resolved once, here, and handed to the app — so the policy printed at boot and the policy
+ * serving requests cannot drift apart. A deployment that believes it set an allowlist can
+ * read what it actually set.
+ */
+const security = resolveSecurity({ trustProxy }, process.env);
+
 const app = createApp({
   getModel: () => scribe.state,
   // The hall's txHashes are only checkable against one chain and one contract, and the
@@ -147,12 +157,35 @@ const app = createApp({
 }, {
   // Off by default: forwarded headers are caller-writable, so trusting them lets a loop
   // mint a new bucket per request. Set TRUST_PROXY=1 only behind something that overwrites
-  // them (Cloudflare, an ALB) — which is what `cf-connecting-ip` is.
-  trustProxy: process.env.TRUST_PROXY === "1",
+  // them (Cloudflare, an ALB) — which is what `cf-connecting-ip` is, and also what makes
+  // `X-Forwarded-Proto` believable for the TLS check.
+  trustProxy,
+  security,
 });
 
 serve({ fetch: app.fetch, port }, (info) => {
   console.log(`[crucible] api listening on :${info.port}`);
   console.log(`[crucible] indexing ${trialsAddress}`);
   console.log(`[crucible] alloy from ${alloyAddress} every ${ALLOY_TTL_MS}ms`);
+  // The transport policy, stated as what it is rather than as a checkbox. `*` here means
+  // "reads are public by design, credentialed reads are impossible" — see security.ts.
+  console.log(
+    `[crucible] cors: ${
+      security.allowedOrigins.includes("*")
+        ? "any origin may read anonymously (no credentials)"
+        : security.allowedOrigins.join(" ")
+    }${security.allowCredentials ? " [credentials allowed]" : ""}`,
+  );
+  console.log(
+    `[crucible] transport: ${
+      security.enforceHttps
+        ? `https required, HSTS max-age=${security.hstsMaxAge}s over TLS${trustProxy ? "" : " (TRUST_PROXY off: X-Forwarded-Proto will not be believed)"}`
+        : "plaintext accepted (this is a local demo; set ENFORCE_HTTPS=1 behind a TLS proxy)"
+    }`,
+  );
+  console.log(
+    `[crucible] limits: body <= ${security.maxBodyBytes}B announced, request <= ${security.timeoutMs}ms (${
+      security.timeoutExemptPaths.join(" ") || "no exemptions"
+    } exempt)`,
+  );
 });
