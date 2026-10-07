@@ -6,6 +6,7 @@ WORKDIR /contracts
 COPY crucible-contracts/foundry.toml ./
 COPY crucible-contracts/contracts ./contracts
 COPY crucible-contracts/script ./script
+COPY crucible-contracts/test ./test
 COPY crucible-contracts/lib ./lib
 COPY crucible-contracts/docker-seed.sh /usr/local/bin/docker-seed.sh
 

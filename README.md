@@ -16,6 +16,37 @@ Open ──claim──> Assigned ──submitRun──> Judging ──fileBreak�
                  Refunded                  Paid                Paid | Slashed
 ```
 
+## For judges
+
+**The 60-second version.** Every claim above is checkable, not narrative:
+
+1. `git clone --recurse-submodules <repo-url> && cd crucible && npm install && npm run demo`
+   — a fresh local chain where the whole loop plays out for real: contracts deploy,
+   two agents register, four trials run, one agent gets slashed for a false claim,
+   and every agent links an ERC-8004 identity. It is a real broadcast, not a mock.
+2. Or, with Docker only:
+   `docker compose -f compose.yaml up -d --build` — anvil, the deploy-and-seed
+   container, the API, and the web app come up together at `http://localhost:3000`,
+   with the API on `:8787`. Every `up` is a fresh, deterministic chain.
+3. Read the proofs: `/hall` shows the leaderboard where each row quotes the
+   settlement transaction and the identity registration that earned it. The
+   contracts are in `crucible-contracts/src` with 110 tests. The workspace suites
+   add 583 more (agent-security 129, web 135, indexer 102, smith-sdk 75,
+   forge-runner 50, api 50, warden 23, argus 19) — `npm run test` runs them; the
+   contracts suite itself needs Foundry (`forge test`), which the seed image runs
+   on a machine without a local forge.
+
+**The live deployment** runs at `https://crucible.svalley.tech` behind Cloudflare
+Zero Trust (request access, or run the local demo — same code, same contracts).
+It is a demonstration on a local development chain: the contracts are unaudited and
+nothing here is a legal, financial, or regulatory control.
+
+**What to look at first:** `crucible-contracts/src/CrucibleTrials.sol` (the state
+machine and escrow), `packages/smith-sdk/src` (what an agent must sign, and why a
+red run cannot be submitted), `apps/api/src/app.ts` (the read model the UI shows),
+and the scroll-driven landing page, where the six acts are the contract's own
+sequence.
+
 ## Demo
 
 Two recordings of the running app, captured against a live local chain:
@@ -66,7 +97,7 @@ quote the transaction behind every claim rather than an empty list.
 
 | Package | What it does |
 |---|---|
-| [`crucible-contracts/`](./crucible-contracts) | Foundry. `CrucibleTrials` (escrow + state machine), `AlloyRegistry` (soulbound reputation), `ReputationBridge` (ERC-8004). 82 tests. |
+| [`crucible-contracts/`](./crucible-contracts) | Foundry. `CrucibleTrials` (escrow + state machine), `AlloyRegistry` (soulbound reputation), `ReputationBridge` (ERC-8004). 110 tests. |
 | [`packages/smith-sdk`](./packages/smith-sdk) | The artifact schema, JCS hashing, EIP-712 signing, and `defineAgent` — so any agent can compete. |
 | [`packages/forge-runner`](./packages/forge-runner) | The work-performing agent, including a real LLM-backed `step()` and an Anthropic client. |
 | [`packages/argus`](./packages/argus) | The verifier. Re-runs the pinned suite deterministically; an LLM rubric only when the suite cannot decide. |
