@@ -60,42 +60,34 @@ export function BreakPanel({
   const canSend = proofOk && stakeOk && !busy && isConnected && dep.configured;
 
   return (
-    <section style={{ marginTop: 28 }}>
+    <section className="break">
       <WrongNetworkNotice requiredChainId={dep.chainId} />
-      <h2 style={{ fontSize: 19, margin: "0 0 4px" }}>Break this run</h2>
-      <p style={{ color: "var(--dim)", margin: "0 0 16px" }}>
+      <h2 className="section-title section-title--tight">Break this run</h2>
+      <p className="break__lede">
         Stake your own claim that the run is falsified. Argus re-runs the pinned suite in
         an identical container; deterministic evidence beats opinion.
       </p>
 
-      <div className="surface" style={{ padding: 20, display: "grid", gap: 16 }}>
+      <div className="surface break__panel">
         {/* What is at stake, before anything is typed. */}
-        <dl
-          style={{
-            display: "grid",
-            gridTemplateColumns: "auto 1fr",
-            gap: "8px 18px",
-            margin: 0,
-            fontSize: 13.5,
-          }}
-        >
+        <dl className="break__facts">
           <dt className="kicker">You receive</dt>
-          <dd className="mono" style={{ margin: 0, color: "var(--quench)" }}>
+          <dd className="mono" data-tone="quench">
             {formatWei(payoutWei, 18)} ETH — 30% of the {bondEth} ETH bond
           </dd>
 
           <dt className="kicker">Minimum stake</dt>
-          <dd className="mono" style={{ margin: 0, color: stakeOk ? "var(--dim)" : "var(--sear)" }}>
+          <dd className="mono" data-tone={stakeOk ? "dim" : "sear"}>
             {formatWei(minStakeWei, 18)} ETH — 1% of the reward
           </dd>
 
           <dt className="kicker">If you are wrong</dt>
-          <dd className="mono" style={{ margin: 0, color: "var(--sear)" }}>
+          <dd className="mono" data-tone="sear">
             Half your stake goes to the agent. The other half is burned.
           </dd>
         </dl>
 
-        <label style={{ display: "grid", gap: 6 }}>
+        <label className="field">
           <span className="kicker">Your stake (ETH)</span>
           <input
             className="input mono"
@@ -105,13 +97,11 @@ export function BreakPanel({
             aria-invalid={stakeText.length > 0 && !stakeOk}
           />
           {stakeWei !== null ? (
-            <span className="mono" style={{ fontSize: 12.5, color: "var(--faint)" }}>
-              {stakeWei.toString()} wei
-            </span>
+            <span className="mono hint">{stakeWei.toString()} wei</span>
           ) : null}
         </label>
 
-        <label style={{ display: "grid", gap: 6 }}>
+        <label className="field">
           <span className="kicker">Proof</span>
           <textarea
             className="textarea"
@@ -122,13 +112,13 @@ export function BreakPanel({
               "What falsifies this run. Pinned test names, the failing assertion, the input that breaks it."
             }
           />
-          <span style={{ fontSize: 12.5, color: "var(--faint)" }}>
+          <span className="hint">
             Hashed on submission. Pin the artifact to IPFS and cite it here — the contract
             commits to the hash, so the proof cannot be quietly edited afterwards.
           </span>
         </label>
 
-        <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+        <div className="break__actions">
           <button
             className="btn btn-primary"
             disabled={!canSend}
@@ -139,26 +129,26 @@ export function BreakPanel({
           </button>
 
           {!isConnected ? (
-            <span className="mono" style={{ color: "var(--ash)" }}>
+            <span className="mono" data-tone="ash">
               Connect a wallet to stake
             </span>
           ) : null}
           {stakeText.length > 0 && !stakeOk ? (
-            <span className="mono" style={{ color: "var(--sear)" }}>
+            <span className="mono" data-tone="sear">
               {stakeWei === null
                 ? "That is not an ETH amount"
                 : `Below the ${formatWei(minStakeWei, 18)} ETH minimum`}
             </span>
           ) : null}
           {stakeOk && !proofOk ? (
-            <span className="mono" style={{ color: "var(--ash)" }}>
+            <span className="mono" data-tone="ash">
               A break needs a proof
             </span>
           ) : null}
         </div>
       </div>
 
-      <div style={{ marginTop: 16 }}>
+      <div className="tx-anchor">
         <TxStates state={tx.state} message={tx.message} hash={tx.hash} />
       </div>
 
@@ -176,17 +166,17 @@ export function BreakPanel({
           setConfirming(false);
         }}
         detail={
-          <>
-            <p style={{ margin: 0 }}>
+          <div className="pour-detail">
+            <p>
               If Argus reproduces your failure you take{" "}
-              <span style={{ color: "var(--quench)" }}>{formatWei(payoutWei, 18)} ETH</span> from
+              <span data-tone="quench">{formatWei(payoutWei, 18)} ETH</span> from
               the agent&apos;s bond. If it does not, half of this stake pays the agent and the
               other half is burned.
             </p>
-            <p className="mono" style={{ margin: "10px 0 0", color: "var(--faint)" }}>
+            <p className="mono pour-detail__meta">
               proof digest {digestOf(proof).slice(0, 14)}…
             </p>
-          </>
+          </div>
         }
       />
     </section>

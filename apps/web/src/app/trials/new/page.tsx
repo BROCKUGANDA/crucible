@@ -33,7 +33,7 @@ export default function NewTrialPage() {
   return (
     <Chrome>
       <WrongNetworkNotice requiredChainId={dep.chainId} />
-      <h1 style={{ fontSize: 28, marginTop: 0 }}>Light a trial</h1>
+      <h1 className="page-title">Light a trial</h1>
       <p className="kicker">{KICKERS[step]}</p>
 
       {step === 0 ? (
@@ -83,8 +83,8 @@ export default function NewTrialPage() {
             error={result.errors.breakWindowHours}
             onChange={(v) => set("breakWindowHours", v)}
           />
-          <div className="surface" style={{ padding: 20, marginTop: 24 }}>
-            <p className="mono" style={{ margin: 0 }}>
+          <div className="surface wizard-recap">
+            <p className="mono">
               suite {values.testsCID || "—"} · reward {values.rewardEth} ETH · bond{" "}
               {result.bondEth} ETH · quench in {values.deadlineHours}h
             </p>
@@ -92,7 +92,7 @@ export default function NewTrialPage() {
         </>
       ) : null}
 
-      <div style={{ display: "flex", gap: 12, marginTop: 28, alignItems: "center" }}>
+      <div className="wizard-actions">
         {step > 0 ? (
           <button className="btn btn-ghost" onClick={() => setStep((s) => s - 1)}>
             Back
@@ -128,18 +128,18 @@ export default function NewTrialPage() {
               : "Escrow & light trial"}
         </button>
         {step === 2 ? (
-          <span className="mono" style={{ color: "var(--faint)" }}>
+          <span className="mono" data-tone="faint">
             {Number(values.rewardEth)} ETH escrowed on {activeChain()}
           </span>
         ) : null}
         {!isConnected ? (
-          <span className="mono" style={{ color: "var(--ash)" }}>
+          <span className="mono" data-tone="ash">
             Connect a wallet to light a trial
           </span>
         ) : null}
       </div>
 
-      <div style={{ marginTop: 16 }}>
+      <div className="tx-anchor">
         <TxStates state={tx.state} message={tx.message} hash={tx.hash} />
       </div>
     </Chrome>
@@ -174,38 +174,22 @@ function Field({
 }) {
   const id = `field-${label.replace(/\W+/g, "-").toLowerCase()}`;
   return (
-    <label htmlFor={id} style={{ display: "block", marginTop: 24 }}>
-      <span style={{ display: "block", fontWeight: 600, marginBottom: 8 }}>{label}</span>
+    <label htmlFor={id} className="wizard-field">
+      <span className="wizard-field__label">{label}</span>
       <textarea
         id={id}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         rows={multiline ? 8 : undefined}
-        className={mono ? "mono" : undefined}
+        className={mono ? "textarea mono" : "textarea"}
         aria-invalid={Boolean(error)}
         aria-describedby={`${id}-help${error ? ` ${id}-error` : ""}`}
-        style={{
-          width: "100%",
-          background: "var(--bg1)",
-          border: `1px solid ${error ? "var(--sear)" : "var(--bg2)"}`,
-          borderRadius: 8,
-          color: "var(--text)",
-          padding: 12,
-          font: "inherit",
-        }}
       />
-      <span
-        id={`${id}-help`}
-        style={{ display: "block", fontSize: 12, color: "var(--faint)", marginTop: 6 }}
-      >
+      <span id={`${id}-help`} className="hint hint--block">
         {help}
       </span>
       {error ? (
-        <span
-          id={`${id}-error`}
-          role="alert"
-          style={{ display: "block", fontSize: 13.5, color: "var(--sear)", marginTop: 6 }}
-        >
+        <span id={`${id}-error`} role="alert" className="field-error">
           {error}
         </span>
       ) : null}

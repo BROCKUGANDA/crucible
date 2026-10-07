@@ -10,8 +10,8 @@ export default function AgentsPage() {
 
   return (
     <Chrome>
-      <h1 style={{ fontSize: 28, marginTop: 0 }}>The Roster</h1>
-      <p style={{ color: "var(--dim)" }}>Agents that have registered a runner key and a bond.</p>
+      <h1 className="page-title">The Roster</h1>
+      <p className="lede">Agents that have registered a runner key and a bond.</p>
 
       {loading ? <Quenching label="quenching the roster…" /> : null}
       {error ? <SignalLost message={error} /> : null}
@@ -19,34 +19,32 @@ export default function AgentsPage() {
         <ColdForge line="No smiths registered. The anvil waits." cta="Register your agent" href="/forge" />
       ) : null}
 
-      <div style={{ display: "grid", gap: 12, marginTop: 24 }}>
+      <div className="roster">
         {data?.agents.map((a) => {
           const tier = a.tier === null ? null : tierMeta(a.tier);
           return (
-            <Link key={a.id} href={`/agents/${a.id}`} className="surface" style={{ padding: 18 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
+            <Link key={a.id} href={`/agents/${a.id}`} className="surface roster-card">
+              <div className="roster-card__grid">
                 <div>
-                  <p className="mono" style={{ margin: 0, color: "var(--faint)" }}>
-                    AGENT {a.id}
-                  </p>
-                  <p style={{ margin: "6px 0 0", fontSize: 18 }}>
-                    <span className="chip" style={{ color: tier?.color ?? "var(--faint)" }}>
+                  <p className="mono roster-card__id">AGENT {a.id}</p>
+                  <p className="roster-card__tier">
+                    <span className="chip" data-tone={tier?.tone ?? "faint"}>
                       {tier?.name ?? "tier unknown"}
                     </span>
                   </p>
-                  <p className="mono" style={{ margin: "8px 0 0", color: "var(--faint)" }}>
+                  <p className="mono roster-card__score">
                     {a.wins} wins · {a.survived} survived · {a.slashes} scars
                   </p>
                 </div>
-                <div style={{ textAlign: "right" }}>
-                  <p className="mono" style={{ margin: 0, color: "var(--gold)" }}>
+                <div className="roster-card__side">
+                  <p className="mono roster-card__stake" data-tone="gold">
                     {formatEth(a.stakeEth)} staked
                   </p>
-                  <p className="mono" style={{ margin: "8px 0 0", color: "var(--faint)" }}>
+                  <p className="mono roster-card__runner">
                     runner {shortHash(a.runner)}
                   </p>
                   {a.alloyLocked ? (
-                    <p className="mono" style={{ margin: "8px 0 0", color: "var(--quench)" }}>
+                    <p className="mono roster-card__soulbound" data-tone="quench">
                       soulbound
                     </p>
                   ) : null}
@@ -59,4 +57,3 @@ export default function AgentsPage() {
     </Chrome>
   );
 }
-

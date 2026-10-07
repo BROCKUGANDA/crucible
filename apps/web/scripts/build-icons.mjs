@@ -10,7 +10,7 @@
  * the corner radii and stroke weights can no longer drift between files (they
  * had drifted: favicon used rx 14/64 = 0.219 while icon used 96/512 = 0.1875).
  *
- * Colours are READ from src/app/globals.css at build time, never typed out here.
+ * Colours are READ from src/styles/tokens.css at build time, never typed out here.
  * If the theme agent changes `--ember`, regenerating follows them.
  *
  * Rasterisation is deterministic: @resvg/resvg-js with the brand fonts vendored
@@ -30,12 +30,12 @@ const FONTS = path.join(WEB, "scripts", "fonts");
 
 /* ------------------------------------------------------------------ tokens */
 
-/** Parse `--name: #rrggbb;` out of globals.css. Never guess a brand colour. */
+/** Parse `--name: #rrggbb;` out of tokens.css. Never guess a brand colour. */
 function readTokens() {
-  const css = fs.readFileSync(path.join(WEB, "src", "app", "globals.css"), "utf8");
+  const css = fs.readFileSync(path.join(WEB, "src", "styles", "tokens.css"), "utf8");
   const grab = (name) => {
     const m = css.match(new RegExp("--" + name + ":\\s*(#[0-9a-fA-F]{6})\\s*;", "m"));
-    if (!m) throw new Error(`globals.css has no --${name} hex token — refusing to guess it`);
+    if (!m) throw new Error(`tokens.css has no --${name} hex token — refusing to guess it`);
     return m[1].toLowerCase();
   };
   return { bg0: grab("bg0"), bg1: grab("bg1"), bg2: grab("bg2"), ember: grab("ember"), gold: grab("gold"), hot: grab("hot"), text: grab("text"), dim: grab("dim"), faint: grab("faint"), ash: grab("ash") };
@@ -515,7 +515,7 @@ if (fs.existsSync(MEDIA_HTML)) {
 
 /* ------------------------------------------------------------------ report */
 
-console.log("tokens read from globals.css:", JSON.stringify(T));
+console.log("tokens read from src/styles/tokens.css:", JSON.stringify(T));
 console.log(`MARK_EXTENT (radius at scale 1) = ${MARK_EXTENT.toFixed(1)}u`);
 console.log(`favicon mark scale ${FAVICON_SCALE} -> ${MARK_EXTENT * FAVICON_SCALE <= S / 2 ? "fits" : "OVERFLOWS"} the inscribed circle (${(MARK_EXTENT * FAVICON_SCALE).toFixed(1)} <= ${S / 2})`);
 console.log(`maskable mark scale ${MASKABLE_SCALE} -> safe zone ${(MARK_EXTENT * MASKABLE_SCALE).toFixed(1)}u <= ${((S * SAFE_RATIO) / 2).toFixed(1)}u`);

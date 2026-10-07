@@ -104,8 +104,8 @@ export function TxStates({
 
   if (state === "heating") {
     return (
-      <div className="surface heating" role="status" aria-live="polite" style={{ padding: 14 }}>
-        <span className="mono" style={{ color: "var(--gold)" }}>
+      <div className="surface heating tx" role="status" aria-live="polite" data-state="heating">
+        <span className="mono" data-tone="gold">
           Heating — waiting for the network…
         </span>
       </div>
@@ -114,18 +114,16 @@ export function TxStates({
 
   if (state === "poured") {
     return (
-      <div className="surface stamp" role="status" style={{ padding: 14, borderColor: "var(--quench)" }}>
-        <span style={{ color: "var(--quench)" }}>Poured.</span>{" "}
-        <span style={{ color: "var(--dim)" }}>Confirmed on chain.</span>
+      <div className="surface stamp tx" role="status" data-state="poured">
+        <span data-tone="quench">Poured.</span> <span data-tone="dim">Confirmed on chain.</span>
         {hash ? <TxLink hash={hash} /> : null}
       </div>
     );
   }
 
   return (
-    <div className="surface" role="alert" style={{ padding: 14, borderColor: "var(--sear)" }}>
-      <span style={{ color: "var(--sear)" }}>Doused.</span>{" "}
-      <span style={{ color: "var(--dim)" }}>{message}</span>
+    <div className="surface tx" role="alert" data-state="doused">
+      <span data-tone="sear">Doused.</span> <span data-tone="dim">{message}</span>
     </div>
   );
 }
@@ -141,21 +139,15 @@ export function TxLink({ hash }: { hash: string }) {
 
   if (!url) {
     return (
-      <span className="mono" style={{ display: "block", color: "var(--dim)", marginTop: 6 }}>
+      <span className="mono tx-link">
         {label}{" "}
-        <span style={{ color: "var(--faint)" }}>({activeChain()} chain — no explorer)</span>
+        <span className="tx-link__note">({activeChain()} chain — no explorer)</span>
       </span>
     );
   }
 
   return (
-    <a
-      className="mono"
-      href={url}
-      target="_blank"
-      rel="noreferrer"
-      style={{ display: "block", color: "var(--dim)", marginTop: 6, textDecoration: "underline", textUnderlineOffset: 3 }}
-    >
+    <a className="mono tx-link" href={url} target="_blank" rel="noreferrer">
       {label}
     </a>
   );
@@ -164,14 +156,14 @@ export function TxLink({ hash }: { hash: string }) {
 /** Route error boundary in the forge voice. Never a white screen. */
 export function Crack({ message }: { message: string }) {
   return (
-    <div className="surface" style={{ padding: 32, textAlign: "center" }}>
-      <h2 style={{ color: "var(--sear)", marginTop: 0 }}>The crucible cracked.</h2>
-      <p style={{ color: "var(--dim)" }}>
+    <div className="surface void-panel">
+      <h2 className="void-panel__title" data-tone="sear">
+        The crucible cracked.
+      </h2>
+      <p className="void-panel__body">
         Something broke on our side, not yours. The heat is contained.
       </p>
-      <pre className="mono" style={{ color: "var(--faint)", whiteSpace: "pre-wrap" }}>
-        {message}
-      </pre>
+      <pre className="mono void-panel__trace">{message}</pre>
       <button className="btn btn-primary" onClick={() => location.reload()}>
         Re-ignite
       </button>
@@ -182,13 +174,12 @@ export function Crack({ message }: { message: string }) {
 export function Quenching({ label }: { label: string }) {
   return (
     <div
-      className="quenching surface"
-      style={{ height: 220, display: "grid", placeItems: "center" }}
+      className="quenching surface loading-vat"
       role="status"
       aria-live="polite"
       aria-label={`Loading ${label}`}
     >
-      <span className="mono" style={{ color: "var(--dim)" }}>
+      <span className="mono" data-tone="dim">
         {label}
       </span>
     </div>
@@ -197,8 +188,8 @@ export function Quenching({ label }: { label: string }) {
 
 export function ColdForge({ line, cta, href }: { line: string; cta: string; href: string }) {
   return (
-    <div className="surface" style={{ padding: "clamp(24px, 6vw, 48px)", textAlign: "center", color: "var(--dim)" }}>
-      <p style={{ fontSize: "1.1rem" }}>{line}</p>
+    <div className="surface cold-forge">
+      <p className="cold-forge__line">{line}</p>
       <Link className="btn btn-primary" href={href}>
         {cta}
       </Link>
@@ -208,11 +199,7 @@ export function ColdForge({ line, cta, href }: { line: string; cta: string; href
 
 export function SignalLost({ message }: { message: string }) {
   return (
-    <div
-      className="surface"
-      role="alert"
-      style={{ padding: 20, color: "var(--sear)", borderColor: "var(--sear)" }}
-    >
+    <div className="surface signal-lost" role="alert" data-tone="sear">
       <strong>Signal lost.</strong> {message}
     </div>
   );

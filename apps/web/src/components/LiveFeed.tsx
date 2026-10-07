@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { Chrome, ColdForge, Quenching, SignalLost } from "@/components/Chrome";
 import { useSnapshot } from "@/lib/useSnapshot";
-import { forge } from "@/lib/forge";
 import { TrialTable } from "@/components/TrialTable";
 
 /**
@@ -28,9 +27,9 @@ export function LiveFeedInner() {
 
   if (!data) {
     return (
-      <div className="surface" style={{ padding: 24, textAlign: "center" }}>
-        <p style={{ color: "var(--dim)", margin: 0 }}>
-          <Link href="/trials" style={{ color: forge.ember }}>
+      <div className="surface feed-fallback">
+        <p>
+          <Link href="/trials" data-tone="ember">
             See every trial
           </Link>{" "}
           — or light the first one.

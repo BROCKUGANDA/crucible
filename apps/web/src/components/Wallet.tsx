@@ -59,14 +59,14 @@ function InjectedConnect() {
   const injected = connectors.find((c) => c.type === "injected");
   if (!injected) {
     return (
-      <span className="mono" style={{ color: "var(--ash)" }}>
+      <span className="mono" data-tone="ash">
         No injected wallet found
       </span>
     );
   }
 
   return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
+    <span className="wallet-inline">
       <button
         className="btn btn-primary"
         disabled={isPending}
@@ -78,7 +78,7 @@ function InjectedConnect() {
         {isPending ? "Connecting…" : "Connect wallet"}
       </button>
       {error ? (
-        <span className="mono" style={{ color: "var(--sear)" }}>
+        <span className="mono" data-tone="sear">
           {error.message.split("\n")[0]}
         </span>
       ) : null}
@@ -108,17 +108,12 @@ export function WrongNetworkNotice({ requiredChainId }: { requiredChainId: numbe
         : `chain ${requiredChainId}`;
 
   return (
-    <div
-      role="alert"
-      className="surface"
-      style={{ padding: 16, borderColor: "var(--sear)", marginBottom: 16 }}
-    >
-      <strong style={{ color: "var(--sear)" }}>Wrong forge.</strong>{" "}
-      <span style={{ color: "var(--dim)" }}>This trial runs on {name}. Switch networks to continue.</span>{" "}
+    <div role="alert" className="surface net-alert">
+      <strong data-tone="sear">Wrong forge.</strong>{" "}
+      <span data-tone="dim">This trial runs on {name}. Switch networks to continue.</span>{" "}
       <button
-        className="btn btn-primary"
+        className="btn btn-primary net-alert__switch"
         disabled={switching}
-        style={{ marginLeft: 12 }}
         onClick={async () => {
           setSwitching(true);
           try {
@@ -154,18 +149,8 @@ export function WalletNotConfiguredNotice() {
   if (process.env.NODE_ENV === "production") return null;
 
   return (
-    <div
-      role="status"
-      className="surface"
-      style={{
-        margin: "16px 32px 0",
-        padding: 14,
-        borderColor: "var(--gold)",
-        fontSize: 13.5,
-        color: "var(--dim)",
-      }}
-    >
-      <strong style={{ color: "var(--gold)" }}>Signing is disabled.</strong> This build has
+    <div role="status" className="surface env-notice">
+      <strong data-tone="gold">Signing is disabled.</strong> This build has
       no Crucible deployment behind it, so reads work and writes do not. Copy{" "}
       <code className="mono">apps/web/.env.example</code> to{" "}
       <code className="mono">.env.local</code> and fill in{" "}

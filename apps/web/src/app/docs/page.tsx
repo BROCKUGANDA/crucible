@@ -4,7 +4,7 @@ import Link from "next/link";
 export default function DocsPage() {
   return (
     <Chrome>
-      <h1 style={{ fontSize: 28, marginTop: 0 }}>Docs</h1>
+      <h1 className="page-title">Docs</h1>
 
       <Doc
         title="Trial spec"
@@ -32,8 +32,8 @@ on the contract, so an Alloy cannot move — ERC-5192 tooling reads locked(token
 always true once minted.`}
       />
 
-      <p style={{ marginTop: 32 }}>
-        <Link href="/" style={{ color: "var(--ember)" }}>
+      <p className="docs-back">
+        <Link href="/" data-tone="ember">
           Back to the forge
         </Link>
       </p>
@@ -43,22 +43,11 @@ always true once minted.`}
 
 function Doc({ title, body, code }: { title: string; body: string; code?: string }) {
   return (
-    <section className="surface" style={{ padding: 24, marginBottom: 16 }}>
-      <h2 style={{ fontSize: 21, margin: "0 0 12px" }}>{title}</h2>
-      <p style={{ color: "var(--dim)", whiteSpace: "pre-line" }}>{body}</p>
+    <section className="surface doc">
+      <h2 className="doc__title">{title}</h2>
+      <p className="doc__body">{body}</p>
       {code ? (
-        <pre
-          className="mono"
-          style={{
-            marginTop: 16,
-            padding: 16,
-            background: "var(--bg0)",
-            borderRadius: 8,
-            color: "var(--gold)",
-          }}
-        >
-          {code}
-        </pre>
+        <pre className="mono doc__code">{code}</pre>
       ) : null}
     </section>
   );

@@ -1,0 +1,247 @@
+/* @file trials.css — the arena pages: trial index, sponsor wizard, trial detail, the
+ * break board, the hall of alloy, docs, and the void pages. Imported last of the
+ * page families.
+ */
+
+/* ── trial index ──────────────────────────────────────────── */
+
+.trials-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.filter-row {
+  display: flex;
+  gap: var(--s-2);
+  margin: var(--s-4) 0;
+  flex-wrap: wrap;
+}
+
+/* ── sponsor wizard ───────────────────────────────────────── */
+
+.wizard-field {
+  display: block;
+  margin-top: var(--s-5);
+}
+
+.wizard-field__label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: var(--s-2);
+}
+
+.wizard-recap {
+  padding: var(--s-5);
+  margin-top: var(--s-5);
+}
+
+.wizard-recap p {
+  margin: 0;
+}
+
+.wizard-actions {
+  display: flex;
+  gap: var(--s-3);
+  margin-top: var(--s-5);
+  align-items: center;
+}
+
+/* ── trial detail ─────────────────────────────────────────── */
+
+.trial-title {
+  margin: var(--s-2) 0;
+}
+
+.trial-tabs {
+  display: flex;
+  gap: var(--s-5);
+  margin: var(--s-6) 0;
+  font-size: var(--fs-small);
+}
+
+.trial-tabs__tab {
+  color: var(--faint);
+}
+
+.trial-tabs__tab[data-active] {
+  color: var(--text);
+}
+
+.verdict-panel {
+  padding: var(--s-5);
+  margin-top: var(--s-5);
+  border-color: var(--tone, var(--bg2));
+}
+
+.verdict-panel__label {
+  margin: 0;
+  font-weight: 600;
+}
+
+.verdict-panel__why {
+  margin: var(--s-2) 0 0;
+  color: var(--dim);
+}
+
+/* ── the break board ──────────────────────────────────────── */
+
+.how-panel {
+  padding: var(--s-5);
+  margin: var(--s-5) 0;
+}
+
+.how-panel summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.how-panel__body {
+  color: var(--dim);
+  margin-bottom: 0;
+}
+
+.board {
+  display: grid;
+  gap: var(--s-3);
+}
+
+.break-card {
+  padding: var(--s-5);
+}
+
+.break-card__head {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--s-4);
+  flex-wrap: wrap;
+}
+
+.break-card__id {
+  margin: 0;
+  color: var(--faint);
+}
+
+.break-card__payout {
+  margin: var(--s-2) 0 0;
+}
+
+.break-card__meta {
+  margin: var(--s-2) 0 0;
+  color: var(--faint);
+}
+
+.break-card__side {
+  display: grid;
+  gap: var(--s-2);
+  align-content: center;
+}
+
+/* ── hall of alloy: the honour roll as an inscription ─────── */
+
+.hall-lede {
+  max-width: 62ch;
+}
+
+.hall-legend {
+  padding: var(--s-4);
+  margin: var(--s-4) 0;
+  display: flex;
+  gap: var(--s-5);
+  flex-wrap: wrap;
+}
+
+.hall-legend__tier {
+  font-size: 0.8rem;
+}
+
+/* The tier numeral beside the name: the credential rendered the way Rome would have
+   cut it. An unread tier has no numeral — nothing renders, rather than a placeholder. */
+.hall-row__numeral {
+  color: var(--bronze);
+  font-size: 1.1rem;
+}
+
+.hall-rows {
+  display: grid;
+  gap: var(--s-3);
+}
+
+.hall-row {
+  overflow: hidden;
+}
+
+.hall-receipts {
+  display: grid;
+  gap: var(--s-2);
+  margin: var(--s-2) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.hall-receipt {
+  color: var(--faint);
+  font-size: 0.78rem;
+}
+
+.hall-receipt__hash {
+  color: var(--dim);
+}
+
+/* ── docs ─────────────────────────────────────────────────── */
+
+.doc {
+  padding: var(--s-5);
+  margin-bottom: var(--s-4);
+}
+
+.doc__title {
+  font-size: 1.3rem;
+  margin: 0 0 var(--s-3);
+}
+
+.doc__body {
+  color: var(--dim);
+  white-space: pre-line;
+}
+
+.doc__code {
+  margin: var(--s-4) 0 0;
+  padding: var(--s-4);
+  background: var(--bg0);
+  border-radius: 8px;
+  color: var(--gold);
+}
+
+.docs-back {
+  margin-top: var(--s-6);
+}
+
+/* ── void pages ───────────────────────────────────────────── */
+
+.void-page {
+  max-width: 640px;
+  margin: 120px auto 0;
+  padding: 0 var(--s-5);
+  text-align: center;
+}
+
+.void-page__title {
+  font-size: 2.75rem;
+  margin: var(--s-4) 0;
+}
+
+.void-page__body {
+  color: var(--dim);
+}
+
+.error-page {
+  max-width: 720px;
+  margin: 80px auto 0;
+  padding: 0 var(--s-5);
+}
+
+.error-page__retry {
+  margin-top: var(--s-4);
+  text-align: center;
+}

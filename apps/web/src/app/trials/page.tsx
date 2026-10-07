@@ -24,19 +24,16 @@ export default function TrialsPage() {
 
   return (
     <Chrome>
-      <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <h1 style={{ fontSize: 28, margin: 0 }}>Trials</h1>
+      <header className="trials-head">
+        <h1 className="page-title">Trials</h1>
         <Link className="btn btn-primary" href="/trials/new">
           Light a trial
         </Link>
       </header>
 
-      <nav
-        aria-label="Filter trials"
-        style={{ display: "flex", gap: 8, margin: "24px 0", flexWrap: "wrap" }}
-      >
+      <nav aria-label="Filter trials" className="filter-row">
         {FILTERS.map((f) => (
-          <span key={f.key} className="chip" style={{ color: "var(--dim)" }}>
+          <span key={f.key} className="chip" data-tone="dim">
             {f.label}
             {data ? ` ${data.counts[f.key]}` : ""}
           </span>

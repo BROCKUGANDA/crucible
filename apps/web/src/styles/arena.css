@@ -1,0 +1,377 @@
+/* The landing narrative.
+ *
+ * Six acts, one per screen of scroll, each carrying the act it belongs to through
+ * `data-act`. The copy is ordinary HTML in normal flow above the canvas: it is what a
+ * search engine indexes and what a screen reader reads, and it stays complete with
+ * JavaScript disabled. The scene behind it is how the walk *feels*, not what it says.
+ *
+ * The Latin is load-bearing, not costume. Each term is the actual Roman legal or military
+ * word for the mechanism sitting under it — `pignus` is a pledge held as security,
+ * `sacramentum` the sworn deposit that put a case in play, `provocatio` the appeal against a
+ * magistrate's ruling, `sententia` the finding, `auctoritas` the standing that made a
+ * person's word count. They are used because they name the same things the contract names.
+ */
+
+.arena {
+  --arena-col: min(34rem, 100%);
+  position: relative;
+}
+
+.arena__act {
+  position: relative;
+  min-height: 100svh;
+  display: grid;
+  align-content: end;
+  padding-block: clamp(5rem, 18svh, 12rem) var(--s-6);
+  padding-inline: var(--pad);
+}
+
+/* A scrim under the copy only, so the drawing stays uninterrupted everywhere else. */
+.arena__act::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 78%;
+  z-index: -1;
+  pointer-events: none;
+  background: radial-gradient(
+    120% 90% at var(--arena-anchor-x, 12%) 78%,
+    rgba(10, 8, 7, 0.78),
+    rgba(10, 8, 7, 0.34) 42%,
+    transparent 72%
+  );
+}
+
+.arena__act:nth-of-type(even) {
+  justify-content: end;
+  --arena-anchor-x: 88%;
+}
+
+.arena__act:nth-of-type(even) .arena__copy {
+  text-align: end;
+}
+
+.arena__copy {
+  max-width: var(--arena-col);
+  display: grid;
+  gap: var(--s-3);
+}
+
+.arena__mark {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75em;
+  margin: 0;
+}
+
+.arena__numeral {
+  font-size: var(--fs-title);
+  line-height: 1;
+  color: var(--gold);
+}
+
+.arena__latin {
+  font-size: var(--fs-micro);
+  letter-spacing: var(--track-micro);
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+.arena__title {
+  margin: 0;
+  font-family: var(--font-roman);
+  font-weight: 600;
+  font-size: var(--fs-act);
+  line-height: 1.02;
+  letter-spacing: var(--track-roman);
+  text-transform: uppercase;
+  color: var(--marble);
+  text-wrap: balance;
+}
+
+.arena__body {
+  margin: 0;
+  font-size: var(--fs-lede);
+  line-height: 1.55;
+  color: var(--text);
+  text-wrap: pretty;
+}
+
+.arena__term {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: max-content;
+  gap: var(--s-4);
+  justify-content: start;
+  margin: 0;
+  padding-top: var(--s-3);
+  border-top: 1px solid color-mix(in oklab, var(--bronze) 40%, transparent);
+  font-size: var(--fs-small);
+}
+
+.arena__term div {
+  display: grid;
+  gap: 2px;
+}
+
+.arena__term dt {
+  color: var(--faint);
+  font-size: var(--fs-micro);
+  letter-spacing: var(--track-micro);
+  text-transform: uppercase;
+}
+
+.arena__term dd {
+  margin: 0;
+  color: var(--gold);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 700px) {
+  .arena__term {
+    grid-auto-flow: row;
+    grid-auto-columns: auto;
+    justify-content: stretch;
+  }
+}
+
+/* ------------------------------------------------------------------ hero furniture */
+
+.arena__nav {
+  position: absolute;
+  inset: var(--pad) var(--pad) auto auto;
+  display: flex;
+  gap: var(--s-4);
+  font-size: var(--fs-micro);
+  letter-spacing: var(--track-micro);
+  text-transform: uppercase;
+}
+
+.arena__nav a {
+  color: var(--dim);
+  padding-block: 0.5em;
+  border-bottom: 1px solid transparent;
+  transition: color var(--t-tap) var(--ease-ignite), border-color var(--t-tap) var(--ease-ignite);
+}
+
+.arena__nav a:hover,
+.arena__nav a:focus-visible {
+  color: var(--marble);
+  border-bottom-color: var(--gold);
+}
+
+.arena__hero__body {
+  display: grid;
+  justify-items: center;
+  gap: 0;
+}
+
+.arena__live {
+  margin-top: var(--s-5);
+  display: grid;
+  gap: var(--s-3);
+}
+
+.arena__sub {
+  margin: 0;
+  font-size: var(--fs-micro);
+  letter-spacing: var(--track-micro);
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+.arena__foot {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--s-3);
+  padding: var(--s-5) var(--pad);
+  border-top: 1px solid color-mix(in oklab, var(--bronze) 30%, transparent);
+  font-size: var(--fs-micro);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+/* ------------------------------------------------------------------ the hero (act 0) */
+
+.arena__hero {
+  min-height: 100svh;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  text-align: center;
+  padding-inline: var(--pad);
+  padding-block: clamp(7rem, 22svh, 14rem) 6rem;
+}
+
+.arena__hero::after {
+  inset: 0;
+  height: 100%;
+  background: radial-gradient(90% 60% at 50% 62%, rgba(10, 8, 7, 0.7), transparent 70%);
+}
+
+.arena__eyebrow {
+  margin: 0 0 var(--s-3);
+  font-size: var(--fs-micro);
+  letter-spacing: 0.34em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+.arena__word {
+  margin: 0;
+  font-family: var(--font-roman);
+  font-weight: 700;
+  font-size: var(--fs-hero);
+  line-height: 0.92;
+  letter-spacing: var(--track-hero);
+  text-transform: uppercase;
+  color: var(--marble);
+  /* Stone-cut, not painted: a hairline of shadow above and light below reads as an inscription. */
+  text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.55), 0 1px 0 color-mix(in oklab, var(--gold) 30%, transparent);
+}
+
+.arena__lede {
+  margin: var(--s-4) auto 0;
+  max-width: 44ch;
+  font-size: var(--fs-lede);
+  line-height: 1.6;
+  color: var(--text);
+}
+
+.arena__cta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-3);
+  justify-content: center;
+  margin-top: var(--s-6);
+}
+
+.arena__scroll {
+  margin: clamp(3rem, 9svh, 6rem) 0 0;
+  display: grid;
+  justify-items: center;
+  gap: 0.7em;
+  font-size: var(--fs-micro);
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+.arena__scroll::after {
+  content: "";
+  width: 1px;
+  height: 3rem;
+  background: linear-gradient(var(--gold), transparent);
+  animation: arenaDescent 2.6s var(--ease-cool) infinite;
+}
+
+@keyframes arenaDescent {
+  0% {
+    transform: scaleY(0);
+    transform-origin: top;
+    opacity: 0;
+  }
+  35% {
+    transform: scaleY(1);
+    opacity: 1;
+  }
+  100% {
+    transform: scaleY(1) translateY(0.6rem);
+    opacity: 0;
+  }
+}
+
+/* ---------------------------------------------------------------------- the closing act */
+
+.arena__roll {
+  display: grid;
+  gap: var(--s-3);
+  margin: var(--s-5) 0 0;
+  padding: 0;
+  list-style: none;
+  max-width: 46rem;
+}
+
+.arena__roll li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1em;
+  padding-bottom: 0.5em;
+  border-bottom: 1px solid color-mix(in oklab, var(--bronze) 32%, transparent);
+  font-size: var(--fs-small);
+}
+
+.arena__roll span {
+  font-family: var(--font-roman);
+  letter-spacing: var(--track-roman);
+  text-transform: uppercase;
+  color: var(--marble);
+}
+
+.arena__roll b {
+  font-weight: 400;
+  color: var(--gold);
+  font-variant-numeric: tabular-nums;
+}
+
+.arena__fine {
+  margin: var(--s-5) 0 0;
+  max-width: 52ch;
+  font-size: var(--fs-small);
+  line-height: 1.55;
+  color: var(--faint);
+}
+
+/* --------------------------------------------------------------------- entrance and a11y */
+
+@supports (animation-timeline: view()) {
+  .arena__copy {
+    animation: arenaRise linear both;
+    animation-timeline: view();
+    animation-range: entry 12% cover 34%;
+  }
+
+  @keyframes arenaRise {
+    from {
+      opacity: 0;
+      transform: translateY(2.2rem);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .arena__scroll::after {
+    animation: none;
+    opacity: 0.6;
+  }
+
+  .arena__copy {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (max-width: 700px) {
+  .arena__act {
+    min-height: auto;
+    padding-block: clamp(4rem, 14svh, 7rem) var(--s-5);
+  }
+
+  /* No alternating sides on a narrow screen: the scrim anchor would leave one edge bare. */
+  .arena__act:nth-of-type(even) {
+    justify-content: start;
+    --arena-anchor-x: 12%;
+  }
+
+  .arena__act:nth-of-type(even) .arena__copy {
+    text-align: start;
+  }
+}

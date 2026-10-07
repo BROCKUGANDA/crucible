@@ -20,9 +20,9 @@ export default function ErrorBoundary({
   }, [error]);
 
   return (
-    <div style={{ maxWidth: 720, margin: "80px auto", padding: "0 24px" }}>
+    <div className="error-page">
       <Crack message={error.message} />
-      <div style={{ marginTop: 16, textAlign: "center" }}>
+      <div className="error-page__retry">
         <button className="btn btn-ghost" onClick={reset}>
           Try again
         </button>

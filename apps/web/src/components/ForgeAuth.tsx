@@ -20,7 +20,8 @@ import { activeChain } from "@/lib/wagmi";
  *              it and the ember re-ignites.
  *
  * Both are CSS-driven and both stop dead under prefers-reduced-motion, where every state
- * still reads — a filled vessel is a filled vessel whether or not it moved.
+ * still reads — a filled vessel is a filled vessel whether or not it moved. The styles for
+ * this screen live in console.css and its keyframes in motion.css.
  */
 export function ForgeAuth({ mode }: { mode: "sign-in" | "sign-up" }) {
   const fresh = mode === "sign-up";
@@ -87,8 +88,6 @@ export function ForgeAuth({ mode }: { mode: "sign-in" | "sign-up" }) {
           )}
         </p>
       </div>
-
-      <style>{AUTH_CSS}</style>
     </main>
   );
 }
@@ -115,24 +114,24 @@ function Crucible({ fresh, settled }: { fresh: boolean; settled: boolean }) {
           </linearGradient>
           <linearGradient id="quenched" x1="0" y1="1" x2="0" y2="0">
             <stop offset="0%" stopColor="var(--quench)" />
-            <stop offset="100%" stopColor="#2f6a63" />
+            <stop offset="100%" stopColor="color-mix(in srgb, var(--quench) 55%, var(--bg0))" />
           </linearGradient>
           <clipPath id="crucible-void">
             <path d="M32 48 h56 l-7 40 a8 8 0 0 1 -8 7 H47 a8 8 0 0 1 -8 -7 z" />
           </clipPath>
         </defs>
 
-        {/* rising sparks, only on a fresh pour, and only once */}
+        {/* rising sparks, only on a fresh pour, and only once; the per-spark delays are
+            cut in console.css, not inline, so the choreography stays in the motion layer */}
         {fresh &&
           [0, 1, 2, 3].map((i) => (
             <circle
               key={i}
-              className="crucible__spark"
+              className={`crucible__spark crucible__spark--${i + 1}`}
               cx={52 + i * 6}
               cy={62}
               r={1.8}
               fill="var(--gold)"
-              style={{ animationDelay: `${600 + i * 170}ms` }}
             />
           ))}
 
@@ -165,142 +164,3 @@ function Crucible({ fresh, settled }: { fresh: boolean; settled: boolean }) {
     </div>
   );
 }
-
-const AUTH_CSS = `
-.forge-auth {
-  min-height: 100svh;
-  display: grid;
-  place-items: center;
-  padding: clamp(20px, 5vw, 48px);
-  /* The foundry floor: heat rising from below the vessel, charcoal in every direction. */
-  background:
-    radial-gradient(60% 45% at 50% 82%, rgba(255,90,0,.22), transparent 70%),
-    radial-gradient(90% 70% at 50% 12%, #170f0a 0%, #050302 72%);
-}
-
-.forge-auth__inner {
-  width: 100%;
-  max-width: 430px;
-  text-align: center;
-  display: grid;
-  justify-items: center;
-  gap: 0;
-}
-
-.forge-auth__title {
-  font-size: clamp(1.7rem, 6vw, 2rem);
-  font-weight: 800;
-  margin: 22px 0 8px;
-}
-
-.forge-auth__sub {
-  color: var(--dim);
-  margin: 0;
-  max-width: 34ch;
-}
-
-.forge-auth__gate {
-  margin-top: 30px;
-  width: 100%;
-  display: grid;
-  gap: 14px;
-  justify-items: center;
-}
-
-.forge-auth__cta { width: min(300px, 100%); display: grid; }
-.forge-auth__cta .btn { width: 100%; }
-
-.forge-auth__chain { color: var(--faint); }
-
-.forge-auth__switch {
-  margin-top: 34px;
-  font-size: .82rem;
-  color: var(--ash);
-}
-
-.forge-auth__switch a { color: var(--gold); text-decoration: underline; text-underline-offset: 3px; }
-.forge-auth__switch a:hover { color: var(--hot); }
-
-/* Staged arrival: heat, then the words, then the way in. Each stage waits for the one
-   before it rather than all three moving at once. */
-.forge-auth [data-stage] {
-  animation: forgeStage 560ms var(--ease-ignite) both;
-}
-.forge-auth [data-stage="1"] { animation-delay: 260ms; }
-.forge-auth [data-stage="2"] { animation-delay: 400ms; }
-.forge-auth [data-stage="3"] { animation-delay: 560ms; }
-.forge-auth [data-stage="4"] { animation-delay: 760ms; }
-
-@keyframes forgeStage {
-  from { opacity: 0; transform: translateY(12px); filter: brightness(1.6); }
-  to   { opacity: 1; transform: none; filter: none; }
-}
-
-.crucible {
-  display: grid;
-  place-items: center;
-  width: 150px;
-  height: 150px;
-  border-radius: 26px;
-  background: #0b0705;
-  border: 1px solid rgba(255,90,0,.55);
-  box-shadow: 0 0 46px rgba(255,90,0,.28), inset 0 0 30px rgba(0,0,0,.7);
-  animation: crucibleBreathe 3.4s var(--ease-cool) infinite;
-}
-
-/* When the ingot sets, the vessel stops breathing. The heat has gone into the metal. */
-.crucible[data-settled] { animation: none; border-color: var(--quench); box-shadow: 0 0 40px rgba(84,216,198,.22), inset 0 0 30px rgba(0,0,0,.7); }
-.crucible[data-settled] .crucible__ember { fill: var(--quench); }
-.crucible[data-settled] .crucible__wall { stroke: var(--quench); }
-
-@keyframes crucibleBreathe {
-  0%, 100% { transform: scale(1); box-shadow: 0 0 26px rgba(255,90,0,.2), inset 0 0 30px rgba(0,0,0,.7); }
-  50%      { transform: scale(1.035); box-shadow: 0 0 58px rgba(255,90,0,.42), inset 0 0 30px rgba(0,0,0,.7); }
-}
-
-.crucible__mark { animation: markGlow 3.4s var(--ease-cool) infinite; transform-origin: 60px 30px; }
-@keyframes markGlow {
-  0%, 100% { opacity: .78; }
-  50%      { opacity: 1; }
-}
-
-/* The pour is the metal level rising: a scaleY on the fill box, anchored at the bottom of
-   the vessel. */
-.crucible__metal--pour {
-  transform-box: fill-box;
-  transform-origin: bottom;
-  animation: pourUp 1.5s var(--ease-ignite) both;
-}
-
-/* A returning operator sees an ingot already cast, coming back up to temperature. */
-.crucible__metal--reheat {
-  transform-box: fill-box;
-  transform-origin: bottom;
-  animation: reheat 2.6s var(--ease-cool) infinite;
-}
-
-@keyframes pourUp {
-  from { transform: scaleY(0); }
-  to   { transform: scaleY(1); }
-}
-
-@keyframes reheat {
-  0%, 100% { opacity: .4; }
-  50%      { opacity: 1; }
-}
-
-.crucible__ember { animation: emberBlink 3.4s var(--ease-cool) infinite; }
-@keyframes emberBlink {
-  0%, 100% { opacity: .6; }
-  50%      { opacity: 1; }
-}
-
-.crucible__spark { animation: sparkRise 900ms var(--ease-cool) 1 both; }
-
-@media (prefers-reduced-motion: reduce) {
-  .crucible, .crucible__mark, .crucible__ember, .crucible__metal--reheat { animation: none; }
-  .crucible__metal--pour { transform: scaleY(1); }
-  .forge-auth [data-stage] { animation: none; }
-  .crucible__spark { display: none; }
-}
-`;
