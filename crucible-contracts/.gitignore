@@ -3,10 +3,6 @@ out/
 cache/
 broadcast/
 
-# forge-std is vendored on disk (no submodule) so the repo builds offline,
-# but it is not ours to version.
-lib/
-
 # env
 .env
 .env.*
@@ -19,3 +15,7 @@ node_modules/
 # editors / os
 .DS_Store
 Thumbs.db
+# forge-std is a pinned git submodule (see .gitmodules), so it must be visible to git
+# or a clean clone cannot compile the contracts. Anything else dropped into lib/ stays out.
+lib/*
+!lib/forge-std

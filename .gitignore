@@ -12,7 +12,6 @@ out/
 crucible-contracts/out/
 crucible-contracts/cache/
 crucible-contracts/broadcast/
-crucible-contracts/lib/
 
 # env
 .env
