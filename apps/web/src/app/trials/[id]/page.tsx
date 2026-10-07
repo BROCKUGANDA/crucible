@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useRef, useState, type KeyboardEvent } from "react";
-import { Chrome, Quenching, SignalLost } from "@/components/Chrome";
+import { Chrome, Quenching, SignalLost, TxLink, TxStates } from "@/components/Chrome";
 import { BreakPanel } from "@/components/BreakPanel";
 import { useSnapshot } from "@/lib/useSnapshot";
 import {
@@ -14,6 +14,7 @@ import {
   statusMeta,
   verdictMeta,
 } from "@/lib/forge";
+import { buildFinalize, useTx } from "@/lib/useTx";
 import { useCountdown } from "@/lib/useSnapshot";
 
 const TABS = ["The charge", "Struck work", "Break attempts", "The quench"] as const;
@@ -29,6 +30,15 @@ export default function TrialDetailPage() {
 
   const [tab, setTab] = useState(0);
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const tx = useTx();
+
+  /** Quenchable: the skeptic window has closed, nothing was filed, and Argus holds
+   * no dispute. Finalize is permissionless — whoever calls it moves none of their own
+   * money — so this is a plain action, not a pour. */
+  const quenchable =
+    trial?.status === "judging" &&
+    trial.breakWindowEndsAt !== null &&
+    (serverNowMs ?? Date.now()) / 1000 >= trial.breakWindowEndsAt;
 
   if (loading) {
     return (
@@ -207,9 +217,40 @@ export default function TrialDetailPage() {
                     : "Reclaimed. No run arrived before the deadline. The reward went home; the agent's bond went back."}
               </p>
             </div>
+          ) : trial.status === "challenged" ? (
+            <p className="hint hint--block">
+              A break is under review — Argus holds the tongs until the committee's verdict.
+            </p>
+          ) : quenchable ? (
+            <div className="surface detail-panel">
+              <p className="verdict-panel__why">
+                The skeptic window closed and nothing survived to challenge the claim. Anyone
+                may quench now — the agent takes the reward, the bond stands, and the alloy
+                mints. Quenching moves none of your own money.
+              </p>
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={tx.busy}
+                aria-busy={tx.busy || undefined}
+                onClick={() => tx.send(buildFinalize(trial.id))}
+              >
+                {tx.busy ? "Quenching…" : "Quench the trial"}
+              </button>
+              <TxStates state={tx.state} hash={tx.hash} message={tx.error} />
+              {tx.state === "poured" && tx.hash ? (
+                <p className="hint">
+                  Quenched on-chain. The ledger catches up in a moment —{" "}
+                  <TxLink hash={tx.hash} />.
+                </p>
+              ) : null}
+            </div>
           ) : (
             <p className="hint hint--block">
-              Not quenched yet — the verdict lands once the skeptic window closes.
+              Not quenched yet.{" "}
+              {trial.status === "judging" && breakLeft !== null
+                ? `The skeptic window closes in ${formatDuration(breakLeft)} — quenching comes after.`
+                : "The verdict lands once the skeptic window closes."}
             </p>
           )}
         </div>
