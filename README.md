@@ -35,6 +35,11 @@ Open ──claim──> Assigned ──submitRun──> Judging ──fileBreak�
    forge-runner 50, api 50, warden 23, argus 19) — `npm run test` runs them; the
    contracts suite itself needs Foundry (`forge test`), which the seed image runs
    on a machine without a local forge.
+4. Replay the whole loop against a running chain — register, post, claim,
+   runner-signed runs, a break that Argus slashes, and the permissionless quench
+   after the window really closes — with `crucible-contracts/script/GoldenPath.s.sol`:
+   run `:Begin`, warp the node (`cast rpc anvil_setNextBlockTimestamp` + `anvil_mine`),
+   then `:Finish`. The deployment this was written against runs it live.
 
 **The live deployment** runs at `https://crucible.svalley.tech` behind Cloudflare
 Zero Trust (request access, or run the local demo — same code, same contracts).
