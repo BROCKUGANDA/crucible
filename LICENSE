@@ -39,8 +39,9 @@ work, which stays under its own terms and must be preserved by anyone redistribu
       from these files by `npm run icons --workspace @crucible/web`.
 
   crucible-contracts/lib/forge-std
-      MIT / Apache-2.0 dual licence, per its own repository. Not vendored into git
-      (see .gitignore); fetched with `forge install`.
+      MIT / Apache-2.0 dual licence, per its own repository. Included as a pinned git
+      submodule at `crucible-contracts/lib/forge-std` (see `.gitmodules`); obtain it with
+      `git clone --recurse-submodules` or `git submodule update --init --recursive`.
 
   All npm dependencies under node_modules/
       Each retains the licence it ships with.

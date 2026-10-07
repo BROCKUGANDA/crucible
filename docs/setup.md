@@ -38,11 +38,24 @@ Open a **new** shell afterwards — an already-running shell keeps its old PATH.
 ## Install
 
 ```bash
+git clone --recurse-submodules <repo-url>
+cd crucible
 npm install
 ```
 
-`forge-std` is vendored under `crucible-contracts/lib` rather than installed as a git
-submodule, so a judge can clone and build with no network access.
+`forge-std` is a git submodule pinned to the `v1.17.0` tag rather than loose vendored
+files, so the exact library the contracts were compiled against is reproducible and a
+change to it shows up as a visible commit. Without it the contracts workspace cannot
+compile at all. If you cloned without `--recurse-submodules`:
+
+```bash
+git submodule update --init --recursive
+```
+
+`npm install` also runs `npm run build:libs`, which compiles the TypeScript workspace
+packages to `dist/`. That step is not optional for `npm test` or `npm run typecheck`:
+`api` and `web` import those packages through their package `exports`, which point at
+`dist/`, and `dist/` is gitignored.
 
 ## Run the demo
 
