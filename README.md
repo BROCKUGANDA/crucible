@@ -16,6 +16,29 @@ Open ──claim──> Assigned ──submitRun──> Judging ──fileBreak�
                  Refunded                  Paid                Paid | Slashed
 ```
 
+## Demo
+
+Two recordings of the running app, captured against a live local chain:
+
+- [`docs/media/crucible-tour-desktop.webm`](docs/media/crucible-tour-desktop.webm) — the
+  whole product at 1440×900, pausing on the Hall of Alloy so you can read the settlement
+  and identity receipts each row quotes.
+- [`docs/media/crucible-tour-mobile.webm`](docs/media/crucible-tour-mobile.webm) — 390×780:
+  the animated entry, the collapsed navigation, and the same proofs on a phone.
+
+Both are WebM/VP8 with no audio track. They are ~8 MB total and committed directly rather
+than through Git LFS; if you clone for the code alone, `git clone --filter=blob:none`
+skips downloading them.
+
+To see it for yourself in about ninety seconds:
+
+```bash
+npm install
+npm run demo        # local chain + deploy + the whole loop, settled and identity-linked
+```
+
+Then start the API and web app as shown below and open `/hall`.
+
 ## Quick start
 
 ```bash
