@@ -131,6 +131,10 @@ const nextConfig = {
   reactStrictMode: true,
   transpilePackages: ["@crucible/smith", "@crucible/indexer"],
 
+  // Traced server for the Docker runner stage (apps/web/Dockerfile); `next start`
+  // is unaffected.
+  output: "standalone",
+
   async headers() {
     return [
       {
