@@ -130,7 +130,8 @@ contract GoldenPath is Script {
         uint256 slashedAgent = uint256(trials.getTrial(slashed).agentId);
         (uint32 wins, uint32 survived, , ) = alloy.records(paidAgent);
         (, , uint32 scars, ) = alloy.records(slashedAgent);
-        console.log("  paid agent: wins", uint256(wins), "survived", uint256(survived), "tier", alloy.tierName(paidAgent));
+        console.log("  paid agent: wins", uint256(wins), "survived", uint256(survived));
+        console.log("  paid agent tier:", alloy.tierName(paidAgent));
         console.log("  slashed agent: scars", uint256(scars));
     }
 }
@@ -145,7 +146,7 @@ contract Begin is GoldenPath {
         _claimAndSubmit(agentId, broken, keccak256("RunArtifact{golden,broken}"));
         _claimAndSubmit(agentId, quiet, keccak256("RunArtifact{golden,quiet}"));
         _fileBreak(broken);
-        console.log("PHASE A DONE — warp the node past the window, then run :Finish");
+        console.log("PHASE A DONE - warp the node past the window, then run :Finish");
         console.log("  broken trial:", broken);
         console.log("  quiet trial:", quiet);
     }
