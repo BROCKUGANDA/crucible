@@ -61,11 +61,30 @@
 }
 
 .trial-tabs__tab {
+  appearance: none;
+  background: none;
+  border: none;
+  border-bottom: 1px solid transparent;
+  padding: 0 0 var(--s-1);
+  font: inherit;
   color: var(--faint);
+  cursor: pointer;
+  transition: color var(--t-tap) var(--ease-ignite), border-color var(--t-tap) var(--ease-ignite);
+}
+
+.trial-tabs__tab:hover,
+.trial-tabs__tab:focus-visible {
+  color: var(--text);
+}
+
+.trial-tabs__tab:focus-visible {
+  outline: none;
+  border-bottom-color: var(--gold);
 }
 
 .trial-tabs__tab[data-active] {
   color: var(--text);
+  border-bottom-color: var(--bronze);
 }
 
 .verdict-panel {

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import { useRef, useState, type KeyboardEvent } from "react";
 import { Chrome, Quenching, SignalLost } from "@/components/Chrome";
 import { BreakPanel } from "@/components/BreakPanel";
 import { useSnapshot } from "@/lib/useSnapshot";
@@ -25,6 +26,9 @@ export default function TrialDetailPage() {
 
   const cools = useCountdown(trial?.deadlineAt ?? null, serverNowMs);
   const breakLeft = useCountdown(trial?.breakWindowEndsAt ?? null, serverNowMs);
+
+  const [tab, setTab] = useState(0);
+  const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
   if (loading) {
     return (
@@ -59,6 +63,22 @@ export default function TrialDetailPage() {
   const status = statusMeta(trial.status);
   const verdict = verdictMeta(trial.verdict);
 
+  /** APG tabs, selection-follows-focus: the arrow keys move the selected tab itself,
+   * so one keystroke does the whole job for both pointer-less and sighted keyboard
+   * operators. Arrow keys wrap, because a strip that dead-ends is a strip that
+   * teaches people to stop using the keyboard. */
+  function onTabKeyDown(e: KeyboardEvent<HTMLButtonElement>, i: number) {
+    let next: number;
+    if (e.key === "ArrowRight") next = (i + 1) % TABS.length;
+    else if (e.key === "ArrowLeft") next = (i - 1 + TABS.length) % TABS.length;
+    else if (e.key === "Home") next = 0;
+    else if (e.key === "End") next = TABS.length - 1;
+    else return;
+    e.preventDefault();
+    setTab(next);
+    tabRefs.current[next]?.focus();
+  }
+
   return (
     <Chrome>
       <p className="kicker">Trial {trial.id}</p>
@@ -67,68 +87,132 @@ export default function TrialDetailPage() {
         {status.label}
       </span>
 
-      <nav aria-label="Trial sections" className="trial-tabs">
+      <div role="tablist" aria-label="Trial sections" className="trial-tabs">
         {TABS.map((t, i) => (
-          <span key={t} className="trial-tabs__tab" data-active={i === 0 || undefined}>
+          <button
+            key={t}
+            ref={(el) => {
+              tabRefs.current[i] = el;
+            }}
+            type="button"
+            role="tab"
+            id={`trial-tab-${t}`}
+            aria-selected={i === tab}
+            aria-controls={`trial-panel-${t}`}
+            tabIndex={i === tab ? 0 : -1}
+            className="trial-tabs__tab"
+            data-active={i === tab || undefined}
+            onClick={() => setTab(i)}
+            onKeyDown={(e) => onTabKeyDown(e, i)}
+          >
             {t}
-          </span>
+          </button>
         ))}
-      </nav>
-
-      <div className="surface detail-panel">
-        <Field label="Sponsor" value={trial.sponsor} mono />
-        <Field label="Bond" value={formatEth(trial.bondEth)} mono />
-        <Field
-          label="Suite"
-          value={
-            trial.testsCID
-              ? shortCid(trial.testsCID)
-              : `${shortHash(trial.testsDigest)} (awaiting disclosure)`
-          }
-          mono
-        />
-        <Field
-          label="Spec"
-          value={
-            trial.specCID
-              ? shortCid(trial.specCID)
-              : `${shortHash(trial.specDigest)} (awaiting disclosure)`
-          }
-          mono
-        />
-        {trial.operator ? <Field label="Agent" value={trial.operator} mono /> : null}
-        {trial.runHash ? <Field label="Run" value={shortHash(trial.runHash)} mono /> : null}
-        <Field
-          label="Countdown"
-          value={
-            trial.status === "judging" && breakLeft !== null
-              ? `break window closes in ${formatDuration(breakLeft)}`
-              : trial.status === "settled"
-                ? "settled"
-                : `submission deadline in ${formatDuration(cools)}`
-          }
-        />
       </div>
 
-      {trial.verdict !== "none" ? (
-        <div className="surface verdict-panel" data-tone={verdict.tone}>
-          <p className="verdict-panel__label">{verdict.label}</p>
-          <p className="verdict-panel__why">
-            {trial.verdict === "paid"
-              ? "Verified. The run survived every strike."
-              : trial.verdict === "slashed"
-                ? "Broken. The skeptic's proof held. Bond split: 30% to the skeptic, 70% to the treasury. Sponsor refunded."
-                : "Reclaimed. No run arrived before the deadline. The reward went home; the agent's bond went back."}
-          </p>
+      {tab === 0 ? (
+        <div
+          role="tabpanel"
+          id="trial-panel-The charge"
+          aria-labelledby="trial-tab-The charge"
+          className="surface detail-panel"
+        >
+          <Field label="Sponsor" value={trial.sponsor} mono />
+          <Field label="Bond" value={formatEth(trial.bondEth)} mono />
+          <Field
+            label="Suite"
+            value={
+              trial.testsCID
+                ? shortCid(trial.testsCID)
+                : `${shortHash(trial.testsDigest)} (awaiting disclosure)`
+            }
+            mono
+          />
+          <Field
+            label="Spec"
+            value={
+              trial.specCID
+                ? shortCid(trial.specCID)
+                : `${shortHash(trial.specDigest)} (awaiting disclosure)`
+            }
+            mono
+          />
+          <Field
+            label="Countdown"
+            value={
+              trial.status === "judging" && breakLeft !== null
+                ? `break window closes in ${formatDuration(breakLeft)}`
+                : trial.status === "settled"
+                  ? "settled"
+                  : `submission deadline in ${formatDuration(cools)}`
+            }
+          />
         </div>
       ) : null}
 
-      {trial.status === "judging" ? (
-        <BreakPanel
-          trialId={trial.id}
-          rewardEth={trial.rewardEth}
-          bondEth={trial.bondEth}
-        />
+      {tab === 1 ? (
+        <div
+          role="tabpanel"
+          id="trial-panel-Struck work"
+          aria-labelledby="trial-tab-Struck work"
+          className="surface detail-panel"
+        >
+          {trial.operator ? (
+            <Field label="Agent" value={trial.operator} mono />
+          ) : null}
+          {trial.runHash ? <Field label="Run" value={shortHash(trial.runHash)} mono /> : null}
+          {!trial.operator && !trial.runHash ? (
+            <p className="hint hint--block">
+              Nothing on the anvil yet — no agent has claimed this trial.
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
+      {tab === 2 ? (
+        <div
+          role="tabpanel"
+          id="trial-panel-Break attempts"
+          aria-labelledby="trial-tab-Break attempts"
+        >
+          {trial.status === "judging" ? (
+            <BreakPanel trialId={trial.id} rewardEth={trial.rewardEth} bondEth={trial.bondEth} />
+          ) : trial.breakSkeptic ? (
+            <div className="surface detail-panel">
+              <Field label="Skeptic" value={trial.breakSkeptic} mono />
+              <Field label="Stake" value={formatEth(trial.breakStakeEth)} mono />
+            </div>
+          ) : (
+            <p className="hint hint--block">
+              No breaks filed. Skeptics can strike only while the trial is being judged.
+            </p>
+          )}
+        </div>
+      ) : null}
+
+      {tab === 3 ? (
+        <div
+          role="tabpanel"
+          id="trial-panel-The quench"
+          aria-labelledby="trial-tab-The quench"
+        >
+          {trial.verdict !== "none" ? (
+            <div className="surface verdict-panel" data-tone={verdict.tone}>
+              <p className="verdict-panel__label">{verdict.label}</p>
+              <p className="verdict-panel__why">
+                {trial.verdict === "paid"
+                  ? "Verified. The run survived every strike."
+                  : trial.verdict === "slashed"
+                    ? "Broken. The skeptic's proof held. Bond split: 30% to the skeptic, 70% to the treasury. Sponsor refunded."
+                    : "Reclaimed. No run arrived before the deadline. The reward went home; the agent's bond went back."}
+              </p>
+            </div>
+          ) : (
+            <p className="hint hint--block">
+              Not quenched yet — the verdict lands once the skeptic window closes.
+            </p>
+          )}
+        </div>
       ) : null}
     </Chrome>
   );
