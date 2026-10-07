@@ -71,7 +71,10 @@ services:
         NEXT_PUBLIC_CHAIN: ${NEXT_PUBLIC_CHAIN:-foundry}
         NEXT_PUBLIC_TRIALS_ADDRESS: ${TRIALS_ADDRESS:-}
         NEXT_PUBLIC_ALLOY_ADDRESS: ${ALLOY_ADDRESS:-}
-        NEXT_PUBLIC_ANVIL_RPC: http://127.0.0.1:${ANVIL_HOST_PORT:-8555}
+        # The browser's wallet needs an RPC for the demo chain. Local compose points
+        # at the host-published anvil; a server deployment overrides it in .env with
+        # the public proxied path (e.g. https://host/anvil).
+        NEXT_PUBLIC_ANVIL_RPC: ${NEXT_PUBLIC_ANVIL_RPC:-http://127.0.0.1:${ANVIL_HOST_PORT:-8555}}
     ports:
       - "${WEB_HOST_PORT:-3000}:3000"
     depends_on:
