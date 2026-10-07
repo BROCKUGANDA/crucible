@@ -1,0 +1,355 @@
+/* @file base.css — document defaults, the two heat pools, scrollbar chrome, element
+ * defaults and the generic layout/typography utilities. Imported second.
+ */
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg0);
+  color: var(--text);
+  font-family: var(--font-display);
+  font-size: clamp(16px, 0.55vw + 14.5px, 17px);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* The foundry never sits at a fixed temperature: two slow counter-breathing pools of
+   heat behind everything. Fixed, so it does not scroll with the page. */
+body::before,
+body::after {
+  content: "";
+  position: fixed;
+  inset: -25% -15% auto auto;
+  width: 70vw;
+  height: 70vh;
+  pointer-events: none;
+  z-index: 0;
+  filter: blur(70px);
+  opacity: 0.5;
+}
+
+body::before {
+  background: radial-gradient(circle, color-mix(in srgb, var(--ember) 16%, transparent), transparent 65%);
+  animation: bellows 17s var(--ease-cool) infinite;
+}
+
+body::after {
+  inset: auto auto -30% -20%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--gold) 10%, transparent), transparent 60%);
+  animation: bellows 23s var(--ease-cool) infinite reverse;
+}
+
+#root,
+body > div {
+  position: relative;
+  z-index: 1;
+}
+
+::selection {
+  background: var(--ember);
+  color: var(--ink);
+}
+
+* {
+  scrollbar-color: var(--bg2) transparent;
+  scrollbar-width: thin;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--bg2);
+  border-radius: 999px;
+  border: 2px solid var(--bg0);
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--bg2) 72%, var(--ash));
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-roman);
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  line-height: 1.18;
+  text-wrap: balance;
+}
+
+p {
+  text-wrap: pretty;
+}
+
+/* A single global focus ring, so no component has to remember to draw one. */
+:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+  border-radius: 6px;
+}
+
+/* the wordmark: the inscriptional face cut in molten gradient, tight tracking */
+.wordmark {
+  font-family: var(--font-roman);
+  font-weight: 700;
+  letter-spacing: var(--track-roman);
+  background: linear-gradient(90deg, var(--ember) 0%, var(--gold) 55%, var(--hot) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  letter-spacing: -0.01em;
+  font-variant-ligatures: none;
+}
+
+.kicker {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--faint);
+}
+
+/* ── surfaces ─────────────────────────────────────────────── */
+
+.surface {
+  background: var(--bg1);
+  border: 1px solid var(--bg2);
+  border-radius: var(--radius);
+}
+
+/* Cold metal skeletons. */
+.skeleton {
+  background: var(--bg2);
+  border-radius: 6px;
+  animation: shimmer 2s ease-in-out infinite;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  white-space: nowrap;
+}
+
+/* ── layout ───────────────────────────────────────────────── */
+
+.shell {
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+}
+
+.container {
+  width: 100%;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding-inline: var(--pad);
+}
+
+.stack {
+  display: grid;
+  gap: 12px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* Anything wider than a phone must scroll itself rather than break the page. */
+.scroll-x {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 100;
+  padding: 12px 18px;
+  background: var(--ember);
+  color: var(--ink);
+  font-weight: 800;
+  border-radius: 0 0 10px 0;
+}
+
+.skip-link:focus {
+  left: 0;
+}
+
+/* ---------------------------------------------------------------- typography utilities */
+
+/* The inscriptional face, and the two ways it is used: as a numeral or as a label. Roman
+   capitals are cut wide, so the tracking is part of the letterform rather than a preference —
+   set `--track-roman` to zero and the display type collapses into a modern grotesque. */
+.roman {
+  font-family: var(--font-roman);
+  font-weight: 600;
+  letter-spacing: var(--track-roman);
+  font-variant-numeric: lining-figures tabular-nums;
+}
+
+/* A word-break of interpuncts, which is how a Roman line separates what belongs together. */
+.inscription {
+  font-family: var(--font-roman);
+  letter-spacing: var(--track-micro);
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+/* Every number that a reader may compare is tabular, so a leaderboard column cannot ripple
+   when a value changes width. */
+.figures {
+  font-variant-numeric: tabular-nums lining-figures;
+}
+
+/* ── shared primitives ────────────────────────────────────── */
+
+/* The page h1 and the sentence under it. */
+.page-title {
+  font-size: var(--fs-title);
+  margin: 0;
+}
+
+.lede {
+  color: var(--dim);
+}
+
+/* Small print under a field. */
+.hint {
+  font-size: 0.78rem;
+  color: var(--faint);
+}
+
+.hint--block {
+  display: block;
+  margin-top: var(--s-1);
+}
+
+/* Console section heading. */
+.section-title {
+  font-size: 1.3rem;
+  margin: 0 0 var(--s-3);
+}
+
+.section-title--detached {
+  margin-top: 32px;
+}
+
+.section-title--tight {
+  margin-bottom: var(--s-1);
+}
+
+/* A label/value row shared by the agent profile and the trial detail. */
+.kv {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--s-4);
+}
+
+.kv__key {
+  color: var(--faint);
+  font-size: var(--fs-small);
+}
+
+/* The not-found / crack plate. */
+.void-panel {
+  padding: 32px;
+  text-align: center;
+}
+
+.void-panel__title {
+  margin: 0 0 var(--s-3);
+}
+
+.void-panel__body {
+  color: var(--dim);
+}
+
+.void-panel__trace {
+  color: var(--faint);
+  white-space: pre-wrap;
+}
+
+.void-panel .btn {
+  margin-top: var(--s-4);
+}
+
+/* A read-only panel of key/value rows. */
+.detail-panel {
+  padding: var(--s-5);
+  display: grid;
+  gap: var(--s-3);
+}
+
+/* ── tone ─────────────────────────────────────────────────── */
+
+/* The one place data-driven colour enters the CSS. The meta tables in src/lib/forge.ts
+   map chain facts (tier, status, verdict) to tone *names* — meanings, not hues — and a
+   component renders `data-tone={meta.tone}`. The token layer owns the hue, so re-toning
+   the arena never touches a component. `--tone` is also how a container passes its state
+   colour to its own border (see .verdict-panel). */
+[data-tone="ember"] {
+  --tone: var(--ember);
+  color: var(--tone);
+}
+[data-tone="gold"] {
+  --tone: var(--gold);
+  color: var(--tone);
+}
+[data-tone="hot"] {
+  --tone: var(--hot);
+  color: var(--tone);
+}
+[data-tone="quench"] {
+  --tone: var(--quench);
+  color: var(--tone);
+}
+[data-tone="sear"] {
+  --tone: var(--sear);
+  color: var(--tone);
+}
+[data-tone="ash"] {
+  --tone: var(--ash);
+  color: var(--tone);
+}
+[data-tone="dim"] {
+  --tone: var(--dim);
+  color: var(--tone);
+}
+[data-tone="faint"] {
+  --tone: var(--faint);
+  color: var(--tone);
+}
+[data-tone="text"] {
+  --tone: var(--text);
+  color: var(--tone);
+}

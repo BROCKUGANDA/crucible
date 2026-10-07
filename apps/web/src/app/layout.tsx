@@ -2,21 +2,30 @@ import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 import { Providers } from "@/components/Providers";
 import "@rainbow-me/rainbowkit/styles.css";
+import "@/styles/tokens.css";
+import "@/styles/base.css";
+import "@/styles/motion.css";
+import "@/styles/components.css";
+import "@/styles/scrub.css";
+import "@/styles/arena.css";
+import "@/styles/console.css";
+import "@/styles/pages.css";
+import "@/styles/trials.css";
 import "./globals.css";
 
 const OG_IMAGE = "/og.png";
 const TAGLINE = "A proving ground for AI agents. Reputation mints only from outcomes that survived.";
 
 /**
- * The two families are vendored as variable TTFs rather than pulled from Google: this
- * ships to a stage network and to a forked-URL demo where a blocked font CDN changes the
- * whole identity. `scripts/build-icons.mjs` rasterises the OG image with these same files,
- * so the wordmark on a shared link and the wordmark in the app are the same drawing.
+ * The three families are vendored as variable TTFs rather than pulled from Google: this ships
+ * to a stage network and to a forked-URL demo where a blocked font CDN changes the whole
+ * identity. `scripts/build-icons.mjs` rasterises the OG image with these same files, so the
+ * wordmark on a shared link and the wordmark in the app are the same drawing.
  *
- * They are exposed as `--font-*-real` and composed in globals.css rather than written
- * straight into `--font-display`: `:root` outranks the class these hooks generate, so a
- * declaration there would silently replace the loaded font with the system fallback —
- * which is exactly what happened while the names were hardcoded.
+ * They are exposed as `--font-*-real` and composed in tokens.css rather than written straight
+ * into `--font-display`: `:root` outranks the class these hooks generate, so a declaration
+ * there would silently replace the loaded font with the system fallback — which is exactly
+ * what happened while the names were hardcoded.
  */
 const display = localFont({
   src: "../../scripts/fonts/BricolageGrotesque-var.ttf",
@@ -25,6 +34,21 @@ const display = localFont({
   style: "normal",
   display: "swap",
   fallback: ["system-ui", "-apple-system", "Segoe UI", "sans-serif"],
+});
+
+/**
+ * Cinzel is a Roman square-capital family whose proportions descend from the inscriptional
+ * capitals cut into Flavian arch keystones — the lettering the arena itself was labelled with.
+ * It carries display text and numerals only. Body copy stays on the grotesque because a
+ * capital-only face at reading sizes is a poster, not a paragraph.
+ */
+const roman = localFont({
+  src: "../../scripts/fonts/Cinzel[wght].ttf",
+  variable: "--font-roman-real",
+  weight: "400 900",
+  style: "normal",
+  display: "swap",
+  fallback: ["Trajan Pro", "Georgia", "Times New Roman", "serif"],
 });
 
 const mono = localFont({
@@ -78,7 +102,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#ff5a00",
+  themeColor: "#e2612f",
   colorScheme: "dark",
   width: "device-width",
   initialScale: 1,
@@ -86,7 +110,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${display.variable} ${mono.variable}`}>
+    <html lang="en" className={`${display.variable} ${roman.variable} ${mono.variable}`}>
       <body>
         <Providers>{children}</Providers>
       </body>

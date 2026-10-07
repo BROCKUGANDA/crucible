@@ -1,0 +1,178 @@
+/* The scrubbed layer.
+ *
+ * Three things stacked in a fixed frame: the canvas (z 0), the HUD (z 2), and the page's own
+ * scrolling content (z 1, in normal flow). The canvas is `position: fixed` so it stays put
+ * while content moves over it — that single fact is what makes scrolling read as playback.
+ *
+ * No `style` attribute appears anywhere in this feature. The one continuous value the HUD
+ * needs is `--p`, written by `ScrubHud` through `element.style.setProperty`, which is CSSOM
+ * and therefore outside what CSP's `style-src` governs. The rail is `scaleX(var(--p))`, so
+ * the browser composites it on the GPU instead of laying out on every tick.
+ */
+
+.scrub {
+  position: relative;
+}
+
+.scrub__canvas {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  z-index: 0;
+  pointer-events: none;
+  /* The scene is a wide, low-contrast drawing; a reader's eye should land on the type. */
+  filter: saturate(0.94);
+}
+
+.scrub__content {
+  position: relative;
+  z-index: 1;
+}
+
+/* ------------------------------------------------------------------ the HUD frame */
+
+.scrub-hud {
+  position: fixed;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  padding: var(--pad);
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  grid-template-rows: auto 1fr auto;
+  gap: var(--s-3);
+  align-items: start;
+  color: var(--marble);
+}
+
+.scrub-hud__rail {
+  grid-column: 1 / -1;
+  grid-row: 1;
+  position: relative;
+  height: 2px;
+  background: color-mix(in oklab, var(--marble) 16%, transparent);
+  overflow: hidden;
+}
+
+.scrub-hud__fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, var(--bronze), var(--gold) 62%, var(--hot));
+  transform-origin: 0 50%;
+  /* `--p` is written by ScrubHud; 0 keeps the rail empty before the first sample lands. */
+  transform: scaleX(var(--p, 0));
+}
+
+/* Act marks on the rail, one per act boundary, so the ruler is readable as six beats. */
+.scrub-hud__rail::after {
+  content: "";
+  position: absolute;
+  inset: -3px 0 auto 0;
+  height: 8px;
+  background-image: repeating-linear-gradient(
+    90deg,
+    transparent 0 calc(16.666% - 1px),
+    color-mix(in oklab, var(--marble) 34%, transparent) calc(16.666% - 1px) 16.666%
+  );
+}
+
+.scrub-hud__counter {
+  grid-column: 1;
+  grid-row: 3;
+  margin: 0;
+  font-size: var(--fs-micro);
+  letter-spacing: var(--track-micro);
+  text-transform: uppercase;
+  color: var(--faint);
+  display: flex;
+  gap: 0.6em;
+}
+
+.scrub-hud__act {
+  grid-column: 3;
+  grid-row: 3;
+  margin: 0;
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: 0.7em;
+}
+
+.scrub-hud__numeral {
+  font-size: var(--fs-sub);
+  line-height: 1;
+  color: var(--gold);
+}
+
+.scrub-hud__label {
+  font-size: var(--fs-micro);
+  letter-spacing: var(--track-micro);
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+.scrub-hud__stats {
+  grid-column: 3;
+  grid-row: 1;
+  margin: 0;
+  display: flex;
+  gap: var(--s-4);
+  font-size: var(--fs-micro);
+  letter-spacing: 0.08em;
+}
+
+.scrub-hud__stats div {
+  display: grid;
+  justify-items: end;
+  gap: 2px;
+}
+
+.scrub-hud__stats dt {
+  text-transform: uppercase;
+  letter-spacing: var(--track-micro);
+  color: var(--faint);
+}
+
+.scrub-hud__stats dd {
+  margin: 0;
+  color: var(--marble);
+  font-variant-numeric: tabular-nums;
+}
+
+.scrub-hud__key {
+  grid-column: 1 / -1;
+  grid-row: 3;
+  justify-self: center;
+  align-self: end;
+  margin: 0;
+  font-size: var(--fs-micro);
+  letter-spacing: var(--track-micro);
+  text-transform: uppercase;
+  color: color-mix(in oklab, var(--faint) 70%, transparent);
+}
+
+/* The HUD is a gauge cluster: every number in it is repeated in the content below, so a
+   screen reader gets the facts once, from prose, not sixty times per second from a rail. */
+@media (max-width: 860px) {
+  .scrub-hud__stats {
+    display: none;
+  }
+
+  .scrub-hud__key {
+    display: none;
+  }
+}
+
+@media (max-width: 520px) {
+  .scrub-hud__counter {
+    display: none;
+  }
+}
+
+.scrub[data-motion="static"] .scrub-hud__rail::after {
+  opacity: 0.5;
+}

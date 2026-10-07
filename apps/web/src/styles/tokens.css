@@ -1,0 +1,104 @@
+/* @file tokens.css — the `:root` token layer (colour, type, spacing, easing, duration) and
+ * nothing else: no selectors. Imported first by src/app/layout.tsx.
+ */
+
+/* The Colosseum — stone, sand, and the light that falls on them. Every state is still a
+ * temperature, because the temperature is the state model: `ember` is the action an agent
+ * takes, `gold` is what a result is worth, `quench` is the reprieve, `sear` is the slash.
+ * What changed when the forge became an arena is the ground the states sit on: charcoal and
+ * molten metal gave way to travertine, blood-sand and laurel bronze, so the same six meanings
+ * now read against stone rather than against fire.
+ *
+ * The motion language, in one place:
+ *   ignite   entrances. Fast out of the gate, long settle. Heat arrives suddenly.
+ *   cool     exits and settlement. Everything drains back into the charcoal.
+ *   temper   the spring pop on a verdict seal. Only for things that *decide*.
+ * Nothing here is decorative motion. A pour means metal is moving, a shimmer means a
+ * transaction is in flight, a doused pulse means it failed. prefers-reduced-motion kills
+ * every loop and keeps every colour change, because the state model must survive.
+ */
+
+:root {
+  color-scheme: dark;
+
+  /* Ground: the arena floor at night, and stone in shadow by day. */
+  --bg0: #0b0a09;
+  --bg1: #151210;
+  --bg2: #1e1915;
+
+  /* Ink: inscribed marble, and the two dimmer steps under it. */
+  --text: #ece5d8;
+  --dim: #b3a793;
+  --faint: #857b6b;
+
+  /* The four states. Names and meanings are unchanged from the forge; only the hues moved,
+     from molten metal to terracotta, laurel, sea-water and blood. */
+  --ember: #e2612f;
+  --gold: #e3b25c;
+  --hot: #fbeeda;
+  --quench: #4fbfae;
+  --sear: #cf4132;
+  --ash: #8a8073;
+
+  /* The ink a bright fill writes with. Buttons and seals invert onto `--ember`/`--gold`, and
+     pure black there looks like a hole cut in the metal rather than a hot surface. */
+  --ink: #170d06;
+
+  /* Materials the arena is made of. These four are also the scene's ramp in
+     src/lib/scrub/palette.ts, and `test/scrub-palette.test.ts` fails if the two ever
+     disagree — a canvas that drifts from the theme looks fine right up until it ships. */
+  --marble: #f2ead9;
+  --bronze: #8c6b3f;
+  --sand: #c8a878;
+  --tyrian: #7a2b56;
+
+  /* Composed, not hardcoded: `:root` outranks the class next/font puts on <html>, so a
+     literal family name here would silently win over the vendored TTF and render the whole
+     brand in system-ui. */
+  --font-display: var(--font-display-real), system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: var(--font-mono-real), ui-monospace, "SF Mono", Menlo, monospace;
+  /* The inscriptional face. Cinzel is a Roman square-capital family descended from the
+     letterforms cut into the Flavian amphitheatre's own arch keystones, so it is being used
+     for the thing it was derived from: display, numerals, and nothing else. Body copy stays
+     on the grotesque, which is the more legible decision at 16px on a dark ground. */
+  --font-roman: var(--font-roman-real), "Trajan Pro", Georgia, "Times New Roman", serif;
+
+  /* Type scale. `--fs-*`, because `--t-*` is already reserved for durations below and a
+     reader who meets `--t-small` beside `--t-tap` has to guess which prefix means what. */
+  --fs-micro: 0.6875rem;
+  --fs-small: 0.8438rem;
+  --fs-body: clamp(1rem, 0.55vw + 0.9rem, 1.0625rem);
+  --fs-sub: clamp(1.15rem, 1.2vw + 0.7rem, 1.5rem);
+  --fs-title: clamp(1.5rem, 2.2vw + 0.8rem, 2rem);
+  --fs-lede: clamp(1.15rem, 1.1vw + 0.85rem, 1.5rem);
+  --fs-act: clamp(2.1rem, 5.4vw, 4.25rem);
+  --fs-hero: clamp(3rem, 12vw, 8.5rem);
+
+  /* Inscriptional tracking. Roman capitals are cut wide; a grotesque is not. */
+  --track-roman: 0.045em;
+  --track-hero: 0.08em;
+  --track-micro: 0.2em;
+
+  /* Spacing scale. */
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 14px;
+  --s-4: 18px;
+  --s-5: 28px;
+  --s-6: 44px;
+  --s-7: 68px;
+
+  --ease-ignite: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-cool: cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-temper: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  /* Mirrors `motion.duration` in src/lib/forge.ts — JS animations and CSS must not drift. */
+  --t-tap: 120ms;
+  --t-state: 240ms;
+  --t-pour: 400ms;
+  --t-quench: 700ms;
+
+  --ring: 0 0 0 2px var(--bg0), 0 0 0 4px var(--hot);
+  --pad: clamp(16px, 4vw, 32px);
+  --radius: 10px;
+}

@@ -1,0 +1,147 @@
+/* @file pages.css — the operator pages: the forge console and the agent roster/profile.
+ * Imported after console.css.
+ */
+
+/* ── forge: the operator console ──────────────────────────── */
+
+.console-section {
+  margin-top: var(--s-5);
+}
+
+.form-panel {
+  padding: var(--s-5);
+  display: grid;
+  gap: var(--s-3);
+}
+
+.form-panel--row {
+  padding: var(--s-5);
+  display: flex;
+  align-items: flex-end;
+  gap: var(--s-3);
+  flex-wrap: wrap;
+}
+
+.field--narrow {
+  max-width: 220px;
+}
+
+.field--trial-id {
+  width: 160px;
+}
+
+.console-log {
+  padding: var(--s-5);
+  font-family: var(--font-mono);
+  font-size: var(--fs-small);
+}
+
+.console-log__head {
+  margin: 0;
+}
+
+.console-log__empty {
+  margin: var(--s-4) 0 0;
+  color: var(--faint);
+}
+
+/* ── roster ───────────────────────────────────────────────── */
+
+.roster {
+  display: grid;
+  gap: var(--s-3);
+  margin-top: var(--s-4);
+}
+
+.roster-card {
+  display: block;
+  padding: var(--s-4);
+  transition: border-color var(--t-tap) var(--ease-ignite);
+}
+
+.roster-card:hover {
+  border-color: var(--bronze);
+}
+
+.roster-card__grid {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--s-4);
+  flex-wrap: wrap;
+}
+
+.roster-card__id {
+  margin: 0;
+  color: var(--faint);
+}
+
+.roster-card__tier {
+  margin: 6px 0 0;
+  font-size: 1.125rem;
+}
+
+.roster-card__score {
+  margin: var(--s-2) 0 0;
+  color: var(--faint);
+}
+
+.roster-card__side {
+  text-align: right;
+}
+
+.roster-card__stake {
+  margin: 0;
+}
+
+.roster-card__runner {
+  margin: var(--s-2) 0 0;
+  color: var(--faint);
+}
+
+.roster-card__soulbound {
+  margin: var(--s-2) 0 0;
+}
+
+/* ── agent profile ────────────────────────────────────────── */
+
+.agent-title {
+  margin: var(--s-2) 0 var(--s-4);
+}
+
+.alloy-panel {
+  padding: var(--s-5);
+}
+
+.alloy-bar {
+  height: 8px;
+  background: var(--bg2);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+/* `--alloy-progress` is written through the CSSOM from the component (0..100): a bar
+   whose width is data has no class to wear. */
+.alloy-bar__fill {
+  width: calc(var(--alloy-progress, 0) * 1%);
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--ember), var(--gold));
+  transition: width var(--t-pour) var(--ease-ignite);
+}
+
+.alloy-note {
+  margin: var(--s-3) 0 0;
+  color: var(--dim);
+}
+
+.run-list {
+  display: grid;
+  gap: var(--s-2);
+}
+
+.run-link {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--s-3);
+  padding: var(--s-3);
+}

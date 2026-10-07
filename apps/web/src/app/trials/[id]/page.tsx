@@ -43,9 +43,11 @@ export default function TrialDetailPage() {
   if (!trial) {
     return (
       <Chrome>
-        <div className="surface" style={{ padding: 32, textAlign: "center" }}>
-          <h2 style={{ color: "var(--sear)", marginTop: 0 }}>Lost slag.</h2>
-          <p style={{ color: "var(--dim)" }}>This page never left the crucible.</p>
+        <div className="surface void-panel">
+          <h2 className="void-panel__title" data-tone="sear">
+            Lost slag.
+          </h2>
+          <p className="void-panel__body">This page never left the crucible.</p>
           <Link className="btn btn-primary" href="/trials">
             Back to the forge
           </Link>
@@ -60,20 +62,20 @@ export default function TrialDetailPage() {
   return (
     <Chrome>
       <p className="kicker">Trial {trial.id}</p>
-      <h1 style={{ fontSize: 28, margin: "8px 0" }}>{formatEth(trial.rewardEth)} reward</h1>
-      <span className="chip" style={{ color: status.color }}>
+      <h1 className="page-title trial-title">{formatEth(trial.rewardEth)} reward</h1>
+      <span className="chip" data-tone={status.tone}>
         {status.label}
       </span>
 
-      <nav aria-label="Trial sections" style={{ display: "flex", gap: 20, margin: "28px 0", fontSize: 13.5 }}>
+      <nav aria-label="Trial sections" className="trial-tabs">
         {TABS.map((t, i) => (
-          <span key={t} style={{ color: i === 0 ? "var(--text)" : "var(--faint)" }}>
+          <span key={t} className="trial-tabs__tab" data-active={i === 0 || undefined}>
             {t}
           </span>
         ))}
       </nav>
 
-      <div className="surface" style={{ padding: 24, display: "grid", gap: 14 }}>
+      <div className="surface detail-panel">
         <Field label="Sponsor" value={trial.sponsor} mono />
         <Field label="Bond" value={formatEth(trial.bondEth)} mono />
         <Field
@@ -109,12 +111,9 @@ export default function TrialDetailPage() {
       </div>
 
       {trial.verdict !== "none" ? (
-        <div
-          className="surface"
-          style={{ padding: 24, marginTop: 20, borderColor: verdict.color }}
-        >
-          <p style={{ margin: 0, color: verdict.color, fontWeight: 600 }}>{verdict.label}</p>
-          <p style={{ margin: "8px 0 0", color: "var(--dim)" }}>
+        <div className="surface verdict-panel" data-tone={verdict.tone}>
+          <p className="verdict-panel__label">{verdict.label}</p>
+          <p className="verdict-panel__why">
             {trial.verdict === "paid"
               ? "Verified. The run survived every strike."
               : trial.verdict === "slashed"
@@ -137,8 +136,8 @@ export default function TrialDetailPage() {
 
 function Field({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
-    <div style={{ display: "flex", justifyContent: "space-between", gap: 16 }}>
-      <span style={{ color: "var(--faint)", fontSize: 13.5 }}>{label}</span>
+    <div className="kv">
+      <span className="kv__key">{label}</span>
       <span className={mono ? "mono" : undefined}>{value}</span>
     </div>
   );

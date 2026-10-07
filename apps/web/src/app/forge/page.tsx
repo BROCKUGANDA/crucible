@@ -51,15 +51,15 @@ export default function ForgePage() {
           amount: `${stake} ETH`,
           confirmLabel: "Register agent",
           detail: (
-            <>
-              <p style={{ margin: 0 }}>
+            <div className="pour-detail">
+              <p>
                 This stake is held by Crucible, not paid to anyone. It is returned when a run
                 you claimed is verified, and burned when a skeptic falsifies it.
               </p>
-              <p className="mono" style={{ margin: "10px 0 0", color: "var(--faint)" }}>
+              <p className="mono pour-detail__meta">
                 runner {runner.slice(0, 10)}… · metadata {metadataURI.slice(0, 34)}
               </p>
-            </>
+            </div>
           ),
           onConfirm: () => {
             tx.send(
@@ -78,10 +78,12 @@ export default function ForgePage() {
             amount: "gas only",
             confirmLabel: "Claim trial",
             detail: (
-              <p style={{ margin: 0 }}>
-                The reward is already escrowed, so claiming costs nothing but gas. Your bond
-                moves into escrow with it, and is what a falsified run would be slashed against.
-              </p>
+              <div className="pour-detail">
+                <p>
+                  The reward is already escrowed, so claiming costs nothing but gas. Your bond
+                  moves into escrow with it, and is what a falsified run would be slashed against.
+                </p>
+              </div>
             ),
             onConfirm: () => {
               tx.send(buildClaimTrial(Number(trialId.trim())));
@@ -93,19 +95,19 @@ export default function ForgePage() {
   return (
     <Chrome>
       <WrongNetworkNotice requiredChainId={dep.chainId} />
-      <h1 style={{ fontSize: 28, marginTop: 0 }}>The Forge</h1>
-      <p style={{ color: "var(--dim)" }}>Your agents, your heat, your scars.</p>
+      <h1 className="page-title">The Forge</h1>
+      <p className="lede">Your agents, your heat, your scars.</p>
 
       {!isConnected ? (
-        <p className="mono" style={{ color: "var(--ash)", marginTop: 18 }}>
+        <p className="mono" data-tone="ash">
           Connect a wallet to post a bond.
         </p>
       ) : null}
 
-      <section style={{ marginTop: 28 }}>
-        <h2 style={{ fontSize: 19, margin: "0 0 12px" }}>Register an agent</h2>
-        <div className="surface" style={{ padding: 20, display: "grid", gap: 14 }}>
-          <label style={{ display: "grid", gap: 6 }}>
+      <section className="console-section">
+        <h2 className="section-title">Register an agent</h2>
+        <div className="surface form-panel">
+          <label className="field">
             <span className="kicker">Agent metadata</span>
             <input
               className="input mono"
@@ -114,13 +116,13 @@ export default function ForgePage() {
               placeholder="ipfs://… or https://…"
               aria-describedby="metadata-help"
             />
-            <span id="metadata-help" style={{ fontSize: 12.5, color: "var(--faint)" }}>
+            <span id="metadata-help" className="hint">
               Pinned manifest describing this agent. Written by ERC-8004, read by the
               skeptics deciding whether to take the job.
             </span>
           </label>
 
-          <label style={{ display: "grid", gap: 6 }}>
+          <label className="field">
             <span className="kicker">Runner key</span>
             <input
               className="input mono"
@@ -130,13 +132,13 @@ export default function ForgePage() {
               spellCheck={false}
               aria-invalid={runner.length > 0 && !runnerValid}
             />
-            <span style={{ fontSize: 12.5, color: "var(--faint)" }}>
+            <span className="hint">
               The only key allowed to sign this agent&apos;s claims. Keep it off the machine
               that holds the bond.
             </span>
           </label>
 
-          <label style={{ display: "grid", gap: 6, maxWidth: 220 }}>
+          <label className="field field--narrow">
             <span className="kicker">Bond</span>
             <input
               className="input mono"
@@ -145,7 +147,7 @@ export default function ForgePage() {
               inputMode="decimal"
               placeholder="0.01"
             />
-            <span style={{ fontSize: 12.5, color: "var(--faint)" }}>
+            <span className="hint">
               Slashed if a run you claimed turns out to be falsified.
             </span>
           </label>
@@ -163,10 +165,10 @@ export default function ForgePage() {
         </div>
       </section>
 
-      <section style={{ marginTop: 36 }}>
-        <h2 style={{ fontSize: 19, margin: "0 0 12px" }}>Claim a trial</h2>
-        <div className="surface" style={{ padding: 20, display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap" }}>
-          <label style={{ display: "grid", gap: 6, width: 160 }}>
+      <section className="console-section">
+        <h2 className="section-title">Claim a trial</h2>
+        <div className="surface form-panel--row">
+          <label className="field field--trial-id">
             <span className="kicker">Trial id</span>
             <input
               className="input mono"
@@ -200,16 +202,14 @@ export default function ForgePage() {
         />
       ) : null}
 
-      <div style={{ marginTop: 20 }}>
+      <div className="tx-anchor">
         <TxStates state={tx.state} message={tx.message} hash={tx.hash} />
       </div>
 
-      <h2 style={{ fontSize: 21, margin: "40px 0 12px" }}>Run console</h2>
-      <div className="raised" style={{ padding: 20, fontFamily: "var(--font-mono)", fontSize: 13.5 }}>
-        <p className="kicker" style={{ margin: 0 }}>
-          HEAT — live run log
-        </p>
-        <p style={{ margin: "16px 0 0", color: "var(--faint)" }}>
+      <h2 className="section-title section-title--detached">Run console</h2>
+      <div className="raised console-log">
+        <p className="kicker console-log__head">HEAT — live run log</p>
+        <p className="console-log__empty">
           Register an agent and claim a trial to see live logs here.
         </p>
       </div>

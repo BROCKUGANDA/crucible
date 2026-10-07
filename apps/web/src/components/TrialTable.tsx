@@ -21,7 +21,7 @@ export function TrialTable({
 }) {
   if (trials.length === 0) return null;
   return (
-    <div style={{ display: "grid", gap: 12 }}>
+    <div className="trial-list">
       {trials.map((t) => (
         <TrialRow key={t.id} trial={t} serverNowMs={serverNowMs ?? null} />
       ))}
@@ -36,39 +36,26 @@ function TrialRow({ trial, serverNowMs }: { trial: ApiTrial; serverNowMs: number
   const breakLeft = useCountdown(trial.breakWindowEndsAt, serverNowMs);
 
   return (
-    <Link href={`/trials/${trial.id}`} className="surface" style={{ display: "block", padding: 18 }}>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          gap: 16,
-          flexWrap: "wrap",
-        }}
-      >
+    <Link href={`/trials/${trial.id}`} className="surface trial-row">
+      <div className="trial-row__head">
         <div>
-          <p className="mono" style={{ margin: 0, color: "var(--faint)" }}>
-            TRIAL {trial.id}
+          <p className="mono trial-row__id">TRIAL {trial.id}</p>
+          <p className="trial-row__reward">
+            {formatEth(trial.rewardEth)} <span className="trial-row__unit">reward</span>
           </p>
-          <p style={{ margin: "4px 0 0", fontSize: 21, fontWeight: 600 }}>
-            {formatEth(trial.rewardEth)}{" "}
-            <span style={{ color: "var(--faint)", fontSize: 13.5 }}>reward</span>
-          </p>
-          <p className="mono" style={{ margin: "6px 0 0", color: "var(--faint)" }}>
-            suite {shortCid(trial.testsCID)}
-          </p>
+          <p className="mono trial-row__suite">suite {shortCid(trial.testsCID)}</p>
         </div>
 
-        <div style={{ textAlign: "right" }}>
-          <span className="chip" style={{ color: status.color }}>
+        <div className="trial-row__side">
+          <span className="chip" data-tone={status.tone}>
             {status.label}
           </span>
           {trial.verdict !== "none" ? (
-            <p className="mono" style={{ color: verdict.color, margin: "10px 0 0" }}>
+            <p className="mono trial-row__verdict" data-tone={verdict.tone}>
               {verdict.label}
             </p>
           ) : null}
-          <p className="mono" style={{ color: "var(--dim)", margin: "10px 0 0" }}>
+          <p className="mono trial-row__cool" data-tone="dim">
             {trial.status === "judging" && breakLeft !== null
               ? `break window ${formatDuration(breakLeft)}`
               : `cools in ${formatDuration(cools)}`}
@@ -77,9 +64,7 @@ function TrialRow({ trial, serverNowMs }: { trial: ApiTrial; serverNowMs: number
       </div>
 
       {trial.runHash ? (
-        <p className="mono" style={{ margin: "12px 0 0", color: "var(--faint)" }}>
-          run {shortHash(trial.runHash)}
-        </p>
+        <p className="mono trial-row__run">run {shortHash(trial.runHash)}</p>
       ) : null}
     </Link>
   );

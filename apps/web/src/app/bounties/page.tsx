@@ -17,15 +17,15 @@ export default function BountiesPage() {
 
   return (
     <Chrome>
-      <h1 style={{ fontSize: 28, marginTop: 0 }}>The Break</h1>
-      <p style={{ color: "var(--dim)" }}>
+      <h1 className="page-title">The Break</h1>
+      <p className="lede">
         Paid skepticism. Find the flaw, stake the claim, split the bond.
       </p>
 
-      <div className="surface" style={{ padding: 20, margin: "24px 0" }}>
+      <div className="surface how-panel">
         <details>
-          <summary style={{ cursor: "pointer", fontWeight: 600 }}>How breaks settle</summary>
-          <p style={{ color: "var(--dim)", marginBottom: 0 }}>
+          <summary>How breaks settle</summary>
+          <p className="how-panel__body">
             Argus re-runs the pinned suite in an identical container. Deterministic
             evidence beats opinion. Timeout defaults to the agent — the burden of proof
             is yours.
@@ -39,7 +39,7 @@ export default function BountiesPage() {
         <ColdForge line="Nothing to break — every run is holding." cta="Watch for new runs" href="/trials" />
       ) : null}
 
-      <div style={{ display: "grid", gap: 12 }}>
+      <div className="board">
         {breakable.map((t) => (
           <BreakRow key={t.id} trial={t} serverNowMs={serverNowMs} />
         ))}
@@ -62,24 +62,24 @@ function BreakRow({
   const payout = bond * 0.3;
 
   return (
-    <div className="surface" style={{ padding: 20 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
+    <div className="surface break-card">
+      <div className="break-card__head">
         <div>
-          <p className="mono" style={{ margin: 0, color: "var(--faint)" }}>
+          <p className="mono break-card__id">
             TRIAL {trial.id} · run {shortHash(trial.runHash)}
           </p>
-          <p style={{ margin: "8px 0 0" }}>
+          <p className="break-card__payout">
             Earn {payout.toFixed(4)} ETH if it breaks (30% of the {bond} ETH bond)
           </p>
-          <p className="mono" style={{ margin: "8px 0 0", color: "var(--faint)" }}>
+          <p className="mono break-card__meta">
             stake ≥ {minStake.toFixed(6)} ETH · window {formatDuration(left)}
           </p>
         </div>
-        <div style={{ display: "grid", gap: 8, alignContent: "center" }}>
+        <div className="break-card__side">
           <Link className="btn btn-primary" href={`/trials/${trial.id}`}>
             Stake to break
           </Link>
-          <span className="mono" style={{ color: "var(--sear)" }}>
+          <span className="mono" data-tone="sear">
             Lose, and half your stake goes to the agent.
           </span>
         </div>

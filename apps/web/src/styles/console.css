@@ -1,0 +1,389 @@
+/* @file console.css — the operator console chrome: transaction states, receipts, the
+ * loading/empty plates, the trial table row, the break filing panel, the pour detail,
+ * the wallet notices, and the sign-in theatre (forge-auth + crucible). Imported after
+ * components.css, before pages.css and trials.css.
+ */
+
+/* ── transaction states ───────────────────────────────────── */
+
+.tx {
+  padding: var(--s-3);
+}
+
+.tx[data-state="poured"] {
+  border-color: var(--quench);
+}
+
+.tx[data-state="doused"] {
+  border-color: var(--sear);
+}
+
+.tx-anchor {
+  margin-top: var(--s-4);
+}
+
+.tx-link {
+  display: block;
+  margin-top: 6px;
+  color: var(--dim);
+}
+
+a.tx-link {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.tx-link__note {
+  color: var(--faint);
+}
+
+/* ── loading, empty, lost ─────────────────────────────────── */
+
+.loading-vat {
+  height: 220px;
+  display: grid;
+  place-items: center;
+}
+
+.cold-forge {
+  padding: clamp(24px, 6vw, 48px);
+  text-align: center;
+  color: var(--dim);
+}
+
+.cold-forge__line {
+  font-size: 1.1rem;
+}
+
+.signal-lost {
+  padding: var(--s-4);
+  border-color: var(--sear);
+}
+
+.feed-fallback {
+  padding: var(--s-5);
+  text-align: center;
+}
+
+.feed-fallback p {
+  margin: 0;
+  color: var(--dim);
+}
+
+/* ── trial table ──────────────────────────────────────────── */
+
+.trial-list {
+  display: grid;
+  gap: var(--s-3);
+}
+
+.trial-row {
+  display: block;
+  padding: var(--s-4);
+  transition: border-color var(--t-tap) var(--ease-ignite);
+}
+
+.trial-row:hover {
+  border-color: var(--bronze);
+}
+
+.trial-row__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--s-4);
+  flex-wrap: wrap;
+}
+
+.trial-row__id {
+  margin: 0;
+  color: var(--faint);
+}
+
+.trial-row__reward {
+  margin: var(--s-1) 0 0;
+  font-size: var(--fs-sub);
+  font-weight: 600;
+}
+
+.trial-row__unit {
+  color: var(--faint);
+  font-size: var(--fs-small);
+}
+
+.trial-row__suite {
+  margin: 6px 0 0;
+  color: var(--faint);
+}
+
+.trial-row__side {
+  text-align: right;
+}
+
+.trial-row__verdict {
+  margin: var(--s-2) 0 0;
+}
+
+.trial-row__cool {
+  margin: var(--s-2) 0 0;
+}
+
+.trial-row__run {
+  margin: var(--s-3) 0 0;
+  color: var(--faint);
+}
+
+/* ── break filing ─────────────────────────────────────────── */
+
+.break {
+  margin-top: var(--s-5);
+}
+
+.break__lede {
+  color: var(--dim);
+  margin: 0 0 var(--s-4);
+}
+
+.break__panel {
+  padding: var(--s-5);
+  display: grid;
+  gap: var(--s-4);
+}
+
+.break__facts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--s-2) var(--s-4);
+  margin: 0;
+  font-size: var(--fs-small);
+}
+
+.break__facts dd {
+  margin: 0;
+}
+
+.break__actions {
+  display: flex;
+  gap: var(--s-3);
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* ── pour detail (Modal children) ─────────────────────────── */
+
+.pour-detail {
+  margin-top: var(--s-3);
+}
+
+.pour-detail p {
+  margin: 0;
+}
+
+.pour-detail p + p {
+  margin-top: var(--s-3);
+}
+
+.pour-detail__meta {
+  color: var(--faint);
+}
+
+/* ── wallet ───────────────────────────────────────────────── */
+
+.wallet-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.net-alert {
+  margin-bottom: var(--s-4);
+  padding: var(--s-4);
+  border-color: var(--sear);
+}
+
+.net-alert__switch {
+  margin-left: var(--s-3);
+}
+
+.env-notice {
+  margin: var(--s-4) var(--s-5) 0;
+  padding: var(--s-3);
+  border-color: var(--gold);
+  font-size: var(--fs-small);
+  color: var(--dim);
+}
+
+/* ── the sign-in theatre ──────────────────────────────────── */
+
+.forge-auth {
+  min-height: 100svh;
+  display: grid;
+  place-items: center;
+  padding: clamp(20px, 5vw, 48px);
+  /* The arena floor after dusk: the hypogeum breathing heat from below, stone
+     overhead. */
+  background:
+    radial-gradient(60% 45% at 50% 82%, color-mix(in srgb, var(--ember) 22%, transparent), transparent 70%),
+    radial-gradient(90% 70% at 50% 12%, var(--ink) 0%, var(--bg0) 72%);
+}
+
+.forge-auth__inner {
+  width: 100%;
+  max-width: 430px;
+  text-align: center;
+  display: grid;
+  justify-items: center;
+  gap: 0;
+}
+
+.forge-auth__title {
+  font-size: clamp(1.7rem, 6vw, 2rem);
+  font-weight: 600;
+  margin: 22px 0 8px;
+}
+
+.forge-auth__sub {
+  color: var(--dim);
+  margin: 0;
+  max-width: 34ch;
+}
+
+.forge-auth__gate {
+  margin-top: 30px;
+  width: 100%;
+  display: grid;
+  gap: var(--s-3);
+  justify-items: center;
+}
+
+.forge-auth__cta {
+  width: min(300px, 100%);
+  display: grid;
+}
+
+.forge-auth__cta .btn {
+  width: 100%;
+}
+
+.forge-auth__chain {
+  color: var(--faint);
+}
+
+.forge-auth__switch {
+  margin-top: 34px;
+  font-size: 0.82rem;
+  color: var(--ash);
+}
+
+.forge-auth__switch a {
+  color: var(--gold);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.forge-auth__switch a:hover {
+  color: var(--hot);
+}
+
+/* Staged arrival: heat, then the words, then the way in. Each stage waits for the one
+   before it rather than all three moving at once. Keyframes live in motion.css. */
+.forge-auth [data-stage] {
+  animation: forgeStage 560ms var(--ease-ignite) both;
+}
+
+.forge-auth [data-stage="1"] {
+  animation-delay: 260ms;
+}
+
+.forge-auth [data-stage="2"] {
+  animation-delay: 400ms;
+}
+
+.forge-auth [data-stage="3"] {
+  animation-delay: 560ms;
+}
+
+.forge-auth [data-stage="4"] {
+  animation-delay: 760ms;
+}
+
+/* The vessel, drawn rather than photographed. */
+.crucible {
+  display: grid;
+  place-items: center;
+  width: 150px;
+  height: 150px;
+  border-radius: 26px;
+  background: var(--bg0);
+  border: 1px solid color-mix(in srgb, var(--ember) 55%, transparent);
+  box-shadow: 0 0 46px color-mix(in srgb, var(--ember) 28%, transparent), inset 0 0 30px rgba(0, 0, 0, 0.7);
+  animation: crucibleBreathe 3.4s var(--ease-cool) infinite;
+}
+
+/* When the ingot sets, the vessel stops breathing. The heat has gone into the metal. */
+.crucible[data-settled] {
+  animation: none;
+  border-color: var(--quench);
+  box-shadow: 0 0 40px color-mix(in srgb, var(--quench) 22%, transparent), inset 0 0 30px rgba(0, 0, 0, 0.7);
+}
+
+.crucible[data-settled] .crucible__ember {
+  fill: var(--quench);
+}
+
+.crucible[data-settled] .crucible__wall {
+  stroke: var(--quench);
+}
+
+.crucible__mark {
+  animation: markGlow 3.4s var(--ease-cool) infinite;
+  transform-origin: 60px 30px;
+}
+
+.crucible__metal--pour {
+  transform-box: fill-box;
+  transform-origin: bottom;
+  animation: pourUp 1.5s var(--ease-ignite) both;
+}
+
+.crucible__metal--reheat {
+  transform-box: fill-box;
+  transform-origin: bottom;
+  animation: reheat 2.6s var(--ease-cool) infinite;
+}
+
+.crucible__ember {
+  animation: emberBlink 3.4s var(--ease-cool) infinite;
+}
+
+.crucible__spark {
+  animation: sparkRise 900ms var(--ease-cool) 1 both;
+}
+
+.crucible__spark--1 {
+  animation-delay: 600ms;
+}
+
+.crucible__spark--2 {
+  animation-delay: 770ms;
+}
+
+.crucible__spark--3 {
+  animation-delay: 940ms;
+}
+
+.crucible__spark--4 {
+  animation-delay: 1110ms;
+}
+
+/* The global kill switch stops the loops; this restores the pour's *end state*, which is
+   a layout fact (the vessel is full), not motion. */
+@media (prefers-reduced-motion: reduce) {
+  .crucible__metal--pour {
+    transform: scaleY(1);
+  }
+
+  .crucible__spark {
+    display: none;
+  }
+}

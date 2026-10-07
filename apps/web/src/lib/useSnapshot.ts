@@ -50,7 +50,7 @@ export function useSnapshot(pollMs = 4000): SnapshotState {
         if (!alive) return;
         setState((s) => ({
           ...s,
-          error: "Signal lost — your forge keeps working locally. Reconnecting…",
+          error: "Your forge keeps working locally. Reconnecting…",
         }));
         // Fall through to polling fallback below if the stream stays down.
         source?.close();
@@ -76,7 +76,7 @@ export function useSnapshot(pollMs = 4000): SnapshotState {
         if (!alive || (err as Error).name === "AbortError") return;
         setState((s) => ({
           ...s,
-          error: "Signal lost — your forge keeps working locally. Reconnecting…",
+          error: "Your forge keeps working locally. Reconnecting…",
           loading: false,
         }));
       }

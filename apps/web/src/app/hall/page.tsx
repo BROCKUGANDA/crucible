@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Chrome, ColdForge, Quenching, SignalLost, TxLink } from "@/components/Chrome";
 import { useSnapshot } from "@/lib/useSnapshot";
 import { TIER_META, shortHash, tierMeta } from "@/lib/forge";
+import { roman, tierNumeral } from "@/lib/theme/roman";
 
 /**
  * Hall of Alloy — the leaderboard, ranked by survived outcomes.
@@ -13,21 +14,24 @@ import { TIER_META, shortHash, tierMeta } from "@/lib/forge";
  * the slot. The settlement hash is the `VerdictFinalized` log that minted the win, and the
  * identity hash is the `IdentityLinked` log that tied the agent to its ERC-8004 registry
  * token — the two things a skeptic is entitled to refuse to take on faith.
+ *
+ * It is set as an inscription: the rank is a Roman numeral cut in laurel bronze, the tier
+ * rides beside its numeral, and the receipts under each name are the row's evidence band.
  */
 export default function HallPage() {
   const { data, error, loading } = useSnapshot();
 
   return (
     <Chrome>
-      <h1 style={{ fontSize: "clamp(1.5rem, 5vw, 1.75rem)", marginTop: 0 }}>Hall of Alloy</h1>
-      <p style={{ color: "var(--dim)", maxWidth: "62ch" }}>
+      <h1 className="page-title">Hall of Alloy</h1>
+      <p className="lede hall-lede">
         Reputation minted exclusively from verified outcomes, and decayed by proven lies. Each row
         quotes the transaction that earned it.
       </p>
 
-      <div className="surface" style={{ padding: 18, margin: "24px 0", display: "flex", gap: 20, flexWrap: "wrap" }}>
+      <div className="surface hall-legend">
         {TIER_META.map((t) => (
-          <span key={t.name} className="mono" style={{ color: t.color }}>
+          <span key={t.name} className="roman hall-legend__tier" data-tone={t.tone}>
             {t.name}
           </span>
         ))}
@@ -40,7 +44,7 @@ export default function HallPage() {
       ) : null}
 
       {data ? (
-        <div className="stack" style={{ gap: 14 }}>
+        <div className="hall-rows">
           {data.hall.map((e, i) => (
             <HallRow key={e.agentId} entry={e} rank={i + 1} />
           ))}
@@ -54,27 +58,32 @@ function HallRow({ entry: e, rank }: { entry: import("@crucible/indexer").ApiHal
   const tier = e.tier === null ? null : tierMeta(e.tier);
   // The newest receipt is the one a reader is being asked to believe; the rest are history.
   const last = e.settlements[0];
+  // An unread tier has no numeral: nothing is cut, rather than a placeholder standing in.
+  const numeral = tierNumeral(e.tier);
 
   return (
-    <article className="surface cooling hall-row" style={{ padding: 0 }}>
+    <article className="surface cooling hall-row">
       <header className="hall-row__head">
-        <span className="mono hall-row__rank">{String(rank).padStart(2, "0")}</span>
+        <span className="hall-row__rank roman" aria-label={`rank ${roman(rank)}`}>
+          {roman(rank)}
+        </span>
 
         <div className="hall-row__who">
           <Link href={`/agents/${e.agentId}`} className="hall-row__name">
-            <span className="chip" style={{ color: tier?.color ?? "var(--faint)" }}>
+            {numeral ? <span className="hall-row__numeral roman">{numeral}</span> : null}
+            <span className="chip" data-tone={tier?.tone ?? "faint"}>
               {e.tierName ?? "tier unknown"}
             </span>
-            <span className="mono" style={{ color: "var(--faint)" }}>
+            <span className="mono" data-tone="faint">
               agent #{e.agentId} · {shortHash(e.operator)}
             </span>
           </Link>
         </div>
 
-        <div className="row hall-row__tally" style={{ gap: 14 }}>
-          <Tally value={e.wins} label="wins" color="var(--gold)" />
-          <Tally value={e.survived} label="survived" color="var(--quench)" />
-          <Tally value={e.slashes} label="scars" color="var(--sear)" />
+        <div className="row hall-row__tally">
+          <Tally value={e.wins} label="wins" tone="gold" />
+          <Tally value={e.survived} label="survived" tone="quench" />
+          <Tally value={e.slashes} label="scars" tone="sear" />
         </div>
       </header>
 
@@ -109,12 +118,12 @@ function HallRow({ entry: e, rank }: { entry: import("@crucible/indexer").ApiHal
           <summary className="mono">
             {e.settlements.length} settlement receipts · {e.wins} wins recorded
           </summary>
-          <ul className="stack" style={{ gap: 8, marginTop: 10, padding: 0, listStyle: "none" }}>
+          <ul className="hall-receipts">
             {e.settlements.slice(1).map((s) => (
-              <li key={s.txHash} className="mono" style={{ color: "var(--faint)", fontSize: "0.76rem" }}>
+              <li key={s.txHash} className="mono hall-receipt">
                 trial #{s.trialId} — {s.verdict}
                 {s.breakFiled ? " · contested" : ""} — block {s.blockNumber} —{" "}
-                <span style={{ color: "var(--dim)" }}>
+                <span className="hall-receipt__hash">
                   {s.txHash.slice(0, 10)}…{s.txHash.slice(-6)}
                 </span>
               </li>
@@ -143,9 +152,17 @@ function describeSettlement(s: import("@crucible/indexer").ApiHallSettlement): s
   return "refunded · no run delivered";
 }
 
-function Tally({ value, label, color }: { value: number; label: string; color: string }) {
+function Tally({
+  value,
+  label,
+  tone,
+}: {
+  value: number;
+  label: string;
+  tone: "gold" | "quench" | "sear";
+}) {
   return (
-    <span className="hall-tally" style={{ color: value > 0 ? color : "var(--ash)" }}>
+    <span className="hall-tally" data-tone={value > 0 ? tone : "ash"}>
       <strong className="mono">{value}</strong>
       <span className="kicker">{label}</span>
     </span>
@@ -177,7 +194,11 @@ function Proof({
       {hash ? (
         <span className="proof__tx">
           <TxLink hash={hash} />
-          {block !== null ? <span className="mono" style={{ color: "var(--faint)" }}>block {block}</span> : null}
+          {block !== null ? (
+            <span className="mono" data-tone="faint">
+              block {block}
+            </span>
+          ) : null}
         </span>
       ) : (
         <span className="mono proof__missing">nothing to quote</span>

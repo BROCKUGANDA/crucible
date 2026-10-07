@@ -190,7 +190,7 @@ export function PourConfirm({
         <span className="kicker">Leaving your wallet</span>
         <strong>{amount}</strong>
       </p>
-      <div style={{ marginTop: 12 }}>{detail}</div>
+      <div className="pour-detail">{detail}</div>
     </Modal>
   );
 }

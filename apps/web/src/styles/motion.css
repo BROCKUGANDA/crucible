@@ -1,0 +1,203 @@
+/* @file motion.css — every @keyframes plus the prefers-reduced-motion kill switch.
+ * Named from base.css, components.css and console.css. Imported third.
+ */
+
+@keyframes emberPulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--ember) 50%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 8px transparent;
+  }
+}
+
+@keyframes fill {
+  to {
+    background-size: 100% 100%;
+  }
+}
+
+@keyframes shimmer {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 0.85;
+  }
+}
+
+@keyframes heatSweep {
+  to {
+    transform: translateX(110%);
+  }
+}
+
+@keyframes coolSweep {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+/* Metal arriving: up, settling, and the heat bleeding off the top edge. */
+@keyframes pourIn {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.985);
+    filter: brightness(1.5);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+    filter: none;
+  }
+}
+
+@keyframes drain {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+}
+
+@keyframes scrimIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes stampSeal {
+  0% {
+    opacity: 0;
+    transform: scale(1.3);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(0.96);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes bellows {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+    opacity: 0.42;
+  }
+  50% {
+    transform: translate3d(-4%, 3%, 0) scale(1.12);
+    opacity: 0.62;
+  }
+}
+
+/* Sparks only where a verdict is actually being struck. */
+@keyframes sparkRise {
+  0% {
+    opacity: 0;
+    transform: translateY(0) scale(0.6);
+  }
+  20% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-26px) scale(1);
+  }
+}
+
+/* ── the sign-in theatre (console.css) ────────────────────── */
+
+/* Staged arrival: heat, then the words, then the way in. */
+@keyframes forgeStage {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+    filter: brightness(1.6);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+    filter: none;
+  }
+}
+
+/* The vessel breathes while it waits, and stops when the ingot sets. */
+@keyframes crucibleBreathe {
+  0%,
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 26px color-mix(in srgb, var(--ember) 20%, transparent), inset 0 0 30px rgba(0, 0, 0, 0.7);
+  }
+  50% {
+    transform: scale(1.035);
+    box-shadow: 0 0 58px color-mix(in srgb, var(--ember) 42%, transparent), inset 0 0 30px rgba(0, 0, 0, 0.7);
+  }
+}
+
+@keyframes markGlow {
+  0%,
+  100% {
+    opacity: 0.78;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* The pour is the metal level rising: a scaleY on the fill box, anchored at the bottom. */
+@keyframes pourUp {
+  from {
+    transform: scaleY(0);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+
+/* A returning operator sees an ingot already cast, coming back up to temperature. */
+@keyframes reheat {
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes emberBlink {
+  0%,
+  100% {
+    opacity: 0.6;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  /* The heat pools stay lit — they carry meaning, not mood — they just stop breathing. */
+  body::before,
+  body::after {
+    opacity: 0.4;
+  }
+}

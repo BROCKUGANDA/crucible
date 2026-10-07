@@ -1,41 +1,37 @@
 /**
- * Industrial Forge — the design system.
+ * The arena, in TypeScript.
  *
- * Every trial state maps to a temperature. The product *is* heat: trials heat
- * metal, verdicts quench it. So the tokens are not decoration, they are the state
- * model made visible.
+ * This is the *mirror*: the same palette the browser reads from `src/styles/tokens.css`, for
+ * the handful of places that must build a colour in script (the RainbowKit theme, the canvas
+ * scene). The state model is unchanged by the re-skin — `ember` is still the action an agent
+ * takes, `gold` what a result is worth, `quench` the reprieve, `sear` the slash — only the
+ * ground they sit on moved from molten metal to stone, sand and laurel.
  *
- * Numbers, CIDs and hashes are always mono and always truncated — a reader
- * comparing two hashes must not be asked to eyeball 66 characters.
+ * `test/scrub-palette.test.ts` parses tokens.css and fails if a hex here is not declared
+ * there. Two files in two languages that describe one design will drift the moment nobody is
+ * made to notice, and the symptom is a screen that looks fine.
+ *
+ * Numbers, CIDs and hashes are always mono and always truncated — a reader comparing two
+ * hashes must not be asked to eyeball 66 characters.
  */
 
 export const forge = {
   bg: {
-    0: "#0B0908", // page
-    1: "#141110", // surface
-    2: "#1B1713", // raised
+    0: "#0B0A09", // night over the forum
+    1: "#151210", // travertine in shadow
+    2: "#1E1915", // warmed stone
   },
   text: {
-    DEFAULT: "#EDE4D6", // warm off-white, never pure white
-    dim: "#B0A28D",
-    faint: "#7E7260",
+    DEFAULT: "#ECE5D8", // inscribed marble, never pure white
+    dim: "#B3A793",
+    faint: "#857B6B",
   },
-  ember: "#FF5A00", // primary action, agent identity
-  gold: "#FFC46B", // rewards, Alloy tiers, values
-  hot: "#FFF2DC", // focus states, hottest highlights
-  quench: "#54D8C6", // success, verified
-  sear: "#FF4B36", // errors, slashes
-  ash: "#8E8577", // disabled, muted
-} as const;
-
-export const moltenGradient = "linear-gradient(90deg, #FF5A00 0%, #FFC46B 55%, #FFF2DC 100%)";
-export const heatGlow = "radial-gradient(circle at 50% 0%, rgba(255,90,0,.30), transparent 70%)";
-
-export const type = {
-  display: "'Bricolage Grotesque', system-ui, sans-serif",
-  mono: "'JetBrains Mono', ui-monospace, monospace",
-  /** 12 / 13.5 / 16.5 / 21 / 28 / 44 */
-  scale: [12, 13.5, 16.5, 21, 28, 44] as const,
+  ember: "#E2612F", // primary action, agent identity — terracotta, not molten iron
+  gold: "#E3B25C", // rewards, Alloy tiers, values — laurel bronze
+  hot: "#FBEEDA", // focus states, the hottest highlight
+  quench: "#4FBFAE", // success, verified, the reprieve
+  sear: "#CF4132", // errors, slashes, the blood-sand
+  ash: "#8A8073", // disabled, muted
 } as const;
 
 export const motion = {
@@ -109,61 +105,74 @@ export function formatDuration(totalSeconds: number | null | undefined): string 
   return `${Math.floor(h / 24)}d ${h % 24}h`;
 }
 
-/** The warm-up ladder, for the progress read-out. */
-export const TIER_THRESHOLDS = [0, 1, 3, 10, 25] as const;
-
 export type VerdictKey = "none" | "paid" | "slashed" | "refunded";
 export type TrialStatusKey = "open" | "assigned" | "judging" | "challenged" | "settled";
 
-const VERDICT_META_TABLE = {
-  none: { label: "—", color: forge.text.faint },
-  paid: { label: "Verified", color: forge.quench },
-  slashed: { label: "Broken", color: forge.sear },
-  refunded: { label: "Refunded", color: forge.ash },
-} satisfies Record<VerdictKey, { label: string; color: string }>;
+/**
+ * A tone is a *meaning* the stylesheet knows how to render, not a hue. Components emit
+ * `data-tone={meta.tone}` and the token layer owns the colour (see the tone block at the
+ * foot of base.css); script never names a hex for something a stylesheet could own.
+ */
+export type Tone =
+  | "text"
+  | "dim"
+  | "faint"
+  | "ember"
+  | "gold"
+  | "hot"
+  | "quench"
+  | "sear"
+  | "ash";
 
-export const VERDICT_META: Record<VerdictKey, { label: string; color: string }> =
+const VERDICT_META_TABLE = {
+  none: { label: "—", tone: "faint" },
+  paid: { label: "Verified", tone: "quench" },
+  slashed: { label: "Broken", tone: "sear" },
+  refunded: { label: "Refunded", tone: "ash" },
+} satisfies Record<VerdictKey, { label: string; tone: Tone }>;
+
+export const VERDICT_META: Record<VerdictKey, { label: string; tone: Tone }> =
   VERDICT_META_TABLE;
 
 /** Accepts the widened `string` from API payloads; unknown verdicts fall back. */
-export function verdictMeta(verdict: string): { label: string; color: string } {
+export function verdictMeta(verdict: string): { label: string; tone: Tone } {
   return VERDICT_META_TABLE[verdict as VerdictKey] ?? {
     label: verdict,
-    color: forge.ash,
+    tone: "ash",
   };
 }
 
 const STATUS_META_TABLE = {
-  open: { label: "Open — awaiting a smith", color: forge.text.dim, heat: 0 },
-  assigned: { label: "At the anvil", color: forge.gold, heat: 1 },
-  judging: { label: "Judging — skeptics may strike", color: forge.ember, heat: 2 },
-  challenged: { label: "Challenged", color: forge.sear, heat: 3 },
-  settled: { label: "Settled", color: forge.quench, heat: 0 },
-} satisfies Record<TrialStatusKey, { label: string; color: string; heat: number }>;
+  open: { label: "Open — awaiting a smith", tone: "dim", heat: 0 },
+  assigned: { label: "At the anvil", tone: "gold", heat: 1 },
+  judging: { label: "Judging — skeptics may strike", tone: "ember", heat: 2 },
+  challenged: { label: "Challenged", tone: "sear", heat: 3 },
+  settled: { label: "Settled", tone: "quench", heat: 0 },
+} satisfies Record<TrialStatusKey, { label: string; tone: Tone; heat: number }>;
 
 /** Accepts the widened `string` from API payloads; unknown states fall back. */
-export function statusMeta(status: string): { label: string; color: string; heat: number } {
+export function statusMeta(status: string): { label: string; tone: Tone; heat: number } {
   return STATUS_META_TABLE[status as TrialStatusKey] ?? {
     label: status,
-    color: forge.ash,
+    tone: "ash",
     heat: 0,
   };
 }
 
-export const STATUS_META: Record<TrialStatusKey, { label: string; color: string; heat: number }> =
+export const STATUS_META: Record<TrialStatusKey, { label: string; tone: Tone; heat: number }> =
   STATUS_META_TABLE;
 
 export interface TierMeta {
   name: string;
-  color: string;
+  tone: Tone;
 }
 
 export const TIER_META: readonly TierMeta[] = [
-  { name: "Unforged", color: forge.ash },
-  { name: "Iron", color: forge.text.dim },
-  { name: "Bronze", color: forge.ember },
-  { name: "Steel", color: forge.gold },
-  { name: "Damascus", color: forge.hot },
+  { name: "Unforged", tone: "ash" },
+  { name: "Iron", tone: "dim" },
+  { name: "Bronze", tone: "ember" },
+  { name: "Steel", tone: "gold" },
+  { name: "Damascus", tone: "hot" },
 ];
 
 /**
@@ -171,7 +180,7 @@ export const TIER_META: readonly TierMeta[] = [
  * UI says so: falling back to "Unforged" would render an unmeasured agent as a measured
  * one, which is the difference between a leaderboard and a guess.
  */
-const TIER_UNKNOWN: TierMeta = { name: "Tier unread", color: forge.text.faint };
+const TIER_UNKNOWN: TierMeta = { name: "Tier unread", tone: "faint" };
 
 export function tierMeta(tier: number | null): TierMeta {
   if (tier === null) return TIER_UNKNOWN;
