@@ -9,6 +9,14 @@
 #
 # `!reset []` replaces compose.yaml's ports lists instead of merging with them
 # (compose 2.24+; the tag is what makes a no-publish override possible at all).
+#
+# Restarting a single service must NOT let compose re-evaluate the seed: a second
+# Demo broadcast on a running anvil lands at different addresses and the seed's
+# assertion refuses it (correctly). Use `--no-deps`:
+#
+#   docker compose -f compose.yaml -f compose.vps.yaml up -d --no-deps web
+#
+# A full `up` is only for a fresh chain — take the stack down first.
 services:
   anvil:
     ports: !reset []
