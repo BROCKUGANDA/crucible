@@ -20,26 +20,115 @@ import type { ApprovalRequest, Decision, Permission, Principal, ToolPolicy } fro
  * is a lost bond.
  */
 
+export interface ApprovalRetentionPolicy {
+  /** hard ceiling on retained requests, decided or not */
+  maxRetained: number;
+  /** how long a decided request stays queryable before it is pruned */
+  decidedTtlMs: number;
+  now: () => number;
+}
+
+const DEFAULT_APPROVAL_RETENTION: ApprovalRetentionPolicy = {
+  maxRetained: 500,
+  decidedTtlMs: 1000 * 60 * 60,
+  now: Date.now,
+};
+
 export class ApprovalQueue {
   private readonly pending = new Map<string, ApprovalRequest>();
+  private readonly retention: ApprovalRetentionPolicy;
+  /** decisions dropped by policy, never by accident — a nonzero count is a signal */
+  private pruned = 0;
 
   constructor(
     private readonly reviewer: (req: ApprovalRequest) => Promise<{ approved: boolean; by?: string; reason?: string }>,
     private readonly autoApproveBelow: number = 20,
-  ) {}
+    retention: Partial<ApprovalRetentionPolicy> = {},
+  ) {
+    this.retention = { ...DEFAULT_APPROVAL_RETENTION, ...retention };
+  }
+
+  /**
+   * Drop decided requests past their TTL, then enforce the ceiling.
+   *
+   * Only decided requests are ever evicted. A `pending` one is a human being looking at
+   * it; if the answer arrives after the request vanished from the queue, the caller
+   * reads that as a denial that never happened. Ceiling eviction therefore takes the
+   * *oldest decided* entry, and if nothing decided can go, the write is refused loudly
+   * rather than the pending entry silently disappearing.
+   */
+  prune(): number {
+    const now = this.retention.now();
+    let removed = 0;
+    for (const [id, req] of this.pending) {
+      if (req.status === "pending") continue;
+      const decidedAt = req.decidedAt ?? req.requestedAt;
+      if (now - decidedAt > this.retention.decidedTtlMs) {
+        this.pending.delete(id);
+        removed += 1;
+      }
+    }
+    while (this.pending.size > this.retention.maxRetained) {
+      const oldestDecided = [...this.pending.values()]
+        .filter((r) => r.status !== "pending")
+        .sort((a, b) => a.requestedAt - b.requestedAt)[0];
+      if (!oldestDecided) break;
+      this.pending.delete(oldestDecided.id);
+      removed += 1;
+    }
+    this.pruned += removed;
+    return removed;
+  }
+
+  get size(): number {
+    return this.pending.size;
+  }
+
+  get dropped(): number {
+    return this.pruned;
+  }
 
   async request(req: Omit<ApprovalRequest, "status" | "requestedAt">): Promise<ApprovalRequest> {
-    const full: ApprovalRequest = { ...req, status: "pending", requestedAt: Date.now() };
+    try {
+      return await this.accept(req);
+    } finally {
+      // Pruning only at entry lets the queue sit one over its ceiling until the next
+      // call arrives — which, for the last request of a process that then idles, is never.
+      this.prune();
+    }
+  }
+
+  private async accept(req: Omit<ApprovalRequest, "status" | "requestedAt">): Promise<ApprovalRequest> {
+    this.prune();
+    const decidedElsewhere =
+      this.pending.size >= this.retention.maxRetained &&
+      [...this.pending.values()].every((r) => r.status === "pending");
+    if (decidedElsewhere) {
+      // Fail closed: an approval that cannot be recorded is an approval that was not
+      // granted. Returning "pending" here would let a risky action look queued while the
+      // queue has already stopped accepting it.
+      throw new Error(
+        `approval queue is full with ${this.pending.size} unanswered requests — refusing new ones`,
+      );
+    }
+
+    const full: ApprovalRequest = {
+      ...req,
+      status: "pending",
+      requestedAt: this.retention.now(),
+    };
 
     if (full.risk.score < this.autoApproveBelow) {
       full.status = "auto-approved";
+      full.decidedAt = this.retention.now();
       this.pending.set(full.id, full);
       return full;
     }
 
     this.pending.set(full.id, full);
-    if (full.expiresAt <= Date.now()) {
+    if (full.expiresAt <= this.retention.now()) {
       full.status = "expired";
+      full.decidedAt = this.retention.now();
       return full;
     }
 
@@ -47,12 +136,13 @@ export class ApprovalQueue {
       const result = await this.reviewer(full);
       full.status = result.approved ? "approved" : "denied";
       if (result.by) full.decidedBy = result.by;
-      full.decidedAt = Date.now();
+      full.decidedAt = this.retention.now();
       full.reason = result.reason;
     } catch {
       // a failing reviewer must fail closed, not open
       full.status = "denied";
       full.reason = "reviewer unavailable — failing closed";
+      full.decidedAt = this.retention.now();
     }
     return full;
   }
@@ -76,29 +166,94 @@ export interface CompensatingAction {
   execute: () => Promise<void>;
 }
 
+export interface RollbackRetentionPolicy {
+  /** open saga scopes held at once */
+  maxScopes: number;
+  /** compensations registered for one scope before it is considered runaway */
+  maxDepth: number;
+}
+
+const DEFAULT_ROLLBACK_RETENTION: RollbackRetentionPolicy = {
+  maxScopes: 200,
+  maxDepth: 64,
+};
+
 /**
  * Rollback registry.
  *
  * Only *compensating* actions, never a true undo — on-chain you cannot un-send a
  * transaction. A compensation that is not itself dangerous must be registered before
  * the forward action runs, because afterwards it may be impossible to construct.
+ *
+ * Capacity pressure unwinds rather than forgets. A dropped compensation would leave a
+ * half-applied, wallet-holding state with no path back, and the only way that happens
+ * silently is a registry that grew past its ceiling and evicted quietly — so the oldest
+ * open scope is rolled back instead of discarded.
  */
 export class RollbackRegistry {
   private readonly stacks = new Map<string, CompensatingAction[]>();
+  private readonly retention: RollbackRetentionPolicy;
+  /** scopes the registry had to unwind on its own, because nothing else would */
+  private forcedUnwinds = 0;
+
+  constructor(retention: Partial<RollbackRetentionPolicy> = {}) {
+    this.retention = { ...DEFAULT_ROLLBACK_RETENTION, ...retention };
+  }
+
+  get openScopes(): number {
+    return this.stacks.size;
+  }
+
+  get forcedUnwindCount(): number {
+    return this.forcedUnwinds;
+  }
+
+  /** Registration is synchronous by contract, so a forced unwind is queued, not awaited. */
+  private pendingUnwinds: Promise<void>[] = [];
 
   push(scope: string, action: CompensatingAction): void {
     const stack = this.stacks.get(scope) ?? [];
+    if (stack.length >= this.retention.maxDepth) {
+      throw new Error(
+        `saga ${scope} registered ${stack.length} compensations — refusing more, this is not a saga`,
+      );
+    }
     stack.push(action);
     this.stacks.set(scope, stack);
+
+    if (this.stacks.size > this.retention.maxScopes) {
+      const oldest = [...this.stacks.keys()].find((k) => k !== scope);
+      if (oldest) {
+        this.forcedUnwinds += 1;
+        this.pendingUnwinds.push(
+          this.rollback(oldest).then(() => undefined).catch(() => undefined),
+        );
+      }
+    }
   }
 
-  /** Run compensations in reverse order, LIFO — the standard unwind order. */
+  /** Drain the unwinds the capacity policy started. Await before shutting down. */
+  async settle(): Promise<void> {
+    const queue = this.pendingUnwinds;
+    this.pendingUnwinds = [];
+    await Promise.allSettled(queue);
+  }
+
+  /**
+   * Take the scope's stack out synchronously, then run it.
+   *
+   * Deleting before the awaits is what makes the capacity policy real: an eviction that
+   * only removed the entry when the compensation finished would leave the registry over
+   * its ceiling for the whole unwind, and a `push` racing the same scope would append to
+   * a stack that is already being discarded.
+   */
   async rollback(scope: string): Promise<{ executed: number; failed: string[] }> {
     const stack = this.stacks.get(scope) ?? [];
+    this.stacks.delete(scope);
     const failed: string[] = [];
     let executed = 0;
 
-    for (const action of stack.reverse()) {
+    for (const action of [...stack].reverse()) {
       try {
         await action.execute();
         executed += 1;
@@ -106,7 +261,6 @@ export class RollbackRegistry {
         failed.push(`${action.description}: ${(err as Error).message}`);
       }
     }
-    this.stacks.delete(scope);
     return { executed, failed };
   }
 

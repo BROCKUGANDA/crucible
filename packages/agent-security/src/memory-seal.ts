@@ -30,23 +30,41 @@ function ordered(records: readonly MemoryRecord[]): MemoryRecord[] {
 }
 
 /**
+ * One link of the seal chain.
+ *
+ * Exposed because a bounded store has to fold the records it evicts into something it
+ * keeps. Without that, dropping an old memory would silently change the seal of the
+ * state that remains, and "the seal moved" would stop meaning "someone edited my past".
+ */
+export function chainStep(prev: string, r: MemoryRecord): string {
+  return createHash("sha256")
+    .update(
+      `${prev}|${r.id}|${r.key}|${r.provenance}|${r.source ?? ""}|${r.at}|${r.immutable ? 1 : 0}|${canonical(r.value)}`,
+    )
+    .digest("hex");
+}
+
+export const SEAL_IV = "0".repeat(64);
+
+/**
  * Seal the memory state. O(n) over records; the digest commits to every field of
  * every record, so changing a value, a provenance, a timestamp, or the ORDER of
  * memories yields a different seal.
+ *
+ * `from` lets a bounded store continue a chain it started before an eviction; callers
+ * holding a complete record set never pass it.
  */
-export function sealMemory(records: readonly MemoryRecord[]): string {
-  let chain = "0".repeat(64);
-  for (const r of ordered(records)) {
-    chain = createHash("sha256")
-      .update(
-        `${chain}|${r.id}|${r.key}|${r.provenance}|${r.source ?? ""}|${r.at}|${r.immutable ? 1 : 0}|${canonical(r.value)}`,
-      )
-      .digest("hex");
-  }
+export function sealMemory(records: readonly MemoryRecord[], from = SEAL_IV): string {
+  let chain = from;
+  for (const r of ordered(records)) chain = chainStep(chain, r);
   return chain;
 }
 
 /** True when the records still hash to the seal they were checkpointed with. */
-export function verifyMemorySeal(records: readonly MemoryRecord[], seal: string): boolean {
-  return sealMemory(records) === seal;
+export function verifyMemorySeal(
+  records: readonly MemoryRecord[],
+  seal: string,
+  from = SEAL_IV,
+): boolean {
+  return sealMemory(records, from) === seal;
 }

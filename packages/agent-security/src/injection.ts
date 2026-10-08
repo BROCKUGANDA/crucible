@@ -15,6 +15,8 @@
  *   4. **Output validation** — the agent cannot widen its own authority by asking.
  */
 
+import { SEAL_IV, chainStep, sealMemory } from "./memory-seal.js";
+
 export type Severity = "low" | "medium" | "high";
 
 export interface InjectionFinding {
@@ -249,9 +251,44 @@ export interface MemoryRecord {
   immutable: boolean;
 }
 
+export interface MemoryRetentionPolicy {
+  /** retained records; chain-sourced facts count against this and are never dropped quietly */
+  maxRecords: number;
+  /**
+   * The clock records are stamped with, and the seal chain orders by. Injectable because
+   * a seal is only reproducible if the timestamps are: with a hardcoded wall clock, two
+   * processes replaying the same writes get two different seals and the checkpoint is
+   * worthless as evidence.
+   */
+  now: () => number;
+}
+
+const DEFAULT_MEMORY_RETENTION: MemoryRetentionPolicy = { maxRecords: 500, now: Date.now };
+
 export class MemoryStore {
   private readonly records = new Map<string, MemoryRecord>();
+  /** key -> id, so `read` is a lookup rather than a scan of every memory */
+  private readonly byKey = new Map<string, string>();
   private readonly counter = { n: 0 };
+  private readonly retention: MemoryRetentionPolicy;
+  /**
+   * Seal chain advanced past the records this store has evicted. Sealing the survivors
+   * continues from here, so forgetting is recorded rather than silent.
+   */
+  private head: string = SEAL_IV;
+  private evicted = 0;
+
+  constructor(retention: Partial<MemoryRetentionPolicy> = {}) {
+    this.retention = { ...DEFAULT_MEMORY_RETENTION, ...retention };
+  }
+
+  get size(): number {
+    return this.records.size;
+  }
+
+  get evictedCount(): number {
+    return this.evicted;
+  }
 
   write(args: {
     key: string;
@@ -259,7 +296,8 @@ export class MemoryStore {
     provenance: MemoryRecord["provenance"];
     source?: string;
   }): { ok: true; record: MemoryRecord } | { ok: false; reason: string } {
-    const existing = [...this.records.values()].find((r) => r.key === args.key);
+    const existingId = this.byKey.get(args.key);
+    const existing = existingId ? this.records.get(existingId) : undefined;
     if (existing?.immutable && existing.provenance === "chain") {
       return {
         ok: false,
@@ -275,21 +313,57 @@ export class MemoryStore {
       };
     }
 
+    if (this.records.size >= this.retention.maxRecords && !existing) {
+      const dropped = this.makeRoom();
+      if (dropped === 0) {
+        // Every retained record is an immutable chain fact and there is no room for a
+        // new one. Refusing is the only honest option: overwriting a chain fact, or
+        // evicting one to make space, would quietly erase ground truth.
+        return {
+          ok: false,
+          reason: `memory is full with ${this.records.size} pinned chain facts — evicting one would lose evidence`,
+        };
+      }
+    }
+
     const record: MemoryRecord = {
       id: `mem_${++this.counter.n}`,
       key: args.key,
       value: args.value,
       provenance: args.provenance,
-      at: Date.now(),
+      at: this.retention.now(),
       immutable: args.provenance === "chain",
       ...(args.source ? { source: args.source } : {}),
     };
+    if (existing) {
+      // Replacing a key's record must not leave a dangling index or a stale entry that
+      // `all()` still reports — the old value is gone, and the seal should say so.
+      this.records.delete(existing.id);
+    }
     this.records.set(record.id, record);
+    this.byKey.set(args.key, record.id);
     return { ok: true, record };
   }
 
+  /**
+   * Evict the oldest non-immutable record. Returns how many went (0 or 1 — one write
+   * needs one slot), and folds each into `head` on the way out.
+   */
+  private makeRoom(): number {
+    const oldest = [...this.records.values()]
+      .filter((r) => !r.immutable)
+      .sort((a, b) => a.at - b.at || a.id.localeCompare(b.id))[0];
+    if (!oldest) return 0;
+    this.head = chainStep(this.head, oldest);
+    this.records.delete(oldest.id);
+    if (this.byKey.get(oldest.key) === oldest.id) this.byKey.delete(oldest.key);
+    this.evicted += 1;
+    return 1;
+  }
+
   read(key: string): MemoryRecord | undefined {
-    return [...this.records.values()].find((r) => r.key === key);
+    const id = this.byKey.get(key);
+    return id ? this.records.get(id) : undefined;
   }
 
   /** Assemble a context window, dropping anything that looks poisoned. */
@@ -333,17 +407,93 @@ export class MemoryStore {
   all(): MemoryRecord[] {
     return [...this.records.values()];
   }
+
+  /**
+   * Seal the retained state, continuing the chain past anything evicted. Two stores that
+   * saw the same writes and evicted the same records therefore seal identically, and a
+   * store that silently lost one does not.
+   */
+  seal(): string {
+    return sealMemory(this.all(), this.head);
+  }
+
+  verifySeal(seal: string): boolean {
+    return this.seal() === seal;
+  }
 }
+
+export interface SessionRetentionPolicy {
+  /** concurrent open sessions */
+  maxOpen: number;
+  /** a session untouched for this long is closed by `sweepExpired` */
+  idleTtlMs: number;
+  now: () => number;
+}
+
+const DEFAULT_SESSION_RETENTION: SessionRetentionPolicy = {
+  maxOpen: 256,
+  idleTtlMs: 1000 * 60 * 30,
+  now: Date.now,
+};
 
 /**
  * Session scoping. An agent must not leak one conversation's context into another —
  * this is the isolation boundary between tenants.
+ *
+ * Sessions are created by request and closed by whoever opened them, which is the usual
+ * way a Map like this grows forever: a crashed caller never calls `close`, and the
+ * retained `contents` are exactly the cross-tenant data this class exists to protect.
+ * So an open session costs a slot and expires; `sweepExpired` is safe to call on any
+ * tick and `create` calls it before taking a slot.
  */
 export class SessionScope {
-  private readonly sessions = new Map<string, { startedAt: number; contents: Set<string> }>();
+  private readonly sessions = new Map<
+    string,
+    { startedAt: number; touchedAt: number; contents: Set<string> }
+  >();
+  private readonly retention: SessionRetentionPolicy;
+  private swept = 0;
+
+  constructor(retention: Partial<SessionRetentionPolicy> = {}) {
+    this.retention = { ...DEFAULT_SESSION_RETENTION, ...retention };
+  }
+
+  get openCount(): number {
+    return this.sessions.size;
+  }
+
+  get sweptCount(): number {
+    return this.swept;
+  }
+
+  /** Close sessions idle past the TTL. Returns how many. */
+  sweepExpired(): number {
+    const now = this.retention.now();
+    let closed = 0;
+    for (const [id, s] of this.sessions) {
+      if (now - s.touchedAt > this.retention.idleTtlMs) {
+        this.sessions.delete(id);
+        closed += 1;
+      }
+    }
+    this.swept += closed;
+    return closed;
+  }
 
   create(id: string): void {
-    this.sessions.set(id, { startedAt: Date.now(), contents: new Set() });
+    if (this.sessions.size >= this.retention.maxOpen && !this.sessions.has(id)) {
+      this.sweepExpired();
+    }
+    if (this.sessions.size >= this.retention.maxOpen && !this.sessions.has(id)) {
+      // Refusing the new session is correct and evicting an old one is not: the evicted
+      // tenant's agent would keep writing into a session that silently no longer exists,
+      // and its context would land in whatever the next `create` reuses that id for.
+      throw new Error(
+        `session cap reached (${this.retention.maxOpen}) — close a session or raise the cap`,
+      );
+    }
+    const now = this.retention.now();
+    this.sessions.set(id, { startedAt: now, touchedAt: now, contents: new Set() });
   }
 
   close(id: string): void {
@@ -367,6 +517,7 @@ export class SessionScope {
     const s = this.sessions.get(sessionId);
     if (!s) throw new Error(`session ${sessionId} is not open`);
     s.contents.add(`${key}=${JSON.stringify(value)}`);
+    s.touchedAt = this.retention.now();
   }
 
   contents(sessionId: string): string[] {
