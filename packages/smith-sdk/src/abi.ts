@@ -101,6 +101,19 @@ export const TRIALS_ABI = [
   },
   {
     type: "function",
+    name: "disputeVote",
+    stateMutability: "view",
+    inputs: [
+      { name: "id", type: "uint256" },
+      { name: "judge", type: "address" },
+    ],
+    outputs: [
+      { name: "commit", type: "bytes32" },
+      { name: "revealed", type: "bool" },
+    ],
+  },
+  {
+    type: "function",
     name: "finalize",
     stateMutability: "nonpayable",
     inputs: [{ name: "id", type: "uint256" }],
