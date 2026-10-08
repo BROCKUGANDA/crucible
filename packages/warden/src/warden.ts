@@ -1,4 +1,4 @@
-import { Crucible, TRIALS_ABI } from "@crucible/smith";
+import { Crucible, TRIALS_ABI, selfSchedulingLoop, type LoopHandle } from "@crucible/smith";
 import type { ReadModel } from "@crucible/indexer";
 import type { WalletClient } from "viem";
 import {
@@ -35,7 +35,7 @@ export interface SweepResult {
 }
 
 export class Warden {
-  private timer: NodeJS.Timeout | null = null;
+  private loop: LoopHandle | null = null;
 
   constructor(private readonly deps: WardenDeps) {}
 
@@ -87,22 +87,36 @@ export class Warden {
     });
   }
 
-  /** Sweep on an interval. Idempotent: calling start twice does nothing. */
+  /**
+   * Sweep on an interval, one pass at a time. Idempotent: calling `start` twice does nothing.
+   *
+   * `setInterval` fired on the wall clock whether or not the previous pass had returned, so a
+   * sweep slower than `everySec` ran a second one alongside it over the same read model and the
+   * same nonces. Each pass now waits for the one before it, on the same first-pass delay the
+   * timer had.
+   */
   start(getModel: () => ReadModel, everySec = 60): void {
-    if (this.timer) return;
-    this.timer = setInterval(() => {
-      void this.sweep(getModel(), Math.floor(Date.now() / 1000)).catch((err) =>
-        this.log(`sweep failed: ${(err as Error).message}`),
-      );
-    }, everySec * 1000);
-    this.timer.unref?.();
+    if (this.loop) return;
+    this.loop = selfSchedulingLoop(() => this.sweep(getModel(), Math.floor(Date.now() / 1000)), {
+      intervalMs: everySec * 1000,
+      runImmediately: false,
+      // A library's own timer must not be what holds the host process open; the interval this
+      // replaces was unref'd for exactly that reason, and the parity is worth keeping.
+      sleep: (ms) =>
+        new Promise<void>((resolve) => {
+          setTimeout(resolve, ms).unref?.();
+        }),
+      onError: (err) => this.log(`sweep failed: ${(err as Error).message}`),
+    });
+    this.loop.start();
   }
 
+  /** Stops scheduling passes. The one already in flight finishes; nothing queues behind it. */
   stop(): void {
-    if (this.timer) {
-      clearInterval(this.timer);
-      this.timer = null;
-    }
+    const loop = this.loop;
+    if (!loop) return;
+    this.loop = null;
+    loop.stop();
   }
 
   private log(line: string): void {

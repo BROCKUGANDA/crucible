@@ -2,7 +2,7 @@ import { serve } from "@hono/node-server";
 import { foundry } from "viem/chains";
 import { createPublicClient, http, keccak256, toHex } from "viem";
 import { Scribe, UNKNOWN_ALLOY, type AlloyState } from "@crucible/indexer";
-import { ALLOY_ABI } from "@crucible/smith";
+import { ALLOY_ABI, selfSchedulingLoop } from "@crucible/smith";
 import { createApp } from "./app.js";
 import { dlq } from "./dlq.js";
 import { resolveSecurity } from "./security.js";
@@ -136,22 +136,21 @@ async function sweepAlloy(): Promise<void> {
   );
 }
 
+// `sync()` is the breaker-guarded pass: a node that is down at boot is the outage the breaker
+// exists for, and the tail below gets the same protection without a second code path.
 await scribe.sync();
 scribe.hydrate();
 void scribe.watch();
 
 // Primed before the first request is served, so `/hall` never opens on an empty cache.
 await sweepAlloy();
-let sweeping = false;
-setInterval(() => {
-  // Overlap would double the reads against a slow RPC, which is exactly what a sweep
-  // scheduled on a timer must not do.
-  if (sweeping) return;
-  sweeping = true;
-  void sweepAlloy().finally(() => {
-    sweeping = false;
-  });
-}, ALLOY_TTL_MS);
+// Scheduled off the previous pass rather than the wall clock: an overlapping sweep doubles the
+// registry reads against a slow RPC, which is the one thing this cache exists to prevent.
+selfSchedulingLoop(sweepAlloy, {
+  intervalMs: ALLOY_TTL_MS,
+  runImmediately: false,
+  onError: (err) => dlq.push("alloy.sweep", (err as Error).message),
+}).start();
 
 const trustProxy = process.env.TRUST_PROXY === "1";
 
@@ -169,6 +168,9 @@ const app = createApp({
   proofSource: { chain: foundry.name, chainId: foundry.id, trialsAddress },
   alloyState: (agentId) => alloyById.get(agentId) ?? UNKNOWN_ALLOY,
   indexStatus: () => scribe.status,
+  // The one breaker this process runs: the node the index is read from. Reporting it is what
+  // turns "the hall stopped moving" into "the node is tripped, with 12s of cooldown left".
+  breakers: () => ({ [scribe.breaker.name]: scribe.breaker.status() }),
 }, {
   // Off by default: forwarded headers are caller-writable, so trusting them lets a loop
   // mint a new bucket per request. Set TRUST_PROXY=1 only behind something that overwrites

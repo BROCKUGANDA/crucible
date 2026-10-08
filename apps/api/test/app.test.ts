@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { replay, type EventLike } from "@crucible/indexer";
+import { CircuitBreaker } from "@crucible/smith";
 import { createApp } from "../src/app.js";
 
 const SPONSOR = "0x1111111111111111111111111111111111111111";
@@ -502,5 +503,42 @@ describe("/health", () => {
     const res = await fine.request("/health");
     expect(res.status).toBe(200);
     expect((await res.json()).ok).toBe(true);
+  });
+
+  /**
+   * A tripped dependency is *why* the index above stopped moving, so it is reported beside the
+   * DLQ rather than left in a log line: state, the failures that got there, and the cooldown
+   * left before a probe is let through. Data, never a status — the index still owns the code.
+   */
+  it("reports every circuit breaker the process runs on", async () => {
+    const guard = new CircuitBreaker({ name: "scribe.rpc", threshold: 1, cooldownMs: 60_000 });
+    const withBreaker = createApp(
+      {
+        getModel: () => model,
+        indexStatus: () => ({ head: 42n, indexedTo: 42n, syncError: null }),
+        breakers: () => ({ [guard.name]: guard.status() }),
+      },
+      { rateLimit: false },
+    );
+
+    const closed = (await (await withBreaker.request("/health")).json()).breakers;
+    expect(closed["scribe.rpc"].state).toBe("closed");
+    expect(closed["scribe.rpc"].failures).toBe(0);
+
+    await expect(
+      guard.exec(async () => {
+        throw new Error("connection refused");
+      }),
+    ).rejects.toThrow("connection refused");
+
+    const body = await (await withBreaker.request("/health")).json();
+    expect(body.breakers["scribe.rpc"].state).toBe("open");
+    expect(body.breakers["scribe.rpc"].failures).toBe(1);
+    expect(body.breakers["scribe.rpc"].retryAfterMs).toBeGreaterThan(0);
+    expect(body.ok).toBe(true);
+  });
+
+  it("reports an empty breaker set when the host wires none", async () => {
+    expect((await (await app.request("/health")).json()).breakers).toEqual({});
   });
 });
