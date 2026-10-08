@@ -187,6 +187,52 @@ describe("ApprovalQueue bounds", () => {
     expect(queue.get("done")).toBeUndefined();
   });
 
+  it("ages out an auto-approved request on the same clock as a reviewed one", async () => {
+    // The two decision paths stamp `decidedAt` separately. If either of them reaches for
+    // the wall clock instead of the injected one, that class of request becomes immune to
+    // the TTL and the queue leaks exactly the entries nobody ever looks at again.
+    const queue = new ApprovalQueue(reviewer, 20, {
+      maxRetained: 100,
+      decidedTtlMs: 1_000,
+      now: () => now,
+    });
+    await queue.request(approval("cheap", 5)); // auto-approved path
+    expect(queue.get("cheap")?.status).toBe("auto-approved");
+
+    now += 5_000;
+    await queue.request(approval("dear")); // reviewed path, forces a prune
+    expect(queue.get("cheap")).toBeUndefined();
+    expect(queue.get("dear")).toBeDefined();
+  });
+
+  it("will not evict a request a human has not answered, even past the TTL", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    const gated = async () => {
+      await gate;
+      return { approved: true };
+    };
+    const queue = new ApprovalQueue(gated, 20, {
+      maxRetained: 2,
+      decidedTtlMs: 1_000,
+      now: () => now,
+    });
+
+    const inFlight = queue.request(approval("waiting"));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(queue.get("waiting")?.status).toBe("pending");
+
+    now += 60_000; // far past the TTL, and past the ceiling for everything else
+    expect(queue.prune()).toBe(0);
+    expect(queue.get("waiting")).toBeDefined();
+
+    release();
+    await inFlight;
+    expect(queue.get("waiting")?.status).toBe("approved");
+  });
+
   it("holds the ceiling across a long stream of decisions", async () => {
     const queue = new ApprovalQueue(reviewer, 20, {
       maxRetained: 10,
