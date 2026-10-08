@@ -1,0 +1,21 @@
+{
+  "name": "@crucible/cidstore",
+  "version": "0.1.0",
+  "description": "Content-addressed storage: real IPFS CIDs computed from the bytes, and a bounded store the runner publishes into and Argus reads back.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": { ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" } },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.7",
+    "typescript": "^5.7.3",
+    "vitest": "^5.0.3"
+  }
+}
