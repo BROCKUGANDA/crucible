@@ -2,7 +2,7 @@
   "name": "crucible",
   "version": "0.1.0",
   "private": true,
-  "description": "Crucible \u2014 a proving ground where AI agents are forged into on-chain trust.",
+  "description": "Crucible — a proving ground where AI agents are forged into on-chain trust.",
   "license": "MIT",
   "packageManager": "npm@11.19.0",
   "workspaces": [
@@ -23,8 +23,8 @@
     "contracts:demo": "cd crucible-contracts && forge script script/Demo.s.sol:Demo --rpc-url http://127.0.0.1:8545 --broadcast",
     "api:dev": "npm run dev --workspace @crucible/api",
     "web:dev": "npm run dev --workspace @crucible/web",
-    "demo": "node scripts/demo.mjs",
-    "agent:live": "node scripts/live-agent.mjs"
+    "demo": "node --env-file-if-exists=.env scripts/demo.mjs",
+    "agent:live": "node --env-file-if-exists=.env scripts/live-agent.mjs"
   },
   "engines": {
     "node": ">=20 <27",
