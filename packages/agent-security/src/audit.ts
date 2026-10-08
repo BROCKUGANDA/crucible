@@ -19,19 +19,82 @@ export interface LogInput {
   at?: number;
 }
 
+export interface AuditRetentionPolicy {
+  /** hard ceiling on retained entries; the oldest fold into the anchor first */
+  maxEntries: number;
+  /** entries older than this are eligible for pruning; `Infinity` keeps everything */
+  ttlMs: number;
+  now: () => number;
+}
+
+const DEFAULT_AUDIT_RETENTION: AuditRetentionPolicy = {
+  maxEntries: 50_000,
+  ttlMs: Number.POSITIVE_INFINITY,
+  now: Date.now,
+};
+
 export class AuditLog {
   private readonly entries: LogEntry[] = [];
   private seq = 0;
+  private readonly retention: AuditRetentionPolicy;
+  /**
+   * The hash of the last entry that left the log.
+   *
+   * An audit trail has to end sometime — 14 days of entries is a retention promise, not a
+   * suggestion — but dropping the head of a hash chain normally reads as tampering.
+   * Verification therefore starts from this anchor rather than from genesis: the pruned
+   * prefix is still committed, it is simply not held. Produce the old entries and the
+   * anchor still proves them; edit them and the link breaks.
+   */
+  private anchor: string;
+  private pruned = 0;
 
   constructor(
     private readonly hasher: (s: string) => string = defaultHash,
     /** genesis link */
     private readonly genesis = "0".repeat(64),
-  ) {}
+    retention: Partial<AuditRetentionPolicy> = {},
+  ) {
+    this.retention = { ...DEFAULT_AUDIT_RETENTION, ...retention };
+    this.anchor = this.genesis;
+  }
+
+  get retainedCount(): number {
+    return this.entries.length;
+  }
+
+  get prunedCount(): number {
+    return this.pruned;
+  }
+
+  /** Current chain head — the anchor plus everything still held. */
+  head(): string {
+    return this.entries.length === 0 ? this.anchor : this.entries.at(-1)!.hash;
+  }
+
+  /**
+   * Fold the entries the policy says it can no longer hold into the anchor. Entries leave
+   * in seq order, so the links of what remains stay contiguous and verifiable.
+   */
+  prune(): number {
+    const now = this.retention.now();
+    let removed = 0;
+    while (this.entries.length > 0) {
+      const oldest = this.entries[0]!;
+      const overCap = this.entries.length > this.retention.maxEntries;
+      const expired = now - oldest.at > this.retention.ttlMs;
+      if (!overCap && !expired) break;
+      this.anchor = oldest.hash;
+      this.entries.shift();
+      removed += 1;
+    }
+    this.pruned += removed;
+    return removed;
+  }
 
   append(input: LogInput): LogEntry {
     const at = input.at ?? Date.now();
-    const prevHash = this.entries.length === 0 ? this.genesis : this.entries.at(-1)!.hash;
+    const prevHash = this.entries.length === 0 ? this.anchor : this.entries.at(-1)!.hash;
 
     // mask before writing: a secret that reaches the log has already leaked
     const metadata = maskSensitive(input.metadata ?? {}) as Record<string, unknown>;
@@ -49,6 +112,7 @@ export class AuditLog {
 
     const entry: LogEntry = { ...body, hash: this.hasher(JSON.stringify(body)) };
     this.entries.push(entry);
+    this.prune();
     return entry;
   }
 
@@ -59,9 +123,13 @@ export class AuditLog {
   /**
    * Verify the chain. Returns the first broken link, so a tamper is locatable rather
    * than just detectable.
+   *
+   * Starts at the anchor, not genesis: once pruning is allowed, "the first entry's
+   * prevHash is not genesis" is what retention looks like, and reporting that as
+   * tampering would train everyone to ignore the one signal this class exists to give.
    */
   verify(): { intact: boolean; brokenAtSeq?: number; total: number } {
-    let prev = this.genesis;
+    let prev = this.anchor;
     for (const e of this.entries) {
       const { hash, ...body } = e;
       if (body.prevHash !== prev) return { intact: false, brokenAtSeq: e.seq, total: this.entries.length };
@@ -71,6 +139,22 @@ export class AuditLog {
       prev = hash;
     }
     return { intact: true, total: this.entries.length };
+  }
+
+  /**
+   * Prove a pruned prefix back against the anchor it left behind. A caller that still
+   * holds old entries — a mirror, an export, a subpoena — can check they are the ones this
+   * chain once contained.
+   */
+  verifyPrefix(prefix: readonly LogEntry[]): boolean {
+    let prev = this.genesis;
+    for (const e of prefix) {
+      const { hash, ...body } = e;
+      if (body.prevHash !== prev) return false;
+      if (this.hasher(JSON.stringify(body)) !== hash) return false;
+      prev = hash;
+    }
+    return this.entries.length === 0 ? prev === this.head() : prev === this.entries[0]!.prevHash;
   }
 
   query(filter: {

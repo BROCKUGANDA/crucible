@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   ApprovalQueue,
+  AuditLog,
   MemoryStore,
   RollbackRegistry,
   SessionScope,
@@ -259,6 +260,70 @@ describe("ApprovalQueue bounds", () => {
     // Refusing is the safe direction. Evicting a pending request would let a decision
     // land against a queue that no longer holds the question.
     await expect(queue.request(approval("p3"))).rejects.toThrow(/approval queue is full/);
+  });
+});
+
+describe("AuditLog retention", () => {
+  const record = (log: AuditLog, n: number, at = 1_000) => {
+    for (let i = 0; i < n; i++) {
+      log.append({
+        principalId: "p1",
+        action: `tool${i}`,
+        resource: "r",
+        decision: { allow: true, reason: "ok" } as any,
+        at,
+      });
+    }
+  };
+
+  it("holds the ceiling and still reports itself intact", () => {
+    const log = new AuditLog(undefined, undefined, { maxEntries: 100, ttlMs: Infinity });
+    record(log, 5_000);
+    expect(log.retainedCount).toBe(100);
+    expect(log.prunedCount).toBe(4_900);
+    // This is the property that makes pruning safe at all. Without the anchor, verify()
+    // would report the chain broken purely because old entries left.
+    expect(log.verify().intact).toBe(true);
+  });
+
+  it("a pruned chain still catches tampering of what it kept", () => {
+    const log = new AuditLog(undefined, undefined, { maxEntries: 50, ttlMs: Infinity });
+    record(log, 500);
+    const held = log.all();
+    held[10].action = "rewritten";
+    expect(log.verify().intact).toBe(false);
+    expect(log.verify().brokenAtSeq).toBe(held[10].seq);
+  });
+
+  it("proves a prefix that was dropped back against the anchor", () => {
+    const full = new AuditLog(undefined, undefined, { maxEntries: 100_000, ttlMs: Infinity });
+    record(full, 200);
+    const prefix = full.all().slice(0, 120);
+
+    const trimmed = new AuditLog(undefined, undefined, { maxEntries: 80, ttlMs: Infinity });
+    record(trimmed, 200);
+    expect(trimmed.verifyPrefix(prefix)).toBe(true);
+
+    // One edited byte in the old material and the proof fails — which is the entire
+    // reason the anchor exists instead of the prefix simply being trusted.
+    const forged = prefix.map((e, i) => (i === 60 ? { ...e, action: "lied" } : e));
+    expect(trimmed.verifyPrefix(forged)).toBe(false);
+  });
+
+  it("expires entries on a clock it is given", () => {
+    let now = 10_000;
+    const log = new AuditLog(
+      undefined,
+      "0".repeat(64),
+      { maxEntries: 1_000, ttlMs: 5_000, now: () => now },
+    );
+    record(log, 3, 10_000);
+    expect(log.retainedCount).toBe(3);
+    now = 20_000;
+    record(log, 1, 20_000);
+    expect(log.retainedCount).toBe(1);
+    expect(log.prunedCount).toBe(3);
+    expect(log.verify().intact).toBe(true);
   });
 });
 
