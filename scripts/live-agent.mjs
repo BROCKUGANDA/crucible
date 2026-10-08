@@ -12,10 +12,13 @@
  *
  *   npm run agent:live                          # Groq; reads GROQ_API_KEY
  *   npm run agent:live -- --provider anthropic  # reads ANTHROPIC_API_KEY
+ *   npm run agent:live -- --provider nvidia     # reads NVIDIA_API_KEY
  *
  * Options:
- *   --provider <p>    groq (default) or anthropic
- *   --model <id>      default qwen/qwen3.8-27b on Groq, claude-sonnet-4-5 on Anthropic
+ *   --provider <p>    groq (default), nvidia (NIM), or anthropic
+ *   --model <id>      default qwen/qwen3.8-27b on Groq, z-ai/glm-5.3-flash on NIM,
+ *                     claude-sonnet-4-5 on Anthropic
+ *   --guard-model <id> override the injection classifier for this provider
  *   --budget <n>      iterations, default 3
  *   --task <file>     a spec to solve, default the fixture below
  *   --keep            leave the sandbox on disk for inspection
@@ -147,22 +150,63 @@ function resolveProvider() {
     return { apiKey, model: String(arg("model", "claude-sonnet-4-5")), kind: "anthropic" };
   }
 
+  if (PROVIDER === "nvidia" || PROVIDER === "nim") {
+    const apiKey = process.env.NVIDIA_API_KEY ?? process.env.NIM_API_KEY;
+    if (!apiKey) {
+      fail(
+        "NVIDIA_API_KEY is not set (an `nvapi-...` key).\n\n" +
+          "  PowerShell:\n" +
+          "    $env:NVIDIA_API_KEY = 'nvapi-...'\n\n" +
+          "  NIM is used with an `--agent-model` that can write a diff and a separate\n" +
+          "  content-safety model for the injection guard — see --guard-model.",
+      );
+    }
+    return {
+      apiKey,
+      model: String(arg("model", "z-ai/glm-5.3-flash")),
+      guardModel: arg("guard-model") ?? "nvidia/nemotron-3.5-content-safety",
+      guardShape: "verdict",
+      kind: "nvidia",
+    };
+  }
+
   const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) {
     fail(
       "GROQ_API_KEY is not set.\n\n" +
         "  PowerShell:\n" +
         "    $env:GROQ_API_KEY = 'gsk_...'\n\n" +
+        "  Or run against NVIDIA NIM instead with --provider nvidia and NVIDIA_API_KEY.\n\n" +
         "  This script calls a real model on purpose — the prompt has never been run\n" +
         "  against one, and an untested prompt is a demo-day surprise.",
     );
   }
-  return { apiKey, model: String(arg("model", "qwen/qwen3.8-27b")), kind: "groq" };
+  return {
+    apiKey,
+    model: String(arg("model", "qwen/qwen3.8-27b")),
+    guardModel: arg("guard-model"),
+    guardShape: "float",
+    kind: "groq",
+  };
 }
 
 function fail(message) {
   console.error(`\n  ${message}\n`);
   process.exit(1);
+}
+
+/**
+ * Is the pinned verifier image present locally?
+ *
+ * Probed rather than assumed: `docker run` on a missing image with `--network=none`
+ * inside the container still tries the registry for the *image*, and the failure that
+ * comes back reads like a sandbox problem instead of a build problem.
+ */
+async function hasImage(image) {
+  const { execFile } = await import("node:child_process");
+  return new Promise((resolve) => {
+    execFile("docker", ["image", "inspect", image], (err) => resolve(!err));
+  });
 }
 
 // ── imports (dynamic, so a missing build is reported clearly) ────────────
@@ -189,6 +233,7 @@ async function main() {
     createForgedAgent,
     anthropicClient,
     groqClient,
+    nimClient,
     promptGuard,
     Sandbox,
     DEFAULT_SANDBOX,
@@ -199,7 +244,9 @@ async function main() {
   const client =
     provider.kind === "groq"
       ? groqClient({ apiKey: provider.apiKey, model: provider.model })
-      : anthropicClient({ apiKey: provider.apiKey, model: provider.model });
+      : provider.kind === "nvidia"
+        ? nimClient({ apiKey: provider.apiKey, model: provider.model })
+        : anthropicClient({ apiKey: provider.apiKey, model: provider.model });
 
   console.log(`\n  provider  ${provider.kind}`);
   console.log(`  model     ${provider.model}`);
@@ -211,8 +258,12 @@ async function main() {
   //
   // The order matters and is the whole point: the guard runs first, so a hostile spec
   // never reaches a model at all.
-  if (GUARD && provider.kind === "groq") {
-    const guard = promptGuard({ apiKey: provider.apiKey });
+  if (GUARD && (provider.kind === "groq" || provider.kind === "nvidia")) {
+    const guard = promptGuard({
+      apiKey: provider.apiKey,
+      shape: provider.guardShape,
+      ...(provider.guardModel ? { model: provider.guardModel } : {}),
+    });
     const score = await guard.score(spec);
     if (score === null) {
       console.log("  guard     no verdict (provider unreachable) — continuing unassisted");
@@ -237,18 +288,26 @@ async function main() {
 
   // Seed a real Foundry project so `forge test` means something.
   //
-  // `forceLocal` runs unisolated on the host rather than inside the pinned
-  // `crucible/verifier:latest` image, which only exists in the verifier's registry.
-  // That is the honest trade here: this script is testing the *prompt*, not the
-  // isolation, and pretending otherwise would need a published image and a network.
-  // Any artifact produced this way must be treated as degraded.
+  // The sandbox prefers the pinned `crucible/verifier` image, which is the same boundary
+  // production runs use: no network, capped memory, read-only rootfs. That image is built
+  // from `packages/forge-runner/Dockerfile.verifier`; if it is absent this falls back to
+  // an unisolated local run and says so, because an artifact that claims a sandboxing it
+  // never had is exactly what a skeptic is paid to break.
+  const useImage = await hasImage(DEFAULT_SANDBOX.image);
   const sandbox = await Sandbox.create({
     ...DEFAULT_SANDBOX,
-    forceLocal: true,
-    allowLocalFallback: true,
+    forceLocal: !useImage,
+    allowLocalFallback: !useImage,
   });
   if (sandbox.degraded) {
-    console.log("  sandbox   unisolated (no verifier image) — output is degraded");
+    console.log(
+      `  sandbox   unisolated (${DEFAULT_SANDBOX.image} not built) — output is degraded\n` +
+        `              build it: docker build -t ${DEFAULT_SANDBOX.image} -f packages/forge-runner/Dockerfile.verifier .`,
+    );
+  } else {
+    console.log(
+      `  sandbox   ${DEFAULT_SANDBOX.image} — network=none, read-only, ${DEFAULT_SANDBOX.memory}/${DEFAULT_SANDBOX.cpus}cpu`,
+    );
   }
 
   await sandbox.writeFile("foundry.toml", "[profile.default]\nsrc = 'src'\ntest = 'test'\n");
