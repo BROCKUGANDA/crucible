@@ -1,0 +1,106 @@
+# syntax=docker/dockerfile:1
+#
+# The trial verifier — the image every agent run and every Argus re-run executes inside.
+#
+# A run gets `--network=none`, so anything the suite needs at compile time has to be
+# baked here at build time. Foundry downloads the solc a pragma resolves to on first use;
+# if that first use happens inside the sandbox it fails with a DNS error — or, with a
+# read-only rootfs, an "Read-only file system" error — that reads like the agent's fault.
+#
+# Four separate mistakes this file exists to avoid:
+#
+#   1. Warming only the versions named in this repo. `^0.8.20` does not resolve to 0.8.20
+#      — it resolves to a version compiled into foundry's own release table (0.8.36 when
+#      this was written), so that version has to be installed too or the run dies asking
+#      for it.
+#   2. Hardcoding that version. It is discovered by running foundry against a dead proxy
+#      during the build, so a base-image bump that changes the table changes what gets
+#      warmed. The build fails if the discovery comes back empty.
+#   3. Warming into the build user's home and then changing HOME. Foundry looks for solc
+#      under `$HOME/.svm/<version>/`, so the cache has to travel with HOME.
+#   4. Relocating only `.foundry`. The compilers are in `.svm`; the config state is in
+#      `.foundry`. Copying one of the two reproduces mistake #3.
+#
+# Build context is the repository root.
+#   docker build -t crucible/verifier:latest -f packages/forge-runner/Dockerfile.verifier .
+
+# ── stage 1: resolve the newest solc the caret pragmas will ask for ─────────────────────
+FROM curlimages/curl:8.10.1 AS solcprobe
+RUN curl -sf https://binaries.soliditylang.org/linux-amd64/list.json -o /tmp/list.json && \
+    grep -oE '"version"[[:space:]]*:[[:space:]]*"[0-9][0-9.]*"' /tmp/list.json \
+      | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' \
+      | grep '^0\.8\.' | sort -V | tail -1 > /tmp/latest.txt && \
+    test -s /tmp/latest.txt && \
+    cat /tmp/latest.txt
+
+# ── stage 2: the verifier itself ────────────────────────────────────────────────────────
+FROM ghcr.io/foundry-rs/foundry:latest
+
+# The highest version of each older series a pinned suite might name. A new pragma series
+# in a trial means a new entry here; the 0.8 line is discovered above, not hardcoded.
+ARG SOLC_PINNED="0.8.26 0.8.20 0.7.6 0.6.12"
+
+# The base image's own HOME. Named explicitly because the relocation step runs as root,
+# whose HOME is /root — reading `$HOME` there silently resolves to a directory that never
+# had a cache in it, and the image builds green while every offline run fails to find its
+# compiler. An `-d` test against this path makes that a build error instead.
+ARG BUILD_HOME=/home/foundry
+
+COPY --from=solcprobe /tmp/latest.txt /tmp/solc-latest.txt
+
+RUN set -eux; \
+    # What does foundry resolve `^0.8.x` to when it cannot reach the release index?
+    # That is the exact question an offline run asks, and the answer is compiled into
+    # foundry rather than fetched — so it has to be discovered, not hardcoded, or a base
+    # image bump silently reintroduces the download-at-run-time failure. A dead proxy
+    # forces the offline path during the build.
+    d=$(mktemp -d); \
+    printf '[profile.default]\n' > "$d/foundry.toml"; \
+    mkdir -p "$d/src"; \
+    printf '// SPDX-License-Identifier: MIT\npragma solidity ^0.8.0;\ncontract Warm { uint256 public x = 1; }\n' > "$d/src/Warm.sol"; \
+    (cd "$d" && http_proxy=http://127.0.0.1:1 https_proxy=http://127.0.0.1:1 forge build 2>&1) | tee /tmp/probe.log || true; \
+    OFFLINE=$(grep -oE 'Solc [0-9]+\.[0-9]+\.[0-9]+' /tmp/probe.log | head -1 | cut -d' ' -f2); \
+    test -n "$OFFLINE"; \
+    echo "foundry resolves caret pragmas offline to: $OFFLINE"; \
+    rm -rf "$d" /tmp/probe.log; \
+    SOLC_LATEST=$(cat /tmp/solc-latest.txt); \
+    for v in $OFFLINE $SOLC_LATEST $SOLC_PINNED; do \
+      d=$(mktemp -d); \
+      printf '[profile.default]\nsolc = "%s"\n' "$v" > "$d/foundry.toml"; \
+      mkdir -p "$d/src"; \
+      printf '// SPDX-License-Identifier: MIT\npragma solidity ^%s;\ncontract Warm { uint256 public x = 1; }\n' "$v" > "$d/src/Warm.sol"; \
+      (cd "$d" && forge build); \
+      rm -rf "$d"; \
+    done; \
+    echo "build-time HOME=$HOME"; \
+    test "$HOME" = "$BUILD_HOME" || { echo "HOME moved: expected $BUILD_HOME, got $HOME" >&2; exit 1; }; \
+    find "$HOME" -maxdepth 3 -name 'solc-*' -type f
+
+# The runner mounts /tmp as tmpfs and passes `--user=1000:1000`, so HOME must be a real
+# read-only directory in the image rather than /tmp. Anything foundry needs to *write*
+# goes to the bind-mounted workspace or /tmp.
+#
+# The base image runs as `foundry` (uid 1000) and /opt is root-owned, so the relocation
+# is the one step that needs root — and it drops back to 1000 immediately after so nothing
+# else in the image is built privileged.
+USER root
+RUN set -eux; \
+    test -d "$BUILD_HOME/.svm" || { echo "no solc cache at $BUILD_HOME/.svm — the warm step did not run as expected" >&2; exit 1; }; \
+    mkdir -p /opt/verifier-home; \
+    for cache in .svm .foundry; do \
+      if [ -d "$BUILD_HOME/$cache" ]; then cp -a "$BUILD_HOME/$cache" /opt/verifier-home/; fi; \
+    done; \
+    chmod -R a+rX /opt/verifier-home; \
+    test -n "$(find /opt/verifier-home/.svm -maxdepth 2 -name 'solc-*' -type f)"; \
+    find /opt/verifier-home -maxdepth 3 -name 'solc-*' -type f; \
+    mkdir -p /work && chmod 0777 /work
+USER 1000:1000
+
+ENV HOME=/opt/verifier-home
+
+WORKDIR /work
+
+# The sandbox appends the suite command after the image name, so there must be no
+# entrypoint swallowing it.
+ENTRYPOINT []
+CMD ["forge", "--version"]
