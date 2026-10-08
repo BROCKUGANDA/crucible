@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { ERROR_COPY } from "@crucible/smith";
+import { ERROR_COPY, type BreakerStatus } from "@crucible/smith";
 import {
   buildSnapshot,
   type AlloyState,
@@ -55,6 +55,13 @@ export interface ApiDeps {
    * identical whether the chain is quiet or the indexer refused to read it.
    */
   indexStatus?: () => ScribeStatus;
+  /**
+   * Snapshot of every circuit breaker this process depends on, keyed by breaker name. The
+   * host owns them because they sit on its hops, not on the read model's; `/health` reports
+   * them as data and reads nothing into them — an open breaker is a degraded dependency, and
+   * the HTTP code stays the index's verdict.
+   */
+  breakers?: () => Record<string, BreakerStatus>;
 }
 
 const VALID_STATUSES: TrialStatus[] = ["open", "assigned", "judging", "challenged", "settled"];
@@ -224,6 +231,10 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
         // Failures the process survived — failed syncs, failed registry reads, SSE
         // frames a dead client refused. A size that only grows is an operator's alarm.
         dlq: dlq.summary(),
+        // The same sentence for the dependencies this process calls: which ones are tripped,
+        // how many failures it took, and how long before a probe is allowed through. Reported
+        // as data, never as a status — an open breaker is why the index above stopped moving.
+        breakers: deps.breakers?.() ?? {},
       },
       stalled ? 503 : 200,
     );

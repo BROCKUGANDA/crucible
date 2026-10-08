@@ -21,7 +21,7 @@ import {
   type EventLike,
   type ReadModel,
 } from "./model.js";
-import { RpcThrottler, withBackoff } from "@crucible/smith";
+import { RpcThrottler, withBackoff, BreakerOpen, CircuitBreaker } from "@crucible/smith";
 
 /**
  * Live tailing of CrucibleTrials.
@@ -118,12 +118,26 @@ export interface ScribeStatus {
 
 export class Scribe {
   readonly client: PublicClient;
+  /**
+   * The node is this indexer's only external dependency, so it gets exactly one breaker.
+   * Every tick already spends four `withBackoff` retries inside `sync()`; a node that is
+   * down for ten minutes must not turn that into a fresh four-retry storm every 2s. Hosts
+   * publish `breaker.status()` from their health endpoint.
+   */
+  readonly breaker = new CircuitBreaker({
+    name: "scribe.rpc",
+    threshold: 3,
+    windowMs: 60_000,
+    cooldownMs: 30_000,
+  });
   private model: ReadModel = emptyModel();
   private cursor: bigint;
   private readonly blockTimes = new Map<bigint, number>();
   private running = false;
   private head: bigint | null = null;
   private syncError: string | null = null;
+  /** The trip this process last reported, so an outage writes one line rather than one per tick. */
+  private lastTripReportedAt: number | null = null;
   /** One ceiling on concurrent RPC calls for the whole indexer. */
   private readonly rpc = new RpcThrottler(8);
 
@@ -149,8 +163,17 @@ export class Scribe {
     return { head: this.head, indexedTo: this.cursor, syncError: this.syncError };
   }
 
-  /** Backfill from genesis (or fromBlock) to head, in one pass. */
+  /**
+   * One pass, under the breaker — the only sync there is, so no caller can pick an unprotected
+   * route by accident. A fresh breaker admits its first call, so the boot backfill comes through
+   * here too: a node that is down at boot is the outage this is for.
+   */
   async sync(): Promise<ReadModel> {
+    return this.breaker.exec(() => this.syncOnce());
+  }
+
+  /** Backfill from genesis (or fromBlock) to head, in one pass. */
+  private async syncOnce(): Promise<ReadModel> {
     const head = await this.rpc.run(() =>
       withBackoff(() => this.client.getBlockNumber(), { operation: "scribe.getBlockNumber" }),
     );
@@ -235,8 +258,17 @@ export class Scribe {
         // A dropped RPC must not kill the indexer; the next tick retries from the
         // same cursor, and the gap is re-scanned rather than skipped.
         const detail = (err as Error).message;
-        console.error(`[scribe] sync failed: ${detail}`);
-        this.cfg.onError?.("sync", detail);
+        // A refused tick carries no news: the failure that tripped the breaker already
+        // reported itself, and every tick until the cooldown ends would report the same
+        // sentence. One line per trip, or an outage writes the log and the DLQ ring dead.
+        const trippedAt = err instanceof BreakerOpen ? this.breaker.status().openedAt : null;
+        if (trippedAt === null || trippedAt !== this.lastTripReportedAt) {
+          this.lastTripReportedAt = trippedAt;
+          console.error(
+            trippedAt === null ? `[scribe] sync failed: ${detail}` : `[scribe] sync refused: ${detail}`,
+          );
+          this.cfg.onError?.(trippedAt === null ? "sync" : "tripped", detail);
+        }
       }
       await new Promise((r) => setTimeout(r, interval));
     }

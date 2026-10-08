@@ -3,8 +3,9 @@ import { createWalletClient, http } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { foundry } from "viem/chains";
 import { Scribe } from "@crucible/indexer";
-import { Crucible } from "@crucible/smith";
+import { CircuitBreaker, Crucible, Flags } from "@crucible/smith";
 import { Warden } from "@crucible/warden";
+import { createSweepLoop, envKillSwitches } from "./sweep-loop.js";
 
 /**
  * The Warden as a service.
@@ -20,6 +21,12 @@ import { Warden } from "@crucible/warden";
  * The key it signs with is a bystander: finalize moves no caller funds. The default
  * is Anvil's published development key — right for the demo, wrong for anything real,
  * which is what PRIVATE_KEY is for.
+ *
+ * `KILL_SWITCHES` — comma-separated flag names, `keeper.sweep` being the one this
+ * process obeys. Set it (in compose, or whatever writes the environment) and the keeper
+ * stops sending transactions on the next flag poll without a deploy; clear it and it
+ * resumes. `/health` then reports `killed: true` with the sweep breaker beside it, so a
+ * held keeper never reads as a healthy one.
  */
 
 function required(name: string): string {
@@ -68,42 +75,49 @@ const wallet = createWalletClient({
 
 const warden = new Warden({ crucible, wallet, onLog: (line) => console.log(`[warden] ${line}`) });
 
-let lastSweepAt: number | null = null;
-let lastSweepActed = 0;
-let sweeping = false;
+/**
+ * Two guards on the one hop, in the order that matters: the switch first, so an operator's
+ * halt is never mistaken for an outage, then the breaker, so a node that stops answering gets
+ * refused rather than retried until the process is a queue of dead calls. Three failed passes
+ * trip it; it spends 30s before probing again. Named for the dependency it guards, because
+ * that is what the refusal copy and `/health` have to say.
+ */
+const sweepBreaker = new CircuitBreaker({
+  name: "keeper.rpc",
+  threshold: 3,
+  windowMs: 60_000,
+  cooldownMs: 30_000,
+});
 
-async function sweep(): Promise<void> {
-  if (sweeping) return;
-  sweeping = true;
-  try {
-    // The decision clock is the CHAIN's clock, not this host's: the demo chain is
-    // warpable (that is the whole point of a demo), and a keeper that compares
-    // window deadlines against wall-clock time would sit on its hands for the
-    // two hours a test warp put between them.
-    const block = await crucible.publicClient.getBlock();
-    const nowSeconds = Number(block.timestamp);
-    const result = await warden.sweep(scribe.state, nowSeconds);
-    lastSweepAt = Date.now();
-    lastSweepActed = result.acted.length;
-    if (result.acted.length > 0) console.log(`[keeper] acted on ${result.acted.length} trial(s)`);
-  } catch (err) {
-    console.error(`[keeper] sweep failed: ${(err as Error).message}`);
-  } finally {
-    sweeping = false;
-  }
-}
+const flags = new Flags({
+  source: envKillSwitches(),
+  onError: (err) => console.error(`[keeper] flag source failed: ${(err as Error).message}`),
+});
+
+const sweepLoop = createSweepLoop({
+  intervalMs: sweepMs,
+  breaker: sweepBreaker,
+  flags,
+  // The decision clock is the CHAIN's clock, not this host's: the demo chain is warpable
+  // (that is the whole point of a demo), and a keeper that compared window deadlines against
+  // wall-clock time would sit on its hands for the two hours a test warp put between them.
+  chainNow: async () => Number((await crucible.publicClient.getBlock()).timestamp),
+  act: (nowSeconds) => warden.sweep(scribe.state, nowSeconds),
+  onLog: (line) => console.log(`[keeper] ${line}`),
+});
 
 await scribe.sync();
 scribe.hydrate();
 void scribe.watch();
-await sweep();
-const sweepTimer = setInterval(() => void sweep(), sweepMs);
+await sweepLoop.sweep();
+sweepLoop.handle.start();
 
 /** A health endpoint the compose probe can poll: liveness plus sweep freshness. */
 createServer((req, res) => {
   if (req.url === "/health") {
     const index = scribe.status;
-    const fresh = lastSweepAt !== null && Date.now() - lastSweepAt < sweepMs * 4;
+    const status = sweepLoop.status();
+    const fresh = status.lastSweepAt !== null && Date.now() - status.lastSweepAt < sweepMs * 4;
     res.writeHead(fresh ? 200 : 503, { "content-type": "application/json" });
     res.end(
       JSON.stringify({
@@ -111,8 +125,14 @@ createServer((req, res) => {
         keeper: account.address,
         trials: scribe.state.trials.size,
         indexedTo: index.indexedTo === null ? null : Number(index.indexedTo),
-        lastSweepAt,
-        lastSweepActed,
+        lastSweepAt: status.lastSweepAt,
+        lastSweepActed: status.lastSweepActed,
+        // The difference between "nothing needed doing" and "we were told not to do anything".
+        killed: status.killed,
+        breakers: {
+          [sweepBreaker.name]: status.breaker,
+          [scribe.breaker.name]: scribe.breaker.status(),
+        },
       }),
     );
     return;
@@ -121,7 +141,10 @@ createServer((req, res) => {
 }).listen(port, () => console.log(`[keeper] health on :${port} — signer ${account.address}`));
 
 function shutdown(): void {
-  clearInterval(sweepTimer);
+  // `stop()` on the handle, not `clearInterval` on a timer: what an operator is asking for is
+  // that no further pass starts, which a cleared timer only promises for the next one.
+  sweepLoop.handle.stop();
+  void flags.stop();
   scribe.stop();
   process.exit(0);
 }
