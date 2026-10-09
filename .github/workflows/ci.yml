@@ -22,7 +22,18 @@ jobs:
         with:
           submodules: recursive
 
-      - uses: foundry-rs/foundry-toolchain@v1
+      # Foundry by pinned tarball, not foundryup: the runner box also hosts the
+      # production anvil, and foundryup refuses to replace its binaries while
+      # any foundry process is running. The tarball lands in /tmp and joins
+      # PATH, so it never touches the host's ~/.foundry.
+      - name: install foundry (pinned tarball)
+        run: |
+          set -euo pipefail
+          V="stable"
+          curl -fsSL "https://github.com/foundry-rs/foundry/releases/download/$V/foundry_${V}_linux_amd64.tar.gz" \
+            | tar xz -C /tmp
+          echo "/tmp" >> "$GITHUB_PATH"
+          forge --version
 
       - name: forge fmt --check
         run: forge fmt --check
@@ -50,7 +61,16 @@ jobs:
         with:
           submodules: recursive
 
-      - uses: foundry-rs/foundry-toolchain@v1
+      # See the contracts job: a pinned tarball, because foundryup cannot run
+      # beside the production anvil.
+      - name: install foundry (pinned tarball)
+        run: |
+          set -euo pipefail
+          V="stable"
+          curl -fsSL "https://github.com/foundry-rs/foundry/releases/download/$V/foundry_${V}_linux_amd64.tar.gz" \
+            | tar xz -C /tmp
+          echo "/tmp" >> "$GITHUB_PATH"
+          forge --version
 
       - uses: actions/setup-python@v5
         with:
@@ -70,6 +90,12 @@ jobs:
   fork:
     name: Fork tests (ERC-8004 mainnet)
     runs-on: [self-hosted, linux, X64, crucible]
+    # The README keeps these out of the default gate on purpose: a gate that
+    # depends on a third party's RPC is not a gate. Skipped unless the
+    # deployment supplies MAINNET_RPC_URL, in which case they run for real.
+    if: ${{ github.event_name == 'workflow_dispatch' || secrets.MAINNET_RPC_URL != '' }}
+    env:
+      MAINNET_RPC_URL: ${{ secrets.MAINNET_RPC_URL }}
     defaults:
       run:
         working-directory: crucible-contracts
@@ -78,7 +104,14 @@ jobs:
         with:
           submodules: recursive
 
-      - uses: foundry-rs/foundry-toolchain@v1
+      - name: install foundry (pinned tarball)
+        run: |
+          set -euo pipefail
+          V="stable"
+          curl -fsSL "https://github.com/foundry-rs/foundry/releases/download/$V/foundry_${V}_linux_amd64.tar.gz" \
+            | tar xz -C /tmp
+          echo "/tmp" >> "$GITHUB_PATH"
+          forge --version
 
       - name: fork tests
         run: forge test --fork-url ${{ secrets.MAINNET_RPC_URL }} --match-contract ForkTests -vv
