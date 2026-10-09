@@ -130,13 +130,13 @@ jobs:
           fi
           forge test --fork-url "$MAINNET_RPC_URL" --match-contract ForkTests -vv
 
+  # One job for every workspace, not a matrix per package: this repo runs on
+  # two runners, and a seven-way matrix turns every push into a queue an hour
+  # deep. `npm test` at the root runs each workspace's suite in turn — same
+  # tests, one slot, a queue that drains in minutes.
   node:
-    name: TypeScript (${{ matrix.package }})
+    name: TypeScript (all workspaces)
     runs-on: [self-hosted, linux, X64, crucible]
-    strategy:
-      fail-fast: false
-      matrix:
-        package: [smith, forge-runner, argus, indexer, warden, api, web]
     steps:
       - uses: actions/checkout@v4
 
@@ -155,11 +155,11 @@ jobs:
       - name: build workspace libraries
         run: npm run build:libs
 
-      - name: typecheck
-        run: npm run typecheck --workspace @crucible/${{ matrix.package }}
+      - name: typecheck (every workspace)
+        run: npm run typecheck
 
-      - name: test
-        run: npm run test --workspace @crucible/${{ matrix.package }}
+      - name: test (every workspace)
+        run: npm test
 
   build:
     name: Build (next)

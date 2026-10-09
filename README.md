@@ -164,7 +164,7 @@ is private by choice and the build runs on iron we control.
 
 | Workflow | Trigger | What it proves |
 |---|---|---|
-| `ci.yml` | push to main/develop/staging, PRs, by hand | forge fmt, build, 122 tests and the gas report; slither with every suppression justified in `slither.config.json`; the TypeScript suites for all seven packages; `next build`; and a dependency audit that fails only on advisories outside the set the README documents as known-unfixable. |
+| `ci.yml` | push to main/develop/staging, PRs, by hand | forge fmt, build, 122 tests and the gas report; slither with every suppression justified in `slither.config.json`; the TypeScript suites for all seven packages in one job (two runners is two slots, and a matrix is a queue); `next build`; and a dependency audit that fails only on advisories outside the set the README documents as known-unfixable. |
 | `promote.yml` | a green `ci` on develop or staging | The promotion ladder. A green build on `develop` becomes `staging`; a green build on `staging` becomes `main`. The gate is the `ci` run's completion event — polling the pushed commit's check suites deadlocks on the gate's own pending suite — and the merge is pushed with the default `GITHUB_TOKEN`, which by design does not re-trigger workflows, so the ladder cannot loop. |
 | `deploy.yml` | push to main, by hand | Ships main. The runner *is* the VPS, so there is no SSH key to rotate: it syncs the tree to `~/crucible` (never the server's `.env`, which holds the build args the browser bundle bakes), builds `web` and `api` **before** the swap, then `up -d --no-deps` so anvil keeps its chain, and gates on `/api/health` answering 200. |
 
