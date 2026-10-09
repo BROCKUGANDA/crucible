@@ -125,7 +125,7 @@
   width: calc(var(--alloy-progress, 0) * 1%);
   height: 100%;
   border-radius: 999px;
-  background: linear-gradient(90deg, var(--ember), var(--gold));
+  background: linear-gradient(90deg, var(--ember) 0%, var(--gold) 55%, var(--hot) 100%);
   transition: width var(--t-pour) var(--ease-ignite);
 }
 

@@ -22,8 +22,10 @@
   display: block;
   z-index: 0;
   pointer-events: none;
-  /* The scene is a wide, low-contrast drawing; a reader's eye should land on the type. */
-  filter: saturate(0.94);
+  /* The scene is a wide drawing of warm stone; a touch of saturation keeps it
+     reading as lit rather than as dust, and the reader's eye still lands on
+     the type. */
+  filter: saturate(1.06);
 }
 
 .scrub__content {
@@ -54,7 +56,7 @@
   content: "";
   position: fixed;
   inset: 0 0 auto 0;
-  height: calc(var(--pad) + 4.5rem);
+  height: calc(var(--pad) + 5.5rem);
   pointer-events: none;
   background: linear-gradient(rgba(10, 8, 7, 0.92) 12%, rgba(10, 8, 7, 0.55) 55%, transparent);
 }
@@ -139,14 +141,28 @@
   color: var(--dim);
 }
 
+/* The live stats own the top-right corner, one row BELOW the ruler. They used to
+   share the rail's grid row, so the ruler passed straight through the POSTED
+   label — and at `--faint` on the night scene the whole cluster read as dirt on
+   the glass. Now they read as an instrument: their own row under the rail, a
+   dark plate with a bronze hairline so nothing scrolling behind can wash them
+   out, labels at `--dim` with tighter tracking, values at `--hot`. */
 .scrub-hud__stats {
   grid-column: 3;
-  grid-row: 1;
+  grid-row: 2;
+  align-self: start;
+  justify-self: end;
   margin: 0;
   display: flex;
   gap: var(--s-4);
-  font-size: var(--fs-micro);
-  letter-spacing: 0.08em;
+  font-size: var(--fs-small);
+  letter-spacing: 0.02em;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in oklab, var(--bronze) 32%, transparent);
+  background: color-mix(in oklab, var(--bg0) 66%, transparent);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
 }
 
 .scrub-hud__stats div {
@@ -157,13 +173,14 @@
 
 .scrub-hud__stats dt {
   text-transform: uppercase;
-  letter-spacing: var(--track-micro);
-  color: var(--faint);
+  letter-spacing: 0.14em;
+  color: var(--dim);
 }
 
 .scrub-hud__stats dd {
   margin: 0;
-  color: var(--marble);
+  color: var(--hot);
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 
@@ -176,7 +193,7 @@
   font-size: var(--fs-micro);
   letter-spacing: var(--track-micro);
   text-transform: uppercase;
-  color: color-mix(in oklab, var(--faint) 70%, transparent);
+  color: var(--faint);
 }
 
 /* The HUD is a gauge cluster: every number in it is repeated in the content below, so a
