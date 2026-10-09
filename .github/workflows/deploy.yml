@@ -51,6 +51,12 @@ jobs:
             --exclude '*.log' \
             "$GITHUB_WORKSPACE/" "$HOME/crucible/"
 
+          # A checkout on Windows can hand rsync a 0644 mode for the container
+          # entrypoints, and a 0644 ENTRYPOINT is a container that refuses to
+          # start. Git carries the +x bit; this makes the sync honour it even
+          # when the checkout did not.
+          chmod +x apps/api/docker-entrypoint.sh crucible-contracts/docker-seed.sh
+
       # Build hygiene: this box once filled to 100% and the runner's checkout
       # failed with ENOSPC. Reclaim the builder cache before asking Docker for
       # more; the running stacks keep their images either way.
