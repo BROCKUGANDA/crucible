@@ -146,6 +146,28 @@ default pages, which duplicated the landing page in this repo. Everything either
 side actually wrote is here, and the port notes at the top of each file record
 what changed and why.
 
+## The pipeline
+
+The repo runs on two self-hosted runners (`crucible-vps-1`, `crucible-vps-2`)
+that are systemd services on the same VPS that serves the site — `gh api
+repos/BROCKUGANDA/crucible/actions/runners` lists them, and every job below
+targets their `crucible` label. GitHub-hosted runners are not used: this repo
+is private by choice and the build runs on iron we control.
+
+| Workflow | Trigger | What it proves |
+|---|---|---|
+| `ci.yml` | push to main/develop/staging, PRs, by hand | forge fmt, build, 122 tests and the gas report; slither with every suppression justified in `slither.config.json`; the TypeScript suites for all seven packages; `next build`; and a dependency audit that fails only on advisories outside the set the README documents as known-unfixable. |
+| `promote.yml` | a green `ci` on develop or staging | The promotion ladder. A green build on `develop` becomes `staging`; a green build on `staging` becomes `main`. The gate is the `ci` run's completion event — polling the pushed commit's check suites deadlocks on the gate's own pending suite — and the merge is pushed with the default `GITHUB_TOKEN`, which by design does not re-trigger workflows, so the ladder cannot loop. |
+| `deploy.yml` | push to main, by hand | Ships main. The runner *is* the VPS, so there is no SSH key to rotate: it syncs the tree to `~/crucible` (never the server's `.env`, which holds the build args the browser bundle bakes), builds `web` and `api` **before** the swap, then `up -d --no-deps` so anvil keeps its chain, and gates on `/api/health` answering 200. |
+
+Two rules the pipeline learned the hard way, both encoded as steps: the runner
+reclaims its builder cache before building (this box once filled to 100% and
+the checkout died with ENOSPC), and the container entrypoints are `chmod +x`'d
+after the sync (a checkout on Windows can hand rsync a 0644 mode, and a 0644
+`ENTRYPOINT` is a container that refuses to start). Foundry is installed from a
+pinned tarball rather than `foundryup`, because `foundryup` refuses to run
+beside the production anvil that serves the live chain.
+
 ## The three invariants
 
 These are what the money depends on, so they are enforced in code and covered by tests:
