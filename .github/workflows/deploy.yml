@@ -4,7 +4,7 @@ name: deploy
 # 57.130.80.158), so there is no SSH key to rotate: the build and the swap
 # happen on the machine that serves the site.
 #
-# The two rules that keep the deployment boring, both learned the hard way:
+# The three rules that keep the deployment boring, all learned the hard way:
 #
 #   1. **The server's .env is never overwritten.** It holds the production
 #      build args (NEXT_PUBLIC_API_URL and friends) that get baked into the
@@ -13,11 +13,25 @@ name: deploy
 #   2. **anvil is never restarted.** The chain holds the live trials the site
 #      narrates; only web and api are swapped, with --no-deps, so the RPC
 #      container keeps its state across every deploy.
+#   3. **An unproven commit is never shipped.** The trigger is `workflow_run`,
+#      not `push`: a push to main used to start a deploy in parallel with `ci`,
+#      so a red build could still roll forward (six did on 2026-10-09). The
+#      gate is ci's completion event, and `promote.yml` states the invariant
+#      plainly — nothing promotes on a red gate.
 
 on:
-  push:
+  workflow_run:
+    workflows: ["ci"]
     branches: [main]
+    types: [completed]
+  # Manual re-run, for when the machine was down during an automatic deploy.
   workflow_dispatch:
+
+# Reading workflow runs to prove main is green on the manual path needs
+# `actions: read`; nothing in this workflow writes.
+permissions:
+  contents: read
+  actions: read
 
 concurrency:
   group: deploy
@@ -27,8 +41,40 @@ jobs:
   ship:
     runs-on: [self-hosted, linux, X64, crucible]
     steps:
+      # The gate. A failed `ci` must never deploy, however this run was
+      # triggered, and `workflow_dispatch` has no upstream run to inspect — so
+      # the manual path proves main is green by asking GitHub.
+      - name: refuse an unproven commit
+        env:
+          EVENT: ${{ github.event_name }}
+          RUN_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            echo "manual deploy: verifying ci on main is currently green"
+            code=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?branch=main&per_page=1" \
+              --jq '.workflow_runs[0].conclusion')
+            [ "$code" = "success" ] || {
+              echo "::error::ci on main is not green (got '${code:-none}') — refusing a manual deploy."
+              exit 1
+            }
+            echo "ci on main: $code"
+            exit 0
+          fi
+
+          if [ "$RUN_CONCLUSION" != "success" ]; then
+            echo "::error::ci run ${RUN_ID} concluded '${RUN_CONCLUSION}'. Production only deploys what ci proved green."
+            exit 1
+          fi
+          echo "ci run ${RUN_CONCLUSION}: ${RUN_ID}"
+
       - uses: actions/checkout@v4
         with:
+          # Ship the exact commit `ci` proved, not whatever landed on main while it ran;
+          # a newer commit gets its own gate on its own run.
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           submodules: recursive
 
       # The API entrypoint must stay executable: a tar round-trip once stripped
