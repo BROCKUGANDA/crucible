@@ -29,10 +29,13 @@ jobs:
       - name: install foundry (pinned tarball)
         run: |
           set -euo pipefail
-          V="stable"
+          V="v1.8.5"
           curl -fsSL "https://github.com/foundry-rs/foundry/releases/download/$V/foundry_${V}_linux_amd64.tar.gz" \
             | tar xz -C /tmp
           echo "/tmp" >> "$GITHUB_PATH"
+          # $GITHUB_PATH only reaches *later* steps, so this step exports its own
+          # or `forge --version` is the last thing it manages to do.
+          export PATH="/tmp:$PATH"
           forge --version
 
       - name: forge fmt --check
@@ -66,10 +69,13 @@ jobs:
       - name: install foundry (pinned tarball)
         run: |
           set -euo pipefail
-          V="stable"
+          V="v1.8.5"
           curl -fsSL "https://github.com/foundry-rs/foundry/releases/download/$V/foundry_${V}_linux_amd64.tar.gz" \
             | tar xz -C /tmp
           echo "/tmp" >> "$GITHUB_PATH"
+          # $GITHUB_PATH only reaches *later* steps, so this step exports its own
+          # or `forge --version` is the last thing it manages to do.
+          export PATH="/tmp:$PATH"
           forge --version
 
       - uses: actions/setup-python@v5
@@ -101,10 +107,13 @@ jobs:
       - name: install foundry (pinned tarball)
         run: |
           set -euo pipefail
-          V="stable"
+          V="v1.8.5"
           curl -fsSL "https://github.com/foundry-rs/foundry/releases/download/$V/foundry_${V}_linux_amd64.tar.gz" \
             | tar xz -C /tmp
           echo "/tmp" >> "$GITHUB_PATH"
+          # $GITHUB_PATH only reaches *later* steps, so this step exports its own
+          # or `forge --version` is the last thing it manages to do.
+          export PATH="/tmp:$PATH"
           forge --version
 
       # The README keeps these out of the default gate on purpose: a gate that

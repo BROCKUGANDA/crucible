@@ -148,6 +148,14 @@ what changed and why.
 
 ## The pipeline
 
+Three branches, and only three commits ever move between them:
+
+| Branch | What it holds |
+|---|---|
+| `develop` | Integration. Everything lands here first; the ladder promotes it forward. |
+| `staging` | What production will be, one gate ahead of it. |
+| `main` | What is live. `deploy.yml` ships it on every push. |
+
 The repo runs on two self-hosted runners (`crucible-vps-1`, `crucible-vps-2`)
 that are systemd services on the same VPS that serves the site — `gh api
 repos/BROCKUGANDA/crucible/actions/runners` lists them, and every job below
