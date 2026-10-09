@@ -37,7 +37,7 @@ jobs:
           ref: ${{ github.event.workflow_run.head_branch || inputs.from }}
 
       - name: refuse a red gate
-        if: ${{ github.event.workflow_run.conclusion != 'success' }}
+        if: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'success' }}
         run: |
           echo "ci concluded '${{ github.event.workflow_run.conclusion }}' on ${{ github.event.workflow_run.head_branch }}; promotion refused"
           exit 1
@@ -48,16 +48,21 @@ jobs:
         run: |
           set -euo pipefail
           FROM=${{ github.event.workflow_run.head_branch || inputs.from }}
-          SHA=${{ github.event.workflow_run.head_sha || github.sha }}
           TARGET=$([ "$FROM" = "develop" ] && echo "staging" || echo "main")
-
-          echo "promoting $FROM ($SHA) -> $TARGET"
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
 
-          git fetch origin "$TARGET"
+          git fetch origin "$FROM" "$TARGET"
+          # The commit being promoted is the head of the branch it is promoted
+          # from — read from origin, because a workflow_run's head_sha is the
+          # ci run's checkout, which is the same commit but not always the same
+          # ref a hand-dispatch starts from.
+          SHA=$(git rev-parse "origin/$FROM")
+
+          echo "promoting $FROM ($SHA) -> $TARGET"
+
           git switch -C "$TARGET" "origin/$TARGET"
           git merge --no-ff "$SHA" -m "chore(promote): $FROM -> $TARGET"
           git push origin "$TARGET"
