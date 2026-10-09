@@ -90,12 +90,6 @@ jobs:
   fork:
     name: Fork tests (ERC-8004 mainnet)
     runs-on: [self-hosted, linux, X64, crucible]
-    # The README keeps these out of the default gate on purpose: a gate that
-    # depends on a third party's RPC is not a gate. Skipped unless the
-    # deployment supplies MAINNET_RPC_URL, in which case they run for real.
-    if: ${{ github.event_name == 'workflow_dispatch' || secrets.MAINNET_RPC_URL != '' }}
-    env:
-      MAINNET_RPC_URL: ${{ secrets.MAINNET_RPC_URL }}
     defaults:
       run:
         working-directory: crucible-contracts
@@ -113,8 +107,19 @@ jobs:
           echo "/tmp" >> "$GITHUB_PATH"
           forge --version
 
+      # The README keeps these out of the default gate on purpose: a gate that
+      # depends on a third party's RPC is not a gate. The job therefore runs
+      # and skips — `secrets` is not a named-value in a job-level `if`, and
+      # reaching for one there fails the whole workflow at parse time.
       - name: fork tests
-        run: forge test --fork-url ${{ secrets.MAINNET_RPC_URL }} --match-contract ForkTests -vv
+        env:
+          MAINNET_RPC_URL: ${{ secrets.MAINNET_RPC_URL }}
+        run: |
+          if [ -z "${MAINNET_RPC_URL}" ]; then
+            echo "MAINNET_RPC_URL is not configured — fork tests stay out of the default gate, as documented"
+            exit 0
+          fi
+          forge test --fork-url "$MAINNET_RPC_URL" --match-contract ForkTests -vv
 
   node:
     name: TypeScript (${{ matrix.package }})
