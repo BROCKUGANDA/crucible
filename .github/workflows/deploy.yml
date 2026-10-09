@@ -1,0 +1,73 @@
+name: deploy
+
+# Ships `main` to the VPS. The runner IS the VPS (crucible-vps-1/2 run on
+# 57.130.80.158), so there is no SSH key to rotate: the build and the swap
+# happen on the machine that serves the site.
+#
+# The two rules that keep the deployment boring, both learned the hard way:
+#
+#   1. **The server's .env is never overwritten.** It holds the production
+#      build args (NEXT_PUBLIC_API_URL and friends) that get baked into the
+#      browser bundle, and a tarball that carried a developer's .env once
+#      pointed the whole site at localhost. It is excluded from the sync.
+#   2. **anvil is never restarted.** The chain holds the live trials the site
+#      narrates; only web and api are swapped, with --no-deps, so the RPC
+#      container keeps its state across every deploy.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  ship:
+    runs-on: [self-hosted, linux, X64, crucible]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      # The API entrypoint must stay executable: a tar round-trip once stripped
+      # the bit and the API container refused to start for two minutes.
+      - name: keep the entrypoint executable
+        run: chmod +x apps/api/docker-entrypoint.sh
+
+      - name: sync the tree to ~/crucible
+        run: |
+          set -euo pipefail
+          rsync -a --delete \
+            --exclude '.env' \
+            --exclude 'node_modules' \
+            --exclude '.next' \
+            --exclude 'dist' \
+            --exclude 'out' \
+            --exclude '.git' \
+            --exclude 'docs/media/raw' \
+            --exclude 'docs/media/cards' \
+            --exclude '*.log' \
+            "$GITHUB_WORKSPACE/" "$HOME/crucible/"
+
+      # Build before the swap: a failed compile leaves the running stack up.
+      - name: build web and api
+        working-directory: ~/crucible
+        run: docker compose -f compose.yaml -f compose.vps.yaml build web api
+
+      - name: swap web and api (anvil keeps its chain)
+        working-directory: ~/crucible
+        run: docker compose -f compose.yaml -f compose.vps.yaml up -d --no-deps web api
+
+      - name: prove it serves
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 30); do
+            CODE=$(curl -sk -o /dev/null -w '%{http_code}' https://crucible.svalley.tech/api/health || true)
+            [ "$CODE" = "200" ] && break
+            sleep 5
+          done
+          [ "$CODE" = "200" ] || { echo "health check failed: $CODE"; exit 1; }
+          curl -sk -o /dev/null -w 'home %{http_code}\n' https://crucible.svalley.tech/
+          git -C "$GITHUB_WORKSPACE" rev-parse --short HEAD | xargs echo "serving commit:"
