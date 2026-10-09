@@ -59,8 +59,8 @@ sequence.
 
 | Video | Length | What it is |
 |---|---|---|
-| [`docs/media/crucible-demo.mp4`](docs/media/crucible-demo.mp4) | 2:26 | The live product: the scroll-driven landing walk, trials, a trial's receipts, the Hall of Alloy, the Break, the Forge and the docs — driven by `scripts/record-demo.mjs` against the running app, then cut with `scripts/assemble-videos.sh`. |
-| [`docs/media/crucible-pitch.mp4`](docs/media/crucible-pitch.mp4) | 1:53 | The pitch: who is building this, what Crucible is, the mechanism, and why. |
+| [`docs/media/crucible-demo.mp4`](docs/media/crucible-demo.mp4) | 2:35 | The live product, narrated: the scroll-driven landing walk, trials, a trial's receipts, the Hall of Alloy, the Break, the Forge and the docs — driven by `scripts/record-demo.mjs` against the running app, cut with `scripts/assemble-videos.sh`, and narrated by `scripts/make-narration.ps1`. |
+| [`docs/media/crucible-pitch.mp4`](docs/media/crucible-pitch.mp4) | 1:53 | The pitch, narrated: who is building this, what Crucible is, the mechanism, and why. |
 
 Hosted copies live at:
 

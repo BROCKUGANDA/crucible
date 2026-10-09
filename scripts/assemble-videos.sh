@@ -26,6 +26,15 @@ SILENT=(-f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100)
 RECORDING=$(ls "$RAW"/*.webm | head -1)
 echo "recording: $RECORDING"
 
+# The second crossfade's offset is measured from the start of the first
+# (title+recording) segment. Hardcoding it once shipped a video whose closing
+# card never rendered: the offset sat past the segment's real end, so the
+# output stopped at the recording. Measure, then subtract the two 0.6s
+# transitions so the closing card lands exactly as the footage ends.
+REC_SECONDS=$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$RECORDING")
+CLOSE_OFFSET=$(node -e "const r=Number(process.argv[1]);console.log((6.0+r-1.2).toFixed(3))" "$REC_SECONDS")
+echo "recording is ${REC_SECONDS}s; closing card starts at ${CLOSE_OFFSET}s"
+
 # ── the demo ────────────────────────────────────────────────────────────────
 # Title (6.6s) and closing (10s) carry a slow push; the recording is upscaled to
 # match the cards. xfade of 0.6s means the footage's own timeline still starts at
@@ -44,7 +53,7 @@ ffmpeg -v error -stats -y \
     [1:v]scale=1920:1080,fps=$FPS,setsar=1[rec];\
     [2:v]scale=1920:1080,zoompan=z='1+0.04*on/250':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=1920x1080:fps=$FPS,setsar=1[close];\
     [title][rec]xfade=transition=fadeblack:duration=0.6:offset=6.0[first];\
-    [first][close]xfade=transition=fadeblack:duration=0.6:offset=146.0[base];\
+    [first][close]xfade=transition=fadeblack:duration=0.6:offset=$CLOSE_OFFSET[base];\
     [base][4:v]overlay=0:864:enable='between(t,7,17)'[v1];\
     [v1][5:v]overlay=0:864:enable='between(t,18,27)'[v2];\
     [v2][6:v]overlay=0:864:enable='between(t,28,37)'[v3];\

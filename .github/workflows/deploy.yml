@@ -51,6 +51,16 @@ jobs:
             --exclude '*.log' \
             "$GITHUB_WORKSPACE/" "$HOME/crucible/"
 
+      # Build hygiene: this box once filled to 100% and the runner's checkout
+      # failed with ENOSPC. Reclaim the builder cache before asking Docker for
+      # more; the running stacks keep their images either way.
+      - name: reclaim builder cache before building
+        run: |
+          set -euo pipefail
+          docker builder prune -af >/dev/null 2>&1 || true
+          docker image prune -f >/dev/null 2>&1 || true
+          df -h / | tail -1
+
       # Build before the swap: a failed compile leaves the running stack up.
       - name: build web and api
         working-directory: /home/ubuntu/crucible
