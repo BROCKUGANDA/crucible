@@ -2,8 +2,9 @@ name: ci
 
 on:
   push:
-    branches: [main]
+    branches: [main, develop, staging]
   pull_request:
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -12,7 +13,7 @@ concurrency:
 jobs:
   contracts:
     name: Contracts (forge)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, X64, crucible]
     defaults:
       run:
         working-directory: crucible-contracts
@@ -40,7 +41,7 @@ jobs:
   # proves nothing NEW appeared, it does not decide what is acceptable.
   slither:
     name: Static analysis (slither)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, X64, crucible]
     defaults:
       run:
         working-directory: crucible-contracts
@@ -68,7 +69,7 @@ jobs:
   # live RPC, and a gate that depends on a third party's uptime is not a gate.
   fork:
     name: Fork tests (ERC-8004 mainnet)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, X64, crucible]
     defaults:
       run:
         working-directory: crucible-contracts
@@ -84,7 +85,7 @@ jobs:
 
   node:
     name: TypeScript (${{ matrix.package }})
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, X64, crucible]
     strategy:
       fail-fast: false
       matrix:
@@ -115,7 +116,7 @@ jobs:
 
   build:
     name: Build (next)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, X64, crucible]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -128,7 +129,7 @@ jobs:
 
   audit:
     name: Dependency audit
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, X64, crucible]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

@@ -1,0 +1,64 @@
+name: promote
+
+# The promotion ladder. A green build on `develop` becomes `staging`; a green
+# build on `staging` becomes `main`; a change that reaches `main` ships through
+# deploy.yml. Nothing promotes on a red gate, and the ladder only ever moves
+# forward — it is a merge, never a rewrite, so the history says where each
+# release came from.
+#
+# The trigger is `workflow_run`, not `push`: waiting on the *check suites of the
+# pushed commit* deadlocks, because the gate's own suite is one of the pending
+# suites it is waiting for. The completion event is also the honest moment to
+# ask — ci.yml has already finished, and its conclusion is right there.
+
+on:
+  workflow_run:
+    workflows: ["ci"]
+    types: [completed]
+    branches: [develop, staging]
+  workflow_dispatch:
+    inputs:
+      from:
+        description: "branch to promote (develop or staging)"
+        required: true
+        default: develop
+
+concurrency:
+  group: promote-${{ github.event.workflow_run.head_branch || inputs.from }}
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    runs-on: [self-hosted, linux, X64, crucible]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.workflow_run.head_branch || inputs.from }}
+
+      - name: refuse a red gate
+        if: ${{ github.event.workflow_run.conclusion != 'success' }}
+        run: |
+          echo "ci concluded '${{ github.event.workflow_run.conclusion }}' on ${{ github.event.workflow_run.head_branch }}; promotion refused"
+          exit 1
+
+      - name: merge forward
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          FROM=${{ github.event.workflow_run.head_branch || inputs.from }}
+          SHA=${{ github.event.workflow_run.head_sha || github.sha }}
+          TARGET=$([ "$FROM" = "develop" ] && echo "staging" || echo "main")
+
+          echo "promoting $FROM ($SHA) -> $TARGET"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+
+          git fetch origin "$TARGET"
+          git switch -C "$TARGET" "origin/$TARGET"
+          git merge --no-ff "$SHA" -m "chore(promote): $FROM -> $TARGET"
+          git push origin "$TARGET"
+          echo "promoted $FROM to $TARGET"
