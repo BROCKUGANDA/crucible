@@ -26,10 +26,13 @@
   --bg1: #151210;
   --bg2: #1e1915;
 
-  /* Ink: inscribed marble, and the two dimmer steps under it. */
+  /* Ink: inscribed marble, and the two dimmer steps under it. The dimmer steps were
+     sitting at luminance values that read as ghost text against the night scene —
+     a micro label you can only see by staring is a label nobody reads. These two
+     are the quiet steps, not invisible ones. */
   --text: #ece5d8;
-  --dim: #b3a793;
-  --faint: #857b6b;
+  --dim: #bfb199;
+  --faint: #9e9078;
 
   /* The four states. Names and meanings are unchanged from the forge; only the hues moved,
      from molten metal to terracotta, laurel, sea-water and blood. */

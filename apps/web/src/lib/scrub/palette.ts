@@ -90,24 +90,27 @@ export interface LightKey {
 
 const LIGHT: readonly LightKey[] = [
   {
+    // The hero, before dawn. This key sits under the wordmark for the whole first
+    // screen, and it used to be so dark the arcade read as a silhouette behind
+    // mud. The stone now holds travertine in shadow rather than extinguishing it.
     at: 0,
-    skyTop: "#0C0D12",
-    skyLow: "#241611",
-    stoneLit: "#3A2E26",
-    stoneDeep: "#120E0C",
-    sand: "#2A2019",
-    glow: "#5A3520",
-    haze: "#181114",
+    skyTop: "#0E0F15",
+    skyLow: "#2E1B13",
+    stoneLit: "#4A3A2C",
+    stoneDeep: "#17110D",
+    sand: "#382B20",
+    glow: "#74482A",
+    haze: "#201519",
   },
   {
     at: 0.16,
-    skyTop: "#171521",
-    skyLow: "#5E3122",
-    stoneLit: "#7A5638",
-    stoneDeep: "#1B1412",
-    sand: "#4A3826",
-    glow: "#C97A3E",
-    haze: "#2A1B1C",
+    skyTop: "#191822",
+    skyLow: "#6E3B26",
+    stoneLit: "#8B6539",
+    stoneDeep: "#1F1613",
+    sand: "#54402A",
+    glow: "#D8873F",
+    haze: "#31201E",
   },
   {
     at: 0.36,

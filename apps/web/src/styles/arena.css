@@ -36,19 +36,19 @@
   pointer-events: none;
   background: radial-gradient(
     120% 90% at var(--arena-anchor-x, 12%) 78%,
-    rgba(10, 8, 7, 0.78),
-    rgba(10, 8, 7, 0.34) 42%,
+    rgba(10, 8, 7, 0.72),
+    rgba(10, 8, 7, 0.3) 42%,
     transparent 72%
   );
 }
 
 .arena__act:nth-of-type(even) {
-  justify-content: end;
+  justify-content: flex-end;
   --arena-anchor-x: 88%;
 }
 
 .arena__act:nth-of-type(even) .arena__copy {
-  text-align: end;
+  text-align: right;
 }
 
 .arena__copy {
@@ -204,7 +204,11 @@
   font-size: 1.15rem;
   font-weight: 700;
   letter-spacing: var(--track-roman);
-  color: var(--marble);
+  /* The wordmark is molten everywhere it appears, the hero included. */
+  background: linear-gradient(90deg, var(--ember) 0%, var(--gold) 52%, var(--hot) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }
 
 .arena__foot__line,
@@ -218,7 +222,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: var(--s-3) var(--s-4);
-  justify-content: end;
+  justify-content: flex-end;
 }
 
 .arena__foot__nav a {
@@ -267,7 +271,7 @@
 .arena__hero::after {
   inset: 0;
   height: 100%;
-  background: radial-gradient(90% 60% at 50% 62%, rgba(10, 8, 7, 0.7), transparent 70%);
+  background: radial-gradient(90% 60% at 50% 62%, rgba(10, 8, 7, 0.58), transparent 70%);
 }
 
 .arena__eyebrow {
@@ -286,9 +290,18 @@
   line-height: 0.92;
   letter-spacing: var(--track-hero);
   text-transform: uppercase;
-  color: var(--marble);
-  /* Stone-cut, not painted: a hairline of shadow above and light below reads as an inscription. */
-  text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.55), 0 1px 0 color-mix(in oklab, var(--gold) 30%, transparent);
+  /* The brand is molten: the wordmark is cut from the same gradient the chrome
+     wordmark wears, so the landing and the app say the same word in the same
+     metal. It was flat marble — a poster, not a forge. */
+  background: linear-gradient(90deg, var(--ember) 0%, var(--gold) 52%, var(--hot) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  /* drop-shadow, not text-shadow: the fill is clipped to the glyph, so a shadow
+     would only muddy the letters. The filter follows the same alpha, giving a
+     hot bloom behind the word and one dark edge to keep it legible on the stone. */
+  filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.45))
+    drop-shadow(0 0 34px color-mix(in oklab, var(--ember) 32%, transparent));
 }
 
 .arena__lede {

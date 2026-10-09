@@ -595,13 +595,16 @@ function vignette(ctx: SceneCtx, size: SceneSize, pal: ScenePalette): void {
   const g = ctx.createRadialGradient(
     w / 2,
     h * 0.48,
-    Math.min(w, h) * 0.22,
+    Math.min(w, h) * 0.26,
     w / 2,
     h * 0.5,
     w * 0.8,
   );
   g.addColorStop(0, withAlpha("#000000", 0));
-  g.addColorStop(1, withAlpha("#000000", 0.62));
+  // Was 0.62 — enough black to read as a render that had failed to light, and
+  // the direct cause of "the colors are faded". The frame keeps its edges; it
+  // no longer eats the middle of the palette to do it.
+  g.addColorStop(1, withAlpha("#000000", 0.5));
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, w, h);
 

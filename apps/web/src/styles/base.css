@@ -20,7 +20,9 @@ body {
 }
 
 /* The foundry never sits at a fixed temperature: two slow counter-breathing pools of
-   heat behind everything. Fixed, so it does not scroll with the page. */
+   heat behind everything. Fixed, so it does not scroll with the page. They used to
+   sit at 16%/10% under a 50% veil — invisible, which is why the whole page read
+   flat and cold. The warmth is now actually in the room. */
 body::before,
 body::after {
   content: "";
@@ -31,17 +33,17 @@ body::after {
   pointer-events: none;
   z-index: 0;
   filter: blur(70px);
-  opacity: 0.5;
+  opacity: 0.62;
 }
 
 body::before {
-  background: radial-gradient(circle, color-mix(in srgb, var(--ember) 16%, transparent), transparent 65%);
+  background: radial-gradient(circle, color-mix(in srgb, var(--ember) 22%, transparent), transparent 65%);
   animation: bellows 17s var(--ease-cool) infinite;
 }
 
 body::after {
   inset: auto auto -30% -20%;
-  background: radial-gradient(circle, color-mix(in srgb, var(--gold) 10%, transparent), transparent 60%);
+  background: radial-gradient(circle, color-mix(in srgb, var(--gold) 14%, transparent), transparent 60%);
   animation: bellows 23s var(--ease-cool) infinite reverse;
 }
 

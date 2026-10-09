@@ -23,8 +23,8 @@ export const forge = {
   },
   text: {
     DEFAULT: "#ECE5D8", // inscribed marble, never pure white
-    dim: "#B3A793",
-    faint: "#857B6B",
+    dim: "#BFB199",
+    faint: "#9E9078",
   },
   ember: "#E2612F", // primary action, agent identity — terracotta, not molten iron
   gold: "#E3B25C", // rewards, Alloy tiers, values — laurel bronze

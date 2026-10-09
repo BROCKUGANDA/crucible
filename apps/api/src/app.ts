@@ -10,6 +10,7 @@ import {
 } from "@crucible/indexer";
 import { rateLimit } from "./rate-limit.js";
 import { dlq } from "./dlq.js";
+import { authRoutes } from "./auth.js";
 import {
   bodyLimit,
   corsPolicy,
@@ -209,6 +210,15 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
 
   app.use("*", bodyLimit(security));
   app.use("*", requestTimeout(security));
+
+  /**
+   * Sign-In with Ethereum, mounted as a closed sub-app. Ported from the merged
+   * Scaffold-ETH 2 build; it holds no chain keys and cannot move money, and it
+   * answers 503 unless `AUTH_SECRET` is configured rather than signing sessions
+   * with a known default. See `auth.ts` for the idempotency properties the port
+   * was made to keep.
+   */
+  app.route("/auth", authRoutes());
 
   /**
    * Liveness, plus the reach of the index. `/ready` is the gate a balancer acts on; this is

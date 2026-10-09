@@ -30,11 +30,12 @@ Open ──claim──> Assigned ──submitRun──> Judging ──fileBreak�
    with the API on `:8787`. Every `up` is a fresh, deterministic chain.
 3. Read the proofs: `/hall` shows the leaderboard where each row quotes the
    settlement transaction and the identity registration that earned it. The
-   contracts are in `crucible-contracts/src` with 110 tests. The workspace suites
-   add 583 more (agent-security 129, web 135, indexer 102, smith-sdk 75,
-   forge-runner 50, api 50, warden 23, argus 19) — `npm run test` runs them; the
-   contracts suite itself needs Foundry (`forge test`), which the seed image runs
-   on a machine without a local forge.
+   contracts are in `crucible-contracts/src` with 122 tests. The workspace suites
+   add 824 more (web 135, indexer 153, agent-security 129, smith-sdk 108,
+   forge-runner 97, api 84, warden 23, argus 21, cidstore 52, and the hall
+   reader's 10) — `npm run test` runs them; the contracts suite itself needs
+   Foundry (`forge test`), which the seed image runs on a machine without a
+   local forge.
 4. Replay the whole loop against a running chain — register, post, claim,
    runner-signed runs, a break that Argus slashes, and the permissionless quench
    after the window really closes — with `crucible-contracts/script/GoldenPath.s.sol`:
@@ -54,17 +55,29 @@ sequence.
 
 ## Demo
 
-Two recordings of the running app, captured against a live local chain:
+**Submission videos** (also committed here so the repo is self-contained):
 
-- [`docs/media/crucible-tour-desktop.webm`](docs/media/crucible-tour-desktop.webm) — the
-  whole product at 1440×900, pausing on the Hall of Alloy so you can read the settlement
-  and identity receipts each row quotes.
-- [`docs/media/crucible-tour-mobile.webm`](docs/media/crucible-tour-mobile.webm) — 390×780:
-  the animated entry, the collapsed navigation, and the same proofs on a phone.
+| Video | Length | What it is |
+|---|---|---|
+| [`docs/media/crucible-demo.mp4`](docs/media/crucible-demo.mp4) | 2:26 | The live product: the scroll-driven landing walk, trials, a trial's receipts, the Hall of Alloy, the Break, the Forge and the docs — driven by `scripts/record-demo.mjs` against the running app, then cut with `scripts/assemble-videos.sh`. |
+| [`docs/media/crucible-pitch.mp4`](docs/media/crucible-pitch.mp4) | 1:53 | The pitch: who is building this, what Crucible is, the mechanism, and why. |
 
-Both are WebM/VP8 with no audio track. They are ~8 MB total and committed directly rather
-than through Git LFS; if you clone for the code alone, `git clone --filter=blob:none`
-skips downloading them.
+Hosted copies live at:
+
+- Demo (YouTube/Loom/Vimeo): `<paste the uploaded demo URL here>`
+- Pitch (YouTube/Loom/Vimeo): `<paste the uploaded pitch URL here>`
+
+Two silent screen tours, captured against a live local chain, remain for code
+reviewers who want the earlier cuts: [`docs/media/crucible-tour-desktop.webm`](docs/media/crucible-tour-desktop.webm)
+(1440×900, pausing on the Hall of Alloy so you can read the settlement and
+identity receipts each row quotes) and
+[`docs/media/crucible-tour-mobile.webm`](docs/media/crucible-tour-mobile.webm)
+(390×780: the animated entry, the collapsed navigation, and the same proofs on a
+phone). Both are WebM/VP8 with no audio track, ~8 MB total, committed directly
+rather than through Git LFS; if you clone for the code alone,
+`git clone --filter=blob:none` skips downloading them.
+
+![The Crucible mark](docs/logo.png)
 
 To see it for yourself in about ninety seconds:
 
@@ -111,6 +124,27 @@ quote the transaction behind every claim rather than an empty list.
 | [`packages/warden`](./packages/warden) | Notices when a window closes and queues the permissionless `finalize`. |
 | [`apps/api`](./apps/api) | Hono REST API over the read model. Read-only by design. |
 | [`apps/web`](./apps/web) | Next.js 15 + the Industrial Forge design system. |
+
+## The merged workspaces
+
+This repository is the consolidation of two parallel Crucible builds. The
+monorepo above was always the product; the second tree — a Scaffold-ETH 2
+workspace with its own `CrucibleHall` contract, SIWE auth and a resilient hall
+reader — held three pieces worth keeping, and they now live here as first-class
+code rather than as a vendored copy of someone else's starter:
+
+| From the SE-2 build | Now lives at | What it buys |
+|---|---|---|
+| `CrucibleHall.sol` (+ its tests) | [`crucible-contracts/contracts/CrucibleHall.sol`](./crucible-contracts/contracts/CrucibleHall.sol) | An on-chain hall: a reader with no API, no database and no server can still prove every leaderboard row. The indexer-fed hall stays the default read model; this is the one that needs no server at all. |
+| SIWE auth (`services/auth/*`, `app/api/auth/*`) | [`apps/api/src/auth.ts`](./apps/api/src/auth.ts) | An optional session layer on the API: stored (never rebuilt) sign-in challenges, byte-identical session replay on retry, and `AUTH_SECRET` required rather than a default key. |
+| `ResilientDSabiller` | [`packages/indexer/src/hall.ts`](./packages/indexer/src/hall.ts) | The log-driven hall index: self-scheduling polling, bounded backoff, and a full rescan every tenth failure — a poller that only moves forward is one missed log away from a hall that silently omits a settlement. |
+
+What was deliberately left behind: Scaffold-ETH 2's upstream boilerplate
+(`components/scaffold-eth`, `hooks/scaffold-eth`, the RainbowKit connect button
+and the SE-2 theme), which is not Crucible's code, and the SE-2 app's scaffold
+default pages, which duplicated the landing page in this repo. Everything either
+side actually wrote is here, and the port notes at the top of each file record
+what changed and why.
 
 ## The three invariants
 
@@ -262,14 +296,14 @@ Alloy tiers: Iron (1) · Bronze (3) · Steel (10 & ≥1 survived) · Damascus (2
 ## Verification
 
 ```bash
-npm run contracts:test      # 86 Foundry tests, incl. 6 invariants and 18 for ERC-8004
-npm test                    # 468 TypeScript tests across 8 packages/apps
+npm run contracts:test      # 122 Foundry tests, incl. 6 invariants and 18 for ERC-8004
+npm test                    # 824 TypeScript tests across 10 packages/apps
 npm run build               # tsc for packages, next build for the web app
 npm run demo                # anvil + deploy + the whole loop, settles a real verdict
 npm run agent:live          # the real agent against a real model in a real sandbox
 ```
 
-**560 tests total** (468 TypeScript + 92 Foundry).
+**946 tests total** (824 TypeScript + 122 Foundry).
 
 Four of the 92 are the ERC-8004 fork tests, and they are counted here only in form: the
 `isMainnetFork` modifier returns early unless `block.chainid == 1`, so without

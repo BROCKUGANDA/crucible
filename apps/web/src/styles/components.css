@@ -134,7 +134,10 @@
 }
 
 .btn-primary {
-  background: linear-gradient(90deg, var(--ember) 0%, var(--gold) 100%);
+  /* The full molten ramp: ember ignites, gold is the value, hot is the pour.
+     A two-stop orange→yellow reads as a painted block; three stops read as
+     metal with a temperature across it. */
+  background: linear-gradient(90deg, var(--ember) 0%, var(--gold) 55%, var(--hot) 100%);
   color: var(--ink);
   font-weight: 800;
   border-color: transparent;
