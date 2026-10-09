@@ -30,6 +30,12 @@ concurrency:
 jobs:
   promote:
     runs-on: [self-hosted, linux, X64, crucible]
+    # The merge pushes to the repo, so the job's token needs contents:write.
+    # Declared here rather than inherited from the repository default: a
+    # setting a reviewer cannot see in the diff is a setting the next repo
+    # will not have.
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
         with:
