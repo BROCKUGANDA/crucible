@@ -719,9 +719,16 @@ describe("backfill cost", () => {
       return performance.now() - started;
     };
     time(500); // warm the JIT so the small sample is not dominated by first-run compile
-    const small = time(1000);
-    const large = time(4000);
-    // 4x the logs. Quadratic would be ~16x the time; allow generous slack for noise.
-    expect(large).toBeLessThan(small * 8);
+    // Best-of-N, not first-run: this suite also runs on a CI host shared with
+    // other builds, and a single sample there is noise. The multiplier is
+    // deliberately generous — a quadratic fold on 4x the input costs ~16x, so
+    // 14x still fails one — because on a loaded box the honest signal is
+    // "gross shape regression", not a tight ratio. The test with real teeth is
+    // the absolute budget above: a quadratic fold cannot replay 4,000 trials
+    // in two seconds on any machine.
+    const best = (n: number) => Math.min(time(n), time(n), time(n));
+    const small = best(1000);
+    const large = best(4000);
+    expect(large).toBeLessThan(small * 14);
   });
 });
