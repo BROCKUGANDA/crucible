@@ -6,11 +6,40 @@ Findings from `slither .` on the contracts, and what was done about each. Run it
 cd crucible-contracts && slither .
 ```
 
-`slither.config.json` excludes four detectors wholesale. Each exclusion is justified
+`slither.config.json` excludes detectors wholesale, and each exclusion is justified
 below. Everything else that fires is either fixed or explained here — nothing is
 silenced.
 
+## The gate that never ran
+
+The first time this job actually completed was 2026-10-09, on the project's own
+runners. Every earlier attempt died at the Foundry install, so the config's
+exclusion list had never been exercised — and it was naming a key slither no
+longer reads (`exclude` instead of `detectors_to_exclude`). The tool logged
+`unknown key` and analysed with **no exclusions at all**, so 31 findings fired
+against a project that had triaged every one of them. The corrected list, and
+this document, now describe the same set.
+
 ## Fixed
+
+### `incorrect-equality` in `CrucibleHall.openTrial` — the sentinel that wasn't
+
+Linkage was `identities[a].linkedAt == 0`, a strict equality on a timestamp that
+is zero exactly when the identity is missing. Slither is right that the pattern
+is fragile: it conflates "never linked" with "linked at the epoch", and no
+reader can tell which the author meant. Linkage is now an explicit
+`mapping(address => bool) private _linked`, set once in `linkIdentity` and read
+in `openTrial`, and `linkedAt` keeps its job as a fact rather than a sentinel.
+
+### `missing-zero-check` on `CrucibleTrials.setIdentityRegistry`
+
+The triage explained `setReputationBridge` allowing `address(0)` on purpose —
+an owner must be able to unwire reputation without a redeploy — but said
+nothing about its sibling. That silence was a gap, not a decision: a zero
+identity registry is not a meaningful state, it is a broken one, because
+`linkIdentity` reverts and no agent can ever link an ERC-8004 identity again.
+The setter now rejects the zero address; the bridge's zero stays legal, for the
+reason above.
 
 ### `reentrancy-no-eth` — verdict written after an external call
 

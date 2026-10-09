@@ -39,6 +39,13 @@ contract CrucibleHall {
 
     mapping(address => Identity) private _identities;
     mapping(bytes32 => address) private _handleOwner;
+    /**
+     * Linkage is a bool, not a timestamp sentinel. `linkedAt == 0` doubles as
+     * "never linked" in code but reads as a dangerous strict equality to a
+     * reviewer and to slither — and a zero timestamp is indistinguishable from
+     * a missing one. The bool says the thing it means.
+     */
+    mapping(address => bool) private _linked;
     mapping(uint256 => Trial) private _trials;
     mapping(address => uint256[]) private _trialsByContestant;
 
@@ -113,19 +120,20 @@ contract CrucibleHall {
         Identity storage identity = _identities[msg.sender];
 
         // Replay of the same handle: nothing to do, nothing to emit.
-        if (identity.linkedAt != 0 && keccak256(bytes(identity.handle)) == key) {
+        if (_linked[msg.sender] && keccak256(bytes(identity.handle)) == key) {
             return;
         }
 
         if (holder != address(0) && holder != msg.sender) revert HandleAlreadyTaken(holder);
 
-        if (identity.linkedAt == 0) {
+        if (!_linked[msg.sender]) {
             _identities[msg.sender] = Identity({
                 handle: handle,
                 linkedAt: uint64(block.timestamp),
                 updatedAt: uint64(block.timestamp)
             });
             _handleOwner[key] = msg.sender;
+            _linked[msg.sender] = true;
             emit IdentityLinked(msg.sender, handle, uint64(block.timestamp));
             return;
         }
@@ -146,7 +154,7 @@ contract CrucibleHall {
      */
     function openTrial(address contestant) external payable returns (uint256 trialId) {
         if (contestant == address(0)) revert ZeroAddress();
-        if (_identities[contestant].linkedAt == 0) revert NoIdentity(contestant);
+        if (!_linked[contestant]) revert NoIdentity(contestant);
         if (msg.value < MIN_STAKE) revert StakeTooLow(MIN_STAKE);
 
         trialId = ++trialCount;

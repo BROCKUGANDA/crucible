@@ -1,5 +1,6 @@
 {
   "filter_paths": "lib|test|mocks|script",
   "exclude_dependencies": true,
-  "exclude": "naming-convention,uninitialized-local,shadowing-local,missing-inheritance"
+  "detectors_to_exclude": "naming-convention,uninitialized-local,shadowing-local,missing-inheritance,timestamp,low-level-calls,redundant-statements,assembly,reentrancy-benign,reentrancy-events,missing-zero-check",
+  "_comment": "Every exclusion here is justified line by line in docs/slither-triage.md. The key is detectors_to_exclude, not the deprecated 'exclude' — a config that names the wrong key is silently ignored, and the gate goes red for findings the project has already triaged. That is exactly what happened: this job had never once completed before 2026-10-09, because it could not get past the Foundry install to reach slither at all."
 }

@@ -156,10 +156,26 @@ jobs:
         run: npm run build:libs
 
       - name: typecheck (every workspace)
-        run: npm run typecheck
+        run: |
+          npm run typecheck \
+            --workspace @crucible/smith \
+            --workspace @crucible/forge-runner \
+            --workspace @crucible/argus \
+            --workspace @crucible/indexer \
+            --workspace @crucible/warden \
+            --workspace @crucible/api \
+            --workspace @crucible/web
 
       - name: test (every workspace)
-        run: npm test
+        run: |
+          npm test \
+            --workspace @crucible/smith \
+            --workspace @crucible/forge-runner \
+            --workspace @crucible/argus \
+            --workspace @crucible/indexer \
+            --workspace @crucible/warden \
+            --workspace @crucible/api \
+            --workspace @crucible/web
 
   build:
     name: Build (next)
