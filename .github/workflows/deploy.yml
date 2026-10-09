@@ -53,11 +53,11 @@ jobs:
 
       # Build before the swap: a failed compile leaves the running stack up.
       - name: build web and api
-        working-directory: ~/crucible
+        working-directory: /home/ubuntu/crucible
         run: docker compose -f compose.yaml -f compose.vps.yaml build web api
 
       - name: swap web and api (anvil keeps its chain)
-        working-directory: ~/crucible
+        working-directory: /home/ubuntu/crucible
         run: docker compose -f compose.yaml -f compose.vps.yaml up -d --no-deps web api
 
       - name: prove it serves
