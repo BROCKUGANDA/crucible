@@ -16,7 +16,7 @@
     "@crucible/indexer": "*",
     "@crucible/smith": "*",
     "@crucible/warden": "*",
-    "viem": "^2.21.55"
+    "viem": "^2.57.4"
   },
   "devDependencies": {
     "@types/node": "^22.10.7",
