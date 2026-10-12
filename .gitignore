@@ -30,3 +30,7 @@ npm-debug.log*
 .vscode/
 *.swp
 apps/web/.env.local
+
+# graphflow
+.graphflow-cache/
+graphflow-out/
