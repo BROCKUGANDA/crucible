@@ -169,6 +169,10 @@ contract ReputationBridge {
         }
 
         string memory uri = string.concat("crucible://trials/", _toString(trialsId));
+        // Checks-effects-interactions: mark the trial before the external call so a
+        // reentrant registry cannot publish the same trial a second time. A revert in
+        // the call rolls this write back with the rest of the transaction.
+        reportedTrial[trialsId] = true;
         IERC8004ReputationRegistry(registry)
             .giveFeedback(
                 identityAgentId,
@@ -184,7 +188,6 @@ contract ReputationBridge {
         // Keyed by the Crucible agent, read back for the identity that was written.
         uint64 index = IERC8004ReputationRegistry(registry).getLastIndex(identityAgentId, address(this));
         lastFeedbackIndex[agentId] = index;
-        reportedTrial[trialsId] = true;
         emit FeedbackPublished(agentId, trialsId, identityAgentId, value, survivedBreak, index);
     }
 

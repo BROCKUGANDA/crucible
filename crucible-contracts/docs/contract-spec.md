@@ -297,8 +297,9 @@ and `packages/smith-sdk`.
   `-400`, on a 0–1000 scale with one decimal. Tags: `crucible` / `verdict`.
 - If the optional registry is missing or reverting, settlement still lands: the
   calls from `CrucibleTrials` are low-level and their failure is deliberately
-  ignored. `reportedTrial[trialsId]` records a successful write; a second
-  successful write for the same trial is rejected.
+  ignored. `reportedTrial[trialsId]` is set before the registry call, in the same
+  transaction: a reverting call rolls it back, and a reentrant registry sees it
+  and cannot publish the same trial twice. A second successful write is rejected.
 - `backfill(trialsId, agentId)` is permissionless but **canonical**: it reads
   `settledOutcome`, requires the trial to be settled and the agent to match,
   rejects a refund, derives the value itself, and rejects an already-reported

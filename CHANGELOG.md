@@ -21,6 +21,12 @@ migration. See [`SECURITY.md`](SECURITY.md) before deploying value.
 
 ### Fixed
 
+- **The one-write marker is set before the registry call.** `reportedTrial` was
+  written after `giveFeedback`, which left a reentrancy window in which a
+  configured registry could publish the same trial twice. The marker is now set in
+  the same transaction before the call; a revert rolls it back, and a reentrant
+  call sees it. Slither's `reentrancy-no-eth` finding is closed by the ordering.
+
 - **The content store's eviction order depended on filesystem timestamp precision.**
   Entries were stamped one millisecond apart, but a whole-second mtime filesystem
   rounds two publications into the same stamp, and the tie-break is the content hash.

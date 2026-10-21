@@ -29,9 +29,10 @@ Backfill reads the canonical settled outcome from `CrucibleTrials`:
    `-400` slashed.
 5. Rejects a trial that already published successfully (`AlreadyReported`).
 
-`reportedTrial[trialsId]` is set only after a successful registry write. A
-skipped write (no linked identity) or a reverting registry leaves it false, so
-a retry after linking an identity remains possible.
+`reportedTrial[trialsId]` is set before the registry call, in the same
+transaction. A revert rolls it back; a reentrant registry sees it and cannot
+publish the same trial twice. A skipped write (no linked identity) leaves it
+false, so a retry after linking an identity remains possible.
 
 ## Consequences
 
