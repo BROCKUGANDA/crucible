@@ -29,10 +29,9 @@ skeptic, verdict, and an ERC-8004 identity link. Then point the API and web app 
 addresses it prints and open `/hall`. Every row there quotes a transaction hash, so you
 can tell in seconds whether the pipeline is intact end to end.
 
-If `/hall` is empty on a chain you know has settled trials, `HARDENING.md` has three
-separate causes for that exact symptom, all of them silent. Check `GET /health` first: it
+If `/hall` is empty on a chain you know has settled trials, check `GET /health` first: it
 reports `indexedTo`, `head`, and `syncError`, which distinguishes a quiet chain from an
-indexer that stopped listening.
+indexer that stopped listening. `HARDENING.md` records the remaining known limits.
 
 ## What we will not do
 

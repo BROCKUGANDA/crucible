@@ -39,6 +39,42 @@ contract CrucibleTrialsTest is Base {
         trials.createTrial{value: REWARD}(SPEC, TESTS, uint64(block.timestamp + 1 minutes), WINDOW);
     }
 
+    function test_CreateTrial_RevertZeroSpec() public {
+        vm.deal(sponsor, REWARD);
+        vm.prank(sponsor);
+        vm.expectRevert(CrucibleTrials.ZeroSpec.selector);
+        trials.createTrial{value: REWARD}(bytes32(0), TESTS, uint64(block.timestamp + 2 days), WINDOW);
+    }
+
+    function test_CreateTrial_RevertZeroTests() public {
+        vm.deal(sponsor, REWARD);
+        vm.prank(sponsor);
+        vm.expectRevert(CrucibleTrials.ZeroTests.selector);
+        trials.createTrial{value: REWARD}(SPEC, bytes32(0), uint64(block.timestamp + 2 days), WINDOW);
+    }
+
+    function test_CreateTrial_RevertRewardTooLarge() public {
+        uint256 tooMuch = trials.MAX_REWARD() + 1;
+        vm.deal(sponsor, tooMuch);
+        vm.prank(sponsor);
+        vm.expectRevert(CrucibleTrials.RewardTooLarge.selector);
+        trials.createTrial{value: tooMuch}(SPEC, TESTS, uint64(block.timestamp + 2 days), WINDOW);
+    }
+
+    function test_CreateTrial_RevertEscrowCapExceeded() public {
+        uint256 each = trials.MAX_REWARD();
+        vm.deal(sponsor, each * 11);
+        uint64 deadline = uint64(block.timestamp + 2 days);
+        vm.startPrank(sponsor);
+        for (uint256 i; i < 10; ++i) {
+            trials.createTrial{value: each}(SPEC, TESTS, deadline, WINDOW);
+        }
+        assertEq(trials.escrowed(), trials.MAX_TOTAL_ESCROWED());
+        vm.expectRevert(CrucibleTrials.EscrowCapExceeded.selector);
+        trials.createTrial{value: each}(SPEC, TESTS, deadline, WINDOW);
+        vm.stopPrank();
+    }
+
     // ── registration & claim ──
     function test_RegisterAgent_AndClaim() public {
         vm.deal(sponsor, REWARD);
@@ -60,6 +96,20 @@ contract CrucibleTrialsTest is Base {
         vm.prank(operator);
         vm.expectRevert(CrucibleTrials.AlreadyRegistered.selector);
         trials.registerAgent{value: 1 ether}("ipfs://manifest", runner);
+    }
+
+    function test_RegisterAgent_RevertZeroRunner() public {
+        vm.deal(operator, 1 ether);
+        vm.prank(operator);
+        vm.expectRevert(CrucibleTrials.ZeroRunner.selector);
+        trials.registerAgent{value: 1 ether}("ipfs://manifest", address(0));
+    }
+
+    function test_SetRunner_RevertZeroRunner() public {
+        uint256 aid = _register(1 ether);
+        vm.prank(operator);
+        vm.expectRevert(CrucibleTrials.ZeroRunner.selector);
+        trials.setRunner(aid, address(0));
     }
 
     function test_Claim_RevertInsufficientStake() public {
@@ -143,6 +193,13 @@ contract CrucibleTrialsTest is Base {
         (uint256 id,) = _liveTrial();
         _submitRun(id); // submitted by `relayer`, authorized by runner's signature
         assertEq(uint8(trials.getTrial(id).status), uint8(CrucibleTrials.Status.Judging));
+    }
+
+    function test_SubmitRun_RevertZeroRunHash() public {
+        (uint256 id,) = _liveTrial();
+        vm.prank(relayer);
+        vm.expectRevert(CrucibleTrials.ZeroRunHash.selector);
+        trials.submitRun(id, bytes32(0), "", uint64(block.timestamp + 10 minutes));
     }
 
     function test_SubmitRun_RevertWrongSigner() public {
@@ -250,6 +307,15 @@ contract CrucibleTrialsTest is Base {
         assertEq(uint8(t.status), uint8(CrucibleTrials.Status.Challenged));
         assertEq(t.breakSkeptic, skeptic);
         assertEq(trials.escrowed(), REWARD + 0.2 ether + 0.01 ether);
+    }
+
+    function test_FileBreak_RevertZeroProof() public {
+        (uint256 id,) = _liveTrial();
+        _submitRun(id);
+        vm.deal(skeptic, 1 ether);
+        vm.prank(skeptic);
+        vm.expectRevert(CrucibleTrials.ZeroProof.selector);
+        trials.fileBreak{value: 0.01 ether}(id, bytes32(0));
     }
 
     function test_FileBreak_RevertStakeTooSmall() public {

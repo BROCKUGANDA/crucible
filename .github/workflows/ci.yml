@@ -164,10 +164,41 @@ jobs:
           fi
           forge test --fork-url "$MAINNET_RPC_URL" --match-contract ForkTests -vv
 
+  # Leaked credentials are the one class of defect that is already too late by the time
+  # tests run. The whole history is scanned, not just the working tree; the only
+  # suppressions are the deterministic Anvil keys and secp256k1 constants listed in
+  # .gitleaks.toml, each with the reason it is not a secret.
+  secrets:
+    name: Secrets (gitleaks)
+    runs-on: [self-hosted, linux, X64, crucible]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: install gitleaks (pinned tarball)
+        run: |
+          set -euo pipefail
+          V="8.24.0"
+          mkdir -p "$RUNNER_TEMP/gitleaks"
+          curl -fsSL "https://github.com/gitleaks/gitleaks/releases/download/v$V/gitleaks_${V}_linux_x64.tar.gz" \
+            | tar xz -C "$RUNNER_TEMP/gitleaks"
+          "$RUNNER_TEMP/gitleaks/gitleaks" version
+
+      - name: scan history
+        run: |
+          "$RUNNER_TEMP/gitleaks/gitleaks" detect \
+            --source . \
+            --config .gitleaks.toml \
+            --redact \
+            --verbose \
+            --log-opts="--all"
+
   # One job for every workspace, not a matrix per package: this repo runs on
-  # two runners, and a seven-way matrix turns every push into a queue an hour
-  # deep. `npm test` at the root runs each workspace's suite in turn — same
-  # tests, one slot, a queue that drains in minutes.
+  # two runners, and a ten-way matrix turns every push into a queue an hour
+  # deep. The workspaces run in turn — same tests, one slot, a queue that drains
+  # in minutes. All ten are named explicitly so a new workspace cannot be
+  # silently skipped.
   node:
     name: TypeScript (all workspaces)
     runs-on: [self-hosted, linux, X64, crucible]
@@ -197,6 +228,9 @@ jobs:
             --workspace @crucible/argus \
             --workspace @crucible/indexer \
             --workspace @crucible/warden \
+            --workspace @crucible/agent-security \
+            --workspace @crucible/cidstore \
+            --workspace @crucible/keeper \
             --workspace @crucible/api \
             --workspace @crucible/web
 
@@ -208,6 +242,9 @@ jobs:
             --workspace @crucible/argus \
             --workspace @crucible/indexer \
             --workspace @crucible/warden \
+            --workspace @crucible/agent-security \
+            --workspace @crucible/cidstore \
+            --workspace @crucible/keeper \
             --workspace @crucible/api \
             --workspace @crucible/web
 

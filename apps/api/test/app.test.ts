@@ -254,6 +254,25 @@ describe("routes", () => {
     expect((await res.json()).ok).toBe(true);
   });
 
+  it("serves the /healthz alias with the same body", async () => {
+    const res = await app.request("/healthz");
+    expect(res.status).toBe(200);
+    expect((await res.json()).ok).toBe(true);
+  });
+
+  it("serves readiness at /readyz", async () => {
+    const readyApp = createApp(
+      {
+        getModel: () => model,
+        indexStatus: () => ({ head: 42n, indexedTo: 42n, syncError: null }),
+      },
+      { rateLimit: false },
+    );
+    const res = await readyApp.request("/readyz");
+    expect(res.status).toBe(200);
+    expect((await res.json()).ready).toBe(true);
+  });
+
   it("serves a snapshot the UI can render in one call", async () => {
     const res = await app.request("/snapshot");
     const body = await res.json();

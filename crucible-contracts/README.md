@@ -1,18 +1,21 @@
 # Foundry
 
-Solidity 0.8.26. Two contracts, 64 tests including a 6-invariant conservation suite.
+Solidity 0.8.26. Four core contracts, 130 tests including a 6-invariant conservation suite.
 
 | Contract | Role |
 |---|---|
 | `CrucibleTrials.sol` | Escrow + state machine. `Open → Assigned → Judging → Challenged → Settled`, plus `Refunded` when a claimed trial never gets a run. EIP-712 signed run artifacts with permissionless relay, 2-of-3 Argus commit-reveal disputes, pull-payment ledger. |
 | `AlloyRegistry.sol` | Soulbound ERC-721/5192 outcome-only reputation. Five tiers, 25% decay on a proven lie. No transfer functions exist, so an Alloy cannot move. |
+| `ReputationBridge.sol` | Optional ERC-8004 reputation write-out. A third-party registry cannot block a verdict; failures are backfillable. |
+| `CrucibleHall.sol` | On-chain leaderboard read directly from events, with no indexer or API. |
 
 ## Layout
 
 ```
-contracts/   CrucibleTrials.sol, AlloyRegistry.sol
-script/      Deploy.s.sol, Demo.s.sol — the 90-second stage fallback
-test/        Base.t.sol, CrucibleTrials.t.sol, AlloyRegistry.t.sol, Invariants.t.sol
+contracts/   CrucibleTrials.sol, AlloyRegistry.sol, ReputationBridge.sol, CrucibleHall.sol
+script/      Deploy.s.sol, Demo.s.sol, Extend.s.sol, GoldenPath.s.sol
+test/        CrucibleTrials.t.sol, AlloyRegistry.t.sol, ReputationBridge.t.sol,
+             CrucibleHall.t.sol, Invariants.t.sol, Fork.t.sol
 docs/        run-artifact.v1.json — the JSON Schema for a signed claim
 lib/         forge-std, vendored (not versioned) so the repo builds offline
 ```

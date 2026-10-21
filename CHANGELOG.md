@@ -228,8 +228,8 @@ Selected items from the hardening passes, all reproduced against the unfixed cod
   the registry's decayed record, the other a count of settlement logs. Both are true of
   different facts and the UI labels them separately.
 - **`forge coverage` does not run** (stack-too-deep with the optimizer off).
-- **Windows:** `npm test` reaches the contracts workspace only if Foundry is on the system
-  PATH, because npm spawns `cmd.exe`.
+- **Windows:** `npm test` resolves Foundry through `scripts/run-forge.mjs`; it checks
+  PATH, `%USERPROFILE%\.foundry\bin`, then `FOUNDRY_BIN`.
 
 ### Security
 

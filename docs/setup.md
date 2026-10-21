@@ -70,7 +70,9 @@ leaves the node running. It prints the deployed addresses.
 
 ```bash
 # terminal 1 — API + indexer
-TRIALS_ADDRESS=0x… ALLOY_ADDRESS=0x… npm run api:dev
+TRIALS_ADDRESS=0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512 \
+ALLOY_ADDRESS=0x5FbDB2315678afecb367f032d93F642f64180aa3 \
+npm run api:dev
 
 # terminal 2 — web
 NEXT_PUBLIC_API_URL=http://127.0.0.1:8787 npm run web:dev
@@ -79,8 +81,7 @@ NEXT_PUBLIC_API_URL=http://127.0.0.1:8787 npm run web:dev
 ## Verify
 
 ```bash
-npm run contracts:test   # 64 Foundry tests
-npm test                 # 121 TypeScript tests
+npm run verify:all       # typecheck, 864 TypeScript tests, 130 Foundry tests
 npm run build            # tsc + next build
 ```
 

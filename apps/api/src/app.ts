@@ -1,4 +1,4 @@
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { ERROR_COPY, type BreakerStatus } from "@crucible/smith";
 import {
   buildSnapshot,
@@ -332,7 +332,7 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
    * Liveness, plus the reach of the index. `/ready` is the gate a balancer acts on; this is
    * the sentence an operator reads.
    */
-  app.get("/health", (c) => {
+  const health = (c: Context) => {
     const index = deps.indexStatus?.() ?? null;
     const stalled = index?.syncError != null;
     return c.json(
@@ -362,7 +362,9 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
       },
       stalled ? 503 : 200,
     );
-  });
+  };
+  app.get("/health", health);
+  app.get("/healthz", health);
 
   /**
    * Readiness, which is not health.
@@ -379,7 +381,7 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
    * first visitor — the exact outage the index-reach fields were added to make visible.
    * Readiness is where something other than a human can act on it.
    */
-  app.get("/ready", (c) => {
+  const readiness = (c: Context) => {
     const index = deps.indexStatus?.() ?? null;
     const trials = deps.getModel().trials.size;
 
@@ -419,7 +421,9 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
       },
       ready ? 200 : 503,
     );
-  });
+  };
+  app.get("/ready", readiness);
+  app.get("/readyz", readiness);
 
   /** One payload the whole UI can render from. */
   app.get("/snapshot", (c) => {
