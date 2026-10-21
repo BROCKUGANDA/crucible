@@ -8,6 +8,48 @@ All notable changes to Crucible. Format follows
 escrow with no upgrade or pause path, so a breaking contract change is a redeploy, not a
 migration. See [`SECURITY.md`](SECURITY.md) before deploying value.
 
+## [Unreleased]
+
+### Fixed
+
+- **The promotion ladder had not run for eight days.** Three faults lined up, each
+  of which alone would have stopped it and each of which hid the next. The
+  indexer's backfill-cost gate asserted wall-clock on a host that also serves
+  production, where the fixed code measured 41.8 seconds against a laptop's
+  2.5 milliseconds, so a thrashing box failed a gate about code that had not
+  changed. A merge conflict in `.gitignore` — the same lines committed
+  independently on `develop` and `staging` — refused every promotion. And a
+  promotion pushes with `GITHUB_TOKEN`, whose `push` event GitHub suppresses so
+  a workflow cannot loop, so the promotion wrote `staging`, nothing noticed, and
+  no gate ever ran on it. The gate now counts model copies instead of
+  milliseconds, the promotion resolves a conflict in favour of its source, and
+  it asks for the next gate by name. Full account in
+  [`docs/pipeline-ledger.md`](docs/pipeline-ledger.md).
+- **A page could wait forever on a stream that said nothing.** `useSnapshot`
+  opened the live stream and fell back to polling only when the stream raised
+  an error — and a stream that opens and then stays silent raises none, so the
+  page sat on "weighing the alloy…" until the socket died. Polling now starts
+  immediately and stops as soon as the stream proves itself, and the stream's
+  first frame has a deadline.
+
+### Added
+
+- **The platform publishes its books.** The contract has always kept a
+  settlement fee for the treasury, and nothing showed it, so the product could
+  not say what it earned. The snapshot now carries the volume, the fees and
+  the payout, derived from the same settlement logs the leaderboard is built
+  from, with the fee read from the contract rather than copied into this
+  process. The landing HUD shows the take; the docs state it.
+- **A trial a visitor can act on.** The seeded chain carried four settled
+  trials: a hall worth reading and nothing to do. A new script extends the chain
+  in place — nothing is redeployed, so the addresses stay valid and the settled
+  hall keeps pointing at the transactions that produced it — with one trial
+  open for claim and one claimed and waiting for a run. The seed is idempotent
+  from here: it keeps a chain that already carries the demo loop, and the
+  extension is skipped when the chain already holds an open trial.
+- A read-only host diagnostic workflow. The runner is the VPS, so it is the
+  only way to look at the box without an SSH key.
+
 ## [0.1.0] - 2026-10-07
 
 First public release. Built as a Colosseum Crypto World's Fair entry.
