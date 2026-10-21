@@ -92,11 +92,35 @@ jobs:
         if: ${{ inputs.include_logs }}
         run: |
           set -uo pipefail
-          for svc in api web anvil; do
-            echo "=== logs: $svc ==="
-            docker logs --tail 80 "$svc" 2>&1 | tail -80 || echo "no container named $svc"
+          cd "$HOME/crucible"
+          # The containers are compose-named (`crucible-api-1`), not service-named,
+          # so `docker logs api` finds nothing and the step reports silence
+          # where there was output.
+          for svc in api web anvil keeper; do
+            name=$(docker ps --format '{{.Names}}' | grep -E "crucible-${svc}-[0-9]+$" | head -n 1)
+            echo "=== logs: ${name:-$svc (not found)} ==="
+            if [ -n "$name" ]; then
+              docker logs --tail 60 "$name" 2>&1 | tail -60
+            fi
             echo
           done
+
+      - name: the protocol fee, read from the chain
+        run: |
+          set -uo pipefail
+          cd "$HOME/crucible"
+          trials=$(grep -E '^TRIALS_ADDRESS=' .env | tail -n 1 | cut -d= -f2- | tr -d '[:space:]')
+          echo "trials: $trials"
+          if [ -z "$trials" ]; then echo "no TRIALS_ADDRESS in .env"; exit 0; fi
+          echo "=== code at the address ==="
+          cast code "$trials" --rpc-url http://anvil:8545 2>/dev/null | head -c 60 || true
+          echo
+          echo "=== FEE_BPS() ==="
+          cast call "$trials" "FEE_BPS()(uint256)" --rpc-url http://anvil:8545 2>&1 | head -5
+          echo "=== raw eth_call ==="
+          cast call "$trials" --data "0x" --rpc-url http://anvil:8545 2>&1 | head -3
+          echo "=== the selector for FEE_BPS() ==="
+          cast sig "FEE_BPS()" 2>&1 | head -2
 
       - name: the slow benchmark, on this host
         run: |
