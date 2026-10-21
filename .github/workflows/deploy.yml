@@ -85,6 +85,44 @@ jobs:
           df -h / | tail -1
 
       # Build before the swap: a failed compile leaves the running stack up.
+      # Keep the edge attached to this stack.
+      #
+      # The site is served by a shared reverse proxy that another project on the
+      # same box owns. It reaches this stack by service name, which only works
+      # from inside this stack's compose network — and that attachment is made
+      # by hand, because it belongs to a compose file this project does not
+      # have. A recreate of the proxy drops it, and every request for this
+      # site then answers 502 while every container here reports itself
+      # healthy: the failure looks like an outage here and has nothing to do
+      # with it. It happened on 2026-10-21.
+      #
+      # So the deploy repairs the attachment before it does anything else. The
+      # step is idempotent and reads only Docker's own state.
+      - name: keep the edge attached to this stack
+        run: |
+          set -uo pipefail
+          cd "$HOME/crucible"
+
+          NET=$(docker network ls --format '{{.Name}}' | grep -E '^crucible_default$' | head -n 1)
+          if [ -z "$NET" ]; then
+            echo "::error::the crucible network is missing; run a full 'docker compose up' to recreate it"
+            exit 1
+          fi
+
+          attached=0
+          for c in $(docker ps --format '{{.Names}}' | grep -iE 'caddy' || true); do
+            if docker inspect -f '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}' "$c" | grep -q "$NET"; then
+              echo "$c is on $NET"
+            else
+              echo "attaching $c to $NET"
+              docker network connect "$NET" "$c" || true
+            fi
+            attached=1
+          done
+          if [ "$attached" = "0" ]; then
+            echo "::warning::no edge container found on this host; the site may be served from elsewhere"
+          fi
+
       - name: build web and api
         working-directory: /home/ubuntu/crucible
         run: docker compose -f compose.yaml -f compose.vps.yaml build web api
