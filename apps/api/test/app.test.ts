@@ -86,6 +86,22 @@ describe("rate limiting", () => {
     expect(body.retryAfterMs).toBeGreaterThan(0);
   });
 
+  it("does not charge the live stream against the request budget", async () => {
+    // A stream is one request that then holds a socket open. Charging it
+    // against a per-minute request budget meant a handful of idle tabs —
+    // each holding a stream and polling the fallback — exhausted the bucket
+    // and every real read started answering 429.
+    const limited = createApp({ getModel: () => model }, { rateLimit: { limit: 1, windowMs: 60_000 } });
+    const headers = { "x-forwarded-for": "10.0.0.42" };
+
+    await limited.request("/health", headers);
+    // The bucket is spent. A read is refused…
+    expect((await limited.request("/health", headers)).status).toBe(429);
+    // …but the stream is not, because it is not a request flood.
+    const stream = await limited.request("/stream", headers);
+    expect(stream.status).toBe(200);
+  });
+
   it("keys buckets per client when it is told to trust the proxy", async () => {
     const opts = { rateLimit: { limit: 1, windowMs: 60_000, trustProxy: true } };
     const limited = createApp({ getModel: () => model }, opts);
