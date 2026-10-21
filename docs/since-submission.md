@@ -14,6 +14,7 @@ was open (2026-10-12). Nothing after it is presented as in-window work.
 
 | Date | Shipped | Where to see it |
 |---|---|---|
+| 2026-10-21 | The CID store's eviction order depended on millisecond-resolution mtimes; whole-second filesystems tied a new entry with its predecessor and sorted by content hash. The stamp step is one second now | `packages/cidstore/src/store.ts`, `packages/cidstore/test/store.test.ts` |
 | 2026-10-21 | The indexer read its normal caught-up cursor (`head + 1`) as a chain reset and rebuilt on every idle tick, emptying the hall and flipping readiness. The reset check is now beyond `head + 1`, with a regression test | `packages/indexer/src/scribe.ts`, `packages/indexer/test/scribe.test.ts` |
 | 2026-10-21 | The site was 502 with every container healthy: the shared edge had detached from `crucible_default`, and the repair cron's `/var/log` redirect failed as an unprivileged user. Edge reattached; cron now logs to the deployment user's home | `deploy/edge-attach.sh`, `.github/workflows/deploy.yml` |
 | 2026-10-21 | Frenchy, the optional voice host: ElevenLabs behind an API proxy, muted by default, once a day, paid verdicts only, silent on failure, reduced-motion aware | `apps/api/src/voice.ts`, `apps/web/src/components/VoiceControl.tsx`, `apps/web/src/lib/voice.ts` |

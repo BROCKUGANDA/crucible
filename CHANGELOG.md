@@ -21,6 +21,12 @@ migration. See [`SECURITY.md`](SECURITY.md) before deploying value.
 
 ### Fixed
 
+- **The content store's eviction order depended on filesystem timestamp precision.**
+  Entries were stamped one millisecond apart, but a whole-second mtime filesystem
+  rounds two publications into the same stamp, and the tie-break is the content hash.
+  A CI run caught the new entry sorting before the one it should follow. The stamp
+  step is now one second, which survives whole-second mtimes and costs the same single
+  `utimes` call. Covered by a test that truncates every mtime to a whole second.
 - **A caught-up index was mistaken for a chain reset, forever.** The cursor names the
   next block to read, so a fully indexed chain sits at `head + 1`; the reset check used
   `cursor > head`, matched that normal state, cleared the model and restarted the

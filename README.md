@@ -35,8 +35,8 @@ Open ──claim──> Assigned ──submitRun──> Judging ──fileBreak�
 3. Read the proofs: `/hall` shows the leaderboard where each row quotes the
    settlement transaction and the identity registration that earned it. The
    contracts are in `crucible-contracts/contracts` with 135 tests. The workspace suites
-   add 886 more — web 144, smith-sdk 143, agent-security 153, forge-runner 109,
-   cidstore 97, api 111, indexer 74, warden 21, argus 24, keeper 10 — and
+   add 887 more — web 144, smith-sdk 143, agent-security 153, forge-runner 109,
+   cidstore 98, api 111, indexer 74, warden 21, argus 24, keeper 10 — and
    `npm run test` runs them; the contracts suite itself needs Foundry
    (`forge test`), which the seed image runs on a machine without a local
    forge. The numbers were measured from the suites on 2026-10-21; run `npm test`
@@ -333,7 +333,7 @@ Alloy tiers: Iron (1) · Bronze (3) · Steel (10 & ≥1 survived) · Damascus (2
 
 ```bash
 npm run contracts:test      # 135 Foundry tests, incl. 6 invariants and 30 for the reputation bridge
-npm test                    # 886 TypeScript tests, then the Foundry suite
+npm test                    # 887 TypeScript tests, then the Foundry suite
 npm run verify:all          # typecheck + TypeScript suites + Foundry suite in one command
 npm run coverage --workspace crucible-contracts   # line/statement/branch coverage of the contracts
 npm run build               # tsc for packages, next build for the web app
@@ -341,7 +341,7 @@ npm run demo                # anvil + deploy + the whole loop, settles a real ve
 npm run agent:live          # the real agent against a real model in a real sandbox
 ```
 
-**1021 tests total** (886 TypeScript + 135 Foundry). Contract coverage:
+**1022 tests total** (887 TypeScript + 135 Foundry). Contract coverage:
 `CrucibleTrials.sol` 97.4% of lines / 95.8% of statements / 89.9% of branches,
 `AlloyRegistry.sol` 97.0%, `ReputationBridge.sol` 95.5%, `CrucibleHall.sol` 93.2%.
 
