@@ -1,0 +1,102 @@
+name: edge
+
+# Inspects and repairs the shared edge that fronts crucible.svalley.tech.
+#
+# The site is served by the shared Caddy — another project's container — which
+# is attached to this stack's compose network so it can reach `web:3000` and
+# `api:8787` by service name. That attachment is not part of either project's
+# compose file: it is made by hand, and it does not survive the edge being
+# recreated. When the edge came back after a deploy on the other project, it
+# came back without the attachment, and every request for this site answered
+# 502 while every container in this stack reported itself healthy.
+#
+# This workflow reads the edge's view, repairs the attachment, and proves the
+# result from inside the edge container as well as from outside.
+
+on:
+  workflow_dispatch:
+    inputs:
+      repair:
+        description: "Re-attach the edge to this stack's network if it is detached"
+        type: boolean
+        default: true
+
+concurrency:
+  group: edge
+  cancel-in-progress: false
+
+jobs:
+  edge:
+    name: Edge attachment
+    runs-on: [self-hosted, linux, X64, crucible]
+    steps:
+      - name: the edge's view of this stack
+        run: |
+          set -uo pipefail
+          cd "$HOME/crucible"
+
+          echo "=== compose networks ==="
+          docker network ls --format '{{.Name}}' | grep -i crucible || true
+
+          echo "=== containers ==="
+          docker ps --format '{{.Names}}' | grep -iE 'caddy|web|api|anvil' || true
+
+          echo "=== which networks each edge container is on ==="
+          for c in $(docker ps --format '{{.Names}}' | grep -i caddy || true); do
+            echo "--- $c"
+            docker inspect -f '{{range $k,$v := .NetworkSettings.Networks}}  {{$k}} ({{$v.IPAddress}}){{end}}' "$c"
+          done
+
+          echo "=== the site block, if the edge still has one ==="
+          for c in $(docker ps --format '{{.Names}}' | grep -i caddy || true); do
+            echo "--- $c"
+            docker exec "$c" sh -c 'ls -la /etc/caddy/sites.d/ 2>/dev/null; cat /etc/caddy/sites.d/*.caddy 2>/dev/null' || true
+          done
+
+      - name: can the edge reach this stack?
+        run: |
+          set -uo pipefail
+          cd "$HOME/crucible"
+          for c in $(docker ps --format '{{.Names}}' | grep -i caddy || true); do
+            echo "--- $c"
+            docker exec "$c" sh -c 'wget -qO- --timeout=5 http://api:8787/health 2>&1 | head -c 300' || echo "  (no answer from api:8787)"
+            docker exec "$c" sh -c 'wget -qO- --timeout=5 http://web:3000/ 2>&1 | head -c 120' || echo "  (no answer from web:3000)"
+          done
+
+      - name: repair the attachment
+        if: ${{ inputs.repair }}
+        run: |
+          set -uo pipefail
+          cd "$HOME/crucible"
+
+          NET=$(docker network ls --format '{{.Name}}' | grep -E '^crucible_default$' | head -n 1)
+          if [ -z "$NET" ]; then
+            NET=$(docker network ls --format '{{.Name}}' | grep -i crucible | head -n 1)
+          fi
+          if [ -z "$NET" ]; then
+            echo "::error::no crucible network found"
+            exit 1
+          fi
+          echo "stack network: $NET"
+
+          for c in $(docker ps --format '{{.Names}}' | grep -i caddy || true); do
+            if docker inspect -f '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}' "$c" | grep -q "$NET"; then
+              echo "$c is already on $NET"
+            else
+              echo "attaching $c to $NET"
+              docker network connect "$NET" "$c" || echo "  (attach failed)"
+            fi
+          done
+
+      - name: prove it
+        run: |
+          set -uo pipefail
+          for c in $(docker ps --format '{{.Names}}' | grep -i caddy || true); do
+            echo "--- $c"
+            docker exec "$c" sh -c 'wget -qO- --timeout=5 http://api:8787/health 2>&1 | head -c 200' || echo "  (no answer from api:8787)"
+          done
+          echo "=== from outside ==="
+          curl -sk -o /dev/null -w 'site   %{http_code}\n' https://crucible.svalley.tech/ || true
+          curl -sk -o /dev/null -w 'api    %{http_code}\n' https://crucible.svalley.tech/api/health || true
+          curl -sk -o /dev/null -w 'anvil  %{http_code}\n' -X POST https://crucible.svalley.tech/anvil \
+            -H 'Content-Type: application/json' -d '{"jsonrpc":"2.0","method":"eth_chainId","params":[],"id":1}' || true
