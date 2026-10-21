@@ -20,10 +20,48 @@ function required(name: string): string {
   return v;
 }
 
-const port = Number(process.env.PORT ?? 8787);
+/**
+ * A required address, checked rather than cast.
+ *
+ * The old code cast whatever the environment held to an address type, so a
+ * typo — `0x123` — passed the check and then failed at the first call, with
+ * viem's error naming a method rather than the variable that was wrong. A
+ * deployment that is misconfigured should say so at boot, in one sentence,
+ * naming the variable.
+ */
+function requiredAddress(name: string): `0x${string}` {
+  const value = required(name).trim();
+  if (!/^0x[0-9a-fA-F]{40}$/.test(value)) {
+    throw new Error(`${name} must be a 0x-prefixed 20-byte address; got "${value}"`);
+  }
+  return value as `0x${string}`;
+}
+
+/** A port, checked rather than trusted. `Number("nonsense")` is NaN. */
+function requiredPort(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (raw === undefined || raw === "") return fallback;
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < 1 || value > 65_535) {
+    throw new Error(`${name} must be a TCP port between 1 and 65535; got "${raw}"`);
+  }
+  return value;
+}
+
+/** A block number, checked rather than thrown at the first use. */
+function optionalBlock(name: string): bigint {
+  const raw = process.env[name];
+  if (raw === undefined || raw === "") return 0n;
+  if (!/^\d+$/.test(raw.trim())) {
+    throw new Error(`${name} must be a whole number of blocks; got "${raw}"`);
+  }
+  return BigInt(raw.trim());
+}
+
+const port = requiredPort("PORT", 8787);
 const rpcUrl = process.env.RPC_URL ?? "http://127.0.0.1:8545";
-const trialsAddress = required("TRIALS_ADDRESS") as `0x${string}`;
-const alloyAddress = required("ALLOY_ADDRESS") as `0x${string}`;
+const trialsAddress = requiredAddress("TRIALS_ADDRESS");
+const alloyAddress = requiredAddress("ALLOY_ADDRESS");
 
 /**
  * How often the alloy sweep runs. A floor, not a guess at a block time: a malformed
@@ -42,7 +80,7 @@ const scribe = new Scribe({
   alloyAddress,
   chain: foundry,
   rpcUrl,
-  fromBlock: process.env.FROM_BLOCK ? BigInt(process.env.FROM_BLOCK) : 0n,
+  fromBlock: optionalBlock("FROM_BLOCK"),
   cursorFile: process.env.CRUSIBLE_CURSOR_FILE,
   // Every failure the indexer survives lands in the dead-letter queue — a sync tick
   // that could not advance, a window it refused to cross — so /health tells an
@@ -199,6 +237,46 @@ const trustProxy = process.env.TRUST_PROXY === "1";
  * read what it actually set.
  */
 const security = resolveSecurity({ trustProxy }, process.env);
+
+/**
+ * The transport flags have to move together, and nothing enforced that.
+ *
+ * `ENFORCE_HTTPS=1` makes the API refuse any request it cannot see as TLS.
+ * Behind a proxy that terminates TLS, the request arrives in plaintext and
+ * the scheme is only in `X-Forwarded-Proto` — which is believed only when
+ * `TRUST_PROXY=1`. So `ENFORCE_HTTPS=1` with `TRUST_PROXY=0` answers 403 to
+ * EVERY request, and the boot log mentions it in a parenthetical nobody
+ * reads. A deployment that refuses to start is better than one that starts
+ * and serves nothing.
+ */
+if (security.enforceHttps && !trustProxy) {
+  throw new Error(
+    "ENFORCE_HTTPS=1 with TRUST_PROXY=0 would answer 403 to every request: " +
+      "the proxy's X-Forwarded-Proto is not believed without TRUST_PROXY=1. " +
+      "Set TRUST_PROXY=1 (only behind a proxy that overwrites it), or turn ENFORCE_HTTPS off.",
+  );
+}
+
+/**
+ * Credentials over plaintext are not a policy anybody wants.
+ *
+ * `ALLOW_CREDENTIALS=1` with an `http://` origin means the browser is told
+ * to send cookies to that origin with every request. The wildcard case is
+ * already refused, and the boot log states the policy — but a configuration
+ * that hands a credentialed CORS policy to a plaintext origin is a mistake
+ * that should be refused rather than reported.
+ */
+if (security.allowCredentials) {
+  for (const origin of security.allowedOrigins) {
+    if (origin === "*") continue;
+    if (!origin.startsWith("https://") && !/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) {
+      throw new Error(
+        `ALLOW_CREDENTIALS=1 with a plaintext origin (${origin}) would tell a browser to send ` +
+          "credentials over http. Use https, or a local address.",
+      );
+    }
+  }
+}
 
 const app = createApp({
   getModel: () => scribe.state,

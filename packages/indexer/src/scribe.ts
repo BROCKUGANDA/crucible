@@ -154,6 +154,14 @@ export interface ScribeStatus {
   indexedTo: bigint;
   /** why the last tick did not advance, or null when it did */
   syncError: string | null;
+  /**
+   * Trials that settled before this index started listening, so their rows are
+   * incomplete. Non-zero means the index is not reading the whole history —
+   * a `FROM_BLOCK` that is too high, or a cursor file from a chain that was
+   * rebuilt. It is counted because the alternative is a hall that quietly
+   * omits trials that were paid out.
+   */
+  partialTrials: number;
 }
 
 export class Scribe {
@@ -180,6 +188,8 @@ export class Scribe {
   private syncError: string | null = null;
   /** The trip this process last reported, so an outage writes one line rather than one per tick. */
   private lastTripReportedAt: number | null = null;
+  /** The incomplete-trial count last reported, so it is written once rather than every tick. */
+  private reportedPartialTrials = 0;
   /** One ceiling on concurrent RPC calls for the whole indexer. */
   private readonly rpc = new RpcThrottler(8);
 
@@ -237,7 +247,25 @@ export class Scribe {
    * protocol — which is the difference between a demo and an outage nobody notices.
    */
   get status(): ScribeStatus {
-    return { head: this.head, indexedTo: this.cursor, syncError: this.syncError };
+    return {
+      head: this.head,
+      indexedTo: this.cursor,
+      syncError: this.syncError,
+      partialTrials: this.countPartialTrials(),
+    };
+  }
+
+  /**
+   * How many rows are incomplete because the index missed their creation.
+   *
+   * Counted rather than remembered, so it cannot drift from the model.
+   */
+  private countPartialTrials(): number {
+    let n = 0;
+    for (const trial of this.model.trials.values()) {
+      if (trial.incomplete) n += 1;
+    }
+    return n;
   }
 
   /**
@@ -291,6 +319,17 @@ export class Scribe {
       hydrateTimestamps(this.model, this.blockTimes, touched);
       // Bounded to one batch: every entry here has now been applied to a row.
       this.blockTimes.clear();
+
+      // Trials that settled before this index started are reported once, so a
+      // hall that quietly omits a paid trial has a cause somebody can act on.
+      const partial = this.countPartialTrials();
+      if (partial > 0 && partial !== this.reportedPartialTrials) {
+        this.reportedPartialTrials = partial;
+        this.cfg.onError?.(
+          "partial",
+          `${partial} trial(s) settled before this index started reading; their rows are incomplete. Set FROM_BLOCK to the deployment block and re-index.`,
+        );
+      }
 
       // The cursor moves only as far as the chain has been PROVEN to hold
       // nothing.
@@ -408,7 +447,14 @@ export class Scribe {
       } catch (err) {
         // A dropped RPC must not kill the indexer; the next tick retries from the
         // same cursor, and the gap is re-scanned rather than skipped.
-        const detail = (err as Error).message;
+        //
+        // The message is read defensively: a throw that is not an `Error` —
+        // a string, a plain object — has no `.message`, and the old code
+        // handed `undefined` to the dead-letter queue, whose `detail.slice(...)`
+        // then threw INSIDE this catch. The watch loop's promise rejected, and
+        // nothing awaited it, so the process died: a malformed throw took the
+        // whole indexer with it.
+        const detail = err instanceof Error ? err.message : String(err);
         // A refused tick carries no news: the failure that tripped the breaker already
         // reported itself, and every tick until the cooldown ends would report the same
         // sentence. One line per trip, or an outage writes the log and the DLQ ring dead.
