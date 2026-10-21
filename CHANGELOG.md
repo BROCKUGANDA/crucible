@@ -8,6 +8,202 @@ All notable changes to Crucible. Format follows
 escrow with no upgrade or pause path, so a breaking contract change is a redeploy, not a
 migration. See [`SECURITY.md`](SECURITY.md) before deploying value.
 
+## [Unreleased]
+
+### Added
+
+- **Coinbase CDP CLI and a Sandbox profile for agents.** Both the Advanced Trade
+  `coinbase` CLI and the custodial `cdp` CLI are installed, the Qoder skill set is
+  installed (`coinbase*`, `cdp-*`, and the root `coinbase-agent-skill`), and
+  `npm run cdp:sandbox` imports a Sandbox key and lists its accounts without ever
+  printing the key. The profile refuses to run until the key file is supplied.
+  Sandbox and live keys can coexist in one `.env`: `CDP_ENV` selects the profile,
+  `CDP_ENABLE_LIVE=0` keeps the demo on sandbox, and live is refused unless the
+  flag is explicitly enabled. CDP Sandbox is simulated custodial testing, not a
+  Base testnet; x402 remains a live USDC rail. See
+  `docs/runbooks/coinbase-sandbox.md`.
+- **Coinbase Wallet is a first-class connector.** The web app now includes the
+  classic Coinbase Wallet SDK connector in its wagmi config and shows a
+  Coinbase Wallet button in the no-WalletConnect fallback, alongside injected
+  wallets and WalletConnect. The connector-presence test pins it. Base Account
+  and Solana/DeFi paths remain out of scope: this product has no Solana program
+  and no token/swap surfaces.
+- **Frenchy, the optional voice host.** A server-side ElevenLabs proxy with a
+  muted-by-default control, a once-a-day automatic policy, a paid-verdict-only line,
+  silence on every failure, and reduced-motion handling. The key stays in the API;
+  a missing key or voice id hides the control and changes nothing else. See
+  [`README.md`](README.md#the-voice-host-optional) and
+  [`apps/api/src/voice.ts`](apps/api/src/voice.ts).
+
+### Fixed
+
+- **The promotion ladder now waits for the gate it dispatches.** A
+  `workflow_dispatch` CI run's completion did not reliably raise the next
+  `workflow_run`: the ladder reached `staging`, the gate passed, and no
+  `staging → main` run appeared; the deploy trigger had the same hole. The
+  promotion now finds the run it dispatched, waits for it by id, and dispatches
+  the next promotion or deploy only when it is green. A red gate stops the
+  ladder instead of silently leaving production behind.
+- **The one-write marker is set before the registry call.** `reportedTrial` was
+  written after `giveFeedback`, which left a reentrancy window in which a
+  configured registry could publish the same trial twice. The marker is now set in
+  the same transaction before the call; a revert rolls it back, and a reentrant
+  call sees it. Slither's `reentrancy-no-eth` finding is closed by the ordering.
+
+- **The content store's eviction order depended on filesystem timestamp precision.**
+  Entries were stamped one millisecond apart, but a whole-second mtime filesystem
+  rounds two publications into the same stamp, and the tie-break is the content hash.
+  A CI run caught the new entry sorting before the one it should follow. The stamp
+  step is now one second, which survives whole-second mtimes and costs the same single
+  `utimes` call. Covered by a test that truncates every mtime to a whole second.
+- **A caught-up index was mistaken for a chain reset, forever.** The cursor names the
+  next block to read, so a fully indexed chain sits at `head + 1`; the reset check used
+  `cursor > head`, matched that normal state, cleared the model and restarted the
+  backfill on every idle tick. The hall emptied, `/ready` flipped between true and
+  false, and the site looked half-alive. The check now treats `head + 1` as caught up
+  and only rebuilds beyond it. Covered by
+  `keeps its model when the cursor is simply one past the head`.
+
+- **The site could answer 502 while every container reported healthy.** The shared
+  edge was not attached to `crucible_default`, and the host timer that repairs the
+  attachment redirected its output to `/var/log/` as an unprivileged user — so the
+  redirect failed before the script ran, and the repair never happened. The edge is
+  attached, and the cron log now lives in the deployment user's home; the deploy
+  workflow installs that path. `GET /api/ready` reports `ready:true` again.
+
+- **A reputation backfill could write whatever it liked.** `ReputationBridge.backfill`
+  took an arbitrary `int128` from any caller and never checked that the trial existed,
+  let alone settled — so anyone could mint or slash reputation for any linked identity.
+  It now reads the canonical settled verdict (`settledOutcome`) from `CrucibleTrials`,
+  rejects an unsettled trial, a mismatched agent and a refund, and records one write per
+  trial so a successful report cannot be replayed.
+- **A sponsor could claim its own trial and mint a win for the price of the fee.** The
+  contract already barred self-breaks; it now bars the direct self-claim as well. A
+  second wallet is still possible (Sybil resistance is an identity problem, not a
+  `msg.sender` check), but the free path is closed.
+- **The escrow ceiling was enforced only at creation.** `claimTrial` adds a bond and
+  `fileBreak` adds a stake to `escrowed`, both after the only cap check. Both paths now
+  apply `MAX_TOTAL_ESCROWED`, and the invariants still hold.
+- **The read model published a stake and active count the chain had already moved.**
+  `AgentRow.stakeWei` never fell on a claim or a stake withdrawal and never rose when a
+  bond returned; `active` was written once as zero and never updated; `RunnerSet` was
+  not subscribed, so a rotated runner key stayed stale. The projection now follows
+  free stake, active trials, bond returns and runner changes, and ignores a duplicated
+  claim.
+- **The runner never enforced `touchesTests`.** The built-in agent checked its own
+  output, and the README said the runner checked too — it did not. `ForgeRunner` now
+  refuses any patch that touches the pinned suite before `git apply`, so a different
+  agent implementation cannot rewrite its own exam.
+- **The rubric accepted a panel larger than three.** The guard was `< 3` while the
+  message said "exactly three"; with four judges a two-vote minority could be counted
+  as a 2-of-3 majority. The guard is now exact.
+- **The web app could create and settle a trial but never withdraw the payout.** The
+  contract credits withdrawals; no page called `withdraw()`. The header now shows the
+  connected wallet's credit and a withdraw control.
+- **The promotion ladder had not run for eight days.** Three faults lined up, each
+  of which alone would have stopped it and each of which hid the next. The
+  indexer's backfill-cost gate asserted wall-clock on a host that also serves
+  production, where the fixed code measured 41.8 seconds against a laptop's
+  2.5 milliseconds, so a thrashing box failed a gate about code that had not
+  changed. A merge conflict in `.gitignore` — the same lines committed
+  independently on `develop` and `staging` — refused every promotion. And a
+  promotion pushes with `GITHUB_TOKEN`, whose `push` event GitHub suppresses so
+  a workflow cannot loop, so the promotion wrote `staging`, nothing noticed, and
+  no gate ever ran on it. The gate now counts model copies instead of
+  milliseconds, the promotion resolves a conflict in favour of its source, and
+  it asks for the next gate by name. Full account in
+  [`docs/pipeline-ledger.md`](docs/pipeline-ledger.md).
+- **A page could wait forever on a stream that said nothing.** `useSnapshot`
+  opened the live stream and fell back to polling only when the stream raised
+  an error — and a stream that opens and then stays silent raises none, so the
+  page sat on "weighing the alloy…" until the socket died. Polling now starts
+  immediately and stops as soon as the stream proves itself, and the stream's
+  first frame has a deadline.
+- **The indexer could not index a real chain.** The cursor only moved across a
+  window once the blocks themselves said nothing was there to find, and the
+  check REFUSED to advance across a window wider than 64 blocks. On any real
+  chain the first gap longer than that is two minutes, so the cursor could
+  never move again, the sync error stayed set, `/health` answered 503, the
+  container was marked unhealthy, and the site went down with nothing to
+  indicate why. The window is now walked in chunks and the cursor advances by
+  however much was proved, so a quiet stretch is crossed over several ticks.
+  The same change catches a response that was quietly truncated: the cursor
+  stops at the block whose bloom says an event was dropped, and the next tick
+  re-reads it. `getLogs` is sharded by default now, a chain that was reset
+  under the indexer rebuilds instead of serving a frozen pre-reset index, and
+  a block timestamp that could not be read is retried rather than lost.
+- **The sign-in could be walked into.** The challenge message names the host
+  the user is signing in to, and the wallet shows that text verbatim — so a
+  host taken from a request header let a third party ask a victim to sign a
+  message of the attacker's choosing, and the server verified that signature
+  and issued the victim's session. The origin is configuration now, the
+  challenge is bound to the browser that asked for it, and it has to be the
+  one issued for the address being claimed. The development secret is opt-in
+  by name, so a deployment that forgets `AUTH_SECRET` gets a 503 instead of a
+  session signed with a key from the repository. The message carries the chain
+  id, the session carries an audience, and an EIP-4361 signature is accepted
+  rather than rejected.
+- **The rate limiter could be escaped, and could be starved.** The key was the
+  left-most `X-Forwarded-For` entry, which is the one a caller writes, so a
+  client minted a fresh bucket per request. It is now `X-Real-IP` — which a
+  proxy overwrites with the peer it saw — and then the RIGHT-MOST forwarded
+  hop. Behind the deployed proxy the old default had the opposite failure:
+  every visitor in the world shared one bucket.
+- **The read model could say something the chain did not.** A trial's status
+  was a bag of labels rather than a place on a chain, so a re-read run erased
+  a challenge and the row said "judging" about a trial under dispute. A
+  verdict for a trial the index never saw was dropped with no trace, so a paid
+  trial simply did not appear on the hall; the row is created, marked
+  incomplete, and counted now. And a throw that was not an `Error` could kill
+  the indexer process outright.
+- **The host's configuration never reached the API.** Compose only passes on
+  the variables a service names, and the API named the chain's two addresses
+  and nothing else — so `AUTH_SECRET`, `AUTH_ORIGIN` and `TRUST_PROXY` stopped
+  at the host and the API ran on its defaults no matter what the host was
+  configured with.
+- **The deployment proved that it started, not that it was right.** A
+  post-deploy assertion now reads the live chain and fails the deploy if the
+  fee, the bond rule, the committee, the roles or the money invariant are not
+  what the documentation claims.
+- **The shared edge could take the site down and leave every container
+  reporting itself healthy.** The site is served by a proxy another project on
+  the same box owns, and it reaches this stack by service name, which only
+  works from inside this stack's compose network. That attachment is made by
+  hand and does not survive a recreate of the proxy, so every request answered
+  502 while nothing here was wrong. The repair now runs on a host timer, at
+  the start of every deploy, and on demand.
+
+### Added
+
+- **The platform publishes its books.** The contract has always kept a
+  settlement fee for the treasury, and nothing showed it, so the product could
+  not say what it earned. The snapshot now carries the volume, the fees and
+  the payout, derived from the same settlement logs the leaderboard is built
+  from, with the fee read from the contract rather than copied into this
+  process. The landing HUD shows the take; the docs state it.
+- **A trial a visitor can act on.** The seeded chain carried four settled
+  trials: a hall worth reading and nothing to do. A new script extends the chain
+  in place — nothing is redeployed, so the addresses stay valid and the settled
+  hall keeps pointing at the transactions that produced it — with one trial
+  open for claim and one claimed and waiting for a run. The seed is idempotent
+  from here: it keeps a chain that already carries the demo loop, and the
+  extension is skipped when the chain already holds an open trial.
+- A read-only host diagnostic workflow. The runner is the VPS, so it is the
+  only way to look at the box without an SSH key.
+- **A secret gate over the whole history.** A dependency audit asks whether a
+  package is known-vulnerable; it says nothing about a key that was committed
+  once and never rotated, because the vulnerable version is not in the
+  lockfile at all. CI now scans every commit, and every suppression states
+  what the value is and why it is not a secret.
+- **A post-deploy assertion.** It reads the live chain and fails the deploy
+  when the fee, the bond rule, the committee's threshold, the roles or the
+  money invariant are not what the documentation claims — including the
+  failure a health check cannot see, where the web bundle's baked-in contract
+  address and the chain's actual contract have drifted apart.
+- **A key inventory.** Every key the project uses, every power an address
+  holds, what a compromise reaches, and what changes when a real chain is in
+  front of it.
+
 ## [0.1.0] - 2026-10-07
 
 First public release. Built as a Colosseum Crypto World's Fair entry.
@@ -119,9 +315,12 @@ Selected items from the hardening passes, all reproduced against the unfixed cod
 - **The slash-decay tier and the indexer's win counter measure different things** — one is
   the registry's decayed record, the other a count of settlement logs. Both are true of
   different facts and the UI labels them separately.
-- **`forge coverage` does not run** (stack-too-deep with the optimizer off).
-- **Windows:** `npm test` reaches the contracts workspace only if Foundry is on the system
-  PATH, because npm spawns `cmd.exe`.
+- **`forge coverage` needs `--ir-minimum`.** Forge disables the optimizer and viaIR for
+  coverage, and the legacy codegen then hits "stack too deep"; `--ir-minimum` keeps viaIR
+  on with minimum optimization. `npm run coverage --workspace crucible-contracts` reports
+  97.4% of lines in `CrucibleTrials.sol`.
+- **Windows:** `npm test` resolves Foundry through `scripts/run-forge.mjs`; it checks
+  PATH, `%USERPROFILE%\.foundry\bin`, then `FOUNDRY_BIN`.
 
 ### Security
 

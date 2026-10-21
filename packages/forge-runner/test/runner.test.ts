@@ -243,6 +243,31 @@ describe("ForgeRunner invariants", () => {
     expect(submit).not.toHaveBeenCalled();
   }, 30_000);
 
+  it("refuses a patch that touches the pinned test suite", async () => {
+    const submit = vi.fn(async () => `0x${"22".repeat(32)}` as `0x${string}`);
+    const deps = harness({
+      step: async () => ({
+        patch: [
+          "diff --git a/test/Forge.t.sol b/test/Forge.t.sol",
+          "--- a/test/Forge.t.sol",
+          "+++ b/test/Forge.t.sol",
+          "@@ -1,1 +1,1 @@",
+          "-assertTrue(false);",
+          "+assertTrue(true);",
+          "",
+        ].join("\n"),
+        notes: "rewrote the exam",
+        done: true,
+      }),
+    });
+    deps.submit = submit;
+    const runner = new ForgeRunner(deps);
+    const out = await runner.run(request({ suiteCommand: GREEN_SUITE, iterBudget: 2 }));
+    expect(out.ok).toBe(false);
+    expect(out.failure?.kind).toBe("tests-modified");
+    expect(submit).not.toHaveBeenCalled();
+  }, 30_000);
+
   it("reports degraded as a boolean so the caller can surface it", async () => {
     const runner = new ForgeRunner(harness());
     const out = await runner.run(request({ suiteCommand: "false", iterBudget: 1 }));

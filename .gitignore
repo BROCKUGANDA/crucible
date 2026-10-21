@@ -16,6 +16,11 @@ crucible-contracts/broadcast/
 # env
 .env
 .env.*
+
+# Coinbase CDP API key JSON files are secrets; keep them out of history.
+cdp_api_key*.json
+*.cdp-key.json
+.cdp/
 !.env.example
 
 # editors / os
@@ -35,5 +40,5 @@ apps/web/.env.local
 .graphflow-cache/
 graphflow-out/
 
-# markdown docs (untracked)
-HARDENING.md
+# OpenChamber session screenshots
+.openchamber/

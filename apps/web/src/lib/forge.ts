@@ -184,7 +184,12 @@ const TIER_UNKNOWN: TierMeta = { name: "Tier unread", tone: "faint" };
 
 export function tierMeta(tier: number | null): TierMeta {
   if (tier === null) return TIER_UNKNOWN;
-  return TIER_META[tier] ?? TIER_META[0]!;
+  // An out-of-range tier is not tier 0. `TIER_META[tier] ?? TIER_META[0]` published
+  // "Unforged" for a tier number the chain had moved past and this bundle did not
+  // know about — a row claiming a tier it never measured, which is the same
+  // defect the null case above was written to avoid. The API answers
+  // `tierName: null` for a tier it cannot name; the UI says the same.
+  return TIER_META[tier] ?? TIER_UNKNOWN;
 }
 
 export const QUENCHING_LABEL: Record<string, string> = {
@@ -199,6 +204,13 @@ export const QUENCHING_LABEL: Record<string, string> = {
 
 export const ERROR_COPY = {
   RewardTooSmall: "Reward too small — the floor is 0.01 ETH.",
+  RewardTooLarge: "Reward too large — the ceiling is 1,000 ETH.",
+  EscrowCapExceeded: "This contract's escrow ceiling is reached — settle live trials before creating more.",
+  ZeroSpec: "The spec CID is empty — pin the spec before creating the trial.",
+  ZeroTests: "The tests CID is empty — pin the test suite before creating the trial.",
+  ZeroRunner: "Runner key cannot be the zero address.",
+  ZeroRunHash: "Run hash is empty — the artifact was not hashed before submission.",
+  ZeroProof: "Break proof CID is empty — attach evidence before filing a break.",
   BadWindow: "Skeptic window must be between 1 hour and 7 days.",
   BadDeadline: "Deadline must be at least 1 hour out.",
   StakeTooSmall: "Stake at least the bond to play this trial.",

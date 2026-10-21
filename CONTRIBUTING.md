@@ -54,7 +54,9 @@ point there, so skipping it makes `npm test` fail with "Cannot find module
 It prints the deployed addresses and leaves Anvil running. Then, in two more terminals:
 
 ```bash
-TRIALS_ADDRESS=0x… ALLOY_ADDRESS=0… npm run api:dev      # http://127.0.0.1:8787
+TRIALS_ADDRESS=0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512 \
+ALLOY_ADDRESS=0x5FbDB2315678afecb367f032d93F642f64180aa3 \
+npm run api:dev      # http://127.0.0.1:8787
 NEXT_PUBLIC_API_URL=http://127.0.0.1:8787 npm run web:dev # http://localhost:3000
 ```
 

@@ -28,6 +28,13 @@ contract CrucibleTrials {
     error ZeroIdentity();
     error IdentityNotOwned();
     error RewardTooSmall();
+    error RewardTooLarge();
+    error EscrowCapExceeded();
+    error ZeroSpec();
+    error ZeroTests();
+    error ZeroRunner();
+    error ZeroRunHash();
+    error ZeroProof();
     error BadWindow();
     error BadDeadline();
     error StakeTooSmall();
@@ -38,6 +45,7 @@ contract CrucibleTrials {
     error NotJudging();
     error NotChallenged();
     error SelfBreak();
+    error SelfClaim();
     error NotFinalizable();
     error NotReclaimable();
     error DeadlinePassed();
@@ -129,6 +137,12 @@ contract CrucibleTrials {
     uint256 public constant MAX_BREAK_WINDOW = 7 days;
     uint256 public constant DISPUTE_TIMEOUT = 3 days;
 
+    /// @notice Per-trial and whole-contract ceilings. These are not economic policy; they
+    /// are a fat-finger guard. A sponsor who types one extra zero is rejected by the
+    /// contract rather than escrowing an amount the demo can never settle.
+    uint256 public constant MAX_REWARD = 1_000 ether;
+    uint256 public constant MAX_TOTAL_ESCROWED = 10_000 ether;
+
     /// @notice How long after a dispute opens an Argus seat may still seal a commitment.
     ///
     /// @dev Commits used to be closed by the first *reveal*. That let one seat decide every
@@ -218,6 +232,7 @@ contract CrucibleTrials {
     event VerdictFinalized(uint256 indexed id, Verdict verdict, uint256 agentPayout);
     event StakeWithdrawn(uint256 indexed agentId, address indexed to, uint256 amount);
     event Withdrawn(address indexed to, uint256 amount);
+    event ReputationBridgeSet(address indexed bridge);
     event IdentityRegistrySet(address indexed registry);
     event IdentityLinked(uint256 indexed agentId, uint256 indexed identityAgentId);
 
@@ -277,6 +292,7 @@ contract CrucibleTrials {
     function setReputationBridge(address bridge) external {
         if (msg.sender != owner) revert NotOwner();
         reputationBridge = bridge;
+        emit ReputationBridgeSet(bridge);
     }
 
     /// @notice Point at the Identity registry that issued `identityAgentId` tokens.
@@ -350,7 +366,11 @@ contract CrucibleTrials {
         payable
         returns (uint256 id)
     {
-        if (msg.value < MIN_BOND || msg.value > type(uint128).max) revert RewardTooSmall();
+        if (specCID == bytes32(0)) revert ZeroSpec();
+        if (testsCID == bytes32(0)) revert ZeroTests();
+        if (msg.value < MIN_BOND) revert RewardTooSmall();
+        if (msg.value > MAX_REWARD) revert RewardTooLarge();
+        if (escrowed + msg.value > MAX_TOTAL_ESCROWED) revert EscrowCapExceeded();
         if (deadline < block.timestamp + MIN_RUN_WINDOW) revert BadDeadline();
         if (breakWindow < MIN_BREAK_WINDOW || breakWindow > MAX_BREAK_WINDOW) revert BadWindow();
         id = ++trialCount;
@@ -423,6 +443,7 @@ contract CrucibleTrials {
 
     // ───────────────────────── agent ──────────────────────────
     function registerAgent(string calldata metadataURI, address runner) external payable returns (uint256 agentId) {
+        if (runner == address(0)) revert ZeroRunner();
         if (msg.value < MIN_BOND || msg.value > type(uint128).max) revert StakeTooSmall();
         if (agentIdOf[msg.sender] != 0) revert AlreadyRegistered();
         agentId = ++agentCount;
@@ -436,6 +457,7 @@ contract CrucibleTrials {
 
     function setRunner(uint256 agentId, address runner) external {
         if (agents[agentId].operator != msg.sender) revert NotOperator();
+        if (runner == address(0)) revert ZeroRunner();
         agents[agentId].runner = runner;
         emit RunnerSet(agentId, runner);
     }
@@ -448,7 +470,12 @@ contract CrucibleTrials {
         uint256 aid = agentIdOf[msg.sender];
         if (aid == 0) revert NotAnAgent();
         Agent storage a = agents[aid];
+        // A sponsor claiming its own trial is reputation farming: the reward comes back
+        // minus the fee and the win still mints. The sponsor could use a second wallet,
+        // but the direct path must not be free.
+        if (a.operator == t.sponsor) revert SelfClaim();
         if (a.stake < t.bond) revert StakeTooSmall();
+        if (escrowed + t.bond > MAX_TOTAL_ESCROWED) revert EscrowCapExceeded();
         a.stake -= t.bond;
         totalStakes -= t.bond;
         escrowed += t.bond;
@@ -475,6 +502,7 @@ contract CrucibleTrials {
     function submitRun(uint256 id, bytes32 runHash, bytes calldata sig, uint64 sigDeadline) external {
         Trial storage t = trials[id];
         if (t.status != Status.Assigned) revert NotAssigned();
+        if (runHash == bytes32(0)) revert ZeroRunHash();
         if (block.timestamp >= uint256(uint64(t.timestamps >> 64))) revert DeadlinePassed();
         if (block.timestamp >= sigDeadline) revert SigExpired();
         uint256 aid = t.agentId;
@@ -499,9 +527,14 @@ contract CrucibleTrials {
     function fileBreak(uint256 id, bytes32 proofCID) external payable {
         Trial storage t = trials[id];
         if (t.status != Status.Judging) revert NotJudging();
+        if (proofCID == bytes32(0)) revert ZeroProof();
         if (msg.sender == t.sponsor || msg.sender == agents[t.agentId].operator) revert SelfBreak();
         if (block.timestamp > _windowEnd(t)) revert WindowClosed();
         if (msg.value < uint256(t.reward) / BREAK_STAKE_DEN || msg.value > type(uint128).max) revert StakeTooSmall();
+        // The cap is checked on every path that grows `escrowed`, not only on creation.
+        // A break stake is small, but a contract whose ceiling can be walked past one
+        // legal transaction at a time does not have a ceiling.
+        if (escrowed + msg.value > MAX_TOTAL_ESCROWED) revert EscrowCapExceeded();
         t.breakSkeptic = msg.sender;
         t.breakProofCID = proofCID;
         t.breakStake = uint128(msg.value);
@@ -696,6 +729,18 @@ contract CrucibleTrials {
     function disputeVote(uint256 id, address judge) external view returns (bytes32 commit, bool revealed) {
         Dispute storage d = _disputes[id];
         return (d.commits[judge], d.revealed[judge]);
+    }
+
+    /// @notice Canonical settled outcome, for a reputation backfill that must not be
+    /// able to choose its own value. The bridge reads this rather than accepting a
+    /// caller-supplied number, so a missed write can be replayed but not forged.
+    function settledOutcome(uint256 id)
+        external
+        view
+        returns (bool settled, uint8 verdict, uint256 agentId, bool survived)
+    {
+        Trial storage t = trials[id];
+        return (t.status == Status.Settled, uint8(t.verdict), t.agentId, t.breakSkeptic != address(0));
     }
 
     // ───────────────────────── internals ──────────────────────
