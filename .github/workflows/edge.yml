@@ -14,6 +14,14 @@ name: edge
 # result from inside the edge container as well as from outside.
 
 on:
+  # Every five minutes, because the attachment is not held by anything this
+  # project owns: the edge belongs to another project's compose file, and a
+  # deploy there recreates the container and drops the attachment. Nothing
+  # about that deploy announces it, and the symptom here — 502 on every
+  # request while every container in this stack reports itself healthy — reads
+  # as an outage in this project rather than as a severed network attachment.
+  schedule:
+    - cron: "*/5 * * * *"
   workflow_dispatch:
     inputs:
       repair:
@@ -53,18 +61,8 @@ jobs:
             docker exec "$c" sh -c 'ls -la /etc/caddy/sites.d/ 2>/dev/null; cat /etc/caddy/sites.d/*.caddy 2>/dev/null' || true
           done
 
-      - name: can the edge reach this stack?
-        run: |
-          set -uo pipefail
-          cd "$HOME/crucible"
-          for c in $(docker ps --format '{{.Names}}' | grep -i caddy || true); do
-            echo "--- $c"
-            docker exec "$c" sh -c 'wget -qO- --timeout=5 http://api:8787/health 2>&1 | head -c 300' || echo "  (no answer from api:8787)"
-            docker exec "$c" sh -c 'wget -qO- --timeout=5 http://web:3000/ 2>&1 | head -c 120' || echo "  (no answer from web:3000)"
-          done
-
       - name: repair the attachment
-        if: ${{ inputs.repair }}
+        if: ${{ inputs.repair != false }}
         run: |
           set -uo pipefail
           cd "$HOME/crucible"
