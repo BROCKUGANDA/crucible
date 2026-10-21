@@ -6,7 +6,7 @@ import { Chrome, TxStates } from "@/components/Chrome";
 import { PourConfirm } from "@/components/Modal";
 import { WrongNetworkNotice } from "@/components/Wallet";
 import { buildClaimTrial, buildRegisterAgent, useTx } from "@/lib/useTx";
-import { deployment } from "@/lib/wagmi";
+import { deployment, ZERO_ADDRESS } from "@/lib/wagmi";
 import { isEthAddress, parseEth } from "@/lib/eth";
 
 /**
@@ -37,7 +37,7 @@ export default function ForgePage() {
   const [confirm, setConfirm] = useState<null | "register" | "claim">(null);
 
   const stakeWei = parseEth(stake);
-  const runnerValid = isEthAddress(runner);
+  const runnerValid = isEthAddress(runner) && runner.trim().toLowerCase() !== ZERO_ADDRESS;
   const uriValid = metadataURI.trim().length > 0;
   const canRegister = uriValid && runnerValid && stakeWei !== null && stakeWei > 0n;
   const trialValid = /^\d+$/.test(trialId.trim());

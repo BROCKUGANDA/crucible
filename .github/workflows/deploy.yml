@@ -132,7 +132,7 @@ jobs:
           if [ -f deploy/edge-attach.sh ]; then
             sudo install -m 0755 deploy/edge-attach.sh /usr/local/bin/crucible-edge-attach
             ( crontab -l 2>/dev/null | grep -v 'crucible-edge-attach' ; \
-              echo '*/2 * * * * /usr/local/bin/crucible-edge-attach >> /var/log/crucible-edge-attach.log 2>&1' \
+              echo '*/2 * * * * /usr/local/bin/crucible-edge-attach >> /home/ubuntu/crucible-edge-attach.log 2>&1' \
             ) | crontab -
             echo "host timer installed"
           fi
@@ -221,4 +221,61 @@ jobs:
             -e ALLOY_ADDRESS="$alloy" \
             -e PUBLIC_URL=https://crucible.svalley.tech \
             seed scripts/assert-deployment.sh
+
+      # The public surface, probed from the HOST.
+      #
+      # These run here rather than inside the seed container because the
+      # container is on the compose network, where the public name does not
+      # resolve the way a visitor's does: the probe was measuring the
+      # container's network instead of the site's, and answered 0 for a site
+      # that was answering 200.
+      #
+      # The chain can be perfectly correct while the site points somewhere
+      # else — the web bundle bakes its contract address in at build time, and
+      # the API reads its own. If those two ever disagree, a judge connects a
+      # wallet and talks to a contract that is not the one the site is showing.
+      - name: assert the public surface
+        run: |
+          set -euo pipefail
+          cd "$HOME/crucible"
+          trials=$(grep -E '^TRIALS_ADDRESS=' .env | tail -n 1 | cut -d= -f2- | tr -d '[:space:]' | tr 'A-Z' 'a-z')
+          fail=0
+          for probe in \
+            "site=https://crucible.svalley.tech/" \
+            "ready=https://crucible.svalley.tech/api/ready" \
+            "health=https://crucible.svalley.tech/api/health"; do
+            name="${probe%%=*}"
+            url="${probe#*=}"
+            code=$(curl -sk -o /dev/null -w '%{http_code}' --max-time 20 "$url" || echo 000)
+            if [ "$code" = "200" ]; then
+              echo "  ok    $name answers 200"
+            else
+              echo "  FAIL  $name answered $code"
+              fail=1
+            fi
+          done
+
+          reported=$(curl -sk --max-time 20 https://crucible.svalley.tech/api/hall 2>/dev/null \
+            | sed -n 's/.*"trialsAddress":"\([^"]*\)".*/\1/p' | tr 'A-Z' 'a-z')
+          if [ -n "$reported" ] && [ "$reported" = "$trials" ]; then
+            echo "  ok    the API is serving the contract that was deployed"
+          else
+            echo "  FAIL  the API reports ${reported:-nothing}; the deployment says $trials"
+            fail=1
+          fi
+
+          sync_error=$(curl -sk --max-time 20 https://crucible.svalley.tech/api/health 2>/dev/null \
+            | sed -n 's/.*"syncError":\([^,}]*\).*/\1/p')
+          if [ "$sync_error" = "null" ] || [ -z "$sync_error" ]; then
+            echo "  ok    the indexer reports no sync error"
+          else
+            echo "  FAIL  the indexer reports a sync error: $sync_error"
+            fail=1
+          fi
+
+          if [ "$fail" != "0" ]; then
+            echo "::error::the public surface is not what the deployment claims"
+            exit 1
+          fi
+          echo "the public surface is serving the deployment that was just asserted"
 

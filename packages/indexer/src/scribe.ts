@@ -71,6 +71,7 @@ export interface IndexerConfig {
 const EVENT_NAMES = [
   "TrialCreated",
   "AgentRegistered",
+  "RunnerSet",
   "TrialClaimed",
   "RunSubmitted",
   "BreakFiled",
@@ -134,7 +135,35 @@ const BLOOM_PROBE_LIMIT = 64n;
  * with nothing to indicate why. Bounding the work keeps a tick short; never
  * refusing to advance keeps the index moving.
  */
-const MAX_PROOF_BLOCKS_PER_TICK = 4096n;
+const MAX_PROOF_BLOCKS_PER_TICK = 64n;
+
+/**
+ * The reads are NOT batched.
+ *
+ * A JSON-RPC batch is a convenience many nodes implement and some do not —
+ * anvil, which this project deploys, answers one with an error — and a
+ * batched transport turned every proof into a failure on the chain this
+ * project actually runs on. The index emptied itself, and the reason was
+ * visible only in the log.
+ */
+type ProofResult = {
+  cursor: bigint;
+  stoppedBecause: "quiet" | "possible-event" | "unreadable";
+  detail?: string;
+};
+
+/**
+ * The sentence `/health` shows for a proof that did not reach the head.
+ *
+ * Null means the cursor is past the head and there is nothing to say.
+ */
+function describeProof(proof: ProofResult, head: bigint): string | null {
+  if (proof.cursor > head) return null;
+  if (proof.stoppedBecause === "unreadable") {
+    return `a block at or after ${proof.cursor} could not be read, so the index stopped there: ${proof.detail ?? "unknown error"}`;
+  }
+  return `a block between ${proof.cursor} and ${head} may hold an event; the index is re-reading it`;
+}
 
 /**
  * The default width of one `getLogs` request.
@@ -196,10 +225,21 @@ export class Scribe {
   constructor(private readonly cfg: IndexerConfig) {
     this.client = createPublicClient({
       chain: cfg.chain,
-      // Batched: the bloom cross-check reads a chunk of blocks at a time, and
-      // without batching that is one HTTP request per block. The batch
-      // transport coalesces them into a single JSON-RPC batch.
-      transport: http(cfg.rpcUrl, { batch: { wait: 20, batchSize: 64 } }),
+      // Deliberately NOT batched, for two reasons that both cost the site.
+      //
+      // The breaker is what stops a dead node being asked forever, and its
+      // guarantee is that a refused pass costs the node nothing. A batched
+      // transport holds a request for a window before sending it, so a
+      // request queued before the breaker tripped is still delivered after —
+      // the node is asked once more, the error shape changes, and the
+      // guarantee the breaker exists to make is gone.
+      //
+      // And not every node speaks JSON-RPC batching. anvil — the chain this
+      // project deploys — answers a batch with an error, so a batched
+      // transport made every bloom proof fail, every tick threw, and the
+      // index emptied itself. The one place batching was wanted (the proof
+      // walk) is the one place a node is least likely to support it.
+      transport: http(cfg.rpcUrl),
     }) as PublicClient;
     this.cursor = cfg.fromBlock ?? 0n;
     this.loadCursor();
@@ -284,13 +324,24 @@ export class Scribe {
     );
     this.head = head;
 
-    // A chain that was reset — an anvil restart, a fork, a devnet rebuilt from
-    // its seed — leaves the cursor ahead of the head, and the cursor file
-    // survives the restart. The old code returned the model as it was, so the
-    // indexer served a frozen pre-reset index forever, and `/ready` computed
-    // a lag of zero because the cursor was above the head. The API reported
-    // healthy while nothing was being indexed. A reset is a rebuild.
+    // The cursor is the NEXT block to read, so `head + 1` is the caught-up
+    // state, not a reset. Treating it as one cleared the model and restarted
+    // the backfill on every idle tick: the hall emptied, `/ready` flipped
+    // between true and false, and the index never settled. Only a cursor
+    // beyond `head + 1` can have come from a shorter chain.
     if (this.cursor > head) {
+      if (this.cursor === head + 1n) {
+        this.syncError = null;
+        this.saveCursor();
+        return this.model;
+      }
+
+      // A chain that was reset — an anvil restart, a fork, a devnet rebuilt from
+      // its seed — leaves the cursor ahead of the head, and the cursor file
+      // survives the restart. The old code returned the model as it was, so the
+      // indexer served a frozen pre-reset index forever, and `/ready` computed
+      // a lag of zero because the cursor was above the head. The API reported
+      // healthy while nothing was being indexed. A reset is a rebuild.
       this.cursor = this.cfg.fromBlock ?? 0n;
       this.model = emptyModel();
       this.blockTimes.clear();
@@ -346,8 +397,9 @@ export class Scribe {
       // in it. The next tick re-reads from there and picks up what was
       // dropped. The projection is replay-safe, so re-reading costs nothing.
       const lastEventBlock = events.reduce((max, e) => (e.blockNumber > max ? e.blockNumber : max), this.cursor - 1n);
-      this.cursor = await this.proveQuietThrough(lastEventBlock + 1n, head);
-      this.syncError = null;
+      const proof = await this.proveQuietThrough(lastEventBlock + 1n, head);
+      this.cursor = proof.cursor;
+      this.syncError = describeProof(proof, head);
       this.saveCursor();
       return this.model;
     }
@@ -358,12 +410,9 @@ export class Scribe {
     // PROGRESS instead of refusing: the window is walked in chunks, and the
     // cursor advances by however much was proved. A quiet window of any width
     // is crossed; a window with a lie in it is re-read.
-    this.cursor = await this.proveQuietThrough(this.cursor, head);
-    if (this.cursor > head) {
-      this.syncError = null;
-    } else {
-      this.syncError = `a block between ${this.cursor} and ${head} may hold an event; the index is re-reading it`;
-    }
+    const proof = await this.proveQuietThrough(this.cursor, head);
+    this.cursor = proof.cursor;
+    this.syncError = describeProof(proof, head);
     this.saveCursor();
     return this.model;
   }
@@ -379,32 +428,53 @@ export class Scribe {
    * to advance across a window wider than the chunk size and so froze the
    * index on the first gap longer than 64 blocks.
    */
-  private async proveQuietThrough(from: bigint, to: bigint): Promise<bigint> {
-    if (to < from) return to + 1n;
+  private async proveQuietThrough(from: bigint, to: bigint): Promise<ProofResult> {
+    if (to < from) return { cursor: to + 1n, stoppedBecause: "quiet" };
     const limit = from + MAX_PROOF_BLOCKS_PER_TICK - 1n;
     const end = limit < to ? limit : to;
 
     let block = from;
     while (block <= end) {
       const chunkEnd = block + BLOOM_PROBE_LIMIT - 1n > end ? end : block + BLOOM_PROBE_LIMIT - 1n;
-      const blocks = await this.rpc.run(() =>
-        Promise.all(
-          Array.from({ length: Number(chunkEnd - block + 1n) }, (_, i) =>
-            withBackoff(() => this.client.getBlock({ blockNumber: block + BigInt(i) }), {
-              operation: "scribe.getBlock",
-            }),
+      let blocks: Awaited<ReturnType<PublicClient["getBlock"]>>[];
+      try {
+        blocks = await this.rpc.run(() =>
+          Promise.all(
+            Array.from({ length: Number(chunkEnd - block + 1n) }, (_, i) =>
+              withBackoff(() => this.client.getBlock({ blockNumber: block + BigInt(i) }), {
+                operation: "scribe.getBlock",
+              }),
+            ),
           ),
-        ),
-      );
+        );
+      } catch (err) {
+        // A block that could not be read proves nothing about itself or about
+        // what follows it, so the cursor stops HERE rather than crossing a
+        // range on no evidence. The next tick tries again.
+        //
+        // The alternative — letting the read failure throw out of the tick —
+        // was worse than a stall: the whole sync failed, so the model was
+        // never rebuilt, and one unreadable block emptied the hall. The
+        // chain reset that triggered this in the first place made the read
+        // fail, and the indexer's answer to "I cannot read a block" was to
+        // throw away everything it already knew.
+        return {
+          cursor: block,
+          stoppedBecause: "unreadable",
+          detail: err instanceof Error ? err.message : String(err),
+        };
+      }
       for (const b of blocks) {
         const bloom = b.logsBloom;
         if (bloom && bloom !== "0x" && TOPIC0S.some((t) => bloomMayContain(bloom, t))) {
-          return b.number;
+          // A block's own number is the authority, and it is null only for a
+          // pending block, which a mined range never holds.
+          return { cursor: b.number ?? block, stoppedBecause: "possible-event" };
         }
       }
       block = chunkEnd + 1n;
     }
-    return end + 1n;
+    return { cursor: end + 1n, stoppedBecause: "quiet" };
   }
 
   /**

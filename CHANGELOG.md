@@ -10,8 +10,73 @@ migration. See [`SECURITY.md`](SECURITY.md) before deploying value.
 
 ## [Unreleased]
 
+### Added
+
+- **Frenchy, the optional voice host.** A server-side ElevenLabs proxy with a
+  muted-by-default control, a once-a-day automatic policy, a paid-verdict-only line,
+  silence on every failure, and reduced-motion handling. The key stays in the API;
+  a missing key or voice id hides the control and changes nothing else. See
+  [`README.md`](README.md#the-voice-host-optional) and
+  [`apps/api/src/voice.ts`](apps/api/src/voice.ts).
+
 ### Fixed
 
+- **The one-write marker is set before the registry call.** `reportedTrial` was
+  written after `giveFeedback`, which left a reentrancy window in which a
+  configured registry could publish the same trial twice. The marker is now set in
+  the same transaction before the call; a revert rolls it back, and a reentrant
+  call sees it. Slither's `reentrancy-no-eth` finding is closed by the ordering.
+
+- **The content store's eviction order depended on filesystem timestamp precision.**
+  Entries were stamped one millisecond apart, but a whole-second mtime filesystem
+  rounds two publications into the same stamp, and the tie-break is the content hash.
+  A CI run caught the new entry sorting before the one it should follow. The stamp
+  step is now one second, which survives whole-second mtimes and costs the same single
+  `utimes` call. Covered by a test that truncates every mtime to a whole second.
+- **A caught-up index was mistaken for a chain reset, forever.** The cursor names the
+  next block to read, so a fully indexed chain sits at `head + 1`; the reset check used
+  `cursor > head`, matched that normal state, cleared the model and restarted the
+  backfill on every idle tick. The hall emptied, `/ready` flipped between true and
+  false, and the site looked half-alive. The check now treats `head + 1` as caught up
+  and only rebuilds beyond it. Covered by
+  `keeps its model when the cursor is simply one past the head`.
+
+- **The site could answer 502 while every container reported healthy.** The shared
+  edge was not attached to `crucible_default`, and the host timer that repairs the
+  attachment redirected its output to `/var/log/` as an unprivileged user — so the
+  redirect failed before the script ran, and the repair never happened. The edge is
+  attached, and the cron log now lives in the deployment user's home; the deploy
+  workflow installs that path. `GET /api/ready` reports `ready:true` again.
+
+- **A reputation backfill could write whatever it liked.** `ReputationBridge.backfill`
+  took an arbitrary `int128` from any caller and never checked that the trial existed,
+  let alone settled — so anyone could mint or slash reputation for any linked identity.
+  It now reads the canonical settled verdict (`settledOutcome`) from `CrucibleTrials`,
+  rejects an unsettled trial, a mismatched agent and a refund, and records one write per
+  trial so a successful report cannot be replayed.
+- **A sponsor could claim its own trial and mint a win for the price of the fee.** The
+  contract already barred self-breaks; it now bars the direct self-claim as well. A
+  second wallet is still possible (Sybil resistance is an identity problem, not a
+  `msg.sender` check), but the free path is closed.
+- **The escrow ceiling was enforced only at creation.** `claimTrial` adds a bond and
+  `fileBreak` adds a stake to `escrowed`, both after the only cap check. Both paths now
+  apply `MAX_TOTAL_ESCROWED`, and the invariants still hold.
+- **The read model published a stake and active count the chain had already moved.**
+  `AgentRow.stakeWei` never fell on a claim or a stake withdrawal and never rose when a
+  bond returned; `active` was written once as zero and never updated; `RunnerSet` was
+  not subscribed, so a rotated runner key stayed stale. The projection now follows
+  free stake, active trials, bond returns and runner changes, and ignores a duplicated
+  claim.
+- **The runner never enforced `touchesTests`.** The built-in agent checked its own
+  output, and the README said the runner checked too — it did not. `ForgeRunner` now
+  refuses any patch that touches the pinned suite before `git apply`, so a different
+  agent implementation cannot rewrite its own exam.
+- **The rubric accepted a panel larger than three.** The guard was `< 3` while the
+  message said "exactly three"; with four judges a two-vote minority could be counted
+  as a 2-of-3 majority. The guard is now exact.
+- **The web app could create and settle a trial but never withdraw the payout.** The
+  contract credits withdrawals; no page called `withdraw()`. The header now shows the
+  connected wallet's credit and a withdraw control.
 - **The promotion ladder had not run for eight days.** Three faults lined up, each
   of which alone would have stopped it and each of which hid the next. The
   indexer's backfill-cost gate asserted wall-clock on a host that also serves
@@ -227,9 +292,12 @@ Selected items from the hardening passes, all reproduced against the unfixed cod
 - **The slash-decay tier and the indexer's win counter measure different things** — one is
   the registry's decayed record, the other a count of settlement logs. Both are true of
   different facts and the UI labels them separately.
-- **`forge coverage` does not run** (stack-too-deep with the optimizer off).
-- **Windows:** `npm test` reaches the contracts workspace only if Foundry is on the system
-  PATH, because npm spawns `cmd.exe`.
+- **`forge coverage` needs `--ir-minimum`.** Forge disables the optimizer and viaIR for
+  coverage, and the legacy codegen then hits "stack too deep"; `--ir-minimum` keeps viaIR
+  on with minimum optimization. `npm run coverage --workspace crucible-contracts` reports
+  97.4% of lines in `CrucibleTrials.sol`.
+- **Windows:** `npm test` resolves Foundry through `scripts/run-forge.mjs`; it checks
+  PATH, `%USERPROFILE%\.foundry\bin`, then `FOUNDRY_BIN`.
 
 ### Security
 

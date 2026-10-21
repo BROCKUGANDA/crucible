@@ -109,6 +109,36 @@ follows a redirect or does not; telling it "this endpoint requires TLS" in the b
 than a `Location` it cannot use. If browser users need the redirect, put it in the proxy that
 actually knows the public host name.
 
+## Who the rate limiter thinks you are
+
+The bucket key is the whole control. A limiter whose key is chosen by the party it
+is meant to limit is not a limiter.
+
+**With `TRUST_PROXY=1`** the key is the **right-most `X-Forwarded-For` entry**. Every proxy
+in this deployment's shape puts the address it actually saw at the end of the chain:
+nginx's `$proxy_add_x_forwarded_for` appends `$remote_addr`, and Caddy *replaces* the header
+with the peer it saw — "by default, the proxy will ignore their values from incoming requests,
+to prevent spoofing". The left-most entry is whatever the caller sent, so reading it lets a
+client mint a fresh bucket per request, which is the exact bypass the limiter exists to
+prevent.
+
+**`X-Real-IP` is not read at all.** It used to be read first, on the belief that "Caddy
+overwrites it with the peer it saw". It does not: Caddy's documented defaults are
+`X-Forwarded-For`, `X-Forwarded-Proto` and `X-Forwarded-Host`, and "By default, Caddy passes
+through incoming headers—including Host—to the backend without modifications". A client that
+sent `X-Real-IP` therefore had it delivered to the API untouched, and one header on the
+request bought a fresh allowance. `CF-Connecting-IP` is not read either — it is only
+meaningful when the peer is Cloudflare, and this process has no way to know that.
+
+**With `TRUST_PROXY=0`** the key is the socket peer. Behind a proxy that means every visitor
+shares one bucket, because the only address this process can see is the proxy's. That is the
+trade, and it is the reason the deployed stack wants `TRUST_PROXY=1`: the two settings are
+not equally wrong, one of them is wrong.
+
+The bucket store is **per process**. Behind a load balancer each instance keeps its own
+buckets, so the effective limit multiplies by the instance count. That is documented rather
+than hidden; a shared counter needs Redis, not a `Map`.
+
 ## `/health` versus `/ready`
 
 * `/health` — liveness plus index reach: `ok`, `trials`, `indexedTo`, `head`, `syncError`.

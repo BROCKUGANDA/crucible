@@ -27,6 +27,7 @@ export type FailureKind =
   | "deadline-exceeded"
   | "bond-over-cap"
   | "agent-threw"
+  | "tests-modified"
   | "artifact-invalid";
 
 export class ForgeFailure extends Error {
@@ -55,6 +56,7 @@ export const FAILURE_COPY: Record<FailureKind, string> = {
   "bond-over-cap":
     "This trial's bond exceeds your risk cap. Raise it in Settings if you're sure.",
   "agent-threw": "The agent crashed mid-forge. Nothing was submitted.",
+  "tests-modified": "The patch touched the pinned test suite. Nothing was submitted.",
   "artifact-invalid": "The run artifact failed validation. Nothing was submitted.",
 };
 

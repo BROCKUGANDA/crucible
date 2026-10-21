@@ -20,12 +20,15 @@ when a real chain is in front of it — not about live funds.
 | `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` | build argument; public in the browser bundle | Nothing — it identifies the app to WalletConnect's relay | Nothing. It is public by construction and the `.env.example` says so. |
 | `NEXT_PUBLIC_*` (chain, addresses, RPC) | build arguments; public in the browser bundle | Nothing | Nothing. These are the addresses a wallet talks to, and the bundle's copy of them is what the `assert-deployment.sh` script compares against the chain. |
 | `NVIDIA_API_KEY`, `NIM_API_KEY`, `GROQ_API_KEY`, `ANTHROPIC_API_KEY` | `.env`; used by the live agent | Nothing on-chain — they are model-provider credentials | Someone else's inference budget. No chain access. |
+| `ELEVENLABS_API_KEY` | `.env` on the host; used only by the API's optional voice proxy | Nothing on-chain — a text-to-speech credential | Someone else's TTS budget. The browser never receives it; no chain access. `VOICE_DISABLED=1` silences the route without removing the key. |
 | `WARDEN_WEBHOOK_URL` | `.env`; used by the keeper's notifications | Nothing on-chain | The webhook endpoint — which is why the URL is treated as a secret even though it is a URL. |
-| Anvil dev key #0 | in the source, in `scripts/demo.mjs` and the keeper's default | Transactions on the local chain | Nothing. It is published in Anvil's own documentation and every account derived from it is public. `gitleaks` flags it; `.gitleaksignore` says why, in writing. |
+| Anvil dev key #0 | in the source, in `scripts/demo.mjs` and the keeper's default | Transactions on the local chain | Nothing. It is published in Anvil's own documentation and every account derived from it is public. `gitleaks` flags it; `.gitleaks.toml` says why, in writing. |
 
-**No plaintext private key is committed.** `gitleaks` scans the whole git
-history on every CI run, and the only findings it has ever reported are the
-three occurrences of the published Anvil key.
+**No key that controls real funds is committed.** The only plaintext private
+keys in the tree are the published Anvil accounts listed above. `gitleaks`
+scans the whole git history on every CI run; `.gitleaks.toml` allowlists those
+known development keys and the secp256k1 constants, and every other finding
+fails the job.
 
 ## Roles the contracts hold
 

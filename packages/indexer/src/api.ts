@@ -257,17 +257,33 @@ export interface ApiEconomics {
   volumeEth: string;
   /** how many trials settled in an agent's favour */
   paidSettlements: number;
-  /** the fee in basis points, as the chain's own constant has it */
-  feeBps: number;
+  /**
+   * The fee in basis points, as the chain's own constant has it — or null when the
+   * constant could not be read.
+   *
+   * Null is the honest answer and 0 is not: the rate is a SECOND read of the chain,
+   * and the money above does not depend on it. Publishing 0 for a fee that was never
+   * read says the protocol charges nothing, which is a claim about the chain made by
+   * a process that does not know.
+   */
+  feeBps: number | null;
 }
 
 /**
  * The protocol's books, from the read model.
  *
- * The fee is the contract's own arithmetic — `reward * FEE_BPS / BPS` — so the
- * number here is the number the chain used, not one this process invented.
+ * The money comes from the settlement logs, not from a re-derivation of them. The
+ * contract emits `VerdictFinalized(id, Paid, reward - fee)`, so the payout it charged
+ * is in the log and the fee is the difference between the escrowed reward and that
+ * payout. Recomputing either from `FEE_BPS` needed a second read of the chain, and
+ * when that read failed the books published a fee of zero and a payout of the FULL
+ * reward — a number the chain never charged, published as though it had been
+ * measured.
+ *
+ * `feeBps` is the one number here that still needs the constant, so it is reported
+ * as read or reported as unknown.
  */
-export function buildEconomics(model: ReadModel, feeBps: number): ApiEconomics {
+export function buildEconomics(model: ReadModel, feeBps: number | null): ApiEconomics {
   let paidOutWei = 0n;
   let feesWei = 0n;
   let volumeWei = 0n;
@@ -276,11 +292,15 @@ export function buildEconomics(model: ReadModel, feeBps: number): ApiEconomics {
   for (const trial of model.trials.values()) {
     volumeWei += trial.rewardWei;
     if (trial.verdict !== "paid") continue;
-    // The contract's own arithmetic: `reward * FEE_BPS / BPS`.
-    const fee = (trial.rewardWei * BigInt(feeBps)) / 10_000n;
-    feesWei += fee;
-    paidOutWei += trial.rewardWei - fee;
     paidSettlements += 1;
+    // The chain's own arithmetic, from the log that settled the trial. A settlement
+    // whose payout the index never saw is counted but adds nothing to either total:
+    // an unknown number is not zero.
+    if (trial.payoutWei === null) continue;
+    paidOutWei += trial.payoutWei;
+    // The fee is what the chain kept: the escrowed reward minus what it paid out.
+    const fee = trial.rewardWei - trial.payoutWei;
+    feesWei += fee > 0n ? fee : 0n;
   }
 
   return {
@@ -300,9 +320,10 @@ export function buildSnapshot(
     /**
      * The chain's settlement fee, in basis points. Read from the contract by
      * the host rather than hardcoded here, so the published number is the one
-     * the chain actually charges.
+     * the chain actually charges — or null when that read failed, which is a
+     * different answer from zero.
      */
-    feeBps?: number;
+    feeBps?: number | null;
   },
 ): ApiSnapshot {
   const trials = listTrials(model).map((t) => toApiTrial(t, model));
@@ -333,6 +354,6 @@ export function buildSnapshot(
     agents,
     hall: hall(model).map((e) => toApiHallEntry(e, alloyById.get(e.agentId)?.tier ?? null)),
     counts,
-    economics: buildEconomics(model, opts.feeBps ?? 0),
+    economics: buildEconomics(model, opts.feeBps ?? null),
   };
 }

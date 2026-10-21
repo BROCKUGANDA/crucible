@@ -9,10 +9,29 @@
  * This is the 90-second stage fallback from the PRD: no RPC, no faucet, no wallet.
  */
 
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 
 const ROOT = new URL("..", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1");
+
+/**
+ * Foundry is often installed at ~/.foundry/bin on Windows without joining PATH, so a
+ * shell that can run `forge` interactively cannot hand that PATH to this child process.
+ * Resolve the binary once, then use the resolved path for anvil and forge alike.
+ */
+function resolveFoundry(name) {
+  if (spawnSync(name, ["--version"], { stdio: "ignore" }).status === 0) return name;
+  const dir = process.env.FOUNDRY_BIN || join(homedir(), ".foundry", "bin");
+  const candidates =
+    process.platform === "win32" ? [join(dir, `${name}.exe`), join(dir, name)] : [join(dir, name)];
+  return candidates.find((candidate) => existsSync(candidate)) ?? name;
+}
+
+const FORGE = resolveFoundry("forge");
+const ANVIL = resolveFoundry("anvil");
 const ANVIL_PORT = 8545;
 const RPC = `http://127.0.0.1:${ANVIL_PORT}`;
 const ANVIL_KEY = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
@@ -68,7 +87,7 @@ async function rpcReady() {
 
 async function main() {
   console.log("▸ starting anvil on :%d", ANVIL_PORT);
-  const anvil = spawn("anvil", ["--port", String(ANVIL_PORT), "--silent"], {
+  const anvil = spawn(ANVIL, ["--port", String(ANVIL_PORT), "--silent"], {
     shell: process.platform === "win32",
     stdio: "ignore",
     detached: false,
@@ -85,12 +104,12 @@ async function main() {
 
   if (!(await rpcReady())) {
     shutdown();
-    throw new Error("anvil did not come up — is Foundry on PATH?");
+    throw new Error("anvil did not come up — check ~/.foundry/bin or set FOUNDRY_BIN");
   }
   console.log("✓ anvil ready");
 
   console.log("▸ deploying contracts");
-  const deploy = await capture("forge", ["script", "script/Deploy.s.sol:Deploy", "--rpc-url", RPC, "--broadcast", "--private-key", ANVIL_KEY], {
+  const deploy = await capture(FORGE, ["script", "script/Deploy.s.sol:Deploy", "--rpc-url", RPC, "--broadcast", "--private-key", ANVIL_KEY], {
     cwd: `${ROOT}crucible-contracts`,
   });
   const trials = deploy.match(/CrucibleTrials (0x[0-9a-fA-F]{40})/)?.[1];
@@ -100,7 +119,7 @@ async function main() {
   console.log("✓ AlloyRegistry", alloy);
 
   console.log("▸ replaying the loop");
-  await run("forge", ["script", "script/Demo.s.sol:Demo", "--rpc-url", RPC, "--broadcast"], {
+  await run(FORGE, ["script", "script/Demo.s.sol:Demo", "--rpc-url", RPC, "--broadcast"], {
     cwd: `${ROOT}crucible-contracts`,
   });
 
@@ -109,7 +128,7 @@ async function main() {
   // one claimed and waiting for a run.
   console.log("▸ extending the chain with trials a visitor can act on");
   await run(
-    "forge",
+    FORGE,
     ["script", "script/Extend.s.sol:Extend", "--rpc-url", RPC, "--broadcast", "--private-key", ANVIL_KEY],
     { cwd: `${ROOT}crucible-contracts`, env: { TRIALS_ADDRESS: trials } },
   );

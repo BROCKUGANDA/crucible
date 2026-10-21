@@ -3,9 +3,14 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
+import { useAccount, useReadContract } from "wagmi";
+import { TRIALS_ABI } from "@crucible/smith";
 import { WalletButton, WalletNotConfiguredNotice } from "@/components/Wallet";
+import { VoiceControl } from "@/components/VoiceControl";
 import { Modal } from "@/components/Modal";
-import { activeChain, explorerTxUrl } from "@/lib/wagmi";
+import { formatWei } from "@/lib/eth";
+import { buildWithdraw, useTx } from "@/lib/useTx";
+import { activeChain, deployment, explorerTxUrl, ZERO_ADDRESS } from "@/lib/wagmi";
 
 const NAV = [
   { href: "/trials", label: "Trials" },
@@ -58,6 +63,8 @@ export function Chrome({ children }: { children: ReactNode }) {
           >
             Menu
           </button>
+          <VoiceControl />
+          <CreditButton />
           <WalletButton />
         </div>
       </header>
@@ -84,6 +91,50 @@ export function Chrome({ children }: { children: ReactNode }) {
         <span>Alloy is non-transferable. Trust should be too.</span>
       </footer>
     </div>
+  );
+}
+
+/**
+ * The contract pays through a pull ledger: settlement credits the operator, and the
+ * only way the money leaves is `withdraw()`. Without this control the web app could
+ * create, claim, and settle a trial but never hand the operator their ETH — a UI that
+ * stops one call short of the payout.
+ */
+function CreditButton() {
+  const { address } = useAccount();
+  const dep = deployment();
+  const { state, message, send, busy } = useTx();
+  const credit = useReadContract({
+    abi: TRIALS_ABI,
+    address: dep.trials,
+    functionName: "credit",
+    args: [address ?? ZERO_ADDRESS],
+    query: { enabled: Boolean(address) && dep.configured },
+  });
+
+  useEffect(() => {
+    if (state === "poured") void credit.refetch();
+  }, [state, credit.refetch]);
+
+  const amount = (credit.data as bigint | undefined) ?? 0n;
+  if (!address || amount === 0n) return null;
+
+  return (
+    <span className="wallet-inline">
+      <button
+        className="btn btn-ghost btn-sm"
+        disabled={busy}
+        onClick={() => send(buildWithdraw())}
+        title="Withdraw everything credited to this wallet"
+      >
+        {busy ? "Withdrawing…" : `Withdraw ${formatWei(amount)} ETH`}
+      </button>
+      {state === "doused" ? (
+        <span className="mono" data-tone="sear" role="alert">
+          {message}
+        </span>
+      ) : null}
+    </span>
   );
 }
 

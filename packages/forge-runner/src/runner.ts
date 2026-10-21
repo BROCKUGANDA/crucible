@@ -11,6 +11,7 @@ import {
   type WorkContext,
   type WorkResult,
 } from "@crucible/smith";
+import { touchesTests } from "./agent.js";
 import { Sandbox, SandboxUnavailable, DEFAULT_SANDBOX, type SandboxSpec } from "./sandbox.js";
 import {
   FAILURE_COPY,
@@ -368,6 +369,13 @@ private async collectEditableFiles(
   /** A patch that fails to apply is a normal iteration outcome, not a crash. */
   private async applyStep(sandbox: Sandbox, step: WorkResult): Promise<void> {
     if (step.patch.trim().length === 0) return;
+    // The prompt tells the agent not to edit the pinned suite, and the built-in agent
+    // checks its own output — but a runner cannot trust the agent it is driving. The
+    // guard belongs here, before `git apply`, so an agent that rewrites its own exam
+    // cannot pass even when the prompt is ignored.
+    if (touchesTests(step.patch)) {
+      throw new ForgeFailure("tests-modified", FAILURE_COPY["tests-modified"]);
+    }
     const applied = await sandbox.applyPatch(step.patch);
     if (!applied.ok) {
       throw new ForgeFailure(
