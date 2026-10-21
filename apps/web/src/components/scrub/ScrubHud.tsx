@@ -21,6 +21,7 @@ export function ScrubHud({
   smiths,
   settled,
   lastBlock,
+  take,
   showCrowdKey,
 }: {
   trials: number | null;
@@ -28,6 +29,12 @@ export function ScrubHud({
   settled: number | null;
   /** Block number of the newest settlement the index saw — not the chain head. */
   lastBlock: number | null;
+  /**
+   * The protocol's settlement fee, in ETH. Shown because it is real revenue
+   * and the reader is entitled to know whose it is: null until the snapshot
+   * arrives, and never zero-for-zero.
+   */
+  take: string | null;
   /** Only when the crowd is actually being drawn from smiths, so the key never lies. */
   showCrowdKey: boolean;
 }) {
@@ -75,6 +82,10 @@ export function ScrubHud({
         <div>
           <dt>Latest</dt>
           <dd>{lastBlock ?? "—"}</dd>
+        </div>
+        <div>
+          <dt>Take</dt>
+          <dd>{take ?? "—"}</dd>
         </div>
       </dl>
 
