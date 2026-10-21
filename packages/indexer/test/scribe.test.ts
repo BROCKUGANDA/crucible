@@ -583,4 +583,33 @@ describe("bloom cross-check on a quiet window", () => {
     node.close();
     shorter.close();
   });
+
+  /**
+   * A caught-up index is not a reset.
+   *
+   * The cursor names the next block to read, so after indexing through the head it is
+   * `head + 1`. The reset check used `cursor > head`, which matched that state and
+   * cleared the model on every idle tick — the hall emptied and refilled forever.
+   */
+  it("keeps its model when the cursor is simply one past the head", async () => {
+    const node = await lyingNode({ logs: [], quietBlocks: true, head: 3 });
+    const scribe = new Scribe({
+      trialsAddress: node.address,
+      alloyAddress: node.address,
+      chain: foundry,
+      rpcUrl: node.url,
+      fromBlock: 0n,
+    });
+
+    await scribe.sync();
+    expect(scribe.status.indexedTo).toBe(4n);
+    expect(scribe.status.syncError).toBeNull();
+
+    // The same head, one tick later. This used to be read as a chain reset,
+    // which cleared the model and restarted the backfill every idle tick.
+    await scribe.sync();
+    expect(scribe.status.indexedTo).toBe(4n);
+    expect(scribe.status.syncError).toBeNull();
+    node.close();
+  });
 });

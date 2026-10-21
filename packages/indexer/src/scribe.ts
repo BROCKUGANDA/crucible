@@ -71,6 +71,7 @@ export interface IndexerConfig {
 const EVENT_NAMES = [
   "TrialCreated",
   "AgentRegistered",
+  "RunnerSet",
   "TrialClaimed",
   "RunSubmitted",
   "BreakFiled",
@@ -323,13 +324,24 @@ export class Scribe {
     );
     this.head = head;
 
-    // A chain that was reset — an anvil restart, a fork, a devnet rebuilt from
-    // its seed — leaves the cursor ahead of the head, and the cursor file
-    // survives the restart. The old code returned the model as it was, so the
-    // indexer served a frozen pre-reset index forever, and `/ready` computed
-    // a lag of zero because the cursor was above the head. The API reported
-    // healthy while nothing was being indexed. A reset is a rebuild.
+    // The cursor is the NEXT block to read, so `head + 1` is the caught-up
+    // state, not a reset. Treating it as one cleared the model and restarted
+    // the backfill on every idle tick: the hall emptied, `/ready` flipped
+    // between true and false, and the index never settled. Only a cursor
+    // beyond `head + 1` can have come from a shorter chain.
     if (this.cursor > head) {
+      if (this.cursor === head + 1n) {
+        this.syncError = null;
+        this.saveCursor();
+        return this.model;
+      }
+
+      // A chain that was reset — an anvil restart, a fork, a devnet rebuilt from
+      // its seed — leaves the cursor ahead of the head, and the cursor file
+      // survives the restart. The old code returned the model as it was, so the
+      // indexer served a frozen pre-reset index forever, and `/ready` computed
+      // a lag of zero because the cursor was above the head. The API reported
+      // healthy while nothing was being indexed. A reset is a rebuild.
       this.cursor = this.cfg.fromBlock ?? 0n;
       this.model = emptyModel();
       this.blockTimes.clear();

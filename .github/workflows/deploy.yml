@@ -132,7 +132,7 @@ jobs:
           if [ -f deploy/edge-attach.sh ]; then
             sudo install -m 0755 deploy/edge-attach.sh /usr/local/bin/crucible-edge-attach
             ( crontab -l 2>/dev/null | grep -v 'crucible-edge-attach' ; \
-              echo '*/2 * * * * /usr/local/bin/crucible-edge-attach >> /var/log/crucible-edge-attach.log 2>&1' \
+              echo '*/2 * * * * /usr/local/bin/crucible-edge-attach >> /home/ubuntu/crucible-edge-attach.log 2>&1' \
             ) | crontab -
             echo "host timer installed"
           fi
