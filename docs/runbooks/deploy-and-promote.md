@@ -23,6 +23,26 @@ must ask for the next gate explicitly. Do not promote by force-pushing.
    `/api/health`.
 5. Verify the public site and `/api/ready`.
 
+## The ladder waits for its gate
+
+A `workflow_dispatch` CI run did **not** reliably raise the next `workflow_run`:
+the ladder promoted `develop → staging`, staged CI passed, and no
+`staging → main` run appeared; the same held for the deploy trigger. The
+promotion now dispatches CI, waits for that run by id, and dispatches the next
+step by name when the gate is green. A red gate stops the ladder.
+
+If that wait times out or a run is cancelled, the fallback is still the two
+idempotent commands:
+
+```bash
+gh workflow run promote.yml --ref main -f from=staging
+gh workflow run deploy.yml --ref main
+```
+
+Do not assume a green `staging` is live until `main` has the merge and the
+deploy has run. Check `gh run list --workflow promote.yml` and
+`gh run list --workflow deploy.yml`.
+
 ## Manual single-service rebuild (incident path)
 
 Use this only when a running image is wrong and the pipeline is unavailable.

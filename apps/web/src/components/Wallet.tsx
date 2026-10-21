@@ -57,26 +57,42 @@ function InjectedConnect() {
   }
 
   const injected = connectors.find((c) => c.type === "injected");
-  if (!injected) {
+  const coinbase = connectors.find((c) => c.type === "coinbaseWallet");
+
+  if (!injected && !coinbase) {
     return (
       <span className="mono" data-tone="ash">
-        No injected wallet found
+        No wallet found
       </span>
     );
   }
 
   return (
     <span className="wallet-inline">
-      <button
-        className="btn btn-primary"
-        disabled={isPending}
-        onClick={() => {
-          vibrate(haptics.bondStaked, true);
-          connect({ connector: injected });
-        }}
-      >
-        {isPending ? "Connecting…" : "Connect wallet"}
-      </button>
+      {injected ? (
+        <button
+          className="btn btn-primary"
+          disabled={isPending}
+          onClick={() => {
+            vibrate(haptics.bondStaked, true);
+            connect({ connector: injected });
+          }}
+        >
+          {isPending ? "Connecting…" : "Connect wallet"}
+        </button>
+      ) : null}
+      {coinbase ? (
+        <button
+          className="btn btn-ghost"
+          disabled={isPending}
+          onClick={() => {
+            vibrate(haptics.bondStaked, true);
+            connect({ connector: coinbase });
+          }}
+        >
+          Coinbase Wallet
+        </button>
+      ) : null}
       {error ? (
         <span className="mono" data-tone="sear">
           {error.message.split("\n")[0]}
