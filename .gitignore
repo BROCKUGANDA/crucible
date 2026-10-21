@@ -37,3 +37,6 @@ graphflow-out/
 
 # markdown docs (untracked)
 HARDENING.md
+
+# OpenChamber session screenshots
+.openchamber/
