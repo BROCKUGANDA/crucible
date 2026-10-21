@@ -5,9 +5,10 @@
   "description": "Crucible Solidity contracts — Foundry project. Not published to npm; workspace entry exists so the repo is one unit.",
   "license": "MIT",
   "scripts": {
-    "build": "forge build",
-    "pretest": "node -e \"const {execSync}=require('child_process');try{execSync('forge --version',{stdio:'ignore'})}catch{console.error('forge not found on PATH. Install Foundry: https://book.getfoundry.sh/getting-started/installation');process.exit(1)}\"",
-    "test": "forge test",
-    "coverage": "forge coverage --report summary"
+    "build": "node ../scripts/run-forge.mjs build",
+    "pretest": "node ../scripts/run-forge.mjs --version",
+    "test": "node ../scripts/run-forge.mjs test",
+    "coverage": "node ../scripts/run-forge.mjs coverage --ir-minimum --report summary",
+    "demo": "node ../scripts/run-forge.mjs script script/Demo.s.sol:Demo --rpc-url http://127.0.0.1:8545 --broadcast"
   }
 }

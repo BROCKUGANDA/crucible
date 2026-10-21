@@ -73,6 +73,24 @@ const ALLOY_TTL_MS = (() => {
   return Number.isFinite(v) && v > 0 ? v : 2000;
 })();
 
+/**
+ * Frenchy is optional. Both the key and the voice id are configuration; a missing
+ * either keeps the voice host off, and the web app hides the control. `VOICE_DISABLED=1`
+ * is the kill switch for a deployment that has the credentials but wants silence.
+ */
+const voice = (() => {
+  if (process.env.VOICE_DISABLED === "1") return null;
+  const apiKey = process.env.ELEVENLABS_API_KEY?.trim();
+  const voiceId = process.env.ELEVENLABS_VOICE_ID?.trim();
+  const baseUrl = process.env.ELEVENLABS_BASE_URL?.trim() || undefined;
+  const modelId = process.env.ELEVENLABS_MODEL_ID?.trim() || "eleven_flash_v2_5";
+  if (!apiKey || !voiceId) return null;
+  if (baseUrl && !/^https?:\/\//.test(baseUrl)) {
+    throw new Error(`ELEVENLABS_BASE_URL must be an http(s) URL; got "${baseUrl}"`);
+  }
+  return { apiKey, voiceId, modelId, baseUrl };
+})();
+
 const publicClient = createPublicClient({ chain: foundry, transport: http(rpcUrl) });
 
 const scribe = new Scribe({
@@ -204,7 +222,11 @@ await sweepAlloy();
 selfSchedulingLoop(sweepAlloy, {
   intervalMs: ALLOY_TTL_MS,
   runImmediately: false,
-  onError: (err) => dlq.push("alloy.sweep", (err as Error).message),
+  // A throw that is not an `Error` has no `.message`, and the dead-letter queue slices
+  // whatever it is given — so `(err as Error).message` handed it `undefined` and the queue
+  // threw while reporting the failure that had just been caught. The sweep's failure was
+  // then swallowed by the loop and never reached the log either.
+  onError: (err) => dlq.push("alloy.sweep", err instanceof Error ? err.message : String(err)),
 }).start();
 
 /**
@@ -212,10 +234,20 @@ selfSchedulingLoop(sweepAlloy, {
  *
  * It is a `constant`, so it cannot change, and it is read once: the host knows
  * the chain's own number rather than carrying a copy that could drift from it.
- * A read that fails leaves the books at zero rather than publishing a guess —
- * a fee nobody can verify is worse than an absent one.
+ *
+ * **Null when the read fails, not zero.** The comment here used to say "a read
+ * that fails leaves the books at zero rather than publishing a guess — a fee
+ * nobody can verify is worse than an absent one", and the code did exactly the
+ * opposite: it left the books at zero AND published it, as `feeBps: 0` and a
+ * fee of "0" ETH, which reads as a measured fact. Zero is not an absent fee;
+ * it is a claim that the protocol charges nothing.
+ *
+ * The money itself no longer depends on this read: the settlement logs carry
+ * the payout the chain actually made, and the fee is the difference between
+ * that and the escrowed reward. So the only thing lost by an unreadable
+ * constant is the rate in basis points, and that is published as unknown.
  */
-let protocolFeeBps = 0;
+let protocolFeeBps: number | null = null;
 try {
   protocolFeeBps = Number(
     await publicClient.readContract({
@@ -226,7 +258,10 @@ try {
   );
   console.log(`[crucible] protocol settlement fee: ${protocolFeeBps / 100}%`);
 } catch (err) {
-  console.error(`[crucible] could not read FEE_BPS: ${(err as Error).message}`);
+  console.error(
+    `[crucible] could not read FEE_BPS: ${err instanceof Error ? err.message : String(err)} — ` +
+      "the rate is published as unknown; the settled amounts are read from the chain's own logs",
+  );
 }
 
 const trustProxy = process.env.TRUST_PROXY === "1";
@@ -298,12 +333,18 @@ const app = createApp({
   // `X-Forwarded-Proto` believable for the TLS check.
   trustProxy,
   security,
+  voice,
 });
 
 serve({ fetch: app.fetch, port }, (info) => {
   console.log(`[crucible] api listening on :${info.port}`);
   console.log(`[crucible] indexing ${trialsAddress}`);
   console.log(`[crucible] alloy from ${alloyAddress} every ${ALLOY_TTL_MS}ms`);
+  console.log(
+    voice
+      ? `[crucible] voice: Frenchy on (${voice.modelId})`
+      : "[crucible] voice: off (set ELEVENLABS_API_KEY and ELEVENLABS_VOICE_ID to enable)",
+  );
   // The transport policy, stated as what it is rather than as a checkbox. `*` here means
   // "reads are public by design, credentialed reads are impossible" — see security.ts.
   console.log(
@@ -318,6 +359,17 @@ serve({ fetch: app.fetch, port }, (info) => {
       security.enforceHttps
         ? `https required, HSTS max-age=${security.hstsMaxAge}s over TLS${trustProxy ? "" : " (TRUST_PROXY off: X-Forwarded-Proto will not be believed)"}`
         : "plaintext accepted (this is a local demo; set ENFORCE_HTTPS=1 behind a TLS proxy)"
+    }`,
+  );
+  // Which address the limiter buckets by. This is the whole control, so it is stated
+  // rather than left to be discovered: behind a proxy with TRUST_PROXY off, every visitor
+  // shares ONE bucket because the only address this process can see is the proxy's, and
+  // one refresh loop starves everyone else.
+  console.log(
+    `[crucible] rate limit key: ${
+      trustProxy
+        ? "the right-most X-Forwarded-For entry (the address the proxy recorded)"
+        : "the socket peer (every visitor behind a proxy shares one bucket)"
     }`,
   );
   console.log(

@@ -462,6 +462,13 @@ export const TIER_NAMES = ["Unforged", "Iron", "Bronze", "Steel", "Damascus"] as
  */
 export const ERROR_COPY = {
   RewardTooSmall: "Reward too small — the floor is 0.01 ETH.",
+  RewardTooLarge: "Reward too large - the ceiling is 1,000 ETH.",
+  EscrowCapExceeded: "This contract's escrow ceiling is reached - settle live trials before creating more.",
+  ZeroSpec: "The spec CID is empty - pin the spec before creating the trial.",
+  ZeroTests: "The tests CID is empty - pin the test suite before creating the trial.",
+  ZeroRunner: "Runner key cannot be the zero address.",
+  ZeroRunHash: "Run hash is empty - the artifact was not hashed before submission.",
+  ZeroProof: "Break proof CID is empty - attach evidence before filing a break.",
   BadWindow: "Skeptic window must be between 1 hour and 7 days.",
   BadDeadline: "Deadline must be at least 1 hour out.",
   StakeTooSmallAgent: "Stake at least the bond to play this trial.",

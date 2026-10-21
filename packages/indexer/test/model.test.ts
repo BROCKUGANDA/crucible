@@ -86,6 +86,68 @@ describe("applyEvent", () => {
     expect(t.verdict).toBe("paid");
   });
 
+  it("tracks free stake and active trials across a claim and a paid verdict", () => {
+    const m = replay(fullStory());
+    const agent = m.agents.get(1)!;
+    expect(agent.stakeWei).toBe(10n ** 18n); // bond returned on a paid verdict
+    expect(agent.active).toBe(0);
+    expect(agent.wins).toBe(1);
+    expect(agent.survived).toBe(1);
+  });
+
+  it("does not return the bond on a slash", () => {
+    const m = replay([
+      ...fullStory().slice(0, 5),
+      ev("VerdictFinalized", { id: 1n, verdict: 2, agentPayout: 0n }, 105n),
+    ]);
+    const agent = m.agents.get(1)!;
+    expect(agent.stakeWei).toBe(8n * 10n ** 17n);
+    expect(agent.active).toBe(0);
+    expect(agent.slashes).toBe(1);
+  });
+
+  it("returns the bond when a claimed trial is refunded", () => {
+    const m = replay([
+      ...fullStory().slice(0, 3),
+      ev("VerdictFinalized", { id: 1n, verdict: 3, agentPayout: 0n }, 105n),
+    ]);
+    const agent = m.agents.get(1)!;
+    expect(m.trials.get(1)!.verdict).toBe("refunded");
+    expect(agent.stakeWei).toBe(10n ** 18n);
+    expect(agent.active).toBe(0);
+  });
+
+  it("applies a stake withdrawal to the free balance", () => {
+    const m = replay([
+      ev("AgentRegistered", {
+        agentId: 1n, operator: OPERATOR, runner: OPERATOR,
+        metadataURI: "ipfs://m", stake: 10n ** 18n,
+      }, 101n),
+      ev("StakeWithdrawn", { agentId: 1n, to: OPERATOR, amount: 3n * 10n ** 17n }, 102n),
+    ]);
+    expect(m.agents.get(1)!.stakeWei).toBe(7n * 10n ** 17n);
+  });
+
+  it("applies a runner rotation", () => {
+    const NEW_RUNNER = "0x5555555555555555555555555555555555555555";
+    const m = replay([
+      ev("AgentRegistered", {
+        agentId: 1n, operator: OPERATOR, runner: OPERATOR,
+        metadataURI: "ipfs://m", stake: 10n ** 18n,
+      }, 101n),
+      ev("RunnerSet", { agentId: 1n, runner: NEW_RUNNER }, 102n),
+    ]);
+    expect(m.agents.get(1)!.runner).toBe(NEW_RUNNER);
+  });
+
+  it("counts a duplicated claim once", () => {
+    const claim = ev("TrialClaimed", { id: 1n, agentId: 1n, bond: 2n * 10n ** 17n }, 102n);
+    const m = replay([...fullStory().slice(0, 3), claim]);
+    const agent = m.agents.get(1)!;
+    expect(agent.stakeWei).toBe(8n * 10n ** 17n);
+    expect(agent.active).toBe(1);
+  });
+
   it("never mutates the model it is given", () => {
     const before = emptyModel();
     const after = applyEvent(before, fullStory()[0]!);
@@ -121,6 +183,32 @@ describe("hydrateTimestamps", () => {
     const m = replay(fullStory());
     hydrateTimestamps(m, new Map());
     expect(m.trials.get(1)!.createdAt).toBe(100);
+  });
+
+  /**
+   * A pass that changed nothing must not say it changed something.
+   *
+   * The version counter is what invalidates the API's cached snapshot, and this pass runs
+   * on every batch. Bumping it unconditionally meant a sync that moved nothing still
+   * threw the cache away, every time — so the cache only ever existed between ticks.
+   */
+  it("moves the version only when a timestamp actually moved", () => {
+    const m = replay(fullStory());
+    const before = m.version;
+
+    // A block time that resolves to the same number the row already holds changes
+    // nothing a reader can see.
+    hydrateTimestamps(m, new Map([[100n, 100]]));
+    expect(m.version).toBe(before);
+
+    // A real timestamp is a change.
+    hydrateTimestamps(m, new Map([[100n, 1_699_000_000]]));
+    expect(m.version).toBe(before + 1);
+
+    // And once it is right, re-hydrating with the same value changes nothing again.
+    const after = m.version;
+    hydrateTimestamps(m, new Map([[100n, 1_699_000_000]]));
+    expect(m.version).toBe(after);
   });
 });
 
@@ -488,11 +576,45 @@ describe("economics", () => {
     expect(snap.economics.paidOutEth).toBe("0.95");
   });
 
-  it("moves the fee with the constant rather than with a hardcoded number", () => {
+  /**
+   * The money comes from the settlement log, not from the constant.
+   *
+   * The contract emits `VerdictFinalized(id, Paid, reward - fee)`, so the payout it
+   * charged is IN the log and the fee is the difference between that and the escrowed
+   * reward. Re-deriving either from `FEE_BPS` needed a second read of the chain, and
+   * when that read failed the books published a fee of zero and a payout of the FULL
+   * reward — a number the chain never charged, published as though it had been
+   * measured.
+   *
+   * So the constant cannot move the books. It is the chain's own arithmetic, and the
+   * arithmetic is in the log.
+   */
+  it("takes the fee from the settlement, not from the constant", () => {
     const m = replay(fullStory());
-    expect(buildSnapshot(m, { now: 0, feeBps: 0 }).economics.feesEth).toBe("0");
-    expect(buildSnapshot(m, { now: 0, feeBps: 1000 }).economics.feesEth).toBe("0.1");
-    expect(buildSnapshot(m, { now: 0, feeBps: 1000 }).economics.paidOutEth).toBe("0.9");
+    // The story pays one 1 ETH reward and the chain paid out 0.95 ETH, so the fee the
+    // chain kept was 0.05 ETH. A constant that says otherwise does not change that.
+    for (const feeBps of [0, 500, 1000]) {
+      const economics = buildSnapshot(m, { now: 0, feeBps }).economics;
+      expect(economics.feesEth).toBe("0.05");
+      expect(economics.paidOutEth).toBe("0.95");
+    }
+  });
+
+  /**
+   * A constant that could not be read is reported as unknown.
+   *
+   * Zero is not an absent fee — it is a claim that the protocol charges nothing, and
+   * the books published it as a measured fact. The settled amounts are known anyway:
+   * they came from the chain's own logs.
+   */
+  it("publishes an unread fee as unknown rather than as zero", () => {
+    const m = replay(fullStory());
+    const economics = buildSnapshot(m, { now: 0, feeBps: null }).economics;
+    expect(economics.feeBps).toBeNull();
+    // The money is still exact: it never depended on the constant.
+    expect(economics.feesEth).toBe("0.05");
+    expect(economics.paidOutEth).toBe("0.95");
+    expect(economics.paidSettlements).toBe(1);
   });
 
   it("counts only the settlements that paid an agent", () => {

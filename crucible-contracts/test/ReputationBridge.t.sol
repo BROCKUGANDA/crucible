@@ -430,7 +430,8 @@ contract ReputationBridgeTest is Test {
         assertEq(registry.feedbackCount(), 0);
 
         registry.setShouldRevert(false);
-        bridge.backfill(id, agentId, 500);
+        // The value is read from the settled trial; the caller does not choose it.
+        bridge.backfill(id, agentId);
         assertEq(registry.feedbackCount(), 1);
         // …and it is the identity that received it, not the Crucible number
         (int128 value,,,,) = registry.readFeedback(identityAgentId, address(bridge), 1);
@@ -444,25 +445,62 @@ contract ReputationBridgeTest is Test {
         vm.warp(block.timestamp + WINDOW + 1);
         trials.finalize(id);
 
-        bridge.backfill(id, decoyAgentId, 500);
+        bridge.backfill(id, decoyAgentId);
         assertEq(registry.feedbackCount(), 0, "backfill wrote about an agent with no identity");
     }
 
-    function test_BackfillRejectsOutOfRangeValue() public {
-        vm.expectRevert(ReputationBridge.ValueOutOfRange.selector);
-        bridge.backfill(1, agentId, 5000);
+    function test_BackfillRejectsAnUnsettledTrial() public {
+        uint256 id = _liveTrial();
+        vm.expectRevert(ReputationBridge.TrialNotSettled.selector);
+        bridge.backfill(id, agentId);
     }
 
-    function test_BackfillRejectsZeroValue() public {
-        vm.expectRevert(ReputationBridge.ValueOutOfRange.selector);
-        bridge.backfill(1, agentId, 0);
+    function test_BackfillRejectsTheWrongAgent() public {
+        uint256 id = _liveTrial();
+        _submitRun(id);
+        vm.warp(block.timestamp + WINDOW + 1);
+        trials.finalize(id);
+
+        vm.expectRevert(ReputationBridge.AgentMismatch.selector);
+        bridge.backfill(id, decoyAgentId);
+    }
+
+    function test_BackfillRejectsARefundedTrial() public {
+        vm.deal(sponsor, REWARD);
+        vm.prank(sponsor);
+        uint256 id = trials.createTrial{value: REWARD}(SPEC, TESTS, uint64(block.timestamp + 2 days), WINDOW);
+        vm.warp(block.timestamp + 2 days + 1);
+        trials.reclaimExpired(id);
+
+        // Trial agent id 0: a refund has no agent work to judge.
+        vm.expectRevert(ReputationBridge.NothingToBackfill.selector);
+        bridge.backfill(id, 0);
+    }
+
+    function test_BackfillCannotRepeatASuccessfulWrite() public {
+        uint256 id = _liveTrial();
+        _submitRun(id);
+        vm.warp(block.timestamp + WINDOW + 1);
+        trials.finalize(id);
+        assertEq(registry.feedbackCount(), 1);
+
+        vm.expectRevert(ReputationBridge.AlreadyReported.selector);
+        bridge.backfill(id, agentId);
     }
 
     function test_BackfillRevertsWithNoRegistry() public {
         vm.prank(owner);
         bridge.setReputationRegistry(address(0));
+
+        // Settlement must still land while the registry is absent; the write is lost.
+        uint256 id = _liveTrial();
+        _submitRun(id);
+        vm.warp(block.timestamp + WINDOW + 1);
+        trials.finalize(id);
+        assertEq(uint8(trials.getTrial(id).verdict), uint8(CrucibleTrials.Verdict.Paid));
+
         vm.expectRevert(ReputationBridge.NoReputationRegistry.selector);
-        bridge.backfill(1, agentId, 500);
+        bridge.backfill(id, agentId);
     }
 
     // ── consumability ──
