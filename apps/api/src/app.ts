@@ -135,9 +135,9 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
    * `alloyState` is included because this is the payload the UI actually renders — leaving it
    * out made the live view disagree with a refresh, the same defect that lived on `/hall`.
    */
-  let tick: { builtAt: number; version: number; signature: string; payload: string } | null = null;
+  let tick: { builtAt: number; version: number; signature: string; payload: string; snapshot: ApiSnapshot } | null = null;
 
-  function sharedTick(): { signature: string; payload: string } {
+  function sharedTick(): { signature: string; payload: string; snapshot: ApiSnapshot } {
     const now = Date.now();
     // Read the model exactly once per tick. Asking twice would make the cheap path cost
     // the same as the expensive one, and the difference is the entire point of the gate.
@@ -163,6 +163,7 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
         version,
         signature: `${snap.counts.open}:${snap.counts.assigned}:${snap.counts.judging}:${snap.counts.challenged}:${snap.counts.settled}:${snap.trials.length}`,
         payload: JSON.stringify(snap),
+        snapshot: snap,
       };
     }
     return tick;
@@ -322,18 +323,17 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
 
   /** One payload the whole UI can render from. */
   app.get("/snapshot", (c) => {
-    const disclosure = deps.disclosure?.() ?? [];
-    const snap = buildSnapshot(deps.getModel(), {
-      now: Date.now(),
-      alloyState: deps.alloyState,
-    });
-    // disclosure is applied by the indexer on ingest; surface the flag per trial
-    return c.json(snap satisfies ApiSnapshot);
+    // The same cached payload the stream serves. Every route used to build its own
+    // snapshot, and they drifted: the stream carried the registry tier and the
+    // settlement fee while `/snapshot` carried neither, so a refresh and a live
+    // update could describe the same chain differently. One build per tick, one
+    // payload, no disagreement.
+    return c.json(sharedTick().snapshot satisfies ApiSnapshot);
   });
 
   app.get("/trials", (c) => {
     const status = c.req.query("status");
-    const snap = buildSnapshot(deps.getModel(), { now: Date.now() });
+    const snap = sharedTick().snapshot;
     if (!status) return c.json({ trials: snap.trials, counts: snap.counts });
     if (!VALID_STATUSES.includes(status as TrialStatus)) {
       return c.json(
@@ -352,7 +352,7 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
     if (!Number.isInteger(id) || id < 1) {
       return c.json({ error: "trial id must be a positive integer" }, 400);
     }
-    const snap = buildSnapshot(deps.getModel(), { now: Date.now() });
+    const snap = sharedTick().snapshot;
     const trial = snap.trials.find((t) => t.id === id);
     if (!trial) return c.json({ error: `trial ${id} not found` }, 404);
     const runs = [...deps.getModel().runs.values()]
@@ -370,11 +370,7 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
   });
 
   app.get("/agents", (c) => {
-    const snap = buildSnapshot(deps.getModel(), {
-      now: Date.now(),
-      alloyState: deps.alloyState,
-    });
-    return c.json({ agents: snap.agents });
+    return c.json({ agents: sharedTick().snapshot.agents });
   });
 
   app.get("/agents/:id", (c) => {
@@ -382,8 +378,7 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
     if (!Number.isInteger(id) || id < 1) {
       return c.json({ error: "agent id must be a positive integer" }, 400);
     }
-    const model = deps.getModel();
-    const snap = buildSnapshot(model, { now: Date.now(), alloyState: deps.alloyState });
+    const snap = sharedTick().snapshot;
     const agent = snap.agents.find((a) => a.id === id);
     if (!agent) return c.json({ error: `agent ${id} not found` }, 404);
     const trials = snap.trials.filter((t) => t.agentId === id);
@@ -404,10 +399,7 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
    * the same agent — and the hall papered over the gap with a hardcoded `alloyLocked`.
    */
   app.get("/hall", (c) => {
-    const snap = buildSnapshot(deps.getModel(), {
-      now: Date.now(),
-      alloyState: deps.alloyState,
-    });
+    const snap = sharedTick().snapshot;
     return c.json({
       data: { hall: snap.hall },
       meta: {
