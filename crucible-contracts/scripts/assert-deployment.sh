@@ -45,9 +45,30 @@ expect() {
   fi
 }
 
+# `cast` prints a big number in two forms: the plain digits, and an exponent
+# gloss in brackets. The digits are exact; the gloss is not, and the shell
+# cannot do arithmetic on it. The plain form is what a comparison needs.
+number() {
+  sed -E 's/ \[[^]]*\]$//' | tr -d '[:space:]'
+}
+
+# An address is the same address whatever its case. `cast` returns the
+# checksummed form; the configuration holds a lower-case one.
+address() {
+  tr 'A-Z' 'a-z' | tr -d '[:space:]'
+}
+
 call() {
   # call <address> <signature>
-  cast call "$1" "$2" --rpc-url "$RPC" 2>/dev/null | tr -d '\r' | head -n 1
+  cast call "$1" "$2" --rpc-url "$RPC" 2>/dev/null | head -n 1
+}
+
+call_number() {
+  call "$1" "$2" | number
+}
+
+call_address() {
+  call "$1" "$2" | address
 }
 
 echo "asserting the deployment at $RPC"
@@ -75,14 +96,14 @@ if [ "$fail" != "0" ]; then
 fi
 
 # ── the economics are the ones the README documents ───────────────────────
-expect "settlement fee (bps)" "500" "$(call "$TRIALS" 'FEE_BPS()(uint256)')"
-expect "bond denominator" "5" "$(call "$TRIALS" 'BOND_DEN()(uint256)')"
-expect "minimum bond (wei)" "10000000000000000" "$(call "$TRIALS" 'MIN_BOND()(uint256)')"
-expect "Argus threshold" "2" "$(call "$TRIALS" 'ARGUS_THRESHOLD()(uint256)')"
+expect "settlement fee (bps)" "500" "$(call_number "$TRIALS" 'FEE_BPS()(uint256)')"
+expect "bond denominator" "5" "$(call_number "$TRIALS" 'BOND_DEN()(uint256)')"
+expect "minimum bond (wei)" "10000000000000000" "$(call_number "$TRIALS" 'MIN_BOND()(uint256)')"
+expect "Argus threshold" "2" "$(call_number "$TRIALS" 'ARGUS_THRESHOLD()(uint256)')"
 
 # ── the roles are wired, not merely present ───────────────────────────────
-owner=$(call "$TRIALS" 'owner()(address)')
-treasury=$(call "$TRIALS" 'treasury()(address)')
+owner=$(call_address "$TRIALS" 'owner()(address)')
+treasury=$(call_address "$TRIALS" 'treasury()(address)')
 zero="0x0000000000000000000000000000000000000000"
 if [ "$owner" != "$zero" ] && [ -n "$owner" ]; then ok "the owner is set ($owner)"; else bad "the owner is zero"; fi
 if [ "$treasury" != "$zero" ] && [ -n "$treasury" ]; then ok "the treasury is set ($treasury)"; else bad "the treasury is zero"; fi
@@ -90,17 +111,16 @@ if [ "$treasury" != "$zero" ] && [ -n "$treasury" ]; then ok "the treasury is se
 # The escrow must point at the registry it settles into, and the registry must
 # accept writes from the escrow and from nobody else. A registry that accepts
 # a second writer is a reputation system anybody can inflate.
-alloy=$(call "$TRIALS" 'alloy()(address)')
-expect "the escrow's alloy registry" "$ALLOY" "$alloy"
-expect "the registry's forge" "$TRIALS" "$(call "$ALLOY" 'forge()(address)')"
+expect "the escrow's alloy registry" "$(printf '%s' "$ALLOY" | address)" "$(call_address "$TRIALS" 'alloy()(address)')"
+expect "the registry's forge" "$(printf '%s' "$TRIALS" | address)" "$(call_address "$ALLOY" 'forge()(address)')"
 
 # ── the money invariant, on the live chain ────────────────────────────────
 # The contract's own invariant: the ETH the contract holds covers everything
 # it owes. A test proves the code cannot break it; this proves the DEPLOYED
 # contract has not.
-escrowed=$(call "$TRIALS" 'escrowed()(uint256)')
-pending=$(call "$TRIALS" 'totalPending()(uint256)')
-balance=$(cast balance "$TRIALS" --rpc-url "$RPC" 2>/dev/null || echo 0)
+escrowed=$(call_number "$TRIALS" 'escrowed()(uint256)')
+pending=$(call_number "$TRIALS" 'totalPending()(uint256)')
+balance=$(cast balance "$TRIALS" --rpc-url "$RPC" 2>/dev/null | number || echo 0)
 owed=$((escrowed + pending))
 if [ "$owed" -le "$balance" ]; then
   ok "the contract holds $balance wei against $owed wei of liabilities"
