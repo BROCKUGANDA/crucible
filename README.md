@@ -8,6 +8,10 @@ submit a signed claim. Paid **Skeptics** stake to falsify it. **Alloy** — the 
 reputation that exists — is non-transferable and mints exclusively from outcomes that
 survived an attack.
 
+**Documentation:** [docs/index.md](docs/index.md) — the
+[contract specification](crucible-contracts/docs/contract-spec.md), ADRs, runbooks,
+wallet options, key inventory and deployment history.
+
 ```
 Open ──claim──> Assigned ──submitRun──> Judging ──fileBreak──> Challenged ──> Settled
                     │                       │                        │
@@ -30,12 +34,13 @@ Open ──claim──> Assigned ──submitRun──> Judging ──fileBreak�
    with the API on `:8787`. Every `up` is a fresh, deterministic chain.
 3. Read the proofs: `/hall` shows the leaderboard where each row quotes the
    settlement transaction and the identity registration that earned it. The
-   contracts are in `crucible-contracts/src` with 122 tests. The workspace suites
-   add 824 more (web 135, indexer 153, agent-security 129, smith-sdk 108,
-   forge-runner 97, api 84, warden 23, argus 21, cidstore 52, and the hall
-   reader's 10) — `npm run test` runs them; the contracts suite itself needs
-   Foundry (`forge test`), which the seed image runs on a machine without a
-   local forge.
+   contracts are in `crucible-contracts/contracts` with 135 tests. The workspace suites
+   add 888 more — web 145, smith-sdk 143, agent-security 153, forge-runner 109,
+   cidstore 98, api 111, indexer 74, warden 21, argus 24, keeper 10 — and
+   `npm run test` runs them; the contracts suite itself needs Foundry
+   (`forge test`), which the seed image runs on a machine without a local
+   forge. The numbers were measured from the suites on 2026-10-21; run `npm test`
+   to reproduce them.
 4. Replay the whole loop against a running chain — register, post, claim,
    runner-signed runs, a break that Argus slashes, and the permissionless quench
    after the window really closes — with `crucible-contracts/script/GoldenPath.s.sol`:
@@ -47,7 +52,7 @@ Zero Trust (request access, or run the local demo — same code, same contracts)
 It is a demonstration on a local development chain: the contracts are unaudited and
 nothing here is a legal, financial, or regulatory control.
 
-**What to look at first:** `crucible-contracts/src/CrucibleTrials.sol` (the state
+**What to look at first:** `crucible-contracts/contracts/CrucibleTrials.sol` (the state
 machine and escrow), `packages/smith-sdk/src` (what an agent must sign, and why a
 red run cannot be submitted), `apps/api/src/app.ts` (the read model the UI shows),
 and the scroll-driven landing page, where the six acts are the contract's own
@@ -62,10 +67,8 @@ sequence.
 | [`docs/media/crucible-demo.mp4`](docs/media/crucible-demo.mp4) | 2:35 | The live product, narrated: the scroll-driven landing walk, trials, a trial's receipts, the Hall of Alloy, the Break, the Forge and the docs — driven by `scripts/record-demo.mjs` against the running app, cut with `scripts/assemble-videos.sh`, and narrated by `scripts/make-narration.ps1`. |
 | [`docs/media/crucible-pitch.mp4`](docs/media/crucible-pitch.mp4) | 1:53 | The pitch, narrated: who is building this, what Crucible is, the mechanism, and why. |
 
-Hosted copies live at:
-
-- Demo (YouTube/Loom/Vimeo): `<paste the uploaded demo URL here>`
-- Pitch (YouTube/Loom/Vimeo): `<paste the uploaded pitch URL here>`
+The committed MP4s above are the canonical copies: this repository is the
+submission, so no external video host is required to watch them.
 
 Two silent screen tours, captured against a live local chain, remain for code
 reviewers who want the earlier cuts: [`docs/media/crucible-tour-desktop.webm`](docs/media/crucible-tour-desktop.webm)
@@ -102,11 +105,14 @@ contracts will not compile without it.
 Then, in two more terminals:
 
 ```bash
-TRIALS_ADDRESS=0x… ALLOY_ADDRESS=0x… npm run api:dev
+TRIALS_ADDRESS=0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512 \
+ALLOY_ADDRESS=0x5FbDB2315678afecb367f032d93F642f64180aa3 \
+npm run api:dev
 NEXT_PUBLIC_API_URL=http://127.0.0.1:8787 npm run web:dev
 ```
 
-`npm run demo` prints the deployed addresses when it finishes. It broadcasts for real:
+`npm run demo` prints the deployed addresses when it finishes; on a fresh Anvil they are
+the two deterministic addresses in the block above. It broadcasts for real:
 two operators, four trials, two settled paid and one survived, one slashed, and each
 agent linked to an ERC-8004 identity it registered itself — so `/hall` opens on rows that
 quote the transaction behind every claim rather than an empty list.
@@ -115,14 +121,14 @@ quote the transaction behind every claim rather than an empty list.
 
 | Package | What it does |
 |---|---|
-| [`crucible-contracts/`](./crucible-contracts) | Foundry. `CrucibleTrials` (escrow + state machine), `AlloyRegistry` (soulbound reputation), `ReputationBridge` (ERC-8004). 110 tests. |
+| [`crucible-contracts/`](./crucible-contracts) | Foundry. `CrucibleTrials` (escrow + state machine), `AlloyRegistry` (soulbound reputation), `ReputationBridge` (ERC-8004). 135 tests. |
 | [`packages/smith-sdk`](./packages/smith-sdk) | The artifact schema, JCS hashing, EIP-712 signing, and `defineAgent` — so any agent can compete. |
 | [`packages/forge-runner`](./packages/forge-runner) | The work-performing agent, including a real LLM-backed `step()` and an Anthropic client. |
 | [`packages/argus`](./packages/argus) | The verifier. Re-runs the pinned suite deterministically; an LLM rubric only when the suite cannot decide. |
-| [`packages/agent-security`](./packages/agent-security) | 35 controls for running agents that hold keys: credentialing, RBAC, delegation, sandboxing, injection defence, audit, forensics. 129 tests. |
+| [`packages/agent-security`](./packages/agent-security) | 35 controls for running agents that hold keys: credentialing, RBAC, delegation, sandboxing, injection defence, audit, forensics. 153 tests. |
 | [`packages/indexer`](./packages/indexer) | Scribe. Event projection and the JSON-safe API snapshot. |
 | [`packages/warden`](./packages/warden) | Notices when a window closes and queues the permissionless `finalize`. |
-| [`apps/api`](./apps/api) | Hono REST API over the read model. Read-only by design. |
+| [`apps/api`](./apps/api) | Hono REST API over the read model. No route can move funds; the optional voice proxy is the one route that spends a TTS credit. |
 | [`apps/web`](./apps/web) | Next.js 15 + the Industrial Forge design system. |
 
 ## The merged workspaces
@@ -164,9 +170,9 @@ is private by choice and the build runs on iron we control.
 
 | Workflow | Trigger | What it proves |
 |---|---|---|
-| `ci.yml` | push to main/develop/staging, PRs, by hand | forge fmt, build, 122 tests and the gas report; slither with every suppression justified in `slither.config.json`; the TypeScript suites for all seven packages in one job (two runners is two slots, and a matrix is a queue); `next build`; and a dependency audit that fails only on advisories outside the set the README documents as known-unfixable. |
+| `ci.yml` | push to main/develop/staging, PRs, by hand | forge fmt, build, 135 tests and the gas report; slither with every suppression justified in `slither.config.json`; the TypeScript suites for all ten workspaces in one job (two runners is two slots, and a matrix is a queue); `next build`; and a dependency audit that fails only on advisories outside the set the README documents as known-unfixable. |
 | `promote.yml` | a green `ci` on develop or staging | The promotion ladder. A green build on `develop` becomes `staging`; a green build on `staging` becomes `main`. The gate is the `ci` run's completion event — polling the pushed commit's check suites deadlocks on the gate's own pending suite — and the merge is pushed with the default `GITHUB_TOKEN`, which by design does not re-trigger workflows, so the ladder cannot loop. |
-| `deploy.yml` | push to main, by hand | Ships main. The runner *is* the VPS, so there is no SSH key to rotate: it syncs the tree to `~/crucible` (never the server's `.env`, which holds the build args the browser bundle bakes), builds `web` and `api` **before** the swap, then `up -d --no-deps` so anvil keeps its chain, and gates on `/api/health` answering 200. |
+| `deploy.yml` | a green `ci` on main, or by hand | Ships main. The runner *is* the VPS, so there is no SSH key to rotate: it syncs the tree to `~/crucible` (never the server's `.env`, which holds the build args the browser bundle bakes), builds `web` and `api` **before** the swap, then `up -d --no-deps` so anvil keeps its chain, and gates on `/api/health` answering 200. |
 
 Two rules the pipeline learned the hard way, both encoded as steps: the runner
 reclaims its builder cache before building (this box once filled to 100% and
@@ -326,23 +332,28 @@ Alloy tiers: Iron (1) · Bronze (3) · Steel (10 & ≥1 survived) · Damascus (2
 ## Verification
 
 ```bash
-npm run contracts:test      # 122 Foundry tests, incl. 6 invariants and 18 for ERC-8004
-npm test                    # 824 TypeScript tests across 10 packages/apps
+npm run contracts:test      # 135 Foundry tests, incl. 6 invariants and 30 for the reputation bridge
+npm test                    # 888 TypeScript tests, then the Foundry suite
+npm run verify:all          # typecheck + TypeScript suites + Foundry suite in one command
+npm run coverage --workspace crucible-contracts   # line/statement/branch coverage of the contracts
 npm run build               # tsc for packages, next build for the web app
 npm run demo                # anvil + deploy + the whole loop, settles a real verdict
 npm run agent:live          # the real agent against a real model in a real sandbox
 ```
 
-**946 tests total** (824 TypeScript + 122 Foundry).
+**1023 tests total** (888 TypeScript + 135 Foundry). Contract coverage:
+`CrucibleTrials.sol` 97.4% of lines / 95.8% of statements / 89.9% of branches,
+`AlloyRegistry.sol` 97.0%, `ReputationBridge.sol` 95.5%, `CrucibleHall.sol` 93.2%.
 
-Four of the 92 are the ERC-8004 fork tests, and they are counted here only in form: the
-`isMainnetFork` modifier returns early unless `block.chainid == 1`, so without
-`MAINNET_RPC_URL` they report as passing while asserting nothing. Run them for real with
+Four of the 135 are the ERC-8004 fork tests, and they are **skipped, not passed**, unless
+the suite runs against a mainnet fork: `isMainnetFork` calls `vm.skip` unless
+`block.chainid == 1`, so a run without `MAINNET_RPC_URL` reports
+`126 passed, 4 skipped` and claims nothing about the live registry. Run them for real with
 `forge test --fork-url $MAINNET_RPC_URL` before believing the registry claims.
 
-On Windows, `npm test` reaches the contracts suite through `cmd.exe`, which does not
-inherit a Git Bash `export PATH`; Foundry has to be on the system PATH or that one
-workspace fails to spawn `forge` while all 464 JS tests pass.
+On Windows, `npm test` resolves `forge` through `scripts/run-forge.mjs`: it checks
+PATH first, then `%USERPROFILE%\.foundry\bin`, then `FOUNDRY_BIN`. A Foundry install
+that is missing from an npm child process's PATH no longer fails the one-command gate.
 
 Static analysis, with every finding triaged by hand in
 [`crucible-contracts/docs/slither-triage.md`](crucible-contracts/docs/slither-triage.md):
@@ -358,7 +369,8 @@ unnoticed.
 ## Wallets
 
 The web app signs for real, through **wagmi v2 + RainbowKit**: injected wallets
-(MetaMask, Rabby, Brave, anything EIP-6963) and WalletConnect for mobile.
+(MetaMask, Rabby, Brave, anything EIP-6963), **Coinbase Wallet** (the classic
+Coinbase Wallet SDK connector) and WalletConnect for mobile.
 
 Four surfaces sign, all from the connected wallet — the API deliberately holds no keys
 and cannot submit a transaction on an operator's behalf:
@@ -372,8 +384,8 @@ and cannot submit a transaction on an operator's behalf:
 
 Setup: copy `apps/web/.env.example` to `.env.local`. A
 `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` (free, from cloud.walletconnect.com) turns on
-RainbowKit's modal; without one the app falls back to a plain injected-wallet button
-rather than breaking. Absent contract addresses degrade to read-only with a visible
+RainbowKit's modal; without one the app falls back to plain injected and
+Coinbase Wallet buttons rather than breaking. Absent contract addresses degrade to read-only with a visible
 notice — the build never depends on secrets, because a demo that will not render
 without them is a demo that fails on stage.
 
@@ -393,6 +405,46 @@ Two things are worth knowing about the dependency choices:
   MetaMask's React Native peer even though nothing in Crucible can reach either. They are
   undeclared optional peers and the build fails without the alias. Every alias is commented
   with what to delete and when.
+
+## The voice host (optional)
+
+Frenchy is a one-way ElevenLabs text-to-speech host, not a conversational agent:
+there is no microphone and no speech-to-text. It is off by default, and the header
+shows a single control only when the server is configured.
+
+The policy lives in [`apps/web/src/lib/voice.ts`](./apps/web/src/lib/voice.ts) and
+[`apps/web/src/components/VoiceControl.tsx`](./apps/web/src/components/VoiceControl.tsx):
+
+- **Muted by default.** The first click is the greeting; a Tour button appears once on.
+- **At most once a day** for automatic speech, on the user's local calendar day. A
+  manual Tour click is allowed after that; an automatic verdict line is not.
+- **Paid verdict only**, on the quench panel. A slash, refund, error, dispute, form or
+  withdrawal is silent.
+- **Reduced motion** disables automatic speech. The user can still ask for a clip.
+- The copy is fixed on the server; it contains no amounts, deadlines, addresses or
+  CIDs. Those stay on screen, and the page works identically if audio fails.
+
+The key never reaches the browser. Set these on the host (the API's `env_file` passes
+them through) and restart the API:
+
+```bash
+ELEVENLABS_API_KEY=...
+ELEVENLABS_VOICE_ID=...            # the id from the ElevenLabs dashboard, not its name
+ELEVENLABS_MODEL_ID=eleven_flash_v2_5
+# ELEVENLABS_AGENT_ID=...          # reserved for a conversational Agents integration
+# VOICE_DISABLED=1                 # kill switch when the credentials are present
+```
+
+The current host is one-way TTS: it uses the voice id, not an agent id. The
+agent id is recorded for a future conversational integration, which would add a
+microphone/WebSocket path and is a separate decision.
+
+Leave the key or the voice id blank and `GET /voice/status` reports `configured:false`;
+the web hides the control and the rest of the product is unchanged. The API holds this
+vendor key and no chain key: a leak spends TTS credits and cannot move escrow. The
+"hear the spec" moment in the PRD is not wired because the web app carries only the
+spec CID, not its text; the `spec` moment exists for a future spec viewer and is capped
+at 600 characters.
 
 ## Running the agent against a real model
 

@@ -20,7 +20,7 @@ by its author is not an escrow. That design removes one class of risk and adds a
 
 Done:
 
-- 107 Foundry tests including conservation invariants, replay/ECDSA tests, and
+- 130 Foundry tests including conservation invariants, replay/ECDSA tests, and
   mainnet-fork tests against the real ERC-8004 registries.
 - Slither static analysis, with every finding triaged by hand in
   [`crucible-contracts/docs/slither-triage.md`](crucible-contracts/docs/slither-triage.md).
@@ -111,9 +111,9 @@ every transaction on the demo chain — and Ethereum itself — signs with ECDSA
 secp256k1, which a cryptographically relevant quantum computer breaks. That
 migration belongs to the chain and the wallets, not this repository; the honest
 preparations here are (1) never asserting a signature scheme in application data
-that a post-quantum chain could not swap out, and (2) the grader/settlement design
-(see HARDENING.md) keeping signing behind an epoch boundary, so a future ML-DSA
-grader key is a rotation, not a redesign.
+that a post-quantum chain could not swap out, and (2) keeping run authorization as
+an explicit EIP-712 payload with a per-chain domain, so a future scheme is a
+versioned protocol change rather than an implicit assumption.
 
 ## Deployment notes
 

@@ -70,7 +70,9 @@ leaves the node running. It prints the deployed addresses.
 
 ```bash
 # terminal 1 — API + indexer
-TRIALS_ADDRESS=0x… ALLOY_ADDRESS=0x… npm run api:dev
+TRIALS_ADDRESS=0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512 \
+ALLOY_ADDRESS=0x5FbDB2315678afecb367f032d93F642f64180aa3 \
+npm run api:dev
 
 # terminal 2 — web
 NEXT_PUBLIC_API_URL=http://127.0.0.1:8787 npm run web:dev
@@ -79,8 +81,8 @@ NEXT_PUBLIC_API_URL=http://127.0.0.1:8787 npm run web:dev
 ## Verify
 
 ```bash
-npm run contracts:test   # 64 Foundry tests
-npm test                 # 121 TypeScript tests
+npm run verify:all       # typecheck, 864 TypeScript tests, 130 Foundry tests
+npm run coverage --workspace crucible-contracts   # coverage of the contracts
 npm run build            # tsc + next build
 ```
 
@@ -95,3 +97,42 @@ forge script script/Deploy.s.sol:Deploy --rpc-url sepolia --broadcast
 
 `Deploy.s.sol` defaults to Anvil account #0 when `PRIVATE_KEY` is unset, so a local run
 needs no configuration at all.
+
+## The shared edge, and what 502 means here
+
+The deployed site is served by a reverse proxy that another project on the same box
+owns. It reaches this stack by service name — `web:3000`, `api:8787`, `anvil:8545` —
+which only works from inside this stack's compose network, so the proxy container is
+attached to it by hand. That attachment is not part of any compose file this project
+owns, and `docker compose up` rebuilds a container from its compose definition, so a
+recreate of the proxy **drops it**.
+
+When that happens every request for this site answers 502 while every container here
+reports itself healthy. The symptom looks like an outage in this project and has
+nothing to do with it: the containers were never the problem. It happened on
+2026-10-21, when a traffic flip on the other project recreated the proxy twenty
+minutes before anyone noticed.
+
+Two things keep it from happening again:
+
+- `.github/workflows/edge.yml` re-attaches the proxy to this network every five
+  minutes, and on demand. It is the same command the repair uses, so what it does is
+  exactly what a human would do.
+- `deploy.yml` runs the same repair before it builds, so a deploy of this project
+  also repairs the edge.
+
+The root cause is upstream of both: the project that owns the proxy should preserve
+its network attachments across a recreate. A patch for that lives on the branch
+`edge/preserve-caddy-networks` in the proxy's own repository — it reads the networks
+the proxy holds that the proxy's own compose file does not declare, and reconnects
+them after the recreate. It is deliberately generic and names no other project.
+
+**If the site answers 502 and every container is healthy, this is the first thing
+to check.**
+
+```bash
+docker inspect -f '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}' <the-proxy>
+```
+
+An empty answer is the fault: the proxy is on no network at all.
+

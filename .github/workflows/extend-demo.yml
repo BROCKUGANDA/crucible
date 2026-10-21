@@ -16,6 +16,14 @@ name: extend-demo
 # network, so it reaches anvil the way the stack does.
 
 on:
+  # Hourly, so the demo is always something a visitor can act on.
+  #
+  # The seed leaves four settled trials — a hall worth reading and nothing to
+  # do. This tops the chain back up: a minimum number of trials open for a
+  # claim, and one claimed and waiting for a run. It is idempotent, so it can
+  # run on a timer without a growing pile of half-finished trials.
+  schedule:
+    - cron: "43 * * * *"
   workflow_dispatch:
     inputs:
       dry_run:

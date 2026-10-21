@@ -72,7 +72,7 @@ contract CrucibleHallTest is Test {
 
         assertEq(hall.addressOfHandle("first"), address(0)); // released
         assertEq(hall.addressOfHandle("second"), alice);
-        (string memory currentHandle, , ) = hall.identityOf(alice);
+        (string memory currentHandle,,) = hall.identityOf(alice);
         assertEq(currentHandle, "second");
     }
 

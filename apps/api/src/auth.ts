@@ -19,14 +19,15 @@
  * headers on the Hono response, the four route handlers become one `authRoutes()` app
  * mounted under `/auth`, and the SE-2 guards module's rate limiting is not ported
  * because this API already rate-limits every request in its middleware chain (see
- * `app.ts`). The session cookie is HMAC'd with `AUTH_SECRET`; with no secret
- * configured the routes answer 503 rather than falling back to a known key, because an
- * auth system that silently signs with a default is worse than one that is off.
+ * `app.ts`).
+ *
+ * The one thing that changed in substance: **the origin in the challenge message is
+ * configured, not derived from the request.** See `configuredOrigin`.
  */
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
-import { recoverMessageAddress } from "viem";
+import { keccak256, recoverAddress, recoverMessageAddress, toBytes } from "viem";
 
 const CHALLENGE_TTL_MS = 5 * 60_000;
 const CONSUMED_TTL_MS = 10 * 60_000;
@@ -36,15 +37,32 @@ const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7;
 const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
 const HEX_RE = /^0x[0-9a-fA-F]+$/;
 
+/**
+ * The development secret. It is public, so it is only ever used when a
+ * deployment has explicitly asked for it.
+ */
+const DEV_SECRET = "crucible-local-dev-secret-not-for-production";
+
 export type SessionPayload = {
   address: string;
   issuedAt: number;
   expiresAt: number;
+  /**
+   * The origin the session was minted for.
+   *
+   * A session without an audience is valid wherever the secret is, so a token
+   * minted against a staging deployment would authenticate against production
+   * if they shared a secret. Binding it to the origin means a token is only
+   * good for the place it was issued for.
+   */
+  aud: string;
 };
 
 type Challenge = {
   nonce: string;
   message: string;
+  /** the address the challenge was issued for */
+  address: string;
   issuedAt: number;
   expiresAt: number;
   signature?: string;
@@ -78,8 +96,54 @@ function prune(now: number): void {
   }
 }
 
+/**
+ * The origin this deployment signs for.
+ *
+ * **Not** derived from the request. The challenge message says "<host> wants
+ * you to sign in with your Ethereum account", and a wallet shows that text
+ * verbatim — so if the host comes from a header the caller controls, a third
+ * party can ask a victim to sign a message that names the attacker's domain,
+ * and the victim has no way to tell it apart from the real thing. The server
+ * then verifies that signature against the message it stored and issues the
+ * victim's session to whoever asked.
+ *
+ * The stored-message property does not save this: it stops the client from
+ * altering the message, not the server from being induced to issue the wrong
+ * one.
+ *
+ * So the origin is configuration. `AUTH_ORIGIN` names it. In production it is
+ * required: a deployment that has not been told which origin it is does not
+ * sign in anybody.
+ */
+function configuredOrigin(): string | null {
+  const configured = process.env.AUTH_ORIGIN?.trim();
+  if (configured) {
+    try {
+      return new URL(configured).origin;
+    } catch {
+      console.error(`[crucible] AUTH_ORIGIN is not a URL: ${configured}`);
+      return null;
+    }
+  }
+  if (process.env.NODE_ENV === "production") return null;
+  return "http://localhost:3000";
+}
+
+/** The chain the session is for. EIP-4361 requires it in the message. */
+function configuredChainId(): string {
+  const raw = process.env.CHAIN_ID?.trim();
+  if (raw && /^\d+$/.test(raw)) return raw;
+  return "31337";
+}
+
 /** Deterministic SIWE-flavoured challenge text — stored, never rebuilt. */
-export function buildSignInMessage(address: string, nonce: string, origin: string, issuedAt: number): string {
+export function buildSignInMessage(
+  address: string,
+  nonce: string,
+  origin: string,
+  issuedAt: number,
+  chainId: string = configuredChainId(),
+): string {
   let host: string;
   try {
     host = new URL(origin).host;
@@ -94,75 +158,119 @@ export function buildSignInMessage(address: string, nonce: string, origin: strin
     "",
     `URI: ${origin}`,
     "Version: 1",
+    `Chain ID: ${chainId}`,
     `Nonce: ${nonce}`,
     `Issued At: ${new Date(issuedAt).toISOString()}`,
   ].join("\n");
 }
 
-export function issueChallenge(address: string, origin: string) {
-  const key = address.toLowerCase();
+/**
+ * Issues a challenge, bound to a browser session.
+ *
+ * The challenge is stored under a random id that is handed back as an
+ * HttpOnly cookie, and the id is the ONLY way to find the challenge again. The
+ * nonce is therefore usable only by the browser that asked for it.
+ *
+ * This is the OAuth "state" parameter in a wallet-shaped form. Without it, a
+ * challenge is a bearer token: anyone who learns a nonce — by asking for one
+ * for an address, or by watching a victim's request — can complete it from a
+ * different browser, and the session it mints lands there.
+ */
+export function issueChallenge(address: string, origin: string): {
+  challengeId: string;
+  nonce: string;
+  message: string;
+  expiresAt: number;
+  replayed: boolean;
+} {
   const now = Date.now();
   prune(now);
-  const existing = state.entries.get(key);
-  if (existing && !existing.signature && existing.expiresAt > now) {
-    return { nonce: existing.nonce, message: existing.message, expiresAt: existing.expiresAt, replayed: true };
-  }
+  const challengeId = randomBytes(16).toString("hex");
   const nonce = randomBytes(16).toString("hex");
   const record: Challenge = {
     nonce,
     message: buildSignInMessage(address, nonce, origin, now),
+    address: address.toLowerCase(),
     issuedAt: now,
     expiresAt: now + CHALLENGE_TTL_MS,
   };
-  state.entries.set(key, record);
-  return { nonce: record.nonce, message: record.message, expiresAt: record.expiresAt, replayed: false };
+  state.entries.set(challengeId, record);
+  return {
+    challengeId,
+    nonce: record.nonce,
+    message: record.message,
+    expiresAt: record.expiresAt,
+    replayed: false,
+  };
 }
 
-/** Returns the live challenge for an address (consumed ones included, for replay). */
-function peekChallenge(address: string): Challenge | null {
-  const record = state.entries.get(address.toLowerCase());
+/** Returns the live challenge for a session (consumed ones included, for replay). */
+function peekChallenge(challengeId: string): Challenge | null {
+  const record = state.entries.get(challengeId);
   if (!record) return null;
   const ttl = record.signature ? CONSUMED_TTL_MS : CHALLENGE_TTL_MS;
   if (record.issuedAt + ttl <= Date.now()) return null;
   return record;
 }
 
-function markConsumed(address: string, nonce: string, signature: string): void {
-  const record = state.entries.get(address.toLowerCase());
+function markConsumed(challengeId: string, nonce: string, signature: string): void {
+  const record = state.entries.get(challengeId);
   if (record && record.nonce === nonce && !record.signature) {
     record.signature = signature;
     record.expiresAt = Date.now() + CONSUMED_TTL_MS;
   }
 }
 
-function rememberSessionToken(address: string, nonce: string, sessionToken: string): void {
-  const record = state.entries.get(address.toLowerCase());
+function rememberSessionToken(challengeId: string, nonce: string, sessionToken: string): void {
+  const record = state.entries.get(challengeId);
   if (record && record.nonce === nonce) record.sessionToken = sessionToken;
 }
 
+/**
+ * The session secret, or null when there is none.
+ *
+ * A missing `AUTH_SECRET` used to be answered differently depending on
+ * `NODE_ENV`: a production process refused, and anything else silently signed
+ * with a published constant. So a deployment that forgot the variable — a
+ * systemd unit, a bare `node dist/server.js`, anything that is not the Docker
+ * image — signed sessions with a key in the repository, and anyone could mint a
+ * session for any address.
+ *
+ * The dev secret now has to be asked for by name. Failing closed is the
+ * default; the local demo opts in.
+ */
 function secret(): string | null {
   const fromEnv = process.env.AUTH_SECRET;
   if (fromEnv && fromEnv.length >= 16) return fromEnv;
-  if (process.env.NODE_ENV === "production") return null; // routes answer 503, never sign with a default
-  return "crucible-local-dev-secret-not-for-production";
+  if (process.env.AUTH_ALLOW_DEV_SECRET === "1") return DEV_SECRET;
+  return null;
 }
 
 function signature(encodedPayload: string, key: string): string {
   return createHmac("sha256", key).update(encodedPayload).digest("base64url");
 }
 
-export function createSessionToken(address: string, key: string): { token: string; payload: SessionPayload } {
+export function createSessionToken(
+  address: string,
+  key: string,
+  audience: string = "local",
+): { token: string; payload: SessionPayload } {
   const nowSeconds = Math.floor(Date.now() / 1000);
   const payload: SessionPayload = {
     address: address.toLowerCase(),
     issuedAt: nowSeconds,
     expiresAt: nowSeconds + SESSION_TTL_SECONDS,
+    aud: audience,
   };
   const encoded = Buffer.from(JSON.stringify(payload)).toString("base64url");
   return { token: `${encoded}.${signature(encoded, key)}`, payload };
 }
 
-export function verifySessionToken(token: string | undefined | null, key: string): SessionPayload | null {
+export function verifySessionToken(
+  token: string | undefined | null,
+  key: string,
+  audience?: string,
+): SessionPayload | null {
   if (!token) return null;
   const [encoded, provided] = token.split(".");
   if (!encoded || !provided) return null;
@@ -174,6 +282,10 @@ export function verifySessionToken(token: string | undefined | null, key: string
     const payload = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8")) as SessionPayload;
     if (!ADDRESS_RE.test(payload.address ?? "")) return null;
     if (typeof payload.expiresAt !== "number" || payload.expiresAt * 1000 < Date.now()) return null;
+    // An issued-at in the future is not a token this server made.
+    if (typeof payload.issuedAt !== "number" || payload.issuedAt * 1000 > Date.now() + 60_000) return null;
+    // A session is only good for the origin it was minted for.
+    if (audience !== undefined && payload.aud !== audience) return null;
     return payload;
   } catch {
     return null;
@@ -193,7 +305,11 @@ function sessionCookie(token: string): string {
 }
 
 function clearedCookie(): string {
-  return `${COOKIE_NAME}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0`;
+  const parts = [`${COOKIE_NAME}=`, "HttpOnly", "SameSite=Lax", "Path=/", "Max-Age=0"];
+  // The same attributes the cookie was set with, so a browser matches it and
+  // actually deletes it.
+  if (process.env.NODE_ENV === "production") parts.push("Secure");
+  return parts.join("; ");
 }
 
 function cookieOf(c: Context, name: string): string | null {
@@ -207,45 +323,163 @@ function cookieOf(c: Context, name: string): string | null {
 }
 
 /**
+ * The cookie that carries the challenge id.
+ *
+ * It is HttpOnly and short-lived: it names the challenge, and the challenge is
+ * the thing that must not be completed from a different browser.
+ */
+const CHALLENGE_COOKIE = "crucible_challenge";
+
+function challengeCookie(challengeId: string): string {
+  const parts = [
+    `${CHALLENGE_COOKIE}=${challengeId}`,
+    "HttpOnly",
+    "SameSite=Lax",
+    "Path=/auth",
+    `Max-Age=${Math.floor(CHALLENGE_TTL_MS / 1000)}`,
+  ];
+  if (process.env.NODE_ENV === "production") parts.push("Secure");
+  return parts.join("; ");
+}
+
+/**
+ * The signers a signature could belong to.
+ *
+ * Two forms are accepted, and both have to recover the claimed address:
+ *
+ *   * **EIP-4361.** The message is hashed with keccak256 and signed with
+ *     secp256k1 with NO EIP-191 prefix. This is what a compliant SIWE client
+ *     (the `siwe` library, wagmi's SIWE flow) does, and the previous
+ *     implementation rejected every one of them.
+ *   * **EIP-191 personal_sign.** What a wallet's "Sign message" button
+ *     produces, and what the ported SE-2 flow used.
+ *
+ * Accepting both costs nothing: a signature still has to recover the claimed
+ * address, so a forged one is rejected either way.
+ */
+async function signersOf(message: string, signature: `0x${string}`): Promise<string[]> {
+  const found: string[] = [];
+  try {
+    found.push(await recoverAddress({ hash: keccak256(toBytes(message)), signature }));
+  } catch {
+    // Not the EIP-4361 form; the other one may still match.
+  }
+  try {
+    found.push(await recoverMessageAddress({ message, signature }));
+  } catch {
+    // Not decodable at all.
+  }
+  return found;
+}
+
+/**
+ * A JSON body, read with a hard ceiling.
+ *
+ * The middleware's body limit only sees an ANNOUNCED `Content-Length`. A
+ * request that says `Transfer-Encoding: chunked` announces nothing, and
+ * `c.req.json()` buffers the whole body — so on the two routes that read one,
+ * a caller could send as much as it liked and the process would hold it all
+ * in memory. The ceiling is therefore applied to the bytes actually read, and
+ * the stream is cancelled the moment it goes over.
+ *
+ * Returns null for "no body", "too big" and "not JSON"; the caller answers
+ * 400 for all three, because from the outside they are the same request.
+ */
+async function readBoundedJson(c: Context, maxBytes: number): Promise<unknown | null> {
+  const declared = c.req.header("content-length");
+  if (declared) {
+    const size = Number(declared);
+    if (!Number.isFinite(size) || size < 0) return null;
+    if (size > maxBytes) return null;
+  }
+
+  const body = c.req.raw.body;
+  if (!body) return null;
+
+  const reader = body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+      total += value.byteLength;
+      if (total > maxBytes) {
+        await reader.cancel();
+        return null;
+      }
+      chunks.push(value);
+    }
+  } catch {
+    return null;
+  }
+
+  if (total === 0) return null;
+  const text = new TextDecoder().decode(Buffer.concat(chunks.map((c) => Buffer.from(c))));
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * The four routes, mounted under `/auth` by `app.ts`.
  *
  * They hold no chain keys and cannot move money — the same boundary the rest of the
  * API keeps. A session proves control of an address and nothing else.
  */
-export function authRoutes(): Hono {
+export function authRoutes(maxBodyBytes = 16 * 1024): Hono {
   const app = new Hono();
-
-  /** An origin the browser will actually send, used only to make the message honest. */
-  const originOf = (c: Context): string => {
-    try {
-      return new URL(c.req.url).origin;
-    } catch {
-      return "http://localhost:3000";
-    }
-  };
 
   app.post("/nonce", async (c) => {
     const key = secret();
     if (!key) return c.json({ error: "auth_unconfigured", message: "AUTH_SECRET is not configured." }, 503);
-    let body: { address?: unknown };
-    try {
-      body = await c.req.json();
-    } catch {
+    const origin = configuredOrigin();
+    if (!origin) {
+      return c.json(
+        { error: "auth_unconfigured", message: "AUTH_ORIGIN is not configured, so the server cannot say which site it is." },
+        503,
+      );
+    }
+    let body: { address?: unknown } | null;
+    body = (await readBoundedJson(c, maxBodyBytes)) as { address?: unknown } | null;
+    if (!body || typeof body !== "object") {
       return c.json({ error: "invalid_body", message: "A JSON body is required." }, 400);
     }
     const address = typeof body.address === "string" ? body.address : "";
     if (!ADDRESS_RE.test(address)) return c.json({ error: "invalid_address" }, 400);
-    return c.json(issueChallenge(address, originOf(c)));
+    const challenge = issueChallenge(address, origin);
+    // The challenge id goes back as an HttpOnly cookie, not in the body: the
+    // client has no business choosing which challenge it completes.
+    c.header("Set-Cookie", challengeCookie(challenge.challengeId));
+    return c.json({
+      nonce: challenge.nonce,
+      message: challenge.message,
+      expiresAt: challenge.expiresAt,
+      replayed: challenge.replayed,
+    });
   });
 
   app.post("/verify", async (c) => {
     const key = secret();
     if (!key) return c.json({ error: "auth_unconfigured", message: "AUTH_SECRET is not configured." }, 503);
+    const origin = configuredOrigin();
+    if (!origin) {
+      return c.json(
+        { error: "auth_unconfigured", message: "AUTH_ORIGIN is not configured, so the server cannot say which site it is." },
+        503,
+      );
+    }
 
-    let body: { address?: unknown; nonce?: unknown; signature?: unknown };
-    try {
-      body = await c.req.json();
-    } catch {
+    let body: { address?: unknown; nonce?: unknown; signature?: unknown } | null;
+    body = (await readBoundedJson(c, maxBodyBytes)) as {
+      address?: unknown;
+      nonce?: unknown;
+      signature?: unknown;
+    } | null;
+    if (!body || typeof body !== "object") {
       return c.json({ error: "invalid_body", message: "A JSON body is required." }, 400);
     }
 
@@ -257,9 +491,18 @@ export function authRoutes(): Hono {
     if (!nonce || nonce.length > 64) return c.json({ error: "invalid_nonce" }, 400);
     if (!HEX_RE.test(sig) || sig.length < 130) return c.json({ error: "invalid_signature" }, 400);
 
-    const challenge = peekChallenge(address);
+    // The challenge is found by the id in the caller's cookie, not by the
+    // address it was issued for. A challenge is a bearer token otherwise:
+    // anyone who learns a nonce could complete it from a different browser,
+    // and the session it mints would land there.
+    const challengeId = cookieOf(c, CHALLENGE_COOKIE);
+    const challenge = challengeId ? peekChallenge(challengeId) : null;
     if (!challenge) {
       return c.json({ error: "challenge_expired", message: "Request a new nonce and sign again." }, 401);
+    }
+    // And the challenge has to be the one for the address being claimed.
+    if (challenge.address !== address.toLowerCase()) {
+      return c.json({ error: "address_mismatch", message: "That challenge was issued for another address." }, 401);
     }
 
     // Exact replay of a consumed challenge → hand back the original session.
@@ -268,39 +511,30 @@ export function authRoutes(): Hono {
       if (!isReplay) {
         return c.json({ error: "challenge_used", message: "This nonce was already used." }, 401);
       }
-      if (challenge.sessionToken && verifySessionToken(challenge.sessionToken, key)) {
+      if (challenge.sessionToken && verifySessionToken(challenge.sessionToken, key, origin)) {
+        const payload = verifySessionToken(challenge.sessionToken, key, origin)!;
         c.header("Set-Cookie", sessionCookie(challenge.sessionToken));
-        const payload = verifySessionToken(challenge.sessionToken, key)!;
         return c.json({ address: payload.address, session: { expiresAt: payload.expiresAt }, replayed: true });
       }
-      const minted = createSessionToken(address, key);
-      c.header("Set-Cookie", sessionCookie(minted.token));
-      rememberSessionToken(address, nonce, minted.token);
-      return c.json({
-        address: minted.payload.address,
-        session: { expiresAt: minted.payload.expiresAt },
-        replayed: true,
-      });
+      // The original session has expired. Minting a fresh seven-day one here
+      // would turn a captured `{address, nonce, signature}` tuple into a
+      // long-lived credential for as long as the replay window lasts.
+      return c.json({ error: "session_expired", message: "Sign in again." }, 401);
     }
 
     if (challenge.nonce !== nonce) {
       return c.json({ error: "nonce_mismatch", message: "Nonce does not match the active challenge." }, 401);
     }
 
-    let recovered: string;
-    try {
-      recovered = await recoverMessageAddress({ message: challenge.message, signature: sig as `0x${string}` });
-    } catch {
-      return c.json({ error: "invalid_signature", message: "Signature could not be decoded." }, 400);
-    }
-    if (recovered.toLowerCase() !== address.toLowerCase()) {
+    const signers = await signersOf(challenge.message, sig as `0x${string}`);
+    if (!signers.some((s) => s.toLowerCase() === address.toLowerCase())) {
       return c.json({ error: "bad_signature", message: "Signature does not match the address." }, 401);
     }
 
-    markConsumed(address, nonce, sig);
-    const minted = createSessionToken(address, key);
+    markConsumed(challengeId!, nonce, sig);
+    const minted = createSessionToken(address, key, origin);
     c.header("Set-Cookie", sessionCookie(minted.token));
-    rememberSessionToken(address, nonce, minted.token);
+    rememberSessionToken(challengeId!, nonce, minted.token);
 
     return c.json({
       address: minted.payload.address,
@@ -312,7 +546,9 @@ export function authRoutes(): Hono {
   app.get("/session", (c) => {
     const key = secret();
     if (!key) return c.json({ error: "auth_unconfigured" }, 503);
-    const payload = verifySessionToken(cookieOf(c, COOKIE_NAME), key);
+    const origin = configuredOrigin();
+    if (!origin) return c.json({ error: "auth_unconfigured" }, 503);
+    const payload = verifySessionToken(cookieOf(c, COOKIE_NAME), key, origin);
     if (!payload) return c.json({ address: null });
     return c.json({ address: payload.address, session: { expiresAt: payload.expiresAt } });
   });

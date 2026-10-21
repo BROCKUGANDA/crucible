@@ -24,23 +24,34 @@ jobs:
 
       # Foundry by pinned tarball, not foundryup: the runner box also hosts the
       # production anvil, and foundryup refuses to replace its binaries while
-      # any foundry process is running. The tarball lands in /tmp and joins
-      # PATH, so it never touches the host's ~/.foundry.
+      # any foundry process is running. The tarball lands in this job's own
+      # temporary directory and joins PATH, so it never touches the host's
+      # ~/.foundry and never collides with the other jobs' copy.
       - name: install foundry (pinned tarball)
         run: |
           set -euo pipefail
           V="v1.8.5"
+          # Each job gets its OWN foundry directory.
+          #
+          # The three jobs that need forge used to extract the tarball into
+          # /tmp together, so they installed the same `forge` path at the same
+          # time. Whichever was mid-write while another executed it failed with
+          # "Text file busy" - a race between the jobs, not a defect in the
+          # code, and it failed a different job each time, which is the worst
+          # kind of failure to chase. RUNNER_TEMP is per-job, so the same
+          # tarball lands somewhere private to each one.
+          FOUNDRY_DIR="$RUNNER_TEMP/foundry"
+          mkdir -p "$FOUNDRY_DIR"
           curl -fsSL "https://github.com/foundry-rs/foundry/releases/download/$V/foundry_${V}_linux_amd64.tar.gz" \
-            | tar xz -C /tmp
-          echo "/tmp" >> "$GITHUB_PATH"
+            | tar xz -C "$FOUNDRY_DIR"
+          echo "$FOUNDRY_DIR" >> "$GITHUB_PATH"
           # $GITHUB_PATH only reaches *later* steps, so this step exports its own
           # or `forge --version` is the last thing it manages to do.
-          export PATH="/tmp:$PATH"
+          export PATH="$FOUNDRY_DIR:$PATH"
           forge --version
 
       - name: forge fmt --check
         run: forge fmt --check
-        continue-on-error: true
 
       - name: build
         run: forge build --sizes
@@ -50,6 +61,14 @@ jobs:
 
       - name: gas report
         run: forge test --gas-report | tee gas-report.txt
+
+      # Coverage runs with `--ir-minimum`: forge disables the optimizer and viaIR for
+      # coverage reports, and the legacy codegen then hits "stack too deep" in this
+      # codebase. `--ir-minimum` keeps viaIR on with minimum optimization, which is what
+      # the contracts are built with anyway, so the coverage numbers describe the code
+      # that actually ships. It is slower, and it is a real gate, not a report.
+      - name: coverage
+        run: forge coverage --ir-minimum --report summary | tee coverage-summary.txt
 
   # Static analysis. Findings are triaged by hand in docs/slither-triage.md -- this job
   # proves nothing NEW appeared, it does not decide what is acceptable.
@@ -70,12 +89,23 @@ jobs:
         run: |
           set -euo pipefail
           V="v1.8.5"
+          # Each job gets its OWN foundry directory.
+          #
+          # The three jobs that need forge used to extract the tarball into
+          # /tmp together, so they installed the same `forge` path at the same
+          # time. Whichever was mid-write while another executed it failed with
+          # "Text file busy" - a race between the jobs, not a defect in the
+          # code, and it failed a different job each time, which is the worst
+          # kind of failure to chase. RUNNER_TEMP is per-job, so the same
+          # tarball lands somewhere private to each one.
+          FOUNDRY_DIR="$RUNNER_TEMP/foundry"
+          mkdir -p "$FOUNDRY_DIR"
           curl -fsSL "https://github.com/foundry-rs/foundry/releases/download/$V/foundry_${V}_linux_amd64.tar.gz" \
-            | tar xz -C /tmp
-          echo "/tmp" >> "$GITHUB_PATH"
+            | tar xz -C "$FOUNDRY_DIR"
+          echo "$FOUNDRY_DIR" >> "$GITHUB_PATH"
           # $GITHUB_PATH only reaches *later* steps, so this step exports its own
           # or `forge --version` is the last thing it manages to do.
-          export PATH="/tmp:$PATH"
+          export PATH="$FOUNDRY_DIR:$PATH"
           forge --version
 
       - uses: actions/setup-python@v5
@@ -108,12 +138,23 @@ jobs:
         run: |
           set -euo pipefail
           V="v1.8.5"
+          # Each job gets its OWN foundry directory.
+          #
+          # The three jobs that need forge used to extract the tarball into
+          # /tmp together, so they installed the same `forge` path at the same
+          # time. Whichever was mid-write while another executed it failed with
+          # "Text file busy" - a race between the jobs, not a defect in the
+          # code, and it failed a different job each time, which is the worst
+          # kind of failure to chase. RUNNER_TEMP is per-job, so the same
+          # tarball lands somewhere private to each one.
+          FOUNDRY_DIR="$RUNNER_TEMP/foundry"
+          mkdir -p "$FOUNDRY_DIR"
           curl -fsSL "https://github.com/foundry-rs/foundry/releases/download/$V/foundry_${V}_linux_amd64.tar.gz" \
-            | tar xz -C /tmp
-          echo "/tmp" >> "$GITHUB_PATH"
+            | tar xz -C "$FOUNDRY_DIR"
+          echo "$FOUNDRY_DIR" >> "$GITHUB_PATH"
           # $GITHUB_PATH only reaches *later* steps, so this step exports its own
           # or `forge --version` is the last thing it manages to do.
-          export PATH="/tmp:$PATH"
+          export PATH="$FOUNDRY_DIR:$PATH"
           forge --version
 
       # The README keeps these out of the default gate on purpose: a gate that
@@ -130,10 +171,41 @@ jobs:
           fi
           forge test --fork-url "$MAINNET_RPC_URL" --match-contract ForkTests -vv
 
+  # Leaked credentials are the one class of defect that is already too late by the time
+  # tests run. The whole history is scanned, not just the working tree; the only
+  # suppressions are the deterministic Anvil keys and secp256k1 constants listed in
+  # .gitleaks.toml, each with the reason it is not a secret.
+  secrets:
+    name: Secrets (gitleaks)
+    runs-on: [self-hosted, linux, X64, crucible]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: install gitleaks (pinned tarball)
+        run: |
+          set -euo pipefail
+          V="8.24.0"
+          mkdir -p "$RUNNER_TEMP/gitleaks"
+          curl -fsSL "https://github.com/gitleaks/gitleaks/releases/download/v$V/gitleaks_${V}_linux_x64.tar.gz" \
+            | tar xz -C "$RUNNER_TEMP/gitleaks"
+          "$RUNNER_TEMP/gitleaks/gitleaks" version
+
+      - name: scan history
+        run: |
+          "$RUNNER_TEMP/gitleaks/gitleaks" detect \
+            --source . \
+            --config .gitleaks.toml \
+            --redact \
+            --verbose \
+            --log-opts="--all"
+
   # One job for every workspace, not a matrix per package: this repo runs on
-  # two runners, and a seven-way matrix turns every push into a queue an hour
-  # deep. `npm test` at the root runs each workspace's suite in turn — same
-  # tests, one slot, a queue that drains in minutes.
+  # two runners, and a ten-way matrix turns every push into a queue an hour
+  # deep. The workspaces run in turn — same tests, one slot, a queue that drains
+  # in minutes. All ten are named explicitly so a new workspace cannot be
+  # silently skipped.
   node:
     name: TypeScript (all workspaces)
     runs-on: [self-hosted, linux, X64, crucible]
@@ -163,6 +235,9 @@ jobs:
             --workspace @crucible/argus \
             --workspace @crucible/indexer \
             --workspace @crucible/warden \
+            --workspace @crucible/agent-security \
+            --workspace @crucible/cidstore \
+            --workspace @crucible/keeper \
             --workspace @crucible/api \
             --workspace @crucible/web
 
@@ -174,6 +249,9 @@ jobs:
             --workspace @crucible/argus \
             --workspace @crucible/indexer \
             --workspace @crucible/warden \
+            --workspace @crucible/agent-security \
+            --workspace @crucible/cidstore \
+            --workspace @crucible/keeper \
             --workspace @crucible/api \
             --workspace @crucible/web
 
