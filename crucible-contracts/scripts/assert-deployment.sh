@@ -118,11 +118,75 @@ expect "the registry's forge" "$(printf '%s' "$TRIALS" | address)" "$(call_addre
 # The contract's own invariant: the ETH the contract holds covers everything
 # it owes. A test proves the code cannot break it; this proves the DEPLOYED
 # contract has not.
+#
+# Wei does not fit the shell's arithmetic. `$(( ))` and `[ -le ]` are 64-bit
+# signed, so a contract holding 10.04 ETH made the comparison error out and a
+# healthy surplus print as a FAIL, and a liability sum past 2^63 wraps negative
+# — which would have reported "owes -8 ETH" as a pass. The dangerous direction is
+# the silent one, so the sums below are decimal on digit strings, and the helpers
+# are checked against the numbers from that incident before anything relies on
+# them.
+LC_ALL=C
+export LC_ALL
+
+dec_norm() {
+  d=$1
+  while [ "${d#0}" != "$d" ] && [ -n "$d" ]; do d=${d#0}; done
+  printf '%s' "${d:-0}"
+}
+
+# dec_add <decimal> <decimal> — schoolbook addition, right to left. `${x%?}` and
+# `${x#"$y"}` are POSIX; the substring form `${x:1:1}` is not, and this runs
+# under dash inside the seed container.
+dec_add() {
+  a=$(dec_norm "$1")
+  b=$(dec_norm "$2")
+  carry=0
+  out=""
+  while [ -n "$a" ] || [ -n "$b" ] || [ "$carry" -ne 0 ]; do
+    da=${a#"${a%?}"}
+    a=${a%?}
+    db=${b#"${b%?}"}
+    b=${b%?}
+    [ -n "$da" ] || da=0
+    [ -n "$db" ] || db=0
+    sum=$((da + db + carry))
+    if [ "$sum" -ge 10 ]; then
+      carry=1
+      sum=$((sum - 10))
+    else
+      carry=0
+    fi
+    out="${sum}${out}"
+  done
+  printf '%s' "$(dec_norm "$out")"
+}
+
+# dec_cmp <a> <b> — -1, 0 or 1. Equal-length digit strings compare as bytes under C.
+dec_cmp() {
+  a=$(dec_norm "$1")
+  b=$(dec_norm "$2")
+  if [ "${#a}" -gt "${#b}" ]; then printf '%s' 1; return; fi
+  if [ "${#a}" -lt "${#b}" ]; then printf '%s' -1; return; fi
+  if [ "$a" = "$b" ]; then printf '%s' 0; return; fi
+  if [ "$a" \> "$b" ]; then printf '%s' 1; else printf '%s' -1; fi
+}
+
+# The canary: 10.04 ETH held against 8.44 ETH owed is the case the shell got
+# wrong, and 8.44 + 2.00 is the sum that used to wrap negative.
+if [ "$(dec_cmp 10040000000000000000 8440000000000000000)" != 1 ] ||
+  [ "$(dec_add 8440000000000000000 2000000000000000000)" != "10440000000000000000" ] ||
+  [ "$(dec_cmp "$(dec_add 9223372036854775807 1)" 9223372036854775808)" != 0 ]; then
+  bad "the decimal helpers disagree with known values — the money check below is not trustworthy"
+else
+  ok "the decimal helpers agree with the values that broke 64-bit arithmetic"
+fi
+
 escrowed=$(call_number "$TRIALS" 'escrowed()(uint256)')
 pending=$(call_number "$TRIALS" 'totalPending()(uint256)')
 balance=$(cast balance "$TRIALS" --rpc-url "$RPC" 2>/dev/null | number || echo 0)
-owed=$((escrowed + pending))
-if [ "$owed" -le "$balance" ]; then
+owed=$(dec_add "$escrowed" "$pending")
+if [ "$(dec_cmp "$owed" "$balance")" -le 0 ]; then
   ok "the contract holds $balance wei against $owed wei of liabilities"
 else
   bad "the contract holds $balance wei but owes $owed wei"
