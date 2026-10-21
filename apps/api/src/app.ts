@@ -11,6 +11,7 @@ import {
 import { rateLimit } from "./rate-limit.js";
 import { dlq } from "./dlq.js";
 import { authRoutes } from "./auth.js";
+import { createVoiceRoutes, type VoiceConfig } from "./voice.js";
 import {
   bodyLimit,
   corsPolicy,
@@ -26,9 +27,11 @@ import { streamSSE } from "hono/streaming";
  * The REST surface, built as a pure function over a read-model getter so it can be
  * tested without a chain, a database, or a running process.
  *
- * Nothing here can move money. Every route is a read. State changes go through the
- * contracts directly from the wallet, because an API that can submit transactions
- * is an API that needs to be trusted with keys.
+ * Nothing here can move on-chain money. State changes go through the contracts
+ * directly from the wallet, because an API that can submit transactions is an API
+ * that needs to be trusted with chain keys. The optional voice proxy is the one
+ * route that spends something — a text-to-speech credit — and it is a closed set of
+ * fixed moments with its own tighter bucket, not a general-purpose synthesizer.
  */
 
 export interface ApiDeps {
@@ -148,6 +151,16 @@ export interface ApiOptions {
    * what it does not.
    */
   security?: Partial<SecurityConfig>;
+  /**
+   * Frenchy. Null or absent means the voice host is off and `/voice/status` says so;
+   * the rest of the app is unchanged.
+   */
+  voice?: VoiceConfig | null;
+  /**
+   * The voice route spends a provider credit per call, so it gets its own bucket
+   * rather than sharing the 60/min read allowance. `false` disables it for tests.
+   */
+  voiceRateLimit?: { limit: number; windowMs: number; burst?: number } | false;
 }
 
 /**
@@ -327,6 +340,22 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
    * was made to keep.
    */
   app.route("/auth", authRoutes(security.maxBodyBytes));
+
+  /**
+   * The voice host. `/voice/status` is a cheap read; `/voice/speak` is the only
+   * route that spends money, so it has a bucket of its own on top of the global one.
+   */
+  if (opts.voiceRateLimit !== false) {
+    const voiceLimiter = rateLimit({
+      limit: 8,
+      windowMs: 60_000,
+      burst: 2,
+      trustProxy: opts.trustProxy ?? false,
+      ...opts.voiceRateLimit,
+    });
+    app.use("/voice/*", voiceLimiter);
+  }
+  app.route("/voice", createVoiceRoutes(opts.voice ?? null));
 
   /**
    * Liveness, plus the reach of the index. `/ready` is the gate a balancer acts on; this is

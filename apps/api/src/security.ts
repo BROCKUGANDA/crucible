@@ -83,8 +83,9 @@ export const LOCAL_DEMO_ORIGINS = [
 export const DEFAULT_SECURITY: SecurityConfig = {
   allowedOrigins: [...LOCAL_DEMO_ORIGINS],
   allowCredentials: false,
-  // Reads. The routes are reads. `POST` appearing here would be a promise this server
-  // cannot keep, and the promise a future write route would inherit by accident.
+  // Reads, plus the two POST surfaces that cannot move funds: SIWE auth and the
+  // fixed-copy voice proxy. A route that submits a transaction must not inherit this
+  // list by accident.
   corsMethods: ["GET", "HEAD", "OPTIONS", "POST"],
   exposeHeaders: ["X-Request-Id", "Retry-After", "RateLimit-Limit", "RateLimit-Remaining"],
   preflightMaxAgeSec: 600,

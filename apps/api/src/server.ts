@@ -73,6 +73,24 @@ const ALLOY_TTL_MS = (() => {
   return Number.isFinite(v) && v > 0 ? v : 2000;
 })();
 
+/**
+ * Frenchy is optional. Both the key and the voice id are configuration; a missing
+ * either keeps the voice host off, and the web app hides the control. `VOICE_DISABLED=1`
+ * is the kill switch for a deployment that has the credentials but wants silence.
+ */
+const voice = (() => {
+  if (process.env.VOICE_DISABLED === "1") return null;
+  const apiKey = process.env.ELEVENLABS_API_KEY?.trim();
+  const voiceId = process.env.ELEVENLABS_VOICE_ID?.trim();
+  const baseUrl = process.env.ELEVENLABS_BASE_URL?.trim() || undefined;
+  const modelId = process.env.ELEVENLABS_MODEL_ID?.trim() || "eleven_flash_v2_5";
+  if (!apiKey || !voiceId) return null;
+  if (baseUrl && !/^https?:\/\//.test(baseUrl)) {
+    throw new Error(`ELEVENLABS_BASE_URL must be an http(s) URL; got "${baseUrl}"`);
+  }
+  return { apiKey, voiceId, modelId, baseUrl };
+})();
+
 const publicClient = createPublicClient({ chain: foundry, transport: http(rpcUrl) });
 
 const scribe = new Scribe({
@@ -315,12 +333,18 @@ const app = createApp({
   // `X-Forwarded-Proto` believable for the TLS check.
   trustProxy,
   security,
+  voice,
 });
 
 serve({ fetch: app.fetch, port }, (info) => {
   console.log(`[crucible] api listening on :${info.port}`);
   console.log(`[crucible] indexing ${trialsAddress}`);
   console.log(`[crucible] alloy from ${alloyAddress} every ${ALLOY_TTL_MS}ms`);
+  console.log(
+    voice
+      ? `[crucible] voice: Frenchy on (${voice.modelId})`
+      : "[crucible] voice: off (set ELEVENLABS_API_KEY and ELEVENLABS_VOICE_ID to enable)",
+  );
   // The transport policy, stated as what it is rather than as a checkbox. `*` here means
   // "reads are public by design, credentialed reads are impossible" — see security.ts.
   console.log(
