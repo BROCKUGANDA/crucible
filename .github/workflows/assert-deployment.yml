@@ -22,7 +22,6 @@ jobs:
           set -euo pipefail
           cd "$HOME/crucible"
           docker compose -f compose.yaml -f compose.vps.yaml build seed
-
       - name: assert
         working-directory: ${{ github.workspace }}
         run: |

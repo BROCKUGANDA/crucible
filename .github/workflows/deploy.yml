@@ -168,7 +168,14 @@ jobs:
 
       - name: build web and api
         working-directory: /home/ubuntu/crucible
-        run: docker compose -f compose.yaml -f compose.vps.yaml build web api
+        # The seed image is built too — and only BUILT, never run. The deploy
+        # swaps `web` and `api` with `--no-deps` so anvil keeps its chain, and
+        # the seed service is left alone for the same reason. But the
+        # post-deploy assertions run inside the seed image, and an image built
+        # before the assertion script existed does not contain it — so the
+        # deploy failed on a file that was in the repository and not in the
+        # image. Building is not running.
+        run: docker compose -f compose.yaml -f compose.vps.yaml build web api seed
 
       - name: swap web and api (anvil keeps its chain)
         working-directory: /home/ubuntu/crucible
