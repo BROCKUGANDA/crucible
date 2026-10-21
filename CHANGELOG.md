@@ -12,6 +12,13 @@ migration. See [`SECURITY.md`](SECURITY.md) before deploying value.
 
 ### Added
 
+- **The phone header has a real hamburger and compact wallet labels.** The
+  menu button shows a three-line glyph and drops the word "Menu" below 520px;
+  the injected and Coinbase wallet buttons shorten to "Connect" and "Coinbase"
+  at the same width. At 320px the header height fell from 189px to 131px, the
+  nav sheet still opens, and there is no horizontal overflow. The tests and the
+  local 320/390px browser check cover it.
+
 - **Coinbase CDP CLI and a Sandbox profile for agents.** Both the Advanced Trade
   `coinbase` CLI and the custodial `cdp` CLI are installed, the Qoder skill set is
   installed (`coinbase*`, `cdp-*`, and the root `coinbase-agent-skill`), and

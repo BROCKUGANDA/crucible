@@ -416,6 +416,20 @@
 /* The menu button and the inline nav are the same control at two widths. */
 .chrome__menu {
   display: none;
+  align-items: center;
+  gap: 8px;
+}
+
+.menu-glyph {
+  display: none;
+  width: 18px;
+  height: 14px;
+}
+
+/* The wallet buttons keep their full labels on desktop and a compact label on
+   phones, so the header does not wrap into a third row at 320px. */
+.wallet-label-short {
+  display: none;
 }
 
 .chrome__main {
@@ -485,7 +499,24 @@
      though it wears the compact button class. */
   .chrome__menu {
     min-height: 44px;
-    padding-inline: 16px;
+    min-width: 44px;
+    padding-inline: 12px;
+  }
+
+  .chrome__menu .menu-label {
+    display: none;
+  }
+
+  .chrome__menu .menu-glyph {
+    display: block;
+  }
+
+  .wallet-label-full {
+    display: none;
+  }
+
+  .wallet-label-short {
+    display: inline;
   }
 }
 
