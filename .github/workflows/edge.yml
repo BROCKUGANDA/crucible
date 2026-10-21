@@ -86,6 +86,32 @@ jobs:
             fi
           done
 
+      - name: install the host timer
+        run: |
+          set -euo pipefail
+          cd "$HOME/crucible"
+
+          # The repair lives on the HOST, on a timer, rather than in this
+          # workflow.
+          #
+          # A schedule in GitHub Actions waits for a runner, and the runners
+          # here are busy — a schedule that arrives late is the same as no
+          # schedule when the thing it repairs takes minutes to notice. It
+          # also depends on this project's deploy pipeline, and the attachment
+          # is dropped by a deploy of a DIFFERENT project: nothing about this
+          # project happens at that moment, so nothing here would notice.
+          #
+          # A host cron entry has neither dependency. It runs whether or not
+          # this repository is touched.
+          sudo install -m 0755 deploy/edge-attach.sh /usr/local/bin/crucible-edge-attach
+          ( crontab -l 2>/dev/null | grep -v 'crucible-edge-attach' ; \
+            echo '*/2 * * * * /usr/local/bin/crucible-edge-attach >> /var/log/crucible-edge-attach.log 2>&1' \
+          ) | crontab -
+          echo "=== crontab ==="
+          crontab -l | grep crucible-edge-attach || echo "  (not installed)"
+          echo "=== running it once ==="
+          /usr/local/bin/crucible-edge-attach || true
+
       - name: prove it
         run: |
           set -uo pipefail
