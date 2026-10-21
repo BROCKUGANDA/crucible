@@ -93,8 +93,31 @@ jobs:
             echo "--- $c"
             docker exec "$c" sh -c 'wget -qO- --timeout=5 http://api:8787/health 2>&1 | head -c 200' || echo "  (no answer from api:8787)"
           done
+
+          # The check is a GATE, not a report.
+          #
+          # This job runs every five minutes, so a red run is the alarm: a
+          # reader sees the pipeline go red at the same moment a visitor sees
+          # a 502. A step that only printed the status would leave the
+          # difference between "the site is down" and "the site is down and
+          # nobody was told" entirely in the reader's memory.
           echo "=== from outside ==="
-          curl -sk -o /dev/null -w 'site   %{http_code}\n' https://crucible.svalley.tech/ || true
-          curl -sk -o /dev/null -w 'api    %{http_code}\n' https://crucible.svalley.tech/api/health || true
-          curl -sk -o /dev/null -w 'anvil  %{http_code}\n' -X POST https://crucible.svalley.tech/anvil \
-            -H 'Content-Type: application/json' -d '{"jsonrpc":"2.0","method":"eth_chainId","params":[],"id":1}' || true
+          fail=0
+          for probe in \
+            "site=https://crucible.svalley.tech/" \
+            "ready=https://crucible.svalley.tech/api/ready" \
+            "health=https://crucible.svalley.tech/api/health"; do
+            name="${probe%%=*}"
+            url="${probe#*=}"
+            code=$(curl -sk -o /dev/null -w '%{http_code}' --max-time 20 "$url" || echo 000)
+            echo "$name  $code  $url"
+            case "$code" in
+              200) ;;
+              *) fail=1 ;;
+            esac
+          done
+          if [ "$fail" != "0" ]; then
+            echo "::error::a probe on the judge path is not answering 200"
+            exit 1
+          fi
+          echo "every probe on the judge path is answering 200"

@@ -31,11 +31,12 @@ Open ──claim──> Assigned ──submitRun──> Judging ──fileBreak�
 3. Read the proofs: `/hall` shows the leaderboard where each row quotes the
    settlement transaction and the identity registration that earned it. The
    contracts are in `crucible-contracts/src` with 122 tests. The workspace suites
-   add 824 more (web 135, indexer 153, agent-security 129, smith-sdk 108,
-   forge-runner 97, api 84, warden 23, argus 21, cidstore 52, and the hall
-   reader's 10) — `npm run test` runs them; the contracts suite itself needs
-   Foundry (`forge test`), which the seed image runs on a machine without a
-   local forge.
+   add 830 more — web 135, smith-sdk 141, agent-security 153, forge-runner 108,
+   cidstore 97, api 86, indexer 56, warden 23, argus 21, keeper 10 — and
+   `npm run test` runs them; the contracts suite itself needs Foundry
+   (`forge test`), which the seed image runs on a machine without a local
+   forge. The numbers are the ones the suites print today, per package, and
+   they are checked rather than remembered: a judge who counts gets these.
 4. Replay the whole loop against a running chain — register, post, claim,
    runner-signed runs, a break that Argus slashes, and the permissionless quench
    after the window really closes — with `crucible-contracts/script/GoldenPath.s.sol`:
