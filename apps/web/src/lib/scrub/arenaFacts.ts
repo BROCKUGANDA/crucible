@@ -28,6 +28,11 @@ export interface ArenaFacts {
   trials: number | null;
   smiths: number | null;
   settled: number | null;
+  /**
+   * The protocol's settlement fee, in ETH. The platform's revenue, shown because
+   * the reader is entitled to know whose it is. Null until the snapshot arrives.
+   */
+  take: string | null;
   /** Block number of the settlement `mark` came from, so the reading is checkable. */
   markBlock: number | null;
 }
@@ -39,6 +44,7 @@ const NO_FACTS: ArenaFacts = {
   trials: null,
   smiths: null,
   settled: null,
+  take: null,
   markBlock: null,
 };
 
@@ -71,6 +77,7 @@ export function deriveFacts(snapshot: ApiSnapshot | null | undefined): ArenaFact
     trials: snapshot.counts?.all ?? null,
     smiths,
     settled: snapshot.counts?.settled ?? null,
+    take: snapshot.economics?.feesEth ?? null,
     markBlock: newestBlock < 0 ? null : newestBlock,
   };
 }

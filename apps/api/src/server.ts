@@ -153,6 +153,28 @@ selfSchedulingLoop(sweepAlloy, {
   onError: (err) => dlq.push("alloy.sweep", (err as Error).message),
 }).start();
 
+/**
+ * The settlement fee, in basis points, read from the contract.
+ *
+ * It is a `constant`, so it cannot change, and it is read once: the host knows
+ * the chain's own number rather than carrying a copy that could drift from it.
+ * A read that fails leaves the books at zero rather than publishing a guess —
+ * a fee nobody can verify is worse than an absent one.
+ */
+let protocolFeeBps = 0;
+try {
+  protocolFeeBps = Number(
+    await publicClient.readContract({
+      address: trialsAddress,
+      abi: [{ type: "function", name: "FEE_BPS", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] }],
+      functionName: "FEE_BPS",
+    }),
+  );
+  console.log(`[crucible] protocol settlement fee: ${protocolFeeBps / 100}%`);
+} catch (err) {
+  console.error(`[crucible] could not read FEE_BPS: ${(err as Error).message}`);
+}
+
 const trustProxy = process.env.TRUST_PROXY === "1";
 
 /**
@@ -168,6 +190,9 @@ const app = createApp({
   // read model cannot infer either — this process is the only party that knows them.
   proofSource: { chain: foundry.name, chainId: foundry.id, trialsAddress },
   alloyState: (agentId) => alloyById.get(agentId) ?? UNKNOWN_ALLOY,
+  // The chain's own fee constant, so the published books are the ones the
+  // contract charges rather than ones this process keeps a copy of.
+  protocolFeeBps: () => protocolFeeBps,
   indexStatus: () => scribe.status,
   // The one breaker this process runs: the node the index is read from. Reporting it is what
   // turns "the hall stopped moving" into "the node is tripped, with 12s of cooldown left".

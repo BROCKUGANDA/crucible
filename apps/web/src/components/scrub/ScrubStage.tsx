@@ -41,6 +41,7 @@ export function ScrubStage({ children }: { children: React.ReactNode }) {
           smiths={facts.smiths}
           settled={facts.settled}
           lastBlock={facts.markBlock}
+          take={facts.take}
           showCrowdKey
         />
         <div className="scrub__content">{children}</div>

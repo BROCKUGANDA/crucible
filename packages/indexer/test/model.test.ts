@@ -468,6 +468,44 @@ describe("buildSnapshot", () => {
 });
 
 /**
+ * The protocol's books.
+ *
+ * The contract keeps a settlement fee for the treasury, and until the snapshot carried it
+ * the platform's revenue was a number in a constant that nobody could see. These assert
+ * that the published fee is the contract's own arithmetic rather than a figure this
+ * process invented, and that a settled trial the hall counts is a settled trial the
+ * books count.
+ */
+describe("economics", () => {
+  it("takes the fee from the chain's own basis points", () => {
+    const m = replay(fullStory());
+    // The story pays one 1 ETH reward. The contract keeps FEE_BPS of it.
+    const snap = buildSnapshot(m, { now: 0, feeBps: 500 });
+    expect(snap.economics.feeBps).toBe(500);
+    expect(snap.economics.paidSettlements).toBe(1);
+    expect(snap.economics.volumeEth).toBe("1");
+    expect(snap.economics.feesEth).toBe("0.05");
+    expect(snap.economics.paidOutEth).toBe("0.95");
+  });
+
+  it("moves the fee with the constant rather than with a hardcoded number", () => {
+    const m = replay(fullStory());
+    expect(buildSnapshot(m, { now: 0, feeBps: 0 }).economics.feesEth).toBe("0");
+    expect(buildSnapshot(m, { now: 0, feeBps: 1000 }).economics.feesEth).toBe("0.1");
+    expect(buildSnapshot(m, { now: 0, feeBps: 1000 }).economics.paidOutEth).toBe("0.9");
+  });
+
+  it("counts only the settlements that paid an agent", () => {
+    const m = replay(fullStory());
+    const snap = buildSnapshot(m, { now: 0, feeBps: 500 });
+    // A slashed trial is settled, and its reward was never paid, so it is not revenue.
+    const slashed = [...m.trials.values()].filter((t) => t.verdict === "slashed");
+    for (const t of slashed) expect(t.rewardWei).toBeGreaterThan(0n);
+    expect(snap.economics.paidSettlements).toBe(1);
+  });
+});
+
+/**
  * The tier is `AlloyRegistry` state. Scribe tails CrucibleTrials, so the projection
  * cannot know it, and the API must take it from the host's registry read — or say that
  * it does not know. "Unforged" is a measurement claim; a row that never asked the chain
