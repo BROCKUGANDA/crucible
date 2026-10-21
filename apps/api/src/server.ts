@@ -72,7 +72,7 @@ const alloyById = new Map<number, AlloyState>();
  * a zero: `tokenURI` reverts with `NotMinted` for an agent with no alloy, and an agent
  * the registry never touched is not the same as an agent whose tier is 0.
  */
-async function readAlloy(agentId: number): Promise<AlloyState> {
+async function readAlloy(agentId: number): Promise<AlloyState | null> {
   const args = [BigInt(agentId)] as const;
   // "NotMinted" is the registry saying *this agent has no alloy yet* — an answer, not a
   // failure, and the common state for a fresh agent. The selector check keeps that
@@ -87,12 +87,12 @@ async function readAlloy(agentId: number): Promise<AlloyState> {
       return null;
     });
 
-  const [record, isLocked, tokenUri] = await Promise.all([
+  const [tier, isLocked, tokenUri] = await Promise.all([
     attempt(() =>
       publicClient.readContract({
         address: alloyAddress,
         abi: ALLOY_ABI,
-        functionName: "records",
+        functionName: "tierOf",
         args,
       }),
     ),
@@ -114,10 +114,20 @@ async function readAlloy(agentId: number): Promise<AlloyState> {
     ),
   ]);
 
+  // A failure is not a null tier — it is the absence of a tier, and the two
+  // are different. The caller keeps the last good value so that one
+  // transient RPC error does not turn a measured tier into "tier unknown"
+  // for a whole TTL.
+  if (tier === null && isLocked === null && tokenUri === null) return null;
+
   return {
-    // `records(agentId)` is `(wins, survived, slashes, tier)`; only the tier is published,
-    // because the counters on a hall row are the logs this process actually saw.
-    tier: record === null ? null : record[3],
+    // `tierOf(agentId)` is read on its own rather than as the fourth
+    // element of `records(...)`. A tuple is read by position, and the
+    // position is a property of the contract's output ORDER: if that order
+    // ever changed, `record[3]` would be a different field, and a number
+    // that was never measured as a tier would be published as one. A
+    // dedicated getter cannot drift that way.
+    tier,
     locked: isLocked,
     tokenUri,
   };
@@ -132,7 +142,13 @@ async function sweepAlloy(): Promise<void> {
   const ids = [...scribe.state.agents.keys()];
   await Promise.all(
     ids.map(async (id) => {
-      alloyById.set(id, await readAlloy(id));
+      const state = await readAlloy(id);
+      // A failed read does NOT overwrite what is known. The old code stored the
+      // failure's nulls, so one transient RPC error turned a measured tier
+      // into "tier unknown" for a whole TTL — and "the registry could not be
+      // read" and "this agent has no alloy" became the same answer.
+      if (state === null) return;
+      alloyById.set(id, state);
     }),
   );
 }

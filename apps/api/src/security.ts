@@ -85,7 +85,7 @@ export const DEFAULT_SECURITY: SecurityConfig = {
   allowCredentials: false,
   // Reads. The routes are reads. `POST` appearing here would be a promise this server
   // cannot keep, and the promise a future write route would inherit by accident.
-  corsMethods: ["GET", "HEAD", "OPTIONS"],
+  corsMethods: ["GET", "HEAD", "OPTIONS", "POST"],
   exposeHeaders: ["X-Request-Id", "Retry-After", "RateLimit-Limit", "RateLimit-Remaining"],
   preflightMaxAgeSec: 600,
   // 64 KiB: enough for any future JSON write route, four orders of magnitude above what

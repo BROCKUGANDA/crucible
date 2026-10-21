@@ -161,7 +161,24 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
       tick = {
         builtAt: now,
         version,
-        signature: `${snap.counts.open}:${snap.counts.assigned}:${snap.counts.judging}:${snap.counts.challenged}:${snap.counts.settled}:${snap.trials.length}`,
+        // The signature is what decides whether a subscriber gets a new frame,
+        // so it has to name everything the payload can change. It used to be
+        // the trial counts and the length: a registry tier that moved, or a
+        // settlement fee that changed, did not move it, so no frame was sent
+        // and the live view showed a stale tier indefinitely while a refresh
+        // showed the new one — the exact disagreement this cache was built to
+        // end.
+        signature: [
+          snap.counts.open,
+          snap.counts.assigned,
+          snap.counts.judging,
+          snap.counts.challenged,
+          snap.counts.settled,
+          snap.trials.length,
+          snap.economics.feesEth,
+          snap.economics.paidOutEth,
+          snap.agents.map((a) => `${a.id}:${a.tier ?? "?"}`).join(","),
+        ].join(":"),
         payload: JSON.stringify(snap),
         snapshot: snap,
       };
@@ -275,10 +292,16 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
         // could not confirm was empty.
         indexedTo: index ? Number(index.indexedTo) : null,
         head: index?.head === null || index?.head === undefined ? null : Number(index.head),
+        // The indexer's own error is safe to publish: it is written by this
+        // process, about blocks and blooms, and it is the sentence an operator
+        // needs. The dead letter's last detail is NOT: it carries whatever a
+        // third-party error said, and a viem error carries the RPC URL — which
+        // on a provider with a key in it hands the key to whoever provoked the
+        // error. The detail is still on disk and still in the log.
         syncError: index?.syncError ?? null,
         // Failures the process survived — failed syncs, failed registry reads, SSE
         // frames a dead client refused. A size that only grows is an operator's alarm.
-        dlq: dlq.summary(),
+        dlq: { ...dlq.summary(), lastDetail: null },
         // The same sentence for the dependencies this process calls: which ones are tripped,
         // how many failures it took, and how long before a probe is allowed through. Reported
         // as data, never as a status — an open breaker is why the index above stopped moving.
@@ -519,8 +542,16 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
   app.onError((err, c) => {
     console.error("[api]", err);
     const requestId = c.res.headers.get("X-Request-Id");
+    // The message goes to the log, not to the caller. A viem error carries
+    // the RPC URL — which, on a provider with a key in it, hands the key to
+    // whoever provoked the error — and a stack trace is an invitation.
+    console.error(`[api] request ${requestId} failed:`, err);
     return c.json(
-      { error: "The crucible cracked.", detail: err.message, requestId },
+      {
+        error: "The crucible cracked.",
+        detail: process.env.NODE_ENV === "production" ? undefined : err.message,
+        requestId,
+      },
       500,
     );
   });
