@@ -45,6 +45,7 @@ contract CrucibleTrials {
     error NotJudging();
     error NotChallenged();
     error SelfBreak();
+    error SelfClaim();
     error NotFinalizable();
     error NotReclaimable();
     error DeadlinePassed();
@@ -469,7 +470,12 @@ contract CrucibleTrials {
         uint256 aid = agentIdOf[msg.sender];
         if (aid == 0) revert NotAnAgent();
         Agent storage a = agents[aid];
+        // A sponsor claiming its own trial is reputation farming: the reward comes back
+        // minus the fee and the win still mints. The sponsor could use a second wallet,
+        // but the direct path must not be free.
+        if (a.operator == t.sponsor) revert SelfClaim();
         if (a.stake < t.bond) revert StakeTooSmall();
+        if (escrowed + t.bond > MAX_TOTAL_ESCROWED) revert EscrowCapExceeded();
         a.stake -= t.bond;
         totalStakes -= t.bond;
         escrowed += t.bond;
@@ -525,6 +531,10 @@ contract CrucibleTrials {
         if (msg.sender == t.sponsor || msg.sender == agents[t.agentId].operator) revert SelfBreak();
         if (block.timestamp > _windowEnd(t)) revert WindowClosed();
         if (msg.value < uint256(t.reward) / BREAK_STAKE_DEN || msg.value > type(uint128).max) revert StakeTooSmall();
+        // The cap is checked on every path that grows `escrowed`, not only on creation.
+        // A break stake is small, but a contract whose ceiling can be walked past one
+        // legal transaction at a time does not have a ceiling.
+        if (escrowed + msg.value > MAX_TOTAL_ESCROWED) revert EscrowCapExceeded();
         t.breakSkeptic = msg.sender;
         t.breakProofCID = proofCID;
         t.breakStake = uint128(msg.value);
@@ -719,6 +729,18 @@ contract CrucibleTrials {
     function disputeVote(uint256 id, address judge) external view returns (bytes32 commit, bool revealed) {
         Dispute storage d = _disputes[id];
         return (d.commits[judge], d.revealed[judge]);
+    }
+
+    /// @notice Canonical settled outcome, for a reputation backfill that must not be
+    /// able to choose its own value. The bridge reads this rather than accepting a
+    /// caller-supplied number, so a missed write can be replayed but not forged.
+    function settledOutcome(uint256 id)
+        external
+        view
+        returns (bool settled, uint8 verdict, uint256 agentId, bool survived)
+    {
+        Trial storage t = trials[id];
+        return (t.status == Status.Settled, uint8(t.verdict), t.agentId, t.breakSkeptic != address(0));
     }
 
     // ───────────────────────── internals ──────────────────────

@@ -10,6 +10,13 @@ import {IERC8004ReputationRegistry, IERC8004IdentityRegistry} from "./interfaces
 /// the whole state machine.
 interface ITrialsIdentity {
     function identityOf(uint256 agentId) external view returns (uint256);
+
+    /// Canonical outcome of a settled trial: `(settled, verdict, agentId, survivedBreak)`.
+    /// `verdict` is CrucibleTrials' enum ordinal: 1 Paid, 2 Slashed, 3 Refunded.
+    function settledOutcome(uint256 id)
+        external
+        view
+        returns (bool settled, uint8 verdict, uint256 agentId, bool survived);
 }
 
 /// @title ReputationBridge
@@ -49,6 +56,11 @@ contract ReputationBridge {
     /// linked identity. They are not interchangeable — see `_publish`.
     mapping(uint256 => uint64) public lastFeedbackIndex;
 
+    /// @notice One reputation write per Crucible trial. A trial settles once, so a
+    /// second successful write for the same trial is a duplicate signal, not a second
+    /// outcome. Failed/skipped writes leave this false so a backfill can retry.
+    mapping(uint256 => bool) public reportedTrial;
+
     event ReputationRegistrySet(address indexed registry);
     event FeedbackPublished(
         uint256 indexed agentId,
@@ -65,9 +77,12 @@ contract ReputationBridge {
 
     error NotTrials();
     error UnauthorizedReporter();
-    error ValueOutOfRange();
     error NoReputationRegistry();
     error NotRegistryOwner();
+    error TrialNotSettled();
+    error AgentMismatch();
+    error NothingToBackfill();
+    error AlreadyReported();
 
     /// The deployer. Holds no funds and no trial authority — only registry plumbing.
     address public immutable owner;
@@ -110,15 +125,31 @@ contract ReputationBridge {
         _publish(trialsId, agentId, -int128(400), false);
     }
 
-    /// Anyone may publish for an already-settled trial. Useful for an indexer
-    /// backfilling if a settlement happened before the registry was wired.
+    /// @notice Replay a missed write for a trial that has already settled.
+    ///
+    /// Permissionless on purpose: an indexer or any observer may recover a signal that
+    /// was lost while the registry was down. The value is *read from the trial*, not
+    /// supplied by the caller, so this cannot forge or inflate reputation — the old
+    /// version accepted an arbitrary int128 and never checked that the trial existed.
     /// @param agentId the *Crucible* agent id; the ERC-8004 subject is resolved from it.
-    function backfill(uint256 trialsId, uint256 agentId, int128 value) external {
-        if (value == 0 || value > MAX_VALUE || value < -MAX_VALUE) revert ValueOutOfRange();
-        _publish(trialsId, agentId, value, value > 0);
+    function backfill(uint256 trialsId, uint256 agentId) external {
+        (bool settled, uint8 verdict, uint256 trialAgent, bool survived) =
+            ITrialsIdentity(trials).settledOutcome(trialsId);
+        if (!settled) revert TrialNotSettled();
+        if (trialAgent != agentId) revert AgentMismatch();
+
+        if (verdict == 1) {
+            _publish(trialsId, agentId, survived ? int128(750) : int128(500), survived);
+        } else if (verdict == 2) {
+            _publish(trialsId, agentId, -int128(400), false);
+        } else {
+            // A refund means no agent work was judged, so there is nothing to grade.
+            revert NothingToBackfill();
+        }
     }
 
     function _publish(uint256 trialsId, uint256 agentId, int128 value, bool survivedBreak) private {
+        if (reportedTrial[trialsId]) revert AlreadyReported();
         address registry = address(reputationRegistry);
         // A missing or unavailable registry degrades the *signal*, never the verdict.
         if (registry == address(0)) revert NoReputationRegistry();
@@ -153,12 +184,13 @@ contract ReputationBridge {
         // Keyed by the Crucible agent, read back for the identity that was written.
         uint64 index = IERC8004ReputationRegistry(registry).getLastIndex(identityAgentId, address(this));
         lastFeedbackIndex[agentId] = index;
+        reportedTrial[trialsId] = true;
         emit FeedbackPublished(agentId, trialsId, identityAgentId, value, survivedBreak, index);
     }
 
-    /// CrucibleTrials at settlement, or an Argus seat acting for it. Not the operator:
-    /// the operator is the party being judged, so allowing it here would both break
-    /// the ERC-8004 rule and make the reputation signal worthless.
+    /// CrucibleTrials write, at settlement or through canonical backfill. Not the
+    /// operator: the operator is the party being judged, so allowing it here would both
+    /// break the ERC-8004 rule and make the reputation signal worthless.
     function _authorize() private view {
         if (msg.sender != trials) revert UnauthorizedReporter();
     }
