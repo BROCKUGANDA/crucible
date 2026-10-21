@@ -70,11 +70,52 @@ export interface ApiDeps {
    * published it — so the platform's revenue was a number in a constant that
    * nobody could see. The host reads it from the contract, because the number
    * the snapshot shows has to be the number the chain charges.
+   *
+   * Null when the host could not read it, which is a different answer from zero:
+   * zero says the protocol charges nothing.
    */
-  protocolFeeBps?: () => number;
+  protocolFeeBps?: () => number | null;
 }
 
-const VALID_STATUSES: TrialStatus[] = ["open", "assigned", "judging", "challenged", "settled"];
+const VALID_STATUSES = ["open", "assigned", "judging", "challenged", "settled"] as const satisfies readonly TrialStatus[];
+
+/**
+ * The same list as a set, for a membership test.
+ *
+ * `VALID_STATUSES.includes(status)` on a literal tuple needs a cast, because `status` is a
+ * `string` and the tuple holds five literals. A `Set<string>` asks the question the route
+ * actually asks — "is this one of the five?" — without narrowing the argument to something
+ * it is not.
+ */
+const VALID_STATUS_SET: ReadonlySet<string> = new Set<string>(VALID_STATUSES);
+
+/**
+ * A path parameter that must be a positive whole number.
+ *
+ * `Number(param)` accepts more than a number: `"0x10"` is 16, `"1e3"` is 1000, `" 1 "` is 1,
+ * and a 21-digit integer passes `Number.isInteger` while losing precision. None of those
+ * is a trial id, and a route that answers a request for trial `0x10` with trial 16 is a
+ * route that is not reading what it was asked for.
+ */
+function positiveId(raw: string | undefined): number | null {
+  if (!raw || !/^\d+$/.test(raw)) return null;
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value) || value < 1) return null;
+  return value;
+}
+
+/**
+ * How many live streams this process will hold at once.
+ *
+ * Each one is a socket open for up to ten minutes and a timer on the shared event loop.
+ * The rate limiter cannot see them — it counts requests, and a stream is one request — so
+ * the ceiling is what stops a client from opening connections in a loop for free.
+ *
+ * 200 is far above what a real audience needs (a browser tab, a phone, a watch) and far
+ * below what the process can carry. Past it, a stream is refused with a 503 and a
+ * `Retry-After`, which is a queue the client can back off from rather than a wall.
+ */
+const MAX_OPEN_STREAMS = 200;
 
 /**
  * The default ceiling. 60/min per IP with a small burst is enough for a real UI to
@@ -92,6 +133,14 @@ export interface ApiOptions {
    * by default would let one loop mint a fresh bucket per request.
    */
   trustProxy?: boolean;
+  /**
+   * How many live `/stream` connections this process holds at once.
+   *
+   * The rate limiter counts requests and a stream is one request that then holds a socket
+   * open, so the limiter cannot see how many are open. This is the ceiling that does.
+   * Lower it to refuse streams sooner; the default is far above what a real audience needs.
+   */
+  maxStreams?: number;
   /**
    * Transport-layer policy: browser origins, response headers, body ceiling, request
    * timeout, plaintext. Explicit values here beat `ALLOWED_ORIGINS` and friends in the
@@ -124,6 +173,10 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
   const TICK_MS = 1000;
   /** Ceiling on how long a cached stream payload may go without a fresh `now`. */
   const MAX_TICK_AGE_MS = 30_000;
+  /** Live streams currently open, against `MAX_OPEN_STREAMS`. */
+  let openStreams = 0;
+  /** The ceiling, overridable so a deployment (and a test) can move it. */
+  const maxStreams = opts.maxStreams ?? MAX_OPEN_STREAMS;
 
   /**
    * The snapshot every stream subscriber is served from, rebuilt at most once a tick for
@@ -156,7 +209,7 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
       const snap = buildSnapshot(model, {
         now,
         alloyState: deps.alloyState,
-        feeBps: deps.protocolFeeBps?.() ?? 0,
+        feeBps: deps.protocolFeeBps?.() ?? null,
       });
       tick = {
         builtAt: now,
@@ -382,9 +435,9 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
     const status = c.req.query("status");
     const snap = sharedTick().snapshot;
     if (!status) return c.json({ trials: snap.trials, counts: snap.counts });
-    if (!VALID_STATUSES.includes(status as TrialStatus)) {
+    if (!VALID_STATUS_SET.has(status)) {
       return c.json(
-        { error: `unknown status "${status}"`, valid: VALID_STATUSES },
+        { error: `unknown status "${status}"`, valid: [...VALID_STATUSES] },
         400,
       );
     }
@@ -395,16 +448,26 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
   });
 
   app.get("/trials/:id", (c) => {
-    const id = Number(c.req.param("id"));
-    if (!Number.isInteger(id) || id < 1) {
+    const id = positiveId(c.req.param("id"));
+    if (id === null) {
       return c.json({ error: "trial id must be a positive integer" }, 400);
     }
     const snap = sharedTick().snapshot;
     const trial = snap.trials.find((t) => t.id === id);
     if (!trial) return c.json({ error: `trial ${id} not found` }, 404);
-    const runs = [...deps.getModel().runs.values()]
-      .filter((r) => r.trialId === id)
-      .map((r) => ({
+    // The map is walked, not copied. `[...runs.values()]` allocated one array of every
+    // run on the chain for each hit on this route, and then threw most of it away.
+    const runs: {
+      trialId: number;
+      agentId: number;
+      runHash: string;
+      submittedAt: number;
+      artifactCID: string | null;
+      signature: string | null;
+    }[] = [];
+    for (const r of deps.getModel().runs.values()) {
+      if (r.trialId !== id) continue;
+      runs.push({
         trialId: r.trialId,
         agentId: r.agentId,
         runHash: r.runHash,
@@ -412,7 +475,8 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
         artifactCID: r.artifactCID,
         // The signature is published: it is public data that lets anyone re-verify.
         signature: r.signature,
-      }));
+      });
+    }
     return c.json({ trial, runs });
   });
 
@@ -421,8 +485,8 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
   });
 
   app.get("/agents/:id", (c) => {
-    const id = Number(c.req.param("id"));
-    if (!Number.isInteger(id) || id < 1) {
+    const id = positiveId(c.req.param("id"));
+    if (id === null) {
       return c.json({ error: "agent id must be a positive integer" }, 400);
     }
     const snap = sharedTick().snapshot;
@@ -478,7 +542,7 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
    * rendered immediately), then a snapshot only when the read model has actually moved, with
    * a heartbeat every HEARTBEAT_MS to keep proxies from buffering a quiet socket.
    *
-   * Two properties this route has to hold, and did not:
+   * Three properties this route has to hold, and did not:
    *
    *   * the read model is rebuilt at most once per tick for the whole process, not once per
    *     tick per subscriber. Ten open tabs used to mean sixty `buildSnapshot` calls a minute
@@ -489,52 +553,85 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
    *     dozens of leaked loops starving the one event loop everything else shares — the
    *     exact failure the rate limiter above was written to prevent, walking back in
    *     through the route the limiter cannot see, because a stream is one request.
+   *   * the number of open streams has a ceiling. The rate limiter cannot count them —
+   *     it counts requests, and a stream is one request that then holds a socket open
+   *     for ten minutes — so a client that opened connections in a loop paid nothing and
+   *     left a timer per connection running on the event loop the indexer shares. The
+   *     exemption from the limiter made this route cheap to open and unlimited in number;
+   *     a ceiling is what makes the exemption safe.
    */
   app.get("/stream", (c) => {
+    if (openStreams >= maxStreams) {
+      // A refused stream is a normal outcome, not a failure worth a DLQ entry: the
+      // client is asking for something the server is busy with.
+      c.header("Retry-After", "5");
+      return c.json({ error: "too many live streams", maxStreams }, 503);
+    }
+    openStreams += 1;
+    let released = false;
+    const release = (): void => {
+      if (released) return;
+      released = true;
+      openStreams -= 1;
+    };
+
     // hono only attaches its own abort listener to `c.req.raw.signal` on old Bun
     // (helper/streaming/stream.js), so on @hono/node-server `stream.onAbort` never fires when
     // a browser closes the tab. The request signal is what actually moves: `@hono/node-server`
     // aborts it when the peer disconnects, and it is the same signal a test can control.
     const signal = c.req.raw.signal;
 
-    return streamSSE(c, async (stream) => {
-      const HEARTBEAT_MS = 15_000;
-      const maxMs = 10 * 60 * 1000;
-      const started = Date.now();
+    try {
+      return streamSSE(c, async (stream) => {
+        try {
+          const HEARTBEAT_MS = 15_000;
+          const maxMs = 10 * 60 * 1000;
+          const started = Date.now();
 
-      let running = !signal.aborted;
-      signal.addEventListener(
-        "abort",
-        () => {
-          running = false;
-        },
-        { once: true },
-      );
-      stream.onAbort(() => {
-        running = false;
-      });
+          let running = !signal.aborted;
+          signal.addEventListener(
+            "abort",
+            () => {
+              running = false;
+            },
+            { once: true },
+          );
+          stream.onAbort(() => {
+            running = false;
+          });
 
-      let lastSignature = "";
-      let lastWriteAt = 0;
+          let lastSignature = "";
+          let lastWriteAt = 0;
 
-      while (running && Date.now() - started < maxMs) {
-        const { signature, payload } = sharedTick();
+          while (running && Date.now() - started < maxMs) {
+            const { signature, payload } = sharedTick();
 
-        if (signature !== lastSignature) {
-          lastSignature = signature;
-          if (!(await write(stream, { event: "snapshot", data: payload }))) return;
-          lastWriteAt = Date.now();
-        } else if (Date.now() - lastWriteAt >= HEARTBEAT_MS) {
-          if (!(await write(stream, { event: "heartbeat", data: "{}" }))) return;
-          lastWriteAt = Date.now();
+            if (signature !== lastSignature) {
+              lastSignature = signature;
+              if (!(await write(stream, { event: "snapshot", data: payload }))) return;
+              lastWriteAt = Date.now();
+            } else if (Date.now() - lastWriteAt >= HEARTBEAT_MS) {
+              if (!(await write(stream, { event: "heartbeat", data: "{}" }))) return;
+              lastWriteAt = Date.now();
+            }
+
+            await new Promise((r) => setTimeout(r, TICK_MS));
+            // Checked the moment the sleep lands: a subscriber that left during the wait must
+            // not get one more rebuild, so the shutdown is immediate rather than one tick late.
+            if (!running) return;
+          }
+        } finally {
+          // The slot is released however the stream ended: a clean end, an aborted
+          // peer, a write that failed. A counter that only decrements on the happy
+          // path is a counter that reaches the ceiling and never comes back down.
+          release();
         }
-
-        await new Promise((r) => setTimeout(r, TICK_MS));
-        // Checked the moment the sleep lands: a subscriber that left during the wait must
-        // not get one more rebuild, so the shutdown is immediate rather than one tick late.
-        if (!running) return;
-      }
-    });
+      });
+    } catch (err) {
+      // `streamSSE` builds the response before the callback can release the slot.
+      release();
+      throw err;
+    }
   });
 
   app.notFound((c) => c.json({ error: "Lost slag. This page never left the crucible." }, 404));

@@ -23,9 +23,35 @@ export interface DeadLetter {
 const CAP = 100;
 const entries: DeadLetter[] = [];
 
+/**
+ * The detail, as a string, always.
+ *
+ * The queue's job is to report a failure, so it must not be the thing that fails.
+ * `detail.slice(0, 300)` threw a `TypeError` when the detail was not a string — and the
+ * detail was not a string exactly when the failure was already strange: a caller that did
+ * `(err as Error).message` on a non-`Error` throw produced `undefined`. That `TypeError` was
+ * raised INSIDE the catch block that was handling the original failure, so it escaped the
+ * handler entirely.
+ *
+ * In the indexer that was fatal: the throw left `watch()`'s promise rejected, nothing awaited
+ * it, and Node killed the process. A malformed throw took the whole indexer with it — while
+ * the thing being reported was a malformed throw.
+ */
+function text(detail: unknown): string {
+  if (typeof detail === "string") return detail;
+  if (detail === null || detail === undefined) return String(detail);
+  if (detail instanceof Error) return detail.message;
+  try {
+    return JSON.stringify(detail) ?? String(detail);
+  } catch {
+    // A value that cannot be serialised is still a value worth naming.
+    return Object.prototype.toString.call(detail);
+  }
+}
+
 export const dlq = {
   push(kind: string, detail: string): void {
-    entries.push({ at: Date.now(), kind, detail: detail.slice(0, 300) });
+    entries.push({ at: Date.now(), kind, detail: text(detail).slice(0, 300) });
     if (entries.length > CAP) entries.shift();
   },
 

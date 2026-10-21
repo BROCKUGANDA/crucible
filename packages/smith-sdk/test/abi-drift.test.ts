@@ -111,3 +111,56 @@ describe("TRIALS_ABI against the Solidity source", () => {
     expect(names).toContain("AgentRegistered");
   });
 });
+
+/**
+ * A struct's field order is part of its ABI.
+ *
+ * `AlloyRegistry.records` is a public mapping of a struct, so its getter returns the
+ * struct's fields in DECLARATION ORDER, and viem hands a multi-output result back as an
+ * array. Reading the tier is therefore reading index 3 of that array — a position that
+ * means nothing except "where the tier used to be".
+ *
+ * If a field were ever inserted into `Record`, the array would shift and index 3 would
+ * hold a different field: a number that was never measured as a tier, published as one.
+ * The API side already avoids this by reading `tierOf(agentId)` on its own; the SDK's
+ * `alloyRecord` is positional, and this is what keeps that honest.
+ *
+ * The struct is read from the committed `.sol` source, so the test needs no compiler.
+ */
+function parseStructFields(source: string, structName: string): { name: string; type: string }[] {
+  const body = new RegExp(`struct\\s+${structName}\\s*\\{([^}]*)\\}`, "s").exec(source);
+  if (!body?.[1]) throw new Error(`struct ${structName} is not declared in the source`);
+  return body[1]
+    .split(";")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const match = /^([A-Za-z_][A-Za-z0-9_]*)\s+([A-Za-z_][A-Za-z0-9_]*)$/.exec(line);
+      if (!match) throw new Error(`could not read a field of struct ${structName}: "${line}"`);
+      return { type: match[1]!, name: match[2]! };
+    });
+}
+
+describe("ALLOY_ABI's struct getters against the Solidity source", () => {
+  const path = fileURLToPath(new URL("../../../crucible-contracts/contracts/AlloyRegistry.sol", import.meta.url));
+  const source = readFileSync(path, "utf8");
+
+  it("declares records' outputs in the struct's own field order", () => {
+    const declared = parseStructFields(source, "Record");
+    const records = ALLOY_ABI.find((i) => i.type === "function" && i.name === "records");
+    if (!records || records.type !== "function") throw new Error("ALLOY_ABI has no records() function");
+
+    expect(
+      records.outputs.map((o) => `${o.type} ${o.name}`),
+      "records() outputs are read by position, so their order must be the struct's order",
+    ).toEqual(declared.map((f) => `${f.type} ${f.name}`));
+  });
+
+  it("puts the tier where the readers expect it", () => {
+    // The three counters, then the tier. A test that names the index makes a reorder a
+    // deliberate change rather than an accident.
+    const records = ALLOY_ABI.find((i) => i.type === "function" && i.name === "records");
+    if (!records || records.type !== "function") throw new Error("ALLOY_ABI has no records() function");
+    expect(records.outputs.map((o) => o.name)).toEqual(["wins", "survived", "slashes", "tier"]);
+  });
+});

@@ -27,6 +27,18 @@ export interface TrialRow {
   testsDigest: string;
   rewardWei: bigint;
   bondWei: bigint;
+  /**
+   * What the agent was actually paid, in wei — the `agentPayout` of the
+   * `VerdictFinalized` log. Null until the trial settles.
+   *
+   * The contract emits `reward - fee`, so this is the chain's OWN arithmetic
+   * rather than something recomputed here. It matters because the recomputation
+   * needs `FEE_BPS`, which is a second read that can fail: when it did, the
+   * published books showed a fee of zero and a payout of the FULL reward, which
+   * is a number the chain never charged and nobody had verified. The settlement
+   * log carries the answer already; nothing has to guess it.
+   */
+  payoutWei: bigint | null;
   createdAt: number;
   deadline: number;
   breakWindow: number;
@@ -219,6 +231,7 @@ function didMutate(next: ReadModel, ev: EventLike): boolean {
         testsDigest: str(a.testsCID),
         rewardWei: big(a.reward),
         bondWei: big(a.bond),
+        payoutWei: null,
         createdAt: Number(ev.blockNumber), // replaced by block timestamp on hydrate
         deadline: num(a.deadline),
         breakWindow: num(a.breakWindow),
@@ -342,6 +355,7 @@ function didMutate(next: ReadModel, ev: EventLike): boolean {
           testsDigest: "0x" + "00".repeat(32),
           rewardWei: 0n,
           bondWei: 0n,
+          payoutWei: null,
           createdAt: Number(ev.blockNumber),
           deadline: 0,
           breakWindow: 0,
@@ -360,6 +374,10 @@ function didMutate(next: ReadModel, ev: EventLike): boolean {
       {
         row.status = "settled";
         row.verdict = verdictName(num(a.verdict));
+        // The chain's own payout, from the event that settled the trial. `reward - fee`
+        // is what the contract computed and emitted, so this is a fact rather than a
+        // re-derivation of one — see `TrialRow.payoutWei`.
+        row.payoutWei = big(a.agentPayout);
 
         // The hall exists because of this counter. A paid trial increments wins, and a
         // paid trial that had a break filed against it increments survived — that is
@@ -447,13 +465,24 @@ export function hydrateTimestamps(
   const targets = onlyTrialIds
     ? [...onlyTrialIds].map((id) => model.trials.get(id)).filter((t): t is TrialRow => t !== undefined)
     : model.trials.values();
+  // Only a row whose timestamp actually MOVED is a change. The version counter is what
+  // invalidates the API's cached snapshot, and this pass runs on every batch — so
+  // bumping it unconditionally meant a sync that changed nothing still threw away the
+  // cache, every time.
+  let moved = false;
   for (const t of targets) {
-    t.createdAt = blockTime.get(BigInt(t.createdAt)) ?? t.createdAt;
-    t.runAt = t.runAt === null ? null : (blockTime.get(BigInt(t.runAt)) ?? t.runAt);
-    t.disputeOpenedAt =
+    const createdAt = blockTime.get(BigInt(t.createdAt)) ?? t.createdAt;
+    const runAt = t.runAt === null ? null : (blockTime.get(BigInt(t.runAt)) ?? t.runAt);
+    const disputeOpenedAt =
       t.disputeOpenedAt === null ? null : (blockTime.get(BigInt(t.disputeOpenedAt)) ?? t.disputeOpenedAt);
+    if (createdAt !== t.createdAt || runAt !== t.runAt || disputeOpenedAt !== t.disputeOpenedAt) {
+      moved = true;
+    }
+    t.createdAt = createdAt;
+    t.runAt = runAt;
+    t.disputeOpenedAt = disputeOpenedAt;
   }
-  model.version += 1;
+  if (moved) model.version += 1;
   return model;
 }
 

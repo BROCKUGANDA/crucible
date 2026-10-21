@@ -115,24 +115,55 @@ describe("rate limiting", () => {
   });
 
   /**
-   * The proxy that overwrites the header, which is the one this stack has.
+   * `X-Real-IP` is not evidence of anything, and reading it is how the limiter used to
+   * be escaped.
    *
-   * Caddy sets `X-Real-IP` to the peer it actually saw, overwriting whatever
-   * the client sent. That is a header a client cannot forge, so it is the one
-   * to read first when the proxy is trusted.
+   * The code used to read `X-Real-IP` FIRST, on the belief that "Caddy overwrites it
+   * with the peer it actually saw". Caddy does not: its documented defaults are
+   * `X-Forwarded-For`, `X-Forwarded-Proto` and `X-Forwarded-Host`, and "By default,
+   * Caddy passes through incoming headers—including Host—to the backend without
+   * modifications". So a client that sent `X-Real-IP` had that value delivered to the
+   * API untouched, and one header on the request bought a fresh 60/min allowance.
+   *
+   * The header is not read at all now, so varying it cannot move the bucket.
    */
-  it("prefers the header the proxy overwrote over the chain the client wrote", async () => {
+  it("does not let a forged X-Real-IP mint a fresh bucket", async () => {
     const limited = createApp(
       { getModel: () => model },
       { rateLimit: { limit: 1, windowMs: 60_000, trustProxy: true } },
     );
 
-    // A client that sends its own X-Forwarded-For cannot get a new bucket:
-    // the proxy overwrote X-Real-IP, and that is the identity used.
     const statuses: number[] = [];
     for (let i = 0; i < 4; i++) {
       const res = await limited.request("/health", {
-        headers: { "x-forwarded-for": `203.0.113.${i}`, "x-real-ip": "10.0.9.9" },
+        // The same proxy-recorded client, a different forged header on every request.
+        headers: { "x-forwarded-for": "10.0.9.9", "x-real-ip": `203.0.113.${i}` },
+      });
+      statuses.push(res.status);
+    }
+    expect(statuses.filter((s) => s === 200)).toHaveLength(1);
+    expect(statuses.filter((s) => s === 429)).toHaveLength(3);
+  });
+
+  /**
+   * The proxy that sets the header, which is the one this stack has.
+   *
+   * Caddy does not append to `X-Forwarded-For` — "by default, the proxy will ignore
+   * their values from incoming requests, to prevent spoofing" — it REPLACES the header
+   * with the peer it saw. So the value this process reads is the proxy's own record of
+   * the client, and a caller cannot have written it.
+   */
+  it("keys on the address the proxy recorded, not the one the caller wrote", async () => {
+    const limited = createApp(
+      { getModel: () => model },
+      { rateLimit: { limit: 1, windowMs: 60_000, trustProxy: true } },
+    );
+
+    // What the API sees after Caddy replaced the header: one address, every time.
+    const statuses: number[] = [];
+    for (let i = 0; i < 4; i++) {
+      const res = await limited.request("/health", {
+        headers: { "x-forwarded-for": "198.51.100.7" },
       });
       statuses.push(res.status);
     }
@@ -361,6 +392,31 @@ describe("routes", () => {
     expect(hall.data.hall[0].tier).toBe(2);
   });
 
+  /**
+   * A fee the host could not read is published as unknown, not as zero.
+   *
+   * The books used to be derived from `FEE_BPS`, so a failed read of that constant
+   * published a fee of "0" ETH and a payout of the FULL reward — a number the chain
+   * never charged, presented as though it had been measured. The settled amounts now
+   * come from the settlement logs, so they are exact either way, and the rate is
+   * reported as what it is: unread.
+   */
+  it("publishes an unread protocol fee as unknown rather than as zero", async () => {
+    const feeApp = createApp(
+      {
+        getModel: () => hallModel(),
+        protocolFeeBps: () => null,
+      },
+      { rateLimit: false },
+    );
+
+    const snapshot = await (await feeApp.request("/snapshot")).json();
+    expect(snapshot.economics.feeBps).toBeNull();
+    // The money is exact anyway: it came from the chain's own settlement log.
+    expect(snapshot.economics.feesEth).toBe("0.05");
+    expect(snapshot.economics.paidOutEth).toBe("0.95");
+  });
+
   it("prints no tier for a hall row it never read from the registry", async () => {
     // The bug this covers: `/hall` rendered the indexer's frozen `tier: 0`, so an agent
     // the chain had already moved to Iron was published as "Unforged" — a wrong number
@@ -565,6 +621,41 @@ describe("/stream", () => {
     // A leaked loop ticks once a second for the full ten minutes after the peer is gone,
     // so the only correct answer here is that nothing further was read.
     expect(reads()).toBe(settled);
+  });
+
+  /**
+   * The number of open streams has a ceiling.
+   *
+   * The rate limiter cannot count them — it counts requests, and a stream is ONE request
+   * that then holds a socket open for ten minutes — so a client that opened connections
+   * in a loop paid nothing and left a timer per connection on the event loop the indexer
+   * shares. The exemption from the limiter made this route cheap to open and unlimited
+   * in number.
+   */
+  it("refuses a stream past the ceiling and lets it go again when one closes", async () => {
+    const model = hallModel();
+    const app = createApp({ getModel: () => model }, { rateLimit: false, maxStreams: 1 });
+
+    const first = new AbortController();
+    await openStream(app, first.signal);
+
+    // The second connection is refused, and the refusal says what to do about it.
+    const refused = await app.request("http://localhost/stream");
+    expect(refused.status).toBe(503);
+    expect(refused.headers.get("Retry-After")).toBeTruthy();
+    const body = await refused.json();
+    expect(body.error).toMatch(/too many/i);
+
+    // A closed stream gives its slot back: a counter that only decrements on the happy
+    // path reaches the ceiling and never comes down. The loop notices the abort when its
+    // one-second tick lands, so the slot comes back within a tick — not instantly.
+    first.abort();
+    await new Promise((r) => setTimeout(r, 1_500));
+
+    const third = new AbortController();
+    const reopened = await openStream(app, third.signal);
+    expect(reopened.res.status).toBe(200);
+    third.abort();
   });
 });
 
