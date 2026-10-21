@@ -115,6 +115,57 @@ describe("rate limiting", () => {
   });
 
   /**
+   * The proxy that overwrites the header, which is the one this stack has.
+   *
+   * Caddy sets `X-Real-IP` to the peer it actually saw, overwriting whatever
+   * the client sent. That is a header a client cannot forge, so it is the one
+   * to read first when the proxy is trusted.
+   */
+  it("prefers the header the proxy overwrote over the chain the client wrote", async () => {
+    const limited = createApp(
+      { getModel: () => model },
+      { rateLimit: { limit: 1, windowMs: 60_000, trustProxy: true } },
+    );
+
+    // A client that sends its own X-Forwarded-For cannot get a new bucket:
+    // the proxy overwrote X-Real-IP, and that is the identity used.
+    const statuses: number[] = [];
+    for (let i = 0; i < 4; i++) {
+      const res = await limited.request("/health", {
+        headers: { "x-forwarded-for": `203.0.113.${i}`, "x-real-ip": "10.0.9.9" },
+      });
+      statuses.push(res.status);
+    }
+    expect(statuses.filter((s) => s === 200)).toHaveLength(1);
+    expect(statuses.filter((s) => s === 429)).toHaveLength(3);
+  });
+
+  /**
+   * A proxy that APPENDS to `X-Forwarded-For` puts the real client at the
+   * right-hand end and leaves the caller's own value at the left. Reading the
+   * left-most entry — which is what the code did — meant a client chose its
+   * own bucket, one per request, and the limiter was decoration.
+   */
+  it("reads the right-most hop, not the one the caller wrote", async () => {
+    const limited = createApp(
+      { getModel: () => model },
+      { rateLimit: { limit: 1, windowMs: 60_000, trustProxy: true } },
+    );
+
+    const statuses: number[] = [];
+    for (let i = 0; i < 4; i++) {
+      const res = await limited.request("/health", {
+        headers: { "x-forwarded-for": `203.0.113.${i}, 10.0.8.8` },
+      });
+      statuses.push(res.status);
+    }
+    // Every request had a different LEFT-most entry and the same right-most
+    // one, so they all land in the same bucket.
+    expect(statuses.filter((s) => s === 200)).toHaveLength(1);
+    expect(statuses.filter((s) => s === 429)).toHaveLength(3);
+  });
+
+  /**
    * The bypass this closes: `X-Forwarded-For` is a header the caller writes. Honouring it
    * unconditionally meant a loop with one distinct value per request never met a bucket it
    * had not already refilled — the limiter was decoration.

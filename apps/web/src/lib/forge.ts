@@ -184,7 +184,12 @@ const TIER_UNKNOWN: TierMeta = { name: "Tier unread", tone: "faint" };
 
 export function tierMeta(tier: number | null): TierMeta {
   if (tier === null) return TIER_UNKNOWN;
-  return TIER_META[tier] ?? TIER_META[0]!;
+  // An out-of-range tier is not tier 0. `TIER_META[tier] ?? TIER_META[0]` published
+  // "Unforged" for a tier number the chain had moved past and this bundle did not
+  // know about — a row claiming a tier it never measured, which is the same
+  // defect the null case above was written to avoid. The API answers
+  // `tierName: null` for a tier it cannot name; the UI says the same.
+  return TIER_META[tier] ?? TIER_UNKNOWN;
 }
 
 export const QUENCHING_LABEL: Record<string, string> = {

@@ -105,9 +105,11 @@ export class RateLimiter {
  * only evidence of anything once you have agreed who is allowed to write it.
  *
  * So forwarded headers are honoured only when `trustProxy` is set explicitly, which means the
- * process is known to sit behind something that overwrites them (Cloudflare's `cf-connecting-ip`
- * is the usual one). Without it the key is the socket peer — the one address this process can
- * actually observe.
+ * process is known to sit behind something that overwrites them (Caddy's `X-Real-IP` is the
+ * usual one, and it is exactly what the deployed stack has). Without it the key is the socket
+ * peer — the one address this process can actually observe. The trade is spelled out in
+ * `proxiedIdentity`: with the proxy off, every visitor behind it shares one bucket, and with
+ * it on, the key is the address the proxy overwrote.
  *
  * `Retry-After` is the part that makes this a feature rather than a wall of 429s: a
  * well-behaved client waits and comes back, and an honest GUI backs off instead of hammering.
@@ -128,12 +130,7 @@ export function rateLimit(config: RateLimitConfig & { trustProxy?: boolean }) {
   return async function middleware(c: Context, next: Next) {
     ensureSweeper();
 
-    const identity = trustProxy
-      ? c.req.header("cf-connecting-ip") ??
-        c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ??
-        c.req.header("x-real-ip") ??
-        socketAddress(c)
-      : socketAddress(c);
+    const identity = trustProxy ? proxiedIdentity(c) : socketAddress(c);
 
     const verdict = limiter.consume(identity ?? "shared");
     if (verdict.allowed) {
@@ -143,12 +140,59 @@ export function rateLimit(config: RateLimitConfig & { trustProxy?: boolean }) {
       return;
     }
 
+    // The budget headers belong on the refusal too: a client that is being
+    // throttled is exactly the client that needs to know what its budget is.
+    c.header("RateLimit-Limit", String(config.limit));
+    c.header("RateLimit-Remaining", "0");
     c.header("Retry-After", String(Math.ceil(verdict.retryAfterMs / 1000)));
     return c.json(
       { error: "Slow down — too many requests.", retryAfterMs: verdict.retryAfterMs },
       429,
     );
   };
+}
+
+/**
+ * The client address, as seen through a proxy that is trusted to overwrite it.
+ *
+ * The order matters, and so does the choice of which end of the chain to read:
+ *
+ *   * `X-Real-IP` is read FIRST because a proxy that sets it usually
+ *     OVERWRITES it with the peer it actually saw. Caddy does exactly that
+ *     (`header_up X-Real-IP {remote_host}`), so the value is the client and
+ *     not something the client chose.
+ *   * `X-Forwarded-For` is read as the RIGHT-MOST entry, not the left-most.
+ *     Proxies that APPEND to the chain put the real client at the right end
+ *     and leave whatever the caller sent at the left. The left-most entry is
+ *     therefore the caller-controlled one, and reading it lets a client mint
+ *     a fresh bucket per request — which is the bypass this limiter exists
+ *     to prevent, and the one the tests claimed to close for the
+ *     `trustProxy: false` case.
+ *
+ * `CF-Connecting-IP` is deliberately NOT trusted here. It is only meaningful
+ * when the peer is Cloudflare, and this process has no way to know that. A
+ * header that any caller can write cannot be evidence of anything.
+ *
+ * A deployment that terminates TLS somewhere else should either overwrite
+ * `X-Real-IP` the way Caddy does, or leave `trustProxy` off and accept that
+ * every visitor behind the proxy shares one bucket.
+ */
+function proxiedIdentity(c: Context): string | null {
+  const realIp = c.req.header("x-real-ip")?.trim();
+  if (realIp) return realIp;
+
+  const forwarded = c.req.header("x-forwarded-for");
+  if (forwarded) {
+    const hops = forwarded
+      .split(",")
+      .map((part) => part.trim())
+      .filter(Boolean);
+    // The hop closest to this process is the one the last proxy saw.
+    const closest = hops[hops.length - 1];
+    if (closest) return closest;
+  }
+
+  return socketAddress(c);
 }
 
 /**
