@@ -782,3 +782,70 @@ describe("backfill cost", () => {
     expect(elapsed).toBeLessThan(120_000);
   });
 });
+
+/**
+ * The status chain, and the trials the index never saw.
+ *
+ * Two failures with the same shape: a row that says something the chain did
+ * not say, and a row that says nothing at all.
+ */
+describe("a trial's status only moves forward", () => {
+  it("does not let a re-read run erase a challenge", () => {
+    // The order of the logs is not the order a shard overlap produces, and
+    // `applyEvent` is public and order-agnostic. A re-read `RunSubmitted`
+    // after a `BreakFiled` used to move the trial back from "challenged" to
+    // "judging" — erasing the dispute while leaving the skeptic and the
+    // stake set, so the row said "judging" about a trial under dispute.
+    const model = applyEvent(
+      applyEvent(
+        applyEvent(
+          applyEvent(emptyModel(), ev("TrialCreated", { id: 1n, sponsor: SPONSOR, specCID: "0x" + "aa".repeat(32), testsCID: "0x" + "bb".repeat(32), reward: 10n ** 18n, bond: 2n * 10n ** 17n, deadline: 1_700_000_000n, breakWindow: 43_200n }, 100n)),
+          ev("AgentRegistered", { agentId: 1n, operator: OPERATOR, runner: OPERATOR, metadataURI: "ipfs://m", stake: 10n ** 18n }, 101n),
+        ),
+        ev("TrialClaimed", { id: 1n, agentId: 1n, bond: 2n * 10n ** 17n }, 102n),
+      ),
+      ev("RunSubmitted", { id: 1n, agentId: 1n, runHash: "0x" + "cc".repeat(32) }, 103n),
+    );
+
+    const challenged = applyEvent(
+      model,
+      ev("BreakFiled", { id: 1n, skeptic: SPONSOR, stake: 10n ** 16n, proofCID: "0x" + "dd".repeat(32) }, 104n),
+    );
+    expect(challenged.trials.get(1)?.status).toBe("challenged");
+
+    // The same run, read again.
+    const reread = applyEvent(
+      challenged,
+      ev("RunSubmitted", { id: 1n, agentId: 1n, runHash: "0x" + "cc".repeat(32) }, 103n),
+    );
+    expect(reread.trials.get(1)?.status).toBe("challenged");
+  });
+
+  it("does not let a re-read claim reopen a settled trial", () => {
+    const settled = replay(fullStory());
+    const reopened = applyEvent(
+      settled,
+      ev("TrialClaimed", { id: 1n, agentId: 1n, bond: 2n * 10n ** 17n }, 102n),
+    );
+    expect(reopened.trials.get(1)?.status).toBe("settled");
+  });
+});
+
+describe("a verdict for a trial this index never saw", () => {
+  it("keeps the row, and marks it incomplete", () => {
+    // The index started after the trial was created — a FROM_BLOCK that is too
+    // high, or a cursor file from a chain that was rebuilt. The old code
+    // dropped the log, so the settlement, the win and the receipt all
+    // vanished with no trace: a paid trial simply did not appear on the hall.
+    const model = applyEvent(
+      emptyModel(),
+      ev("VerdictFinalized", { id: 7n, verdict: 1, agentPayout: 95n * 10n ** 16n }, 500n),
+    );
+
+    const trial = model.trials.get(7);
+    expect(trial).toBeDefined();
+    expect(trial?.status).toBe("settled");
+    expect(trial?.verdict).toBe("paid");
+    expect(trial?.incomplete).toBe(true);
+  });
+});
