@@ -128,41 +128,21 @@ else
   bad "the contract holds $balance wei but owes $owed wei"
 fi
 
-# ── the public surface is answering ───────────────────────────────────────
-# The chain can be perfectly correct while the site points somewhere else:
-# the web bundle bakes its contract address at build time, and the API reads
-# its own. If those two ever disagree, a judge connects a wallet and talks to
-# a contract that is not the one the site is showing.
-for probe in "$PUBLIC_URL/" "$PUBLIC_URL/api/ready" "$PUBLIC_URL/api/health"; do
-  code=$(wget -q -O /dev/null --server-response --timeout=10 "$probe" 2>&1 | awk '/^  HTTP\//{code=$2} END{print code+0}')
-  if [ "${code:-0}" = "200" ]; then
-    ok "$probe answers 200"
-  else
-    bad "$probe answered ${code:-0}"
-  fi
-done
-
-# The API's own idea of the contract must be the one we just asserted.
-reported=$(wget -q -O - --timeout=10 "$PUBLIC_URL/api/hall" 2>/dev/null | sed -n 's/.*"trialsAddress":"\([^"]*\)".*/\1/p')
-if [ -n "$reported" ]; then
-  expect "the API's trials address" "$TRIALS" "$reported"
-else
-  bad "the API did not report a trials address"
-fi
-
-# ── the indexer is not stuck ──────────────────────────────────────────────
-health=$(wget -q -O - --timeout=10 "$PUBLIC_URL/api/health" 2>/dev/null || echo "{}")
-sync_error=$(printf '%s' "$health" | sed -n 's/.*"syncError":\([^,}]*\).*/\1/p')
-if [ "$sync_error" = "null" ] || [ -z "$sync_error" ]; then
-  ok "the indexer reports no sync error"
-else
-  bad "the indexer reports a sync error: $sync_error"
-fi
+# The public surface is NOT probed from here.
+#
+# This script runs inside the seed container, on the compose network, where it
+# can reach anvil and the contracts. The public URLs are the other side of
+# the proxy, and asking about them from inside the network was answering 0:
+# the container does not resolve or reach the public name the way a visitor
+# does, so the probe measured the container's network rather than the site's.
+#
+# The public probes run on the HOST, in the deploy job, where they measure
+# what a visitor measures.
 
 echo ""
 if [ "$fail" = "0" ]; then
-  echo "all $checks assertions passed — the deployment can be trusted"
+  echo "all $checks chain assertions passed — the deployment can be trusted"
   exit 0
 fi
-echo "$fail of $checks assertions FAILED — do not treat this deployment as live" >&2
+echo "$fail of $checks chain assertions FAILED — do not treat this deployment as live" >&2
 exit 1

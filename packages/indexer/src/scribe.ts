@@ -134,7 +134,7 @@ const BLOOM_PROBE_LIMIT = 64n;
  * with nothing to indicate why. Bounding the work keeps a tick short; never
  * refusing to advance keeps the index moving.
  */
-const MAX_PROOF_BLOCKS_PER_TICK = 4096n;
+const MAX_PROOF_BLOCKS_PER_TICK = 2048n;
 
 /**
  * The default width of one `getLogs` request.
@@ -166,6 +166,8 @@ export interface ScribeStatus {
 
 export class Scribe {
   readonly client: PublicClient;
+  /** A batched client for the bloom cross-check only. See the constructor. */
+  private readonly probeClient: PublicClient;
   /**
    * The node is this indexer's only external dependency, so it gets exactly one breaker.
    * Every tick already spends four `withBackoff` retries inside `sync()`; a node that is
@@ -196,9 +198,21 @@ export class Scribe {
   constructor(private readonly cfg: IndexerConfig) {
     this.client = createPublicClient({
       chain: cfg.chain,
-      // Batched: the bloom cross-check reads a chunk of blocks at a time, and
-      // without batching that is one HTTP request per block. The batch
-      // transport coalesces them into a single JSON-RPC batch.
+      // Deliberately NOT batched. The breaker is what stops a dead node being
+      // asked forever, and its guarantee is that a refused pass costs the node
+      // nothing. A batched transport holds a request for a window before
+      // sending it, so a request queued before the breaker tripped is still
+      // delivered after — the node is asked once more, the error shape changes,
+      // and the guarantee the breaker exists to make is gone.
+      transport: http(cfg.rpcUrl),
+    }) as PublicClient;
+    // The bloom cross-check reads a chunk of blocks at a time, and that is the
+    // one place where the batching is worth having: without it, proving a
+    // stretch of blocks is one HTTP request each. It is a SEPARATE client for
+    // the reason above — and the probe only runs inside the breaker's guard, so
+    // a tripped breaker stops it exactly as it stops everything else.
+    this.probeClient = createPublicClient({
+      chain: cfg.chain,
       transport: http(cfg.rpcUrl, { batch: { wait: 20, batchSize: 64 } }),
     }) as PublicClient;
     this.cursor = cfg.fromBlock ?? 0n;
@@ -390,7 +404,7 @@ export class Scribe {
       const blocks = await this.rpc.run(() =>
         Promise.all(
           Array.from({ length: Number(chunkEnd - block + 1n) }, (_, i) =>
-            withBackoff(() => this.client.getBlock({ blockNumber: block + BigInt(i) }), {
+            withBackoff(() => this.probeClient.getBlock({ blockNumber: block + BigInt(i) }), {
               operation: "scribe.getBlock",
             }),
           ),
