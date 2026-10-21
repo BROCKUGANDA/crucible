@@ -70,6 +70,27 @@ jobs:
           echo "promoting $FROM ($SHA) -> $TARGET"
 
           git switch -C "$TARGET" "origin/$TARGET"
-          git merge --no-ff "$SHA" -m "chore(promote): $FROM -> $TARGET"
+
+          # A conflict must not be able to wedge the ladder.
+          #
+          # `staging` and `main` are write-only: nothing edits them except this
+          # job, so their content is always a snapshot of some `develop` state
+          # and never contains intent that `develop` lacks. When the two
+          # branches touch the same lines — the same change committed
+          # independently on both, which is how this happened once — the
+          # promotion source is the one carrying the newer intent, so the
+          # conflicting hunks are taken from it. Everything that is not in
+          # conflict is still merged from both sides.
+          #
+          # Without this, one conflicting line on `staging` refused every
+          # promotion for eight days and production kept serving an old build,
+          # because the only way forward was a human noticing a red pipeline.
+          if ! git merge --no-ff "$SHA" -m "chore(promote): $FROM -> $TARGET"; then
+            echo "::warning::merge conflicted; resolving in favour of $FROM (the promotion source)"
+            git merge --abort
+            git merge --no-ff -X theirs "$SHA" \
+              -m "chore(promote): $FROM -> $TARGET (conflicts resolved in favour of $FROM)"
+          fi
+
           git push origin "$TARGET"
           echo "promoted $FROM to $TARGET"

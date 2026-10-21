@@ -11,7 +11,20 @@ import type { ApiSnapshot } from "@crucible/indexer";
  * window that closed hours ago as still open.
  */
 
+/** Where the browser reaches the API. Baked into the bundle at build time. */
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8787";
+
+/**
+ * How long the live stream gets to deliver its first frame before the page
+ * stops waiting on it.
+ *
+ * A stream that opens and then says nothing is the failure this exists for: a
+ * proxy that buffers the response, an API that cannot read the chain yet, a
+ * quiet socket. The browser reports no error in any of those cases — the
+ * connection is simply open and empty — so a client that only falls back on
+ * an error sits on its loading state for as long as the socket lives.
+ */
+const FIRST_FRAME_TIMEOUT_MS = 4_000;
 
 export interface SnapshotState {
   data: ApiSnapshot | null;
@@ -35,34 +48,16 @@ export function useSnapshot(pollMs = 4000): SnapshotState {
     // 1. Try the live stream. EventSource reconnects on its own, so a dropped network
     //    self-heals rather than stranding the UI.
     let source: EventSource | null = null;
-    try {
-      source = new EventSource(`${API}/stream`);
-      source.addEventListener("snapshot", (e) => {
-        if (!alive) return;
-        try {
-          const data = JSON.parse((e as MessageEvent).data) as ApiSnapshot;
-          setState({ data, error: null, loading: false, serverNowMs: data.now });
-        } catch {
-          // a malformed event is not a lost signal; wait for the next
-        }
-      });
-      source.addEventListener("error", () => {
-        if (!alive) return;
-        setState((s) => ({
-          ...s,
-          error: "Your forge keeps working locally. Reconnecting…",
-        }));
-        // Fall through to polling fallback below if the stream stays down.
-        source?.close();
-        source = null;
-        fallback();
-      });
-    } catch {
-      fallback();
-    }
+    let streamDelivered = false;
+    let firstFrameTimer: ReturnType<typeof setTimeout> | undefined;
 
-    // 2. Polling fallback: used when EventSource is unavailable or the stream opened
-    //    but never delivered. It is unreachable in the happy path, which is the point.
+    // 2. Polling. It starts now rather than on the stream's first error, because the
+    //    error is the part that does not arrive. A stream that opens and then says
+    //    nothing — buffered by a proxy, or an API that cannot read the chain yet — never
+    //    raises one, and the page would sit on "weighing the alloy…" until the socket
+    //    died. Polling until the stream proves itself keeps the first paint real and
+    //    costs nothing once the stream is live: the interval is cleared the moment the
+    //    first frame lands.
     let pollTimer: ReturnType<typeof setInterval> | undefined;
     const controller = new AbortController();
 
@@ -82,16 +77,71 @@ export function useSnapshot(pollMs = 4000): SnapshotState {
       }
     }
 
-      function fallback() {
+    function startPolling() {
       if (!alive || pollTimer) return;
       void poll();
       pollTimer = setInterval(poll, pollMs);
     }
 
+    function stopPolling() {
+      if (pollTimer) {
+        clearInterval(pollTimer);
+        pollTimer = undefined;
+      }
+    }
+
+    // The first poll is immediate: it is the only thing that guarantees the page
+    // has something to render.
+    startPolling();
+
+    try {
+      source = new EventSource(`${API}/stream`);
+      source.addEventListener("snapshot", (e) => {
+        if (!alive) return;
+        try {
+          const data = JSON.parse((e as MessageEvent).data) as ApiSnapshot;
+          streamDelivered = true;
+          if (firstFrameTimer) {
+            clearTimeout(firstFrameTimer);
+            firstFrameTimer = undefined;
+          }
+          // The stream is live, so the polling interval has nothing left to do.
+          stopPolling();
+          setState({ data, error: null, loading: false, serverNowMs: data.now });
+        } catch {
+          // a malformed event is not a lost signal; wait for the next
+        }
+      });
+      source.addEventListener("error", () => {
+        if (!alive) return;
+        setState((s) => ({
+          ...s,
+          error: "Your forge keeps working locally. Reconnecting…",
+        }));
+        // EventSource has already given up on this attempt; polling carries the page.
+        source?.close();
+        source = null;
+        startPolling();
+      });
+    } catch {
+      startPolling();
+    }
+
+    // The stream's first frame is given a deadline. If it has not arrived by then,
+    // the stream is treated as unusable: the client closes it and keeps the polling
+    // fallback, rather than leaving the page on a loading state forever.
+    firstFrameTimer = setTimeout(() => {
+      if (!alive || streamDelivered) return;
+      source?.close();
+      source = null;
+      startPolling();
+    }, FIRST_FRAME_TIMEOUT_MS);
+
     return () => {
       alive = false;
       source?.close();
-      if (pollTimer) clearInterval(pollTimer);
+      stopPolling();
+      if (firstFrameTimer) clearTimeout(firstFrameTimer);
       controller.abort();
     };
   }, [pollMs]);
