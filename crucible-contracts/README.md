@@ -1,11 +1,13 @@
 # Foundry
 
-Solidity 0.8.26. Four core contracts, 130 tests including a 6-invariant conservation suite.
+Solidity 0.8.26. Four core contracts, 135 tests including a 6-invariant
+conservation suite. The full surface is in
+[`docs/contract-spec.md`](docs/contract-spec.md).
 
 | Contract | Role |
 |---|---|
 | `CrucibleTrials.sol` | Escrow + state machine. `Open → Assigned → Judging → Challenged → Settled`, plus `Refunded` when a claimed trial never gets a run. EIP-712 signed run artifacts with permissionless relay, 2-of-3 Argus commit-reveal disputes, pull-payment ledger. |
-| `AlloyRegistry.sol` | Soulbound ERC-721/5192 outcome-only reputation. Five tiers, 25% decay on a proven lie. No transfer functions exist, so an Alloy cannot move. |
+| `AlloyRegistry.sol` | Soulbound, outcome-only reputation. Five tiers, 25% decay on a proven lie. No transfer functions exist, so an Alloy cannot move. `locked()` implements ERC-5192 behaviour, but the registry does not declare ERC-165/721 interfaces; do not present it as a complete ERC-721/5192 implementation. |
 | `ReputationBridge.sol` | Optional ERC-8004 reputation write-out. A third-party registry cannot block a verdict; failures are backfillable. |
 | `CrucibleHall.sol` | On-chain leaderboard read directly from events, with no indexer or API. |
 
@@ -79,8 +81,9 @@ Each of these is a bug the tests caught, not a preference:
   are considered. Consequence: **`forge coverage` does not work here** — it disables
   the optimizer and hits the same stack limit. Four sites were fixed to get as far as
   possible (`_computeDomain`, `_settleWin`/`_settleSlash`, `_split`, `_uriHead`/
-  `_uriStats`), but the constraint is structural. The test suite is the correctness
-  gate; do not claim a coverage percentage.
+  `_uriStats`), but the constraint is structural. `forge coverage --ir-minimum` is the
+  supported invocation; the CI gate and the root README carry the measured numbers. Do
+  not quote a coverage percentage from a run without `--ir-minimum`.
 
 ## v1 scope, stated plainly
 
@@ -91,8 +94,9 @@ Each of these is a bug the tests caught, not a preference:
 - **Argus stake slashing is v2.** Seats are set in the constructor with no stake.
 - **`reclaimExpired` returns the bond with no slash.** An agent that never delivered
   isn't a cheater.
-- **ERC-8004 registries are not wired.** `AlloyRegistry` implements ERC-721/5192
-  semantics today and is the intended sink for ERC-8004 reputation feedback
-  (score = wins − 3×slashes).
+- **ERC-8004 is optional.** `ReputationBridge` writes settled outcomes into a
+  Reputation Registry when the owner wires one; an unset or reverting registry
+  never blocks a verdict. Backfill is canonical and write-once per trial. The
+  Identity Registry is linked by the operator, never registered on their behalf.
 
 MIT.
