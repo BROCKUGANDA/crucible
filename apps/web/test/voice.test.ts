@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  fetchVoiceClip,
   localDay,
   markCatchphrase,
   markSpoken,
@@ -99,5 +100,62 @@ describe("Frenchy's policy", () => {
   it("formats the user's local day, not UTC", () => {
     expect(localDay(new Date(2026, 9, 21, 23, 59))).toBe("2026-10-21");
     expect(localDay(new Date(2026, 0, 2, 0, 1))).toBe("2026-01-02");
+  });
+});
+
+/**
+ * A clip request that cannot be answered has to say which kind of failure it is. The first
+ * version returned `null` for all of them, so a dead server, a rate limit, an empty body and
+ * a browser that refused to load the resulting blob were one indistinguishable silence.
+ */
+describe("the clip fetch", () => {
+  const original = globalThis.fetch;
+
+  async function withFetch(impl: typeof fetch, run: () => Promise<void>) {
+    globalThis.fetch = impl;
+    try {
+      await run();
+    } finally {
+      globalThis.fetch = original;
+    }
+  }
+
+  it("names an unreachable server, a refused status and an empty body separately", async () => {
+    await withFetch(
+      (async () => {
+        throw new TypeError("fetch failed");
+      }) as typeof fetch,
+      async () => {
+        expect(await fetchVoiceClip("tour")).toEqual({
+          ok: false,
+          reason: "the voice server could not be reached",
+        });
+      },
+    );
+
+    await withFetch(
+      (async () => new Response("{}", { status: 429 })) as typeof fetch,
+      async () => {
+        expect(await fetchVoiceClip("tour")).toEqual({ ok: false, reason: "the voice server answered 429" });
+      },
+    );
+
+    await withFetch(
+      (async () => new Response("", { status: 200 })) as typeof fetch,
+      async () => {
+        expect(await fetchVoiceClip("tour")).toEqual({ ok: false, reason: "the clip arrived empty" });
+      },
+    );
+  });
+
+  it("hands back the bytes when the server answers", async () => {
+    await withFetch(
+      (async () => new Response(new Blob(["\u0000\u0001\u0002"], { type: "audio/mpeg" }))) as typeof fetch,
+      async () => {
+        const clip = await fetchVoiceClip("tour");
+        expect(clip.ok).toBe(true);
+        if (clip.ok) expect(clip.blob.type).toBe("audio/mpeg");
+      },
+    );
   });
 });

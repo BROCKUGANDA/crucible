@@ -101,24 +101,27 @@ export async function fetchVoiceStatus(): Promise<boolean> {
 }
 
 /**
- * Ask the server for a clip. A null answer is the normal failure: the caller stays
- * silent and the rest of the page behaves exactly as it did before the voice existed.
+ * Ask the server for a clip. A null answer used to be the normal failure, which made every
+ * failure identical: a dead provider, a 429, an empty body and a CSP that refuses to play
+ * the bytes all looked the same from the caller. The reason travels with the answer.
  */
-export async function fetchVoiceClip(
-  moment: VoiceMoment,
-  text?: string,
-): Promise<Blob | null> {
+export type VoiceClip = { ok: true; blob: Blob } | { ok: false; reason: string };
+
+export async function fetchVoiceClip(moment: VoiceMoment, text?: string): Promise<VoiceClip> {
+  let res: Response;
   try {
-    const res = await fetch(`${API}/voice/speak`, {
+    res = await fetch(`${API}/voice/speak`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(text === undefined ? { moment } : { moment, text }),
     });
-    if (!res.ok) return null;
-    return await res.blob();
   } catch {
-    return null;
+    return { ok: false, reason: "the voice server could not be reached" };
   }
+  if (!res.ok) return { ok: false, reason: `the voice server answered ${res.status}` };
+  const blob = await res.blob().catch(() => null);
+  if (!blob || blob.size === 0) return { ok: false, reason: "the clip arrived empty" };
+  return { ok: true, blob };
 }
 
 // ── the one event the pages emit ─────────────────────────────────────────
