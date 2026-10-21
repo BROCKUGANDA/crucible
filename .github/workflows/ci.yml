@@ -24,18 +24,30 @@ jobs:
 
       # Foundry by pinned tarball, not foundryup: the runner box also hosts the
       # production anvil, and foundryup refuses to replace its binaries while
-      # any foundry process is running. The tarball lands in /tmp and joins
-      # PATH, so it never touches the host's ~/.foundry.
+      # any foundry process is running. The tarball lands in this job's own
+      # temporary directory and joins PATH, so it never touches the host's
+      # ~/.foundry and never collides with the other jobs' copy.
       - name: install foundry (pinned tarball)
         run: |
           set -euo pipefail
           V="v1.8.5"
+          # Each job gets its OWN foundry directory.
+          #
+          # The three jobs that need forge used to extract the tarball into
+          # /tmp together, so they installed the same `forge` path at the same
+          # time. Whichever was mid-write while another executed it failed with
+          # "Text file busy" - a race between the jobs, not a defect in the
+          # code, and it failed a different job each time, which is the worst
+          # kind of failure to chase. RUNNER_TEMP is per-job, so the same
+          # tarball lands somewhere private to each one.
+          FOUNDRY_DIR="$RUNNER_TEMP/foundry"
+          mkdir -p "$FOUNDRY_DIR"
           curl -fsSL "https://github.com/foundry-rs/foundry/releases/download/$V/foundry_${V}_linux_amd64.tar.gz" \
-            | tar xz -C /tmp
-          echo "/tmp" >> "$GITHUB_PATH"
+            | tar xz -C "$FOUNDRY_DIR"
+          echo "$FOUNDRY_DIR" >> "$GITHUB_PATH"
           # $GITHUB_PATH only reaches *later* steps, so this step exports its own
           # or `forge --version` is the last thing it manages to do.
-          export PATH="/tmp:$PATH"
+          export PATH="$FOUNDRY_DIR:$PATH"
           forge --version
 
       - name: forge fmt --check
@@ -70,12 +82,23 @@ jobs:
         run: |
           set -euo pipefail
           V="v1.8.5"
+          # Each job gets its OWN foundry directory.
+          #
+          # The three jobs that need forge used to extract the tarball into
+          # /tmp together, so they installed the same `forge` path at the same
+          # time. Whichever was mid-write while another executed it failed with
+          # "Text file busy" - a race between the jobs, not a defect in the
+          # code, and it failed a different job each time, which is the worst
+          # kind of failure to chase. RUNNER_TEMP is per-job, so the same
+          # tarball lands somewhere private to each one.
+          FOUNDRY_DIR="$RUNNER_TEMP/foundry"
+          mkdir -p "$FOUNDRY_DIR"
           curl -fsSL "https://github.com/foundry-rs/foundry/releases/download/$V/foundry_${V}_linux_amd64.tar.gz" \
-            | tar xz -C /tmp
-          echo "/tmp" >> "$GITHUB_PATH"
+            | tar xz -C "$FOUNDRY_DIR"
+          echo "$FOUNDRY_DIR" >> "$GITHUB_PATH"
           # $GITHUB_PATH only reaches *later* steps, so this step exports its own
           # or `forge --version` is the last thing it manages to do.
-          export PATH="/tmp:$PATH"
+          export PATH="$FOUNDRY_DIR:$PATH"
           forge --version
 
       - uses: actions/setup-python@v5
@@ -108,12 +131,23 @@ jobs:
         run: |
           set -euo pipefail
           V="v1.8.5"
+          # Each job gets its OWN foundry directory.
+          #
+          # The three jobs that need forge used to extract the tarball into
+          # /tmp together, so they installed the same `forge` path at the same
+          # time. Whichever was mid-write while another executed it failed with
+          # "Text file busy" - a race between the jobs, not a defect in the
+          # code, and it failed a different job each time, which is the worst
+          # kind of failure to chase. RUNNER_TEMP is per-job, so the same
+          # tarball lands somewhere private to each one.
+          FOUNDRY_DIR="$RUNNER_TEMP/foundry"
+          mkdir -p "$FOUNDRY_DIR"
           curl -fsSL "https://github.com/foundry-rs/foundry/releases/download/$V/foundry_${V}_linux_amd64.tar.gz" \
-            | tar xz -C /tmp
-          echo "/tmp" >> "$GITHUB_PATH"
+            | tar xz -C "$FOUNDRY_DIR"
+          echo "$FOUNDRY_DIR" >> "$GITHUB_PATH"
           # $GITHUB_PATH only reaches *later* steps, so this step exports its own
           # or `forge --version` is the last thing it manages to do.
-          export PATH="/tmp:$PATH"
+          export PATH="$FOUNDRY_DIR:$PATH"
           forge --version
 
       # The README keeps these out of the default gate on purpose: a gate that
