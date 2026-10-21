@@ -43,6 +43,7 @@ const scribe = new Scribe({
   chain: foundry,
   rpcUrl,
   fromBlock: process.env.FROM_BLOCK ? BigInt(process.env.FROM_BLOCK) : 0n,
+  cursorFile: process.env.CRUSIBLE_CURSOR_FILE,
   // Every failure the indexer survives lands in the dead-letter queue — a sync tick
   // that could not advance, a window it refused to cross — so /health tells an
   // operator the indexer is struggling without anyone reading this process's stdout.

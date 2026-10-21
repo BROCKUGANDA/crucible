@@ -493,7 +493,28 @@ export function deadlineEndsAt(row: TrialRow): number | null {
   return row.deadline;
 }
 
+/**
+ * How many times the whole model has been deep-copied.
+ *
+ * The backfill was quadratic once because `replay` copied the entire growing
+ * model once per log. A wall-clock test cannot tell that regression apart
+ * from a slow machine: on the CI host — which also serves production — the
+ * fixed code measured within 30% of the old, and the gate failed for eight
+ * days on a box that was thrashing rather than on any change in the code.
+ *
+ * Counting copies is the same fact without the clock. `replay` must not copy
+ * the model at all; `applyEvent`, the pure variant, must copy exactly once.
+ * Both are assertions that hold on any machine, at any load, forever.
+ */
+export const modelCopies = {
+  count: 0,
+  reset(): void {
+    modelCopies.count = 0;
+  },
+};
+
 function cloneModel(m: ReadModel): ReadModel {
+  modelCopies.count += 1;
   return {
     trials: new Map([...m.trials].map(([k, v]) => [k, { ...v }])),
     // `{ ...v }` alone is a bug waiting to happen now that AgentRow holds an object and
