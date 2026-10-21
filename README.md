@@ -35,7 +35,7 @@ Open ──claim──> Assigned ──submitRun──> Judging ──fileBreak�
 3. Read the proofs: `/hall` shows the leaderboard where each row quotes the
    settlement transaction and the identity registration that earned it. The
    contracts are in `crucible-contracts/contracts` with 135 tests. The workspace suites
-   add 887 more — web 144, smith-sdk 143, agent-security 153, forge-runner 109,
+   add 888 more — web 145, smith-sdk 143, agent-security 153, forge-runner 109,
    cidstore 98, api 111, indexer 74, warden 21, argus 24, keeper 10 — and
    `npm run test` runs them; the contracts suite itself needs Foundry
    (`forge test`), which the seed image runs on a machine without a local
@@ -172,7 +172,7 @@ is private by choice and the build runs on iron we control.
 |---|---|---|
 | `ci.yml` | push to main/develop/staging, PRs, by hand | forge fmt, build, 135 tests and the gas report; slither with every suppression justified in `slither.config.json`; the TypeScript suites for all ten workspaces in one job (two runners is two slots, and a matrix is a queue); `next build`; and a dependency audit that fails only on advisories outside the set the README documents as known-unfixable. |
 | `promote.yml` | a green `ci` on develop or staging | The promotion ladder. A green build on `develop` becomes `staging`; a green build on `staging` becomes `main`. The gate is the `ci` run's completion event — polling the pushed commit's check suites deadlocks on the gate's own pending suite — and the merge is pushed with the default `GITHUB_TOKEN`, which by design does not re-trigger workflows, so the ladder cannot loop. |
-| `deploy.yml` | push to main, by hand | Ships main. The runner *is* the VPS, so there is no SSH key to rotate: it syncs the tree to `~/crucible` (never the server's `.env`, which holds the build args the browser bundle bakes), builds `web` and `api` **before** the swap, then `up -d --no-deps` so anvil keeps its chain, and gates on `/api/health` answering 200. |
+| `deploy.yml` | a green `ci` on main, or by hand | Ships main. The runner *is* the VPS, so there is no SSH key to rotate: it syncs the tree to `~/crucible` (never the server's `.env`, which holds the build args the browser bundle bakes), builds `web` and `api` **before** the swap, then `up -d --no-deps` so anvil keeps its chain, and gates on `/api/health` answering 200. |
 
 Two rules the pipeline learned the hard way, both encoded as steps: the runner
 reclaims its builder cache before building (this box once filled to 100% and
@@ -333,7 +333,7 @@ Alloy tiers: Iron (1) · Bronze (3) · Steel (10 & ≥1 survived) · Damascus (2
 
 ```bash
 npm run contracts:test      # 135 Foundry tests, incl. 6 invariants and 30 for the reputation bridge
-npm test                    # 887 TypeScript tests, then the Foundry suite
+npm test                    # 888 TypeScript tests, then the Foundry suite
 npm run verify:all          # typecheck + TypeScript suites + Foundry suite in one command
 npm run coverage --workspace crucible-contracts   # line/statement/branch coverage of the contracts
 npm run build               # tsc for packages, next build for the web app
@@ -341,7 +341,7 @@ npm run demo                # anvil + deploy + the whole loop, settles a real ve
 npm run agent:live          # the real agent against a real model in a real sandbox
 ```
 
-**1022 tests total** (887 TypeScript + 135 Foundry). Contract coverage:
+**1023 tests total** (888 TypeScript + 135 Foundry). Contract coverage:
 `CrucibleTrials.sol` 97.4% of lines / 95.8% of statements / 89.9% of branches,
 `AlloyRegistry.sol` 97.0%, `ReputationBridge.sol` 95.5%, `CrucibleHall.sol` 93.2%.
 
@@ -369,7 +369,8 @@ unnoticed.
 ## Wallets
 
 The web app signs for real, through **wagmi v2 + RainbowKit**: injected wallets
-(MetaMask, Rabby, Brave, anything EIP-6963) and WalletConnect for mobile.
+(MetaMask, Rabby, Brave, anything EIP-6963), **Coinbase Wallet** (the classic
+Coinbase Wallet SDK connector) and WalletConnect for mobile.
 
 Four surfaces sign, all from the connected wallet — the API deliberately holds no keys
 and cannot submit a transaction on an operator's behalf:
@@ -383,8 +384,8 @@ and cannot submit a transaction on an operator's behalf:
 
 Setup: copy `apps/web/.env.example` to `.env.local`. A
 `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` (free, from cloud.walletconnect.com) turns on
-RainbowKit's modal; without one the app falls back to a plain injected-wallet button
-rather than breaking. Absent contract addresses degrade to read-only with a visible
+RainbowKit's modal; without one the app falls back to plain injected and
+Coinbase Wallet buttons rather than breaking. Absent contract addresses degrade to read-only with a visible
 notice — the build never depends on secrets, because a demo that will not render
 without them is a demo that fails on stage.
 
@@ -430,8 +431,13 @@ them through) and restart the API:
 ELEVENLABS_API_KEY=...
 ELEVENLABS_VOICE_ID=...            # the id from the ElevenLabs dashboard, not its name
 ELEVENLABS_MODEL_ID=eleven_flash_v2_5
+# ELEVENLABS_AGENT_ID=...          # reserved for a conversational Agents integration
 # VOICE_DISABLED=1                 # kill switch when the credentials are present
 ```
+
+The current host is one-way TTS: it uses the voice id, not an agent id. The
+agent id is recorded for a future conversational integration, which would add a
+microphone/WebSocket path and is a separate decision.
 
 Leave the key or the voice id blank and `GET /voice/status` reports `configured:false`;
 the web hides the control and the rest of the product is unchanged. The API holds this

@@ -12,11 +12,18 @@ import {
   buildWithdraw,
   decodeRevert,
 } from "../src/lib/useTx";
-import { explorerTxUrl, shortAddress } from "../src/lib/wagmi";
+import { buildConfig, explorerTxUrl, shortAddress } from "../src/lib/wagmi";
 import { validateWizard, EMPTY_WIZARD } from "../src/lib/wizard";
 
 const RUNNER = "0x1111111111111111111111111111111111111111";
 const HASH = `0x${"ab".repeat(32)}` as `0x${string}`;
+
+describe("wallet configuration", () => {
+  it("offers Coinbase Wallet alongside the injected fallback", () => {
+    const config = buildConfig();
+    expect(config.connectors.some((c) => /coinbase/i.test(c.name))).toBe(true);
+  });
+});
 
 describe("transaction builders", () => {
   // decoding round-trips rather than asserting raw hex length: a length check would
