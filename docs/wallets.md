@@ -3,8 +3,11 @@
 The app already signs its on-chain actions with a connected wallet: create a
 trial, register an agent, claim a trial, file a break, finalize a window and
 withdraw a credit. The current stack is
-**wagmi v2 + RainbowKit** with injected wallets and WalletConnect. The API holds
-no chain key (ADR-0006).
+**wagmi v2 + RainbowKit** with injected wallets, **Coinbase Wallet** and
+WalletConnect. The API holds no chain key (ADR-0006). The Coinbase connector is
+explicit in `apps/web/src/lib/wagmi.ts`, so it works without a WalletConnect
+project id; the no-project fallback in `Wallet.tsx` shows a Coinbase Wallet
+button next to the injected one.
 
 This page is a decision guide, not an integration. Pick one path, set the
 configuration, and rebuild the web image: `NEXT_PUBLIC_*` values are baked at
@@ -12,11 +15,15 @@ build time.
 
 ## Recommendation for the current demo
 
-1. **Keep injected wallets** (Rabby, MetaMask, Brave, anything EIP-6963). Zero
-   setup, best desktop demo, and it is already tested.
-2. **Add a WalletConnect Cloud project id** for mobile. Free, one environment
-   variable, no code change: `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=...`.
-3. **Use a Safe multisig** for the owner/treasury on any chain with value. That
+1. **Coinbase Wallet is enabled** via the classic Coinbase Wallet SDK connector
+   in `apps/web/src/lib/wagmi.ts`; no additional setup is required for the
+   extension or mobile app.
+2. **Keep injected wallets** (Rabby, MetaMask, Brave, anything EIP-6963) as the
+   desktop fallback. Zero setup and already tested.
+3. **Add a WalletConnect Cloud project id** for broader mobile coverage. Free,
+   one environment variable, no code change:
+   `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=...`.
+4. **Use a Safe multisig** for the owner/treasury on any chain with value. That
    is an operations wallet, not an end-user connector.
 
 Do not add Privy or another embedded-wallet provider unless you decide to pivot
@@ -42,20 +49,35 @@ pairing, and a familiar path for a judge on a phone.
 dashboard. **Risk:** public project id, no custody; do not treat it as a
 secret.
 
-## Option B — Coinbase Wallet / Base Account
+## Option B — Coinbase Wallet (enabled) / Base Account (separate)
 
 **What it buys:** a path for users already in the Base/Coinbase ecosystem, and
-smart-wallet features if you adopt Base Account.
+smart-wallet features if you later adopt Base Account.
 
-**Setup:** add the `coinbaseWallet` connector in `apps/web/src/lib/wagmi.ts` and
-remove the matching webpack aliases in `apps/web/next.config.mjs`
-(`@base-org/account`, `@coinbase/cdp-sdk`) once the connector is actually
-reachable. Test the build, because the current aliases exist to stop the
-Coinbase/x402 bundling from leaking into the browser.
+**Status:** the classic **Coinbase Wallet** connector is enabled in
+`apps/web/src/lib/wagmi.ts` and surfaced in the no-project fallback. It does not
+need a WalletConnect project id. The web build and a connector-presence test
+cover it.
 
-**Cost:** no protocol fee for the connector; Base Account features have their
-own provider terms. **Risk:** a new connector changes the bundle and the
+**Base Account** is a different connector (`@base-org/account`). The current
+`next.config.mjs` aliases that subtree off because the app does not use it. If
+you want Base Account smart wallets, add its connector, remove the
+`@base-org/account` / `@coinbase/cdp-sdk` aliases, and rebuild; test the bundle,
+because the aliases exist to stop the Coinbase/x402 payment stack from leaking
+into the browser.
+
+**Cost:** no protocol fee for the classic connector; Base Account features have
+their own provider terms. **Risk:** a new connector changes the bundle and the
 wallet-modal UX; it does not change custody, since the user still signs.
+
+## Scope note: this is EVM-only
+
+The pasted DeFi architecture adds a separate Solana wallet-adapter path and
+DeFi swap/approval flows. Neither belongs to this product: Crucible has no
+Solana program, no token, no swap router and no portfolio. The EVM path here is
+the escrow protocol described in the contract spec. A Solana/DeFi build is a
+different application, not a connector choice; it needs its own ADR and threat
+model.
 
 ## Option C — Privy (Google/email, embedded wallet, 4337)
 
@@ -96,15 +118,17 @@ reason.
 
 ## What to tell a user
 
-> Bring an EIP-6963 wallet or scan with WalletConnect. Crucible never asks for
-> a seed phrase, never holds your key, and never submits a transaction for you.
+> Bring an EIP-6963 wallet, use Coinbase Wallet, or scan with WalletConnect.
+> Crucible never asks for a seed phrase, never holds your key, and never submits
+> a transaction for you.
 > The demo chain is an Anvil development chain and has no real value.
 
 ## Verification checklist
 
 - `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` present in the build environment.
 - The web image was rebuilt after changing it.
-- Connect on desktop (injected) and mobile (WalletConnect).
+- Connect on desktop (injected), with the Coinbase Wallet button, and on mobile
+  (WalletConnect if configured).
 - Wrong-network guard shows the chain name and switches.
 - A write action signs from the connected address; the API response contains no
   transaction submission.

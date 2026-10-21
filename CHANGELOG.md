@@ -12,6 +12,12 @@ migration. See [`SECURITY.md`](SECURITY.md) before deploying value.
 
 ### Added
 
+- **Coinbase Wallet is a first-class connector.** The web app now includes the
+  classic Coinbase Wallet SDK connector in its wagmi config and shows a
+  Coinbase Wallet button in the no-WalletConnect fallback, alongside injected
+  wallets and WalletConnect. The connector-presence test pins it. Base Account
+  and Solana/DeFi paths remain out of scope: this product has no Solana program
+  and no token/swap surfaces.
 - **Frenchy, the optional voice host.** A server-side ElevenLabs proxy with a
   muted-by-default control, a once-a-day automatic policy, a paid-verdict-only line,
   silence on every failure, and reduced-motion handling. The key stays in the API;
@@ -21,6 +27,13 @@ migration. See [`SECURITY.md`](SECURITY.md) before deploying value.
 
 ### Fixed
 
+- **The promotion ladder now waits for the gate it dispatches.** A
+  `workflow_dispatch` CI run's completion did not reliably raise the next
+  `workflow_run`: the ladder reached `staging`, the gate passed, and no
+  `staging → main` run appeared; the deploy trigger had the same hole. The
+  promotion now finds the run it dispatched, waits for it by id, and dispatches
+  the next promotion or deploy only when it is green. A red gate stops the
+  ladder instead of silently leaving production behind.
 - **The one-write marker is set before the registry call.** `reportedTrial` was
   written after `giveFeedback`, which left a reentrancy window in which a
   configured registry could publish the same trial twice. The marker is now set in
