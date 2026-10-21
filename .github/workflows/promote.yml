@@ -55,6 +55,7 @@ jobs:
           exit 1
 
       - name: merge forward
+        id: merge
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -83,6 +84,7 @@ jobs:
           # ladder would run forever on a chain that is already current.
           if git merge-base --is-ancestor "$SHA" "origin/$TARGET"; then
             echo "already promoted: $SHA is in $TARGET, nothing to do"
+            echo "promoted=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -109,6 +111,7 @@ jobs:
 
           git push origin "$TARGET"
           echo "promoted $FROM to $TARGET"
+          echo "promoted=true" >> "$GITHUB_OUTPUT"
 
       # The next rung of the ladder, asked for and waited for explicitly.
       #
@@ -127,6 +130,7 @@ jobs:
       # next step by name. The extra job duration is the cost of not trusting
       # an event that did not arrive.
       - name: ask for the next gate
+        if: steps.merge.outputs.promoted == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           FROM: ${{ github.event.workflow_run.head_branch || inputs.from }}
