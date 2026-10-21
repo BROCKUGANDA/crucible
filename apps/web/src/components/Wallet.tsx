@@ -192,13 +192,4 @@ export function WalletNotConfiguredNotice() {
   );
 }
 
-/** The active network label, for the header. */
-export function useNetworkLabel(): string {
-  const { chainId } = useAccount();
-  if (chainId === undefined) return "not connected";
-  if (chainId === CHAIN_IDS.sepolia) return "Sepolia";
-  if (chainId === CHAIN_IDS.foundry) return "Anvil";
-  return `chain ${chainId}`;
-}
-
 export { activeChain };

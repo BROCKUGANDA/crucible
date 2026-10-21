@@ -365,6 +365,22 @@
   font-size: clamp(1.35rem, 4vw, 1.75rem);
 }
 
+.chrome__brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.chrome__env {
+  color: var(--ash);
+  flex: none;
+}
+
+.chrome__env--compact {
+  display: none;
+}
+
 .chrome__right {
   display: flex;
   align-items: center;
@@ -485,9 +501,12 @@
 
 @media (max-width: 520px) {
   /* Two buttons cannot share a phone header at full size; the wallet wins, the wordmark
-     shrinks, and the menu becomes an icon-width target. */
+     shrinks, and the menu becomes an icon-width target. The header is already two rows
+     here, so the brand row is pinned to the top — a centred brand would drop the
+     environment chip on top of the wrapped wallet buttons. */
   .chrome {
     gap: 10px;
+    align-items: flex-start;
   }
   .chrome__right {
     gap: 10px;
@@ -513,6 +532,14 @@
 
   .wallet-label-full {
     display: none;
+  }
+
+  .chrome__env--wide {
+    display: none;
+  }
+
+  .chrome__env--compact {
+    display: inline-flex;
   }
 
   .wallet-label-short {

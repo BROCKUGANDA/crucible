@@ -26,7 +26,8 @@
     "web:dev": "npm run dev --workspace @crucible/web",
     "demo": "node --env-file-if-exists=.env scripts/demo.mjs",
     "agent:live": "node --env-file-if-exists=.env scripts/live-agent.mjs",
-    "cdp:sandbox": "node --env-file-if-exists=.env scripts/cdp-sandbox.mjs"
+    "cdp:sandbox": "node --env-file-if-exists=.env scripts/cdp-sandbox.mjs",
+    "cdp:transfer": "node --env-file-if-exists=.env scripts/cdp-transfer.mjs"
   },
   "engines": {
     "node": ">=20 <27",
