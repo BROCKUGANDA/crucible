@@ -71,6 +71,15 @@ jobs:
 
           git switch -C "$TARGET" "origin/$TARGET"
 
+          # Nothing to promote is a normal state, not a failure — and it must
+          # not dispatch a gate. The gate would complete, which would raise
+          # this workflow again, which would dispatch the gate again. The
+          # ladder would run forever on a chain that is already current.
+          if git merge-base --is-ancestor "$SHA" "origin/$TARGET"; then
+            echo "already promoted: $SHA is in $TARGET, nothing to do"
+            exit 0
+          fi
+
           # A conflict must not be able to wedge the ladder.
           #
           # `staging` and `main` are write-only: nothing edits them except this
