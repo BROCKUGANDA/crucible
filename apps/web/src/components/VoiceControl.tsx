@@ -32,6 +32,7 @@ export function VoiceControl() {
   const [configured, setConfigured] = useState(false);
   const [ready, setReady] = useState(false);
   const [enabled, setEnabled] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const urlRef = useRef<string | null>(null);
@@ -58,6 +59,13 @@ export function VoiceControl() {
     }
   }, []);
 
+  // Silence is the right answer for speech nobody asked for. It is the wrong answer for the
+  // click that asked: a button that says "on" while producing no sound is a lie about state.
+  const fail = useCallback((reason: string, manual: boolean) => {
+    console.warn(`[frenchy] ${reason}`);
+    if (manual) setProblem(reason);
+  }, []);
+
   const play = useCallback(
     async (moment: VoiceMoment, manual: boolean) => {
       const storage = typeof window === "undefined" ? null : window.localStorage;
@@ -79,22 +87,27 @@ export function VoiceControl() {
           ? verdictMoment(prefs.current.catchphraseUsed)
           : moment;
       const clip = await fetchVoiceClip(actual);
-      if (!clip) return;
-
+      if (!clip.ok) {
+        fail(clip.reason, manual);
+        return;
+      }
       stop();
-      const url = URL.createObjectURL(clip);
+      const url = URL.createObjectURL(clip.blob);
       const audio = new Audio(url);
       audioRef.current = audio;
       urlRef.current = url;
 
       try {
         await audio.play();
-      } catch {
-        // Autoplay policy, a muted device, a codec the browser rejects: all silence.
+      } catch (error) {
+        // An autoplay refusal, a muted device, a codec the browser rejects, or a CSP that
+        // will not load a blob: media source. All four look like "no sound" from outside.
+        fail(error instanceof Error ? `${error.name}: ${error.message}` : String(error), manual);
         stop();
         return;
       }
 
+      setProblem(null);
       if (storage) markSpoken(storage, today);
       prefs.current.lastDay = today;
       if (actual === "verdict" || actual === "verdict-repeat") {
@@ -102,7 +115,7 @@ export function VoiceControl() {
         prefs.current.catchphraseUsed = true;
       }
     },
-    [stop],
+    [stop, fail],
   );
 
   useEffect(() => {
@@ -149,6 +162,7 @@ export function VoiceControl() {
   function toggle() {
     const next = !enabled;
     setEnabled(next);
+    setProblem(null);
     enabledRef.current = next;
     if (typeof window !== "undefined") writeVoiceEnabled(window.localStorage, next);
     if (!next) {
@@ -163,6 +177,8 @@ export function VoiceControl() {
 
   if (!ready || !configured) return null;
 
+  const muteReason = enabled ? problem : null;
+
   return (
     <span className="wallet-inline voice-control">
       <button
@@ -171,13 +187,19 @@ export function VoiceControl() {
         aria-pressed={enabled}
         onClick={toggle}
         title={
-          enabled
-            ? "Frenchy speaks only on a paid verdict, once a day. Turn him off."
-            : "Unmute Frenchy, the forge's voice host."
+          muteReason
+            ? `Frenchy could not speak: ${muteReason}`
+            : enabled
+              ? "Frenchy speaks only on a paid verdict, once a day. Turn him off."
+              : "Unmute Frenchy, the forge's voice host."
         }
       >
-        {enabled ? "Frenchy on" : "Frenchy off"}
+        {enabled ? (muteReason ? "Frenchy mute" : "Frenchy on") : "Frenchy off"}
       </button>
+      {/* The reason is for the person debugging; the label change is for the person clicking. */}
+      <span className="voice-note" role="status" aria-live="polite">
+        {muteReason ? `Frenchy could not speak: ${muteReason}` : ""}
+      </span>
       {enabled ? (
         <button
           type="button"

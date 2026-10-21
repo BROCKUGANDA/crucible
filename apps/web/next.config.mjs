@@ -104,6 +104,10 @@ const CSP = [
   // codes; https: is left open because a wallet icon host is not something this repo controls.
   "img-src 'self' data: blob: https:",
   "font-src 'self' data:",
+  // Frenchy's clip is fetched as bytes and played from a blob: object URL, and `default-src
+  // 'self'` does not cover blob: for media — the element reports "no supported source was
+  // found", which is indistinguishable from a dead provider unless the CSP is stated here.
+  "media-src 'self' blob:",
   `connect-src 'self' ${[...API_ORIGINS, ...THIRD_PARTY].join(" ")}`,
   "worker-src 'self' blob:",
   "manifest-src 'self'",
