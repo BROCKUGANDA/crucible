@@ -8,7 +8,7 @@
     "build": "node ../scripts/run-forge.mjs build",
     "pretest": "node ../scripts/run-forge.mjs --version",
     "test": "node ../scripts/run-forge.mjs test",
-    "coverage": "node ../scripts/run-forge.mjs coverage --report summary",
+    "coverage": "node ../scripts/run-forge.mjs coverage --ir-minimum --report summary",
     "demo": "node ../scripts/run-forge.mjs script script/Demo.s.sol:Demo --rpc-url http://127.0.0.1:8545 --broadcast"
   }
 }

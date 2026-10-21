@@ -116,7 +116,7 @@ contract Extend is Script {
     function _count(CrucibleTrials.Status status) internal view returns (uint256 n) {
         uint256 count = trials.trialCount();
         for (uint256 id = 1; id <= count; ++id) {
-            (, , , , , , , , , , , CrucibleTrials.Status s, ) = trials.trials(id);
+            (,,,,,,,,,,, CrucibleTrials.Status s,) = trials.trials(id);
             if (s == status) n += 1;
         }
     }
@@ -125,7 +125,7 @@ contract Extend is Script {
     function _freeStake(uint256 operatorPk) internal view returns (uint256) {
         uint256 agentId = trials.agentIdOf(vm.addr(operatorPk));
         if (agentId == 0) return 0;
-        (address operator, address runner, , uint128 stake, ) = trials.agents(agentId);
+        (address operator, address runner,, uint128 stake,) = trials.agents(agentId);
         operator;
         runner;
         return stake;

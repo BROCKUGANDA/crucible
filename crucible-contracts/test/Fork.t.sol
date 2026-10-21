@@ -68,8 +68,13 @@ contract ForkTests is Test {
         // Prove the registry is really there before testing anything against it.
         // Without this, a wrong address produces a confusing "function selector not
         // found" much later, in a test about settlement.
+        //
+        // Without a fork the contract is never deployed, and each test below skips
+        // itself (see `isMainnetFork`). The skip lives in the modifier rather than
+        // here: a skip raised from `setUp` collapses the whole suite into one skipped
+        // case, and the point of this file is that the four checks stay visible as
+        // four checks - skipped, not passed.
         if (block.chainid != 1) {
-            emit log("not a mainnet fork - skipping");
             return;
         }
         assertGt(REPUTATION_REGISTRY.code.length, 0, "reputation registry not deployed at PINNED_BLOCK");
@@ -97,7 +102,7 @@ contract ForkTests is Test {
 
     modifier isMainnetFork() {
         if (block.chainid != 1) {
-            emit log("not a mainnet fork - skipping");
+            vm.skip(true);
             return;
         }
         _;

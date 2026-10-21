@@ -52,7 +52,6 @@ jobs:
 
       - name: forge fmt --check
         run: forge fmt --check
-        continue-on-error: true
 
       - name: build
         run: forge build --sizes
@@ -62,6 +61,14 @@ jobs:
 
       - name: gas report
         run: forge test --gas-report | tee gas-report.txt
+
+      # Coverage runs with `--ir-minimum`: forge disables the optimizer and viaIR for
+      # coverage reports, and the legacy codegen then hits "stack too deep" in this
+      # codebase. `--ir-minimum` keeps viaIR on with minimum optimization, which is what
+      # the contracts are built with anyway, so the coverage numbers describe the code
+      # that actually ships. It is slower, and it is a real gate, not a report.
+      - name: coverage
+        run: forge coverage --ir-minimum --report summary | tee coverage-summary.txt
 
   # Static analysis. Findings are triaged by hand in docs/slither-triage.md -- this job
   # proves nothing NEW appeared, it does not decide what is acceptable.

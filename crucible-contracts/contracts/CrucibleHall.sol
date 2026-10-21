@@ -55,11 +55,7 @@ contract CrucibleHall {
     event IdentityLinked(address indexed account, string handle, uint64 at);
     event IdentityUpdated(address indexed account, string previousHandle, string newHandle, uint64 at);
     event TrialOpened(
-        uint256 indexed trialId,
-        address indexed settler,
-        address indexed contestant,
-        uint256 stake,
-        uint64 at
+        uint256 indexed trialId, address indexed settler, address indexed contestant, uint256 stake, uint64 at
     );
     event TrialSettled(uint256 indexed trialId, address indexed contestant, uint256 score, uint256 reward, uint64 at);
 
@@ -106,9 +102,10 @@ contract CrucibleHall {
         if (len == 0) revert EmptyHandle();
         if (len > MAX_HANDLE_BYTES) revert HandleTooLong();
 
-        for (uint256 i = 0; i < len; ) {
+        for (uint256 i = 0; i < len;) {
             bytes1 c = raw[i];
-            bool allowed = (c >= 0x61 && c <= 0x7a) || (c >= 0x41 && c <= 0x5a) || (c >= 0x30 && c <= 0x39) || c == 0x5f || c == 0x2d;
+            bool allowed = (c >= 0x61 && c <= 0x7a) || (c >= 0x41 && c <= 0x5a) || (c >= 0x30 && c <= 0x39) || c == 0x5f
+                || c == 0x2d;
             if (!allowed) revert InvalidHandleCharacter(i);
             unchecked {
                 ++i;
@@ -127,11 +124,8 @@ contract CrucibleHall {
         if (holder != address(0) && holder != msg.sender) revert HandleAlreadyTaken(holder);
 
         if (!_linked[msg.sender]) {
-            _identities[msg.sender] = Identity({
-                handle: handle,
-                linkedAt: uint64(block.timestamp),
-                updatedAt: uint64(block.timestamp)
-            });
+            _identities[msg.sender] =
+                Identity({handle: handle, linkedAt: uint64(block.timestamp), updatedAt: uint64(block.timestamp)});
             _handleOwner[key] = msg.sender;
             _linked[msg.sender] = true;
             emit IdentityLinked(msg.sender, handle, uint64(block.timestamp));
@@ -194,7 +188,7 @@ contract CrucibleHall {
         trial.reward = reward;
 
         if (reward > 0) {
-            (bool ok, ) = payable(trial.contestant).call{value: reward}("");
+            (bool ok,) = payable(trial.contestant).call{value: reward}("");
             if (!ok) revert PayoutFailed();
         }
 
