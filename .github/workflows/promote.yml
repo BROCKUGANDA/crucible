@@ -55,6 +55,7 @@ jobs:
           exit 1
 
       - name: merge forward
+        id: merge
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -83,6 +84,7 @@ jobs:
           # ladder would run forever on a chain that is already current.
           if git merge-base --is-ancestor "$SHA" "origin/$TARGET"; then
             echo "already promoted: $SHA is in $TARGET, nothing to do"
+            echo "promoted=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -109,22 +111,26 @@ jobs:
 
           git push origin "$TARGET"
           echo "promoted $FROM to $TARGET"
+          echo "promoted=true" >> "$GITHUB_OUTPUT"
 
-      # The next rung of the ladder, asked for explicitly.
+      # The next rung of the ladder, asked for and waited for explicitly.
       #
       # A push made with GITHUB_TOKEN does not raise a `push` event — GitHub
       # suppresses it so a workflow cannot make itself loop. That suppression
       # is why the ladder used to stop one rung short: the promotion wrote
-      # `staging`, nothing noticed, and no gate ever ran on it, so the
-      # promotion to `main` was never reached. The ladder's own history
-      # records the full run happening anyway, because the branches were
-      # pushed by hand rather than by this workflow.
+      # `staging`, nothing noticed, and no gate ever ran on it.
       #
       # `workflow_dispatch` is the documented exception to the suppression, so
-      # the promotion asks for the next gate by name. The gate then runs on
-      # the ref that was asked for, and its completion raises the `workflow_run`
-      # this workflow listens to.
+      # the promotion asks for the next gate by name. What the ladder's notes
+      # got wrong is the second half: a `workflow_dispatch` run's completion
+      # does not reliably raise the `workflow_run` this workflow listens to.
+      # The run appeared, passed, and no promotion to `main` followed, and the
+      # main gate's completion did not dispatch the deploy either. The repair
+      # is to hold this job while the gate it asked for runs, then ask for the
+      # next step by name. The extra job duration is the cost of not trusting
+      # an event that did not arrive.
       - name: ask for the next gate
+        if: steps.merge.outputs.promoted == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           FROM: ${{ github.event.workflow_run.head_branch || inputs.from }}
@@ -154,3 +160,38 @@ jobs:
             exit 1
           fi
           echo "dispatched ci on $TARGET"
+
+          # Find the run we just asked for. The dispatch endpoint returns no
+          # run id, so poll the newest workflow_dispatch ci run on this branch.
+          RUN_ID=""
+          for _ in $(seq 1 20); do
+            RUN_ID=$(gh run list \
+              --workflow ci.yml \
+              --branch "$TARGET" \
+              --event workflow_dispatch \
+              --limit 1 \
+              --json databaseId \
+              --jq '.[0].databaseId // empty' 2>/dev/null || true)
+            if [ -n "$RUN_ID" ]; then break; fi
+            sleep 3
+          done
+          if [ -z "$RUN_ID" ]; then
+            echo "::error::could not find the dispatched ci run on $TARGET"
+            exit 1
+          fi
+
+          echo "waiting for ci run $RUN_ID on $TARGET"
+          if ! gh run watch "$RUN_ID" --exit-status --interval 10; then
+            echo "::error::ci on $TARGET failed; the ladder stops here"
+            exit 1
+          fi
+
+          # The gate is green. Ask for the next step by name, rather than
+          # waiting for an event that may never be delivered.
+          if [ "$TARGET" = "staging" ]; then
+            echo "asking for promote staging -> main"
+            gh workflow run promote.yml --ref main -f from=staging
+          else
+            echo "asking for deploy on main"
+            gh workflow run deploy.yml --ref main
+          fi
