@@ -26,6 +26,17 @@ const API = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8787";
  */
 const FIRST_FRAME_TIMEOUT_MS = 4_000;
 
+/**
+ * How often the polling fallback asks for a snapshot once the stream has not
+ * proven itself.
+ *
+ * Deliberately slower than the stream's own tick: the fallback exists for the
+ * case where the push channel is dead, and a fallback that then hammers the
+ * API at the live rate would turn a degraded connection into a rate-limited
+ * one — which is the failure a visitor would actually notice.
+ */
+const FALLBACK_POLL_MS = 15_000;
+
 export interface SnapshotState {
   data: ApiSnapshot | null;
   error: string | null;
@@ -34,7 +45,7 @@ export interface SnapshotState {
   serverNowMs: number | null;
 }
 
-export function useSnapshot(pollMs = 4000): SnapshotState {
+export function useSnapshot(pollMs = FALLBACK_POLL_MS): SnapshotState {
   const [state, setState] = useState<SnapshotState>({
     data: null,
     error: null,
@@ -64,6 +75,23 @@ export function useSnapshot(pollMs = 4000): SnapshotState {
     async function poll() {
       try {
         const res = await fetch(`${API}/snapshot`, { signal: controller.signal });
+        if (res.status === 429) {
+          // The API is rate limiting this client. It says how long to wait, and
+          // the answer is worth believing: a client that ignores it and keeps
+          // asking is the reason it is limited. The reader is told the truth
+          // rather than a generic "reconnecting", because the two have
+          // different causes and different remedies.
+          const retryAfterMs = Number(res.headers.get("retry-after") ?? "1") * 1000;
+          if (alive) {
+            setState(s => ({
+              ...s,
+              error: "The forge is busy — too many readers at once. Retrying shortly.",
+              loading: false,
+            }));
+          }
+          await new Promise((r) => setTimeout(r, Math.max(1000, retryAfterMs)));
+          return;
+        }
         if (!res.ok) throw new Error(`api responded ${res.status}`);
         const data = (await res.json()) as ApiSnapshot;
         if (alive) setState({ data, error: null, loading: false, serverNowMs: data.now });
@@ -77,10 +105,10 @@ export function useSnapshot(pollMs = 4000): SnapshotState {
       }
     }
 
-    function startPolling() {
+    function startPolling(intervalMs: number) {
       if (!alive || pollTimer) return;
       void poll();
-      pollTimer = setInterval(poll, pollMs);
+      pollTimer = setInterval(poll, intervalMs);
     }
 
     function stopPolling() {
@@ -91,8 +119,9 @@ export function useSnapshot(pollMs = 4000): SnapshotState {
     }
 
     // The first poll is immediate: it is the only thing that guarantees the page
-    // has something to render.
-    startPolling();
+    // has something to render. It is a single request, not a poll loop — the
+    // interval only starts if the stream fails to prove itself.
+    void poll();
 
     try {
       source = new EventSource(`${API}/stream`);
@@ -105,7 +134,7 @@ export function useSnapshot(pollMs = 4000): SnapshotState {
             clearTimeout(firstFrameTimer);
             firstFrameTimer = undefined;
           }
-          // The stream is live, so the polling interval has nothing left to do.
+          // The stream is live, so the polling fallback has nothing left to do.
           stopPolling();
           setState({ data, error: null, loading: false, serverNowMs: data.now });
         } catch {
@@ -121,10 +150,10 @@ export function useSnapshot(pollMs = 4000): SnapshotState {
         // EventSource has already given up on this attempt; polling carries the page.
         source?.close();
         source = null;
-        startPolling();
+        startPolling(FALLBACK_POLL_MS);
       });
     } catch {
-      startPolling();
+      startPolling(FALLBACK_POLL_MS);
     }
 
     // The stream's first frame is given a deadline. If it has not arrived by then,
@@ -134,7 +163,7 @@ export function useSnapshot(pollMs = 4000): SnapshotState {
       if (!alive || streamDelivered) return;
       source?.close();
       source = null;
-      startPolling();
+      startPolling(FALLBACK_POLL_MS);
     }, FIRST_FRAME_TIMEOUT_MS);
 
     return () => {

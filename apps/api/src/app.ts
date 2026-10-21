@@ -219,7 +219,31 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
   if (opts.rateLimit !== false) {
     const limits: { limit: number; windowMs: number; burst?: number; trustProxy?: boolean } =
       opts.rateLimit ?? DEFAULT_RATE_LIMIT;
-    app.use("*", rateLimit({ ...limits, trustProxy: limits.trustProxy ?? opts.trustProxy ?? false }));
+    // Built ONCE. `rateLimit()` closes over the bucket store, so calling it per
+    // request would mint a fresh bucket for every request and limit nothing.
+    const limiter = rateLimit({
+      ...limits,
+      trustProxy: limits.trustProxy ?? opts.trustProxy ?? false,
+    });
+    app.use("*", async (c, next) => {
+      // The live stream is EXEMPT.
+      //
+      // The limiter exists to stop one client looping on `/snapshot` from
+      // starving the event loop the indexer shares. A stream is the opposite of
+      // that: it is one request that then holds a socket open, and it pushes
+      // frames rather than asking for work. Charging it against a per-minute
+      // request budget means a handful of idle tabs — each holding a stream
+      // and polling the fallback — exhaust the bucket for everything else,
+      // and the reads that matter start returning 429 to real visitors.
+      //
+      // The exemption is by path, not by method or by header, so it cannot be
+      // reached by asking for a stream-shaped URL on a read route.
+      if (c.req.path === "/stream") {
+        await next();
+        return;
+      }
+      return limiter(c, next);
+    });
   }
 
   app.use("*", bodyLimit(security));
