@@ -23,6 +23,24 @@ must ask for the next gate explicitly. Do not promote by force-pushing.
    `/api/health`.
 5. Verify the public site and `/api/ready`.
 
+## Known trigger gap (2026-10-21)
+
+A CI run started with `workflow_dispatch` by the promotion did **not** raise the
+next `workflow_run` in practice: the ladder promoted `develop → staging`, staged
+CI passed, and no `staging → main` run appeared. The same held for the main CI's
+deploy trigger. Until the promotion waits for the dispatched gate and dispatches
+the next step itself, run these after the relevant CI is green:
+
+```bash
+gh workflow run promote.yml --ref main -f from=staging
+gh workflow run deploy.yml --ref main
+```
+
+Both are idempotent: a promotion with nothing to promote is a normal no-op, and
+the deploy rebuilds the same `main` tree. This is the gap the ladder's own
+comments warn about; do not assume a green `staging` is live until `main` has
+the merge and the deploy has run.
+
 ## Manual single-service rebuild (incident path)
 
 Use this only when a running image is wrong and the pipeline is unavailable.
