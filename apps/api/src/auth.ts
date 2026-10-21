@@ -373,12 +373,64 @@ async function signersOf(message: string, signature: `0x${string}`): Promise<str
 }
 
 /**
+ * A JSON body, read with a hard ceiling.
+ *
+ * The middleware's body limit only sees an ANNOUNCED `Content-Length`. A
+ * request that says `Transfer-Encoding: chunked` announces nothing, and
+ * `c.req.json()` buffers the whole body — so on the two routes that read one,
+ * a caller could send as much as it liked and the process would hold it all
+ * in memory. The ceiling is therefore applied to the bytes actually read, and
+ * the stream is cancelled the moment it goes over.
+ *
+ * Returns null for "no body", "too big" and "not JSON"; the caller answers
+ * 400 for all three, because from the outside they are the same request.
+ */
+async function readBoundedJson(c: Context, maxBytes: number): Promise<unknown | null> {
+  const declared = c.req.header("content-length");
+  if (declared) {
+    const size = Number(declared);
+    if (!Number.isFinite(size) || size < 0) return null;
+    if (size > maxBytes) return null;
+  }
+
+  const body = c.req.raw.body;
+  if (!body) return null;
+
+  const reader = body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+      total += value.byteLength;
+      if (total > maxBytes) {
+        await reader.cancel();
+        return null;
+      }
+      chunks.push(value);
+    }
+  } catch {
+    return null;
+  }
+
+  if (total === 0) return null;
+  const text = new TextDecoder().decode(Buffer.concat(chunks.map((c) => Buffer.from(c))));
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * The four routes, mounted under `/auth` by `app.ts`.
  *
  * They hold no chain keys and cannot move money — the same boundary the rest of the
  * API keeps. A session proves control of an address and nothing else.
  */
-export function authRoutes(): Hono {
+export function authRoutes(maxBodyBytes = 16 * 1024): Hono {
   const app = new Hono();
 
   app.post("/nonce", async (c) => {
@@ -392,11 +444,7 @@ export function authRoutes(): Hono {
       );
     }
     let body: { address?: unknown } | null;
-    try {
-      body = (await c.req.json()) as { address?: unknown } | null;
-    } catch {
-      return c.json({ error: "invalid_body", message: "A JSON body is required." }, 400);
-    }
+    body = (await readBoundedJson(c, maxBodyBytes)) as { address?: unknown } | null;
     if (!body || typeof body !== "object") {
       return c.json({ error: "invalid_body", message: "A JSON body is required." }, 400);
     }
@@ -426,11 +474,11 @@ export function authRoutes(): Hono {
     }
 
     let body: { address?: unknown; nonce?: unknown; signature?: unknown } | null;
-    try {
-      body = (await c.req.json()) as { address?: unknown; nonce?: unknown; signature?: unknown } | null;
-    } catch {
-      return c.json({ error: "invalid_body", message: "A JSON body is required." }, 400);
-    }
+    body = (await readBoundedJson(c, maxBodyBytes)) as {
+      address?: unknown;
+      nonce?: unknown;
+      signature?: unknown;
+    } | null;
     if (!body || typeof body !== "object") {
       return c.json({ error: "invalid_body", message: "A JSON body is required." }, 400);
     }

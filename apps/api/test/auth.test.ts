@@ -78,6 +78,33 @@ describe("auth: nonce issuance", () => {
     });
     expect(res.status).toBe(400);
   });
+
+  /**
+   * A body the caller never announced.
+   *
+   * The middleware's limit only sees an announced `Content-Length`. A request
+   * that says `Transfer-Encoding: chunked` announces nothing, and the two
+   * routes that read a body used to buffer all of it — so a caller could send
+   * as much as it liked and the process would hold it in memory. The ceiling
+   * is now applied to the bytes actually read.
+   */
+  it("refuses a body larger than the ceiling, chunked or not", async () => {
+    const chunk = new TextEncoder().encode("x".repeat(64 * 1024));
+    const res = await app.request("/auth/nonce", {
+      method: "POST",
+      headers: { "content-type": "application/json", "transfer-encoding": "chunked" },
+      body: new ReadableStream({
+        start(controller) {
+          controller.enqueue(chunk);
+          controller.enqueue(chunk);
+          controller.close();
+        },
+      }),
+      // @ts-expect-error — a stream body is exactly what is being tested.
+      duplex: "half",
+    });
+    expect(res.status).toBe(400);
+  });
 });
 
 describe("auth: the origin is configured, not claimed by the caller", () => {

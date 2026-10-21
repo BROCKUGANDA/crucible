@@ -273,7 +273,7 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
    * with a known default. See `auth.ts` for the idempotency properties the port
    * was made to keep.
    */
-  app.route("/auth", authRoutes());
+  app.route("/auth", authRoutes(security.maxBodyBytes));
 
   /**
    * Liveness, plus the reach of the index. `/ready` is the gate a balancer acts on; this is
