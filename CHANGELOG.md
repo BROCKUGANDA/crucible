@@ -17,8 +17,11 @@ migration. See [`SECURITY.md`](SECURITY.md) before deploying value.
   installed (`coinbase*`, `cdp-*`, and the root `coinbase-agent-skill`), and
   `npm run cdp:sandbox` imports a Sandbox key and lists its accounts without ever
   printing the key. The profile refuses to run until the key file is supplied.
-  CDP Sandbox is simulated custodial testing, not a Base testnet; x402 remains a
-  live USDC rail. See `docs/runbooks/coinbase-sandbox.md`.
+  Sandbox and live keys can coexist in one `.env`: `CDP_ENV` selects the profile,
+  `CDP_ENABLE_LIVE=0` keeps the demo on sandbox, and live is refused unless the
+  flag is explicitly enabled. CDP Sandbox is simulated custodial testing, not a
+  Base testnet; x402 remains a live USDC rail. See
+  `docs/runbooks/coinbase-sandbox.md`.
 - **Coinbase Wallet is a first-class connector.** The web app now includes the
   classic Coinbase Wallet SDK connector in its wagmi config and shows a
   Coinbase Wallet button in the no-WalletConnect fallback, alongside injected
