@@ -10,6 +10,7 @@ verification, and what not to do.
 | [Indexer stalled or reset](indexer-stalled-or-reset.md)       | `/api/ready` is false, the hall is empty, `indexedTo` and `head` look wrong, or the read model keeps resetting. |
 | [Deploy and promote](deploy-and-promote.md)                   | Shipping `develop` → `staging` → `main`, or rebuilding a single service on the VPS.                             |
 | [Voice host](voice-host.md)                                   | Configuring, rotating, disabling or debugging Frenchy/ElevenLabs.                                               |
+| [Coinbase CDP CLI / Sandbox](coinbase-sandbox.md)             | Installing/configuring the `coinbase` and `cdp` CLIs, the Sandbox key, and the agent sandbox profile.           |
 | [Contracts deploy and verify](contracts-deploy-and-verify.md) | Deploying the contracts, seeding the demo, or checking the live chain against the documented economics.         |
 | [Incident response](incident-response.md)                     | A leaked key, a contract bug, a compromised dependency, or a suspected escrow issue.                            |
 

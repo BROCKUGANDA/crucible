@@ -33,6 +33,8 @@ Start with the question you have, not the folder.
 
 - [`docs/wallets.md`](wallets.md) — the current wallet stack, options
   (WalletConnect, Coinbase/Base, Privy, Safe) and what each one costs to set up.
+- [`docs/runbooks/coinbase-sandbox.md`](runbooks/coinbase-sandbox.md) — the
+  Coinbase CDP CLI, the separate Sandbox CLI, and the agent Sandbox profile.
 
 ## I want to review the security posture
 

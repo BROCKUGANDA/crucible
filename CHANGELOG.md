@@ -12,6 +12,13 @@ migration. See [`SECURITY.md`](SECURITY.md) before deploying value.
 
 ### Added
 
+- **Coinbase CDP CLI and a Sandbox profile for agents.** Both the Advanced Trade
+  `coinbase` CLI and the custodial `cdp` CLI are installed, the Qoder skill set is
+  installed (`coinbase*`, `cdp-*`, and the root `coinbase-agent-skill`), and
+  `npm run cdp:sandbox` imports a Sandbox key and lists its accounts without ever
+  printing the key. The profile refuses to run until the key file is supplied.
+  CDP Sandbox is simulated custodial testing, not a Base testnet; x402 remains a
+  live USDC rail. See `docs/runbooks/coinbase-sandbox.md`.
 - **Coinbase Wallet is a first-class connector.** The web app now includes the
   classic Coinbase Wallet SDK connector in its wagmi config and shows a
   Coinbase Wallet button in the no-WalletConnect fallback, alongside injected
