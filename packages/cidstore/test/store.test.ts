@@ -1,5 +1,14 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -445,6 +454,32 @@ describe("disk backing", () => {
 
     expect(second.stats().entries).toBe(3);
     expect(second.get(one)).toBe(null);
+    expect(second.list()).toEqual([two, three, four]);
+  });
+
+  it("keeps publication order when the filesystem stores whole-second timestamps", () => {
+    const dir = dirs[0]!;
+    const first = new CidStore({ dir, maxEntries: 3 });
+    const one = first.put("one");
+    const two = first.put("two");
+    const three = first.put("three");
+
+    // Simulate a filesystem that rounds every mtime down to a whole second. A
+    // one-millisecond stamp step collapses all three into the same second, and the
+    // content-hash tie-break then decides the order.
+    for (const [content, id] of [
+      ["one", one],
+      ["two", two],
+      ["three", three],
+    ] as const) {
+      expect(id).toBeTruthy();
+      const file = join(dir, "data", keyOf(content));
+      const whole = Math.floor(statSync(file).mtimeMs / 1000) * 1000;
+      utimesSync(file, new Date(whole), new Date(whole));
+    }
+
+    const second = new CidStore({ dir, maxEntries: 3 });
+    const four = second.put("four");
     expect(second.list()).toEqual([two, three, four]);
   });
 

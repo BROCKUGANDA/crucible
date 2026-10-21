@@ -113,7 +113,7 @@ export async function runRubric(args: {
   artifactJson: string;
   criteria?: RubricCriterion[];
 }): Promise<RubricOutcome> {
-  if (args.judges.length < 3) {
+  if (args.judges.length !== 3) {
     throw new RubricError("the rubric phase requires exactly three judges");
   }
   const prompt = rubricPrompt({
