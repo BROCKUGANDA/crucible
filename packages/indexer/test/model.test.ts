@@ -86,6 +86,68 @@ describe("applyEvent", () => {
     expect(t.verdict).toBe("paid");
   });
 
+  it("tracks free stake and active trials across a claim and a paid verdict", () => {
+    const m = replay(fullStory());
+    const agent = m.agents.get(1)!;
+    expect(agent.stakeWei).toBe(10n ** 18n); // bond returned on a paid verdict
+    expect(agent.active).toBe(0);
+    expect(agent.wins).toBe(1);
+    expect(agent.survived).toBe(1);
+  });
+
+  it("does not return the bond on a slash", () => {
+    const m = replay([
+      ...fullStory().slice(0, 5),
+      ev("VerdictFinalized", { id: 1n, verdict: 2, agentPayout: 0n }, 105n),
+    ]);
+    const agent = m.agents.get(1)!;
+    expect(agent.stakeWei).toBe(8n * 10n ** 17n);
+    expect(agent.active).toBe(0);
+    expect(agent.slashes).toBe(1);
+  });
+
+  it("returns the bond when a claimed trial is refunded", () => {
+    const m = replay([
+      ...fullStory().slice(0, 3),
+      ev("VerdictFinalized", { id: 1n, verdict: 3, agentPayout: 0n }, 105n),
+    ]);
+    const agent = m.agents.get(1)!;
+    expect(m.trials.get(1)!.verdict).toBe("refunded");
+    expect(agent.stakeWei).toBe(10n ** 18n);
+    expect(agent.active).toBe(0);
+  });
+
+  it("applies a stake withdrawal to the free balance", () => {
+    const m = replay([
+      ev("AgentRegistered", {
+        agentId: 1n, operator: OPERATOR, runner: OPERATOR,
+        metadataURI: "ipfs://m", stake: 10n ** 18n,
+      }, 101n),
+      ev("StakeWithdrawn", { agentId: 1n, to: OPERATOR, amount: 3n * 10n ** 17n }, 102n),
+    ]);
+    expect(m.agents.get(1)!.stakeWei).toBe(7n * 10n ** 17n);
+  });
+
+  it("applies a runner rotation", () => {
+    const NEW_RUNNER = "0x5555555555555555555555555555555555555555";
+    const m = replay([
+      ev("AgentRegistered", {
+        agentId: 1n, operator: OPERATOR, runner: OPERATOR,
+        metadataURI: "ipfs://m", stake: 10n ** 18n,
+      }, 101n),
+      ev("RunnerSet", { agentId: 1n, runner: NEW_RUNNER }, 102n),
+    ]);
+    expect(m.agents.get(1)!.runner).toBe(NEW_RUNNER);
+  });
+
+  it("counts a duplicated claim once", () => {
+    const claim = ev("TrialClaimed", { id: 1n, agentId: 1n, bond: 2n * 10n ** 17n }, 102n);
+    const m = replay([...fullStory().slice(0, 3), claim]);
+    const agent = m.agents.get(1)!;
+    expect(agent.stakeWei).toBe(8n * 10n ** 17n);
+    expect(agent.active).toBe(1);
+  });
+
   it("never mutates the model it is given", () => {
     const before = emptyModel();
     const after = applyEvent(before, fullStory()[0]!);

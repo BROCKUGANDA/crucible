@@ -290,7 +290,17 @@ function didMutate(next: ReadModel, ev: EventLike): boolean {
     case "TrialClaimed": {
       const t = next.trials.get(num(a.id));
       if (!t) return false;
+      // A claim is a one-way door: a re-read must not take a second bond or count a
+      // second active trial.
+      if (t.status !== "open") return false;
       t.agentId = num(a.agentId);
+      const agent = next.agents.get(t.agentId);
+      if (agent) {
+        // `Agent.stake` is FREE stake. The bond moves from it into escrow at claim.
+        const bond = big(a.bond);
+        agent.stakeWei = agent.stakeWei > bond ? agent.stakeWei - bond : 0n;
+        agent.active += 1;
+      }
       advance(t, "assigned");
       return true;
     }
@@ -339,6 +349,11 @@ function didMutate(next: ReadModel, ev: EventLike): boolean {
       // under a new tx hash. Skipping keeps a replay from minting reputation the chain never
       // awarded.
       if (t?.status === "settled") return false;
+      // Captured before the row becomes terminal: a live trial frees one active slot,
+      // and a paid or refunded verdict returns its bond to the agent's free stake.
+      const priorStatus = t?.status ?? "open";
+      const wasLive =
+        priorStatus === "assigned" || priorStatus === "judging" || priorStatus === "challenged";
       // A verdict for a trial this index never saw is not dropped. It means the
       // index started after the trial was created, and the old behaviour —
       // returning false — lost the settlement, the win and the receipt with no
@@ -384,6 +399,12 @@ function didMutate(next: ReadModel, ev: EventLike): boolean {
         // the "quoted the whole attack and held" signal. A slash increments scars.
         const agent = row.agentId !== null ? next.agents.get(row.agentId) : undefined;
         if (agent) {
+          if (wasLive) {
+            agent.active = Math.max(0, agent.active - 1);
+            if (row.verdict === "paid" || row.verdict === "refunded") {
+              agent.stakeWei += row.bondWei; // bond freed from escrow
+            }
+          }
           if (row.verdict === "paid") {
             agent.wins += 1;
             if (row.breakSkeptic !== null) agent.survived += 1;
@@ -406,6 +427,22 @@ function didMutate(next: ReadModel, ev: EventLike): boolean {
           ].slice(0, MAX_SETTLEMENTS);
         }
       }
+      return true;
+    }
+    case "StakeWithdrawn": {
+      const agent = next.agents.get(num(a.agentId));
+      if (!agent) return false;
+      const amount = big(a.amount);
+      const nextStake = agent.stakeWei - amount;
+      // The contract cannot over-withdraw; a clamp here only protects the projection
+      // from a replayed log, never from a real balance.
+      agent.stakeWei = nextStake > 0n ? nextStake : 0n;
+      return true;
+    }
+    case "RunnerSet": {
+      const agent = next.agents.get(num(a.agentId));
+      if (!agent) return false;
+      agent.runner = str(a.runner);
       return true;
     }
     default:
