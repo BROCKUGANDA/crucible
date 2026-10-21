@@ -82,11 +82,14 @@ describe("CORS: explicit origin policy", () => {
 
   /**
    * The part of the old default that was not decoration: Hono's `cors()` advertises
-   * `GET, HEAD, PUT, POST, DELETE, PATCH, QUERY` to whichever origin asked. Today no
-   * route writes, so the advertisement is harmless — and it is exactly the thing that
-   * would stop being harmless the day someone adds a POST.
+   * `GET, HEAD, PUT, POST, DELETE, PATCH, QUERY` to whichever origin asked. The
+   * advertisement is the thing that would stop being harmless the day someone adds a
+   * POST — and the day has come: `/auth/nonce`, `/auth/verify` and `/auth/logout` are
+   * POST routes. Advertising only the reads refused the sign-in flow at the preflight,
+   * so it could not work from a browser on another origin. The advertisement now names
+   * exactly the methods the API has.
    */
-  it("advertises only reads on a preflight it accepts", async () => {
+  it("advertises the methods the API actually has", async () => {
     const app = appWith({ allowedOrigins: ["http://127.0.0.1:3001"] });
     const res = await app.request("/snapshot", {
       method: "OPTIONS",
@@ -95,7 +98,10 @@ describe("CORS: explicit origin policy", () => {
     expect(res.status).toBe(204);
     const methods = res.headers.get(ACAM) ?? "";
     expect(methods).toContain("GET");
-    for (const write of ["POST", "PUT", "DELETE", "PATCH"]) expect(methods).not.toContain(write);
+    // POST is advertised because the auth routes need it.
+    expect(methods).toContain("POST");
+    // The methods the API does not have are still not advertised.
+    for (const write of ["PUT", "DELETE", "PATCH"]) expect(methods).not.toContain(write);
   });
 
   it("never grants credentialed cross-origin access unless it is asked to", async () => {

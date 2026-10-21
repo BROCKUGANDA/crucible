@@ -1,0 +1,42 @@
+name: assert-deployment
+
+# Runs the post-deploy assertions against the live chain, by hand.
+#
+# The same script runs at the end of every deploy. This workflow is the way to
+# ask the question on demand — "is what is live actually what we think it is?"
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: assert-deployment
+  cancel-in-progress: false
+
+jobs:
+  assert:
+    name: Assert the live deployment
+    runs-on: [self-hosted, linux, X64, crucible]
+    steps:
+      - name: build the seed image
+        working-directory: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          cd "$HOME/crucible"
+          docker compose -f compose.yaml -f compose.vps.yaml build seed
+      - name: assert
+        working-directory: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          cd "$HOME/crucible"
+          trials=$(grep -E '^TRIALS_ADDRESS=' .env | tail -n 1 | cut -d= -f2- | tr -d '[:space:]')
+          alloy=$(grep -E '^ALLOY_ADDRESS=' .env | tail -n 1 | cut -d= -f2- | tr -d '[:space:]')
+          if [ -z "$trials" ] || [ -z "$alloy" ]; then
+            echo "::error::no contract addresses in .env"
+            exit 1
+          fi
+          docker compose -f compose.yaml -f compose.vps.yaml run --rm --no-deps \
+            --entrypoint sh \
+            -e RPC_URL=http://anvil:8545 \
+            -e TRIALS_ADDRESS="$trials" \
+            -e ALLOY_ADDRESS="$alloy" \
+            -e PUBLIC_URL=https://crucible.svalley.tech \
+            seed scripts/assert-deployment.sh

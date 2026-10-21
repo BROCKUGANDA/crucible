@@ -85,9 +85,97 @@ jobs:
           df -h / | tail -1
 
       # Build before the swap: a failed compile leaves the running stack up.
+      # Keep the edge attached to this stack.
+      #
+      # The site is served by a shared reverse proxy that another project on the
+      # same box owns. It reaches this stack by service name, which only works
+      # from inside this stack's compose network — and that attachment is made
+      # by hand, because it belongs to a compose file this project does not
+      # have. A recreate of the proxy drops it, and every request for this
+      # site then answers 502 while every container here reports itself
+      # healthy: the failure looks like an outage here and has nothing to do
+      # with it. It happened on 2026-10-21.
+      #
+      # So the deploy repairs the attachment before it does anything else. The
+      # step is idempotent and reads only Docker's own state.
+      - name: keep the edge attached to this stack
+        run: |
+          set -uo pipefail
+          cd "$HOME/crucible"
+
+          NET=$(docker network ls --format '{{.Name}}' | grep -E '^crucible_default$' | head -n 1)
+          if [ -z "$NET" ]; then
+            echo "::error::the crucible network is missing; run a full 'docker compose up' to recreate it"
+            exit 1
+          fi
+
+          attached=0
+          for c in $(docker ps --format '{{.Names}}' | grep -iE 'caddy' || true); do
+            if docker inspect -f '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}' "$c" | grep -q "$NET"; then
+              echo "$c is on $NET"
+            else
+              echo "attaching $c to $NET"
+              docker network connect "$NET" "$c" || true
+            fi
+            attached=1
+          done
+          if [ "$attached" = "0" ]; then
+            echo "::warning::no edge container found on this host; the site may be served from elsewhere"
+          fi
+
+          # The repair belongs on a host timer, not on this pipeline.
+          #
+          # The attachment is dropped by a deploy of a DIFFERENT project, so
+          # nothing about this one happens at that moment, and a watchdog that
+          # depends on the thing it watches cannot report that the thing is
+          # broken. A cron entry on the box has neither dependency.
+          if [ -f deploy/edge-attach.sh ]; then
+            sudo install -m 0755 deploy/edge-attach.sh /usr/local/bin/crucible-edge-attach
+            ( crontab -l 2>/dev/null | grep -v 'crucible-edge-attach' ; \
+              echo '*/2 * * * * /usr/local/bin/crucible-edge-attach >> /home/ubuntu/crucible-edge-attach.log 2>&1' \
+            ) | crontab -
+            echo "host timer installed"
+          fi
+
+      - name: make sure the host configuration names this deployment
+        run: |
+          set -euo pipefail
+          cd "$HOME/crucible"
+          if [ ! -f .env ]; then
+            echo "::error::no .env on the host; the API has no addresses to read"
+            exit 1
+          fi
+          # These three are DERIVABLE, so a deployment that forgot them gets
+          # them filled in rather than running on a default. The secret is not
+          # among them: a deployment that was not given one must get a 503 from
+          # the auth routes, not a session signed with a fallback.
+          set_if() {
+            key="$1"; value="$2"
+            if grep -qE "^${key}=" .env; then
+              sed -i "s|^${key}=.*|${key}=${value}|" .env
+            else
+              printf '%s=%s\n' "$key" "$value" >> .env
+            fi
+          }
+          set_if AUTH_ORIGIN "https://crucible.svalley.tech"
+          set_if CHAIN_ID "31337"
+          # The proxy in front overwrites X-Real-IP, so the limiter can key on
+          # the real client instead of on the proxy's address — with it off,
+          # every visitor in the world shares one bucket.
+          set_if TRUST_PROXY "1"
+          echo "=== the sign-in and proxy keys, values redacted ==="
+          sed -E 's/=.*/=<redacted>/' .env | grep -E "^(AUTH_ORIGIN|AUTH_SECRET|AUTH_ALLOW_DEV_SECRET|CHAIN_ID|TRUST_PROXY)=" || true
+
       - name: build web and api
         working-directory: /home/ubuntu/crucible
-        run: docker compose -f compose.yaml -f compose.vps.yaml build web api
+        # The seed image is built too — and only BUILT, never run. The deploy
+        # swaps `web` and `api` with `--no-deps` so anvil keeps its chain, and
+        # the seed service is left alone for the same reason. But the
+        # post-deploy assertions run inside the seed image, and an image built
+        # before the assertion script existed does not contain it — so the
+        # deploy failed on a file that was in the repository and not in the
+        # image. Building is not running.
+        run: docker compose -f compose.yaml -f compose.vps.yaml build web api seed
 
       - name: swap web and api (anvil keeps its chain)
         working-directory: /home/ubuntu/crucible
@@ -104,3 +192,90 @@ jobs:
           [ "$CODE" = "200" ] || { echo "health check failed: $CODE"; exit 1; }
           curl -sk -o /dev/null -w 'home %{http_code}\n' https://crucible.svalley.tech/
           git -C "$GITHUB_WORKSPACE" rev-parse --short HEAD | xargs echo "serving commit:"
+
+      # A deploy that answers 200 is not the same as a deploy that is correct.
+      #
+      # The assertions read the chain that is actually live — the fee, the bond
+      # rule, the committee's threshold, the roles, and the money invariant
+      # (the ETH the contract holds against everything it owes) — and they read
+      # the public surface to catch the failure a health check cannot see: the
+      # web bundle bakes its contract address at build time, so a rebuilt chain
+      # leaves the site pointing at a contract that is not there.
+      #
+      # It runs inside the seed image because that is where foundry lives, and
+      # it runs ON the compose network because that is where anvil is.
+      - name: assert the deployment
+        working-directory: /home/ubuntu/crucible
+        run: |
+          set -euo pipefail
+          trials=$(grep -E '^TRIALS_ADDRESS=' .env | tail -n 1 | cut -d= -f2- | tr -d '[:space:]')
+          alloy=$(grep -E '^ALLOY_ADDRESS=' .env | tail -n 1 | cut -d= -f2- | tr -d '[:space:]')
+          if [ -z "$trials" ] || [ -z "$alloy" ]; then
+            echo "::error::no contract addresses in .env"
+            exit 1
+          fi
+          docker compose -f compose.yaml -f compose.vps.yaml run --rm --no-deps \
+            --entrypoint sh \
+            -e RPC_URL=http://anvil:8545 \
+            -e TRIALS_ADDRESS="$trials" \
+            -e ALLOY_ADDRESS="$alloy" \
+            -e PUBLIC_URL=https://crucible.svalley.tech \
+            seed scripts/assert-deployment.sh
+
+      # The public surface, probed from the HOST.
+      #
+      # These run here rather than inside the seed container because the
+      # container is on the compose network, where the public name does not
+      # resolve the way a visitor's does: the probe was measuring the
+      # container's network instead of the site's, and answered 0 for a site
+      # that was answering 200.
+      #
+      # The chain can be perfectly correct while the site points somewhere
+      # else — the web bundle bakes its contract address in at build time, and
+      # the API reads its own. If those two ever disagree, a judge connects a
+      # wallet and talks to a contract that is not the one the site is showing.
+      - name: assert the public surface
+        run: |
+          set -euo pipefail
+          cd "$HOME/crucible"
+          trials=$(grep -E '^TRIALS_ADDRESS=' .env | tail -n 1 | cut -d= -f2- | tr -d '[:space:]' | tr 'A-Z' 'a-z')
+          fail=0
+          for probe in \
+            "site=https://crucible.svalley.tech/" \
+            "ready=https://crucible.svalley.tech/api/ready" \
+            "health=https://crucible.svalley.tech/api/health"; do
+            name="${probe%%=*}"
+            url="${probe#*=}"
+            code=$(curl -sk -o /dev/null -w '%{http_code}' --max-time 20 "$url" || echo 000)
+            if [ "$code" = "200" ]; then
+              echo "  ok    $name answers 200"
+            else
+              echo "  FAIL  $name answered $code"
+              fail=1
+            fi
+          done
+
+          reported=$(curl -sk --max-time 20 https://crucible.svalley.tech/api/hall 2>/dev/null \
+            | sed -n 's/.*"trialsAddress":"\([^"]*\)".*/\1/p' | tr 'A-Z' 'a-z')
+          if [ -n "$reported" ] && [ "$reported" = "$trials" ]; then
+            echo "  ok    the API is serving the contract that was deployed"
+          else
+            echo "  FAIL  the API reports ${reported:-nothing}; the deployment says $trials"
+            fail=1
+          fi
+
+          sync_error=$(curl -sk --max-time 20 https://crucible.svalley.tech/api/health 2>/dev/null \
+            | sed -n 's/.*"syncError":\([^,}]*\).*/\1/p')
+          if [ "$sync_error" = "null" ] || [ -z "$sync_error" ]; then
+            echo "  ok    the indexer reports no sync error"
+          else
+            echo "  FAIL  the indexer reports a sync error: $sync_error"
+            fail=1
+          fi
+
+          if [ "$fail" != "0" ]; then
+            echo "::error::the public surface is not what the deployment claims"
+            exit 1
+          fi
+          echo "the public surface is serving the deployment that was just asserted"
+

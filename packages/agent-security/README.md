@@ -106,7 +106,7 @@ self-adjudication.
 ## Testing
 
 ```bash
-npm test --workspace @crucible/agent-security    # 129 tests
+npm test --workspace @crucible/agent-security    # 153 tests
 ```
 
 Every control above has at least one test that proves it *refuses*, not just one that

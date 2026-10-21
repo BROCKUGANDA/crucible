@@ -231,6 +231,85 @@ export interface ApiSnapshot {
   agents: ApiAgent[];
   hall: ApiHallEntry[];
   counts: Record<TrialStatus | "all", number>;
+  economics: ApiEconomics;
+}
+
+/**
+ * The protocol's books.
+ *
+ * The contract keeps a settlement fee for the treasury — `FEE_BPS` of every
+ * reward a trial settles in an agent's favour. Nothing published it: the fee
+ * was a number in a constant and a credit in a mapping, so the product could
+ * not say what it earned. A platform whose revenue is invisible is a platform
+ * nobody can price, and a fee the reader has to take on faith is not much
+ * better than no fee at all.
+ *
+ * So the books are derived here, from the same events the leaderboard is
+ * built from — a settlement the hall counts is a settlement the books count,
+ * because both read the same `VerdictFinalized` log.
+ */
+export interface ApiEconomics {
+  /** settlements that paid an agent, in ETH */
+  paidOutEth: string;
+  /** the protocol's fee on those settlements, in ETH */
+  feesEth: string;
+  /** the total reward escrowed by sponsors, in ETH */
+  volumeEth: string;
+  /** how many trials settled in an agent's favour */
+  paidSettlements: number;
+  /**
+   * The fee in basis points, as the chain's own constant has it — or null when the
+   * constant could not be read.
+   *
+   * Null is the honest answer and 0 is not: the rate is a SECOND read of the chain,
+   * and the money above does not depend on it. Publishing 0 for a fee that was never
+   * read says the protocol charges nothing, which is a claim about the chain made by
+   * a process that does not know.
+   */
+  feeBps: number | null;
+}
+
+/**
+ * The protocol's books, from the read model.
+ *
+ * The money comes from the settlement logs, not from a re-derivation of them. The
+ * contract emits `VerdictFinalized(id, Paid, reward - fee)`, so the payout it charged
+ * is in the log and the fee is the difference between the escrowed reward and that
+ * payout. Recomputing either from `FEE_BPS` needed a second read of the chain, and
+ * when that read failed the books published a fee of zero and a payout of the FULL
+ * reward — a number the chain never charged, published as though it had been
+ * measured.
+ *
+ * `feeBps` is the one number here that still needs the constant, so it is reported
+ * as read or reported as unknown.
+ */
+export function buildEconomics(model: ReadModel, feeBps: number | null): ApiEconomics {
+  let paidOutWei = 0n;
+  let feesWei = 0n;
+  let volumeWei = 0n;
+  let paidSettlements = 0;
+
+  for (const trial of model.trials.values()) {
+    volumeWei += trial.rewardWei;
+    if (trial.verdict !== "paid") continue;
+    paidSettlements += 1;
+    // The chain's own arithmetic, from the log that settled the trial. A settlement
+    // whose payout the index never saw is counted but adds nothing to either total:
+    // an unknown number is not zero.
+    if (trial.payoutWei === null) continue;
+    paidOutWei += trial.payoutWei;
+    // The fee is what the chain kept: the escrowed reward minus what it paid out.
+    const fee = trial.rewardWei - trial.payoutWei;
+    feesWei += fee > 0n ? fee : 0n;
+  }
+
+  return {
+    paidOutEth: weiToEth(paidOutWei),
+    feesEth: weiToEth(feesWei),
+    volumeEth: weiToEth(volumeWei),
+    paidSettlements,
+    feeBps,
+  };
 }
 
 export function buildSnapshot(
@@ -238,6 +317,13 @@ export function buildSnapshot(
   opts: {
     now: number;
     alloyState?: (agentId: number) => AlloyState;
+    /**
+     * The chain's settlement fee, in basis points. Read from the contract by
+     * the host rather than hardcoded here, so the published number is the one
+     * the chain actually charges — or null when that read failed, which is a
+     * different answer from zero.
+     */
+    feeBps?: number | null;
   },
 ): ApiSnapshot {
   const trials = listTrials(model).map((t) => toApiTrial(t, model));
@@ -268,5 +354,6 @@ export function buildSnapshot(
     agents,
     hall: hall(model).map((e) => toApiHallEntry(e, alloyById.get(e.agentId)?.tier ?? null)),
     counts,
+    economics: buildEconomics(model, opts.feeBps ?? null),
   };
 }

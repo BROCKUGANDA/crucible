@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { Chrome, Quenching, SignalLost, TxLink, TxStates } from "@/components/Chrome";
 import { BreakPanel } from "@/components/BreakPanel";
 import { useSnapshot } from "@/lib/useSnapshot";
@@ -16,6 +16,7 @@ import {
 } from "@/lib/forge";
 import { buildFinalize, useTx } from "@/lib/useTx";
 import { useCountdown } from "@/lib/useSnapshot";
+import { announceVoice } from "@/lib/voice";
 
 const TABS = ["The charge", "Struck work", "Break attempts", "The quench"] as const;
 
@@ -31,6 +32,17 @@ export default function TrialDetailPage() {
   const [tab, setTab] = useState(0);
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const tx = useTx();
+  const announcedFor = useRef<number | null>(null);
+
+  // Frenchy speaks on a paid verdict, and only while the quench panel is on screen.
+  // The visual is the trigger, not the transaction: the host is silent on a slash,
+  // a refund, an error, a dispute, a form and a withdrawal.
+  useEffect(() => {
+    if (!trial || tab !== 3 || trial.verdict !== "paid") return;
+    if (announcedFor.current === trial.id) return;
+    announcedFor.current = trial.id;
+    announceVoice("verdict");
+  }, [trial, tab]);
 
   /** Quenchable: the skeptic window has closed, nothing was filed, and Argus holds
    * no dispute. Finalize is permissionless — whoever calls it moves none of their own

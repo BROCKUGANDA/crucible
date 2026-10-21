@@ -43,6 +43,14 @@ export class RateLimiter {
   constructor(private readonly cfg: RateLimitConfig) {
     if (!Number.isFinite(cfg.limit) || cfg.limit < 1) throw new Error("limit must be >= 1");
     if (!Number.isFinite(cfg.windowMs) || cfg.windowMs <= 0) throw new Error("windowMs must be > 0");
+    // The burst is the capacity ABOVE the sustained rate, so a negative one would make
+    // the bucket smaller than the rate it refills at: a client allowed 60/min would
+    // hold a bucket of 40 and be refused for 20 seconds every minute. It is not
+    // reachable from the environment today, and it is refused here so that the day it
+    // is reachable is not the day it starts eating traffic.
+    if (cfg.burst !== undefined && (!Number.isFinite(cfg.burst) || cfg.burst < 0)) {
+      throw new Error("burst must be >= 0");
+    }
 
     this.refillRate = cfg.limit / (cfg.windowMs / 1000); // tokens per second
     this.capacity = cfg.limit + (cfg.burst ?? 0);
@@ -105,9 +113,11 @@ export class RateLimiter {
  * only evidence of anything once you have agreed who is allowed to write it.
  *
  * So forwarded headers are honoured only when `trustProxy` is set explicitly, which means the
- * process is known to sit behind something that overwrites them (Cloudflare's `cf-connecting-ip`
- * is the usual one). Without it the key is the socket peer — the one address this process can
- * actually observe.
+ * process is known to sit behind something that SETS `X-Forwarded-For` — Caddy and nginx both
+ * do, and Caddy replaces it with the peer it saw rather than appending to whatever the caller
+ * sent. Without it the key is the socket peer — the one address this process can actually
+ * observe. The trade is spelled out in `proxiedIdentity`: with the proxy off, every visitor
+ * behind it shares one bucket, and with it on, the key is the address the proxy recorded.
  *
  * `Retry-After` is the part that makes this a feature rather than a wall of 429s: a
  * well-behaved client waits and comes back, and an honest GUI backs off instead of hammering.
@@ -128,12 +138,7 @@ export function rateLimit(config: RateLimitConfig & { trustProxy?: boolean }) {
   return async function middleware(c: Context, next: Next) {
     ensureSweeper();
 
-    const identity = trustProxy
-      ? c.req.header("cf-connecting-ip") ??
-        c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ??
-        c.req.header("x-real-ip") ??
-        socketAddress(c)
-      : socketAddress(c);
+    const identity = trustProxy ? proxiedIdentity(c) : socketAddress(c);
 
     const verdict = limiter.consume(identity ?? "shared");
     if (verdict.allowed) {
@@ -143,12 +148,67 @@ export function rateLimit(config: RateLimitConfig & { trustProxy?: boolean }) {
       return;
     }
 
+    // The budget headers belong on the refusal too: a client that is being
+    // throttled is exactly the client that needs to know what its budget is.
+    c.header("RateLimit-Limit", String(config.limit));
+    c.header("RateLimit-Remaining", "0");
     c.header("Retry-After", String(Math.ceil(verdict.retryAfterMs / 1000)));
     return c.json(
       { error: "Slow down — too many requests.", retryAfterMs: verdict.retryAfterMs },
       429,
     );
   };
+}
+
+/**
+ * The client address, as seen through a proxy that is trusted to set the forwarded headers.
+ *
+ * **One header, and it is `X-Forwarded-For`.**
+ *
+ * The right-most entry is the one. Every proxy in this deployment's shape puts the address it
+ * actually saw at the end of the chain: nginx's `$proxy_add_x_forwarded_for` appends
+ * `$remote_addr`, and Caddy *replaces* the header with the peer it saw ("by default, the
+ * proxy will ignore their values from incoming requests, to prevent spoofing"). The left-most
+ * entry is whatever the caller sent, so reading it lets a client mint a fresh bucket per
+ * request — the exact bypass this limiter exists to prevent.
+ *
+ * **`X-Real-IP` is deliberately NOT read, and the reason is not stylistic.** It used to be read
+ * FIRST, on the belief that "a proxy that sets it overwrites it, and Caddy does exactly that
+ * (`header_up X-Real-IP {remote_host}`)". That belief was wrong twice over:
+ *
+ *   * Caddy does not set `X-Real-IP` by default. Its documented defaults are
+ *     `X-Forwarded-For`, `X-Forwarded-Proto` and `X-Forwarded-Host`; anything else has to be
+ *     configured with an explicit `header_up`.
+ *   * Caddy passes every OTHER incoming header through to the backend untouched — "By default,
+ *     Caddy passes through incoming headers—including Host—to the backend without
+ *     modifications". So a client that sends `X-Real-IP: 203.0.113.9` reaches this process with
+ *     that value intact.
+ *
+ * Reading it first therefore handed the bucket key to the caller: one header on the request was
+ * enough to get a fresh 60/min allowance, forever. A limiter whose key is chosen by the party it
+ * is meant to limit is not a limiter, so the header is gone rather than demoted.
+ *
+ * `CF-Connecting-IP` is not trusted either. It is only meaningful when the peer is Cloudflare,
+ * and this process has no way to know that. A header any caller can write cannot be evidence of
+ * anything.
+ *
+ * With no `X-Forwarded-For` at all, the socket peer is used. That is the proxy's own address
+ * when a proxy is in front and forgot the header, and the client's address when there is no
+ * proxy — either way it is an address this process observed rather than one it was told.
+ */
+function proxiedIdentity(c: Context): string | null {
+  const forwarded = c.req.header("x-forwarded-for");
+  if (forwarded) {
+    const hops = forwarded
+      .split(",")
+      .map((part) => part.trim())
+      .filter(Boolean);
+    // The hop closest to this process is the one the last proxy saw.
+    const closest = hops[hops.length - 1];
+    if (closest) return closest;
+  }
+
+  return socketAddress(c);
 }
 
 /**

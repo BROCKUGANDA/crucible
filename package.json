@@ -16,15 +16,17 @@
     "build": "npm run build --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
+    "verify:all": "npm run typecheck && npm test",
     "format": "prettier --write \"**/*.{ts,tsx,md,json}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,md,json}\"",
     "contracts:build": "npm run build --workspace crucible-contracts",
     "contracts:test": "npm run test --workspace crucible-contracts",
-    "contracts:demo": "cd crucible-contracts && forge script script/Demo.s.sol:Demo --rpc-url http://127.0.0.1:8545 --broadcast",
+    "contracts:demo": "npm run demo --workspace crucible-contracts",
     "api:dev": "npm run dev --workspace @crucible/api",
     "web:dev": "npm run dev --workspace @crucible/web",
     "demo": "node --env-file-if-exists=.env scripts/demo.mjs",
-    "agent:live": "node --env-file-if-exists=.env scripts/live-agent.mjs"
+    "agent:live": "node --env-file-if-exists=.env scripts/live-agent.mjs",
+    "cdp:sandbox": "node --env-file-if-exists=.env scripts/cdp-sandbox.mjs"
   },
   "engines": {
     "node": ">=20 <27",
