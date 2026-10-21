@@ -34,8 +34,14 @@ jobs:
     # Declared here rather than inherited from the repository default: a
     # setting a reviewer cannot see in the diff is a setting the next repo
     # will not have.
+    #
+    # `actions: write` is the other half, and its absence was silent: the job
+    # asked for the next gate with a token that could not, the API answered
+    # 403, and the step printed the code and exited 0. The ladder then sat
+    # waiting for a gate that was never going to run, and nothing said so.
     permissions:
       contents: write
+      actions: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -126,10 +132,25 @@ jobs:
           set -euo pipefail
           TARGET=$([ "$FROM" = "develop" ] && echo "staging" || echo "main")
           echo "dispatching ci on $TARGET"
-          curl -sS -X POST \
+
+          # The status code is checked, not printed.
+          #
+          # A step that prints the code and exits 0 is a step that fails
+          # silently, and this one did: the API answered 403 because the
+          # token had no `actions: write`, and the ladder sat waiting for a
+          # gate that was never going to run. A dispatch that did not happen
+          # has to be a red run.
+          code=$(curl -sS -X POST \
             -H "Accept: application/vnd.github+json" \
             -H "Authorization: Bearer $GH_TOKEN" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
             "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/dispatches" \
             -d "{\"ref\":\"$TARGET\"}" \
-            -o /dev/null -w 'http %{http_code}\n'
+            -o /tmp/dispatch.out -w '%{http_code}')
+
+          if [ "$code" != "204" ] && [ "$code" != "200" ]; then
+            echo "::error::could not dispatch ci on $TARGET (HTTP $code)"
+            cat /tmp/dispatch.out || true
+            exit 1
+          fi
+          echo "dispatched ci on $TARGET"
