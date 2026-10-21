@@ -40,6 +40,22 @@ services:
     build:
       context: .
       dockerfile: apps/api/Dockerfile
+    # The API reads its configuration from the host's `.env`, and compose only
+    # passes on what is named here. The list used to be the chain's addresses
+    # and nothing else, so every other variable the `.env` documents —
+    # AUTH_SECRET, AUTH_ORIGIN, TRUST_PROXY — stopped at the host and never
+    # reached the process. The API ran with the defaults, which for the
+    # limiter is "every visitor behind the proxy shares one bucket".
+    #
+    # `env_file` passes the whole file, so a variable the `.env` gains later
+    # reaches the process without another edit here. The explicit
+    # `environment` block still wins for the values compose owns.
+    env_file:
+      - path: .env
+        # Not required: a fresh clone without a `.env` should still come up,
+        # with the API's own defaults. `required: false` says so explicitly
+        # rather than failing the whole stack on a missing file.
+        required: false
     environment:
       NODE_ENV: production
       PORT: 8787
@@ -47,6 +63,19 @@ services:
       TRIALS_ADDRESS: ${TRIALS_ADDRESS:-}
       ALLOY_ADDRESS: ${ALLOY_ADDRESS:-}
       FROM_BLOCK: "0"
+      # The chain this deployment signs for, and the origin it names in the
+      # sign-in message. Both are configuration rather than something the
+      # request may say.
+      CHAIN_ID: ${CHAIN_ID:-31337}
+      AUTH_ORIGIN: ${AUTH_ORIGIN:-}
+      # The secret itself is NOT set here: a deployment that has not been
+      # given one must get a 503 from the auth routes, not a session signed
+      # with a fallback.
+      AUTH_SECRET: ${AUTH_SECRET:-}
+      AUTH_ALLOW_DEV_SECRET: ${AUTH_ALLOW_DEV_SECRET:-}
+      # The proxy in front overwrites X-Real-IP and X-Forwarded-For, so the
+      # limiter can key on the real client instead of on the proxy's address.
+      TRUST_PROXY: ${TRUST_PROXY:-0}
     ports:
       - "${API_HOST_PORT:-8787}:8787"
     volumes:
