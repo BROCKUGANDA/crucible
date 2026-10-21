@@ -17,7 +17,21 @@ import { homedir } from "node:os";
 import { resolve } from "node:path";
 
 const envName = process.env.CDP_ENV?.trim() || "sandbox";
-const rawKey = process.env.CDP_API_KEY_FILE?.trim() ?? "";
+const allowLive = process.env.CDP_ENABLE_LIVE === "1";
+const plaintext = process.env.CDP_ALLOW_PLAINTEXT_SECRETS === "1";
+const envKeyFile =
+  envName === "live"
+    ? process.env.CDP_LIVE_API_KEY_FILE?.trim() || process.env.CDP_API_KEY_FILE?.trim() || ""
+    : process.env.CDP_SANDBOX_API_KEY_FILE?.trim() || process.env.CDP_API_KEY_FILE?.trim() || "";
+const rawKey = envKeyFile;
+
+if (envName === "live" && !allowLive) {
+  stop(
+    "CDP live is disabled for this demo. Set CDP_ENV=sandbox, or set " +
+      "CDP_ENABLE_LIVE=1 only for an explicitly approved live task with a " +
+      "dedicated live key.",
+  );
+}
 
 function stop(message) {
   console.error(message);
@@ -27,14 +41,15 @@ function stop(message) {
 if (!rawKey) {
   stop(
     [
-      "CDP_API_KEY_FILE is empty.",
+      `${envName === "live" ? "CDP_LIVE_API_KEY_FILE" : "CDP_SANDBOX_API_KEY_FILE"} is empty.`,
       "",
-      "1. Open the CDP Portal in Sandbox mode.",
-      "2. Settings -> Create secret API key -> download the JSON file.",
-      "3. Store it outside this repository (e.g. %USERPROFILE%\\Downloads\\cdp_api_key.json).",
-      "4. Set CDP_API_KEY_FILE to that path in .env.",
+      "1. Open the CDP Portal in Sandbox mode (not Live).",
+      "2. Settings -> Create Secret API Key -> enable the Accounts permission.",
+      "3. Store the JSON outside this repository (e.g. %USERPROFILE%\\Downloads\\sandbox-api-key.json).",
+      "4. Set CDP_SANDBOX_API_KEY_FILE to that path in .env.",
       "5. Run `npm run cdp:sandbox` again.",
       "",
+      "A live-mode key will answer 401 against the Sandbox; the modes are separate.",
       "The key file is a secret; never commit it or paste it into chat.",
     ].join("\n"),
   );
@@ -67,7 +82,12 @@ function run(args) {
 }
 
 console.log(`Configuring CDP environment "${envName}"...`);
-const configured = run(["env", envName, "--key-file", keyFile]);
+const envArgs = ["env", envName, "--key-file", keyFile];
+if (envName === "sandbox") {
+  envArgs.push("--url", process.env.CDP_SANDBOX_BASE_URL?.trim() || "https://sandbox.cdp.coinbase.com");
+}
+if (plaintext) envArgs.push("--plaintext");
+const configured = run(envArgs);
 if (configured.error || configured.status !== 0) {
   console.error(
     "Could not configure the CDP environment. Is `@coinbase/cdp-cli` installed? " +
@@ -77,7 +97,9 @@ if (configured.error || configured.status !== 0) {
 }
 
 console.log(`Listing ${envName} accounts...`);
-const listed = run(["accounts", "list"]);
+// The long form from the CDP quickstart; the short `accounts balance` form is
+// not present in every CLI version, and `/platform/v2` must be explicit.
+const listed = run(["api", "/platform/v2/accounts"]);
 if (listed.error || listed.status !== 0) {
   process.exit(listed.status ?? 1);
 }
