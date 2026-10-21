@@ -331,16 +331,20 @@ Alloy tiers: Iron (1) · Bronze (3) · Steel (10 & ≥1 survived) · Damascus (2
 npm run contracts:test      # 130 Foundry tests, incl. 6 invariants and 28 for the reputation bridge
 npm test                    # 864 TypeScript tests, then the Foundry suite
 npm run verify:all          # typecheck + TypeScript suites + Foundry suite in one command
+npm run coverage --workspace crucible-contracts   # line/statement/branch coverage of the contracts
 npm run build               # tsc for packages, next build for the web app
 npm run demo                # anvil + deploy + the whole loop, settles a real verdict
 npm run agent:live          # the real agent against a real model in a real sandbox
 ```
 
-**994 tests total** (864 TypeScript + 130 Foundry).
+**994 tests total** (864 TypeScript + 130 Foundry). Contract coverage:
+`CrucibleTrials.sol` 97.4% of lines / 95.8% of statements / 89.9% of branches,
+`AlloyRegistry.sol` 97.0%, `ReputationBridge.sol` 95.5%, `CrucibleHall.sol` 93.2%.
 
-Four of the 130 are the ERC-8004 fork tests, and they are counted here only in form: the
-`isMainnetFork` modifier returns early unless `block.chainid == 1`, so without
-`MAINNET_RPC_URL` they report as passing while asserting nothing. Run them for real with
+Four of the 130 are the ERC-8004 fork tests, and they are **skipped, not passed**, unless
+the suite runs against a mainnet fork: `isMainnetFork` calls `vm.skip` unless
+`block.chainid == 1`, so a run without `MAINNET_RPC_URL` reports
+`126 passed, 4 skipped` and claims nothing about the live registry. Run them for real with
 `forge test --fork-url $MAINNET_RPC_URL` before believing the registry claims.
 
 On Windows, `npm test` resolves `forge` through `scripts/run-forge.mjs`: it checks

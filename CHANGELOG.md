@@ -227,7 +227,10 @@ Selected items from the hardening passes, all reproduced against the unfixed cod
 - **The slash-decay tier and the indexer's win counter measure different things** — one is
   the registry's decayed record, the other a count of settlement logs. Both are true of
   different facts and the UI labels them separately.
-- **`forge coverage` does not run** (stack-too-deep with the optimizer off).
+- **`forge coverage` needs `--ir-minimum`.** Forge disables the optimizer and viaIR for
+  coverage, and the legacy codegen then hits "stack too deep"; `--ir-minimum` keeps viaIR
+  on with minimum optimization. `npm run coverage --workspace crucible-contracts` reports
+  97.4% of lines in `CrucibleTrials.sol`.
 - **Windows:** `npm test` resolves Foundry through `scripts/run-forge.mjs`; it checks
   PATH, `%USERPROFILE%\.foundry\bin`, then `FOUNDRY_BIN`.
 

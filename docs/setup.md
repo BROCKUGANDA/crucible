@@ -82,6 +82,7 @@ NEXT_PUBLIC_API_URL=http://127.0.0.1:8787 npm run web:dev
 
 ```bash
 npm run verify:all       # typecheck, 864 TypeScript tests, 130 Foundry tests
+npm run coverage --workspace crucible-contracts   # coverage of the contracts
 npm run build            # tsc + next build
 ```
 

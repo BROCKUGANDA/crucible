@@ -33,6 +33,8 @@ was open (2026-10-12). Nothing after it is presented as in-window work.
 | 2026-10-21 | The API answers the Kubernetes-style `/healthz` and `/readyz` aliases with the same readiness contract as `/health` and `/ready` | `apps/api/src/app.ts`, `apps/api/test/app.test.ts` |
 | 2026-10-21 | `npm test` finds Foundry even when it is installed outside PATH, and `npm run verify:all` is the one command that runs typecheck plus every suite | `scripts/run-forge.mjs`, `crucible-contracts/package.json`, `package.json` |
 | 2026-10-21 | A machine-readable security contact is published at `/.well-known/security.txt` | `apps/web/src/app/.well-known/security.txt/route.ts` |
+| 2026-10-21 | The four ERC-8004 fork tests now report as **skipped** when there is no fork, not as four green tests that asserted nothing | `crucible-contracts/test/Fork.t.sol` |
+| 2026-10-21 | `forge coverage` runs and gates the build: 97.4% of lines in `CrucibleTrials.sol`, 95.8% of statements, 89.9% of branches | `crucible-contracts/package.json`, `.github/workflows/ci.yml` |
 
 ## The shape of the outage
 

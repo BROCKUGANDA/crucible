@@ -26,6 +26,14 @@ current tree actually verifies, what it deliberately does not, and what is still
   installed outside PATH.
 - **Slither triage.** Every detector suppression is justified in
   [`crucible-contracts/docs/slither-triage.md`](crucible-contracts/docs/slither-triage.md).
+- **Coverage runs and is a gate.** `npm run coverage --workspace crucible-contracts`
+  reports 97.4% of lines in `CrucibleTrials.sol` (95.8% of statements, 89.9% of branches),
+  97.0% in `AlloyRegistry.sol`, 95.5% in `ReputationBridge.sol` and 93.2% in
+  `CrucibleHall.sol`. It needs `--ir-minimum`, because forge disables the optimizer and
+  viaIR for coverage and the legacy codegen then hits "stack too deep".
+- **A test that did not run says so.** The four ERC-8004 fork tests call `vm.skip`
+  unless the suite is on a mainnet fork, so a run without `MAINNET_RPC_URL` reports
+  `126 passed, 4 skipped` instead of four green tests that asserted nothing.
 
 ## Still open from this pass, by severity
 
@@ -42,8 +50,10 @@ These are known and intentional, not claims that the software is safe:
 5. **The API read model and rate limiter are process-local.** Neither is a global
    consistency or abuse control behind a multi-instance load balancer.
 6. **ERC-8004 fork tests need an RPC.** Without `MAINNET_RPC_URL` the four fork tests
-   report as passing while asserting nothing.
-7. **`forge coverage` does not run** with the current stack-too-deep configuration when
-   the optimizer is disabled.
+   are skipped, not run: the bridge has never been exercised against the registry as
+   actually deployed, only against the mock.
+7. **The demo scripts are not covered.** Coverage is measured over the contracts; the
+   `script/` files that deploy and replay the loop are exercised by the demo and the
+   golden path instead, which is why they read 0%.
 
 Report a vulnerability as described in [`SECURITY.md`](SECURITY.md), not in a public issue.
