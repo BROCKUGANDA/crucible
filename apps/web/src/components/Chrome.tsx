@@ -58,10 +58,14 @@ export function Chrome({ children }: { children: ReactNode }) {
             type="button"
             className="btn btn-ghost btn-sm chrome__menu"
             onClick={() => setSheet(true)}
+            aria-label="Open navigation"
             aria-expanded={sheet}
             aria-controls="forge-nav-sheet"
           >
-            Menu
+            <svg className="menu-glyph" viewBox="0 0 20 14" aria-hidden="true" focusable="false">
+              <path d="M1 1h18M1 7h18M1 13h18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            </svg>
+            <span className="menu-label">Menu</span>
           </button>
           <VoiceControl />
           <CreditButton />

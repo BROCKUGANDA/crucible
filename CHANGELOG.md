@@ -12,6 +12,13 @@ migration. See [`SECURITY.md`](SECURITY.md) before deploying value.
 
 ### Added
 
+- **The phone header has a real hamburger and compact wallet labels.** The
+  menu button shows a three-line glyph and drops the word "Menu" below 520px;
+  the injected and Coinbase wallet buttons shorten to "Connect" and "Coinbase"
+  at the same width. At 320px the header height fell from 189px to 131px, the
+  nav sheet still opens, and there is no horizontal overflow. The tests and the
+  local 320/390px browser check cover it.
+
 - **Coinbase CDP CLI and a Sandbox profile for agents.** Both the Advanced Trade
   `coinbase` CLI and the custodial `cdp` CLI are installed, the Qoder skill set is
   installed (`coinbase*`, `cdp-*`, and the root `coinbase-agent-skill`), and
@@ -19,7 +26,9 @@ migration. See [`SECURITY.md`](SECURITY.md) before deploying value.
   printing the key. The profile refuses to run until the key file is supplied.
   Sandbox and live keys can coexist in one `.env`: `CDP_ENV` selects the profile,
   `CDP_ENABLE_LIVE=0` keeps the demo on sandbox, and live is refused unless the
-  flag is explicitly enabled. CDP Sandbox is simulated custodial testing, not a
+  flag is explicitly enabled. A mode can use either its key-file path or its
+  inline `CDP_*_API_KEY_ID`/`CDP_*_API_KEY_SECRET` pair; the wrapper resolves the
+  `cdp` binary from npm's global bin when PATH does not. CDP Sandbox is simulated custodial testing, not a
   Base testnet; x402 remains a live USDC rail. See
   `docs/runbooks/coinbase-sandbox.md`.
 - **Coinbase Wallet is a first-class connector.** The web app now includes the
@@ -36,6 +45,11 @@ migration. See [`SECURITY.md`](SECURITY.md) before deploying value.
   [`apps/api/src/voice.ts`](apps/api/src/voice.ts).
 
 ### Fixed
+
+- **The RPC-breaker test no longer flakes on a loaded runner.** It waited 5
+  seconds for three backed-off failures to trip the breaker, which is a
+  wall-clock budget on a shared self-hosted box. The wait now has 20 seconds and
+  the tests have 30; a breaker that never trips still fails the test.
 
 - **The promotion ladder now waits for the gate it dispatches.** A
   `workflow_dispatch` CI run's completion did not reliably raise the next
