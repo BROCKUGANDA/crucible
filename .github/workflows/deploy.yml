@@ -123,9 +123,59 @@ jobs:
             echo "::warning::no edge container found on this host; the site may be served from elsewhere"
           fi
 
+          # The repair belongs on a host timer, not on this pipeline.
+          #
+          # The attachment is dropped by a deploy of a DIFFERENT project, so
+          # nothing about this one happens at that moment, and a watchdog that
+          # depends on the thing it watches cannot report that the thing is
+          # broken. A cron entry on the box has neither dependency.
+          if [ -f deploy/edge-attach.sh ]; then
+            sudo install -m 0755 deploy/edge-attach.sh /usr/local/bin/crucible-edge-attach
+            ( crontab -l 2>/dev/null | grep -v 'crucible-edge-attach' ; \
+              echo '*/2 * * * * /usr/local/bin/crucible-edge-attach >> /var/log/crucible-edge-attach.log 2>&1' \
+            ) | crontab -
+            echo "host timer installed"
+          fi
+
+      - name: make sure the host configuration names this deployment
+        run: |
+          set -euo pipefail
+          cd "$HOME/crucible"
+          if [ ! -f .env ]; then
+            echo "::error::no .env on the host; the API has no addresses to read"
+            exit 1
+          fi
+          # These three are DERIVABLE, so a deployment that forgot them gets
+          # them filled in rather than running on a default. The secret is not
+          # among them: a deployment that was not given one must get a 503 from
+          # the auth routes, not a session signed with a fallback.
+          set_if() {
+            key="$1"; value="$2"
+            if grep -qE "^${key}=" .env; then
+              sed -i "s|^${key}=.*|${key}=${value}|" .env
+            else
+              printf '%s=%s\n' "$key" "$value" >> .env
+            fi
+          }
+          set_if AUTH_ORIGIN "https://crucible.svalley.tech"
+          set_if CHAIN_ID "31337"
+          # The proxy in front overwrites X-Real-IP, so the limiter can key on
+          # the real client instead of on the proxy's address — with it off,
+          # every visitor in the world shares one bucket.
+          set_if TRUST_PROXY "1"
+          echo "=== the sign-in and proxy keys, values redacted ==="
+          sed -E 's/=.*/=<redacted>/' .env | grep -E "^(AUTH_ORIGIN|AUTH_SECRET|AUTH_ALLOW_DEV_SECRET|CHAIN_ID|TRUST_PROXY)=" || true
+
       - name: build web and api
         working-directory: /home/ubuntu/crucible
-        run: docker compose -f compose.yaml -f compose.vps.yaml build web api
+        # The seed image is built too — and only BUILT, never run. The deploy
+        # swaps `web` and `api` with `--no-deps` so anvil keeps its chain, and
+        # the seed service is left alone for the same reason. But the
+        # post-deploy assertions run inside the seed image, and an image built
+        # before the assertion script existed does not contain it — so the
+        # deploy failed on a file that was in the repository and not in the
+        # image. Building is not running.
+        run: docker compose -f compose.yaml -f compose.vps.yaml build web api seed
 
       - name: swap web and api (anvil keeps its chain)
         working-directory: /home/ubuntu/crucible

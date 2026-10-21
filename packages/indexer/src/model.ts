@@ -40,6 +40,17 @@ export interface TrialRow {
   verdict: VerdictKind;
   /** set once the indexer learns it, for the UI countdown */
   disputeOpenedAt: number | null;
+  /**
+   * The index never saw this trial's creation.
+   *
+   * A verdict whose trial is unknown means the index started after the trial
+   * was created — a `FROM_BLOCK` that is too high, or a cursor file from a
+   * chain that was rebuilt. The old code dropped the log, so the settlement,
+   * the win and the receipt all vanished with no trace: the hall simply did
+   * not mention a trial that had been paid out. The row is created instead,
+   * incomplete, and counted — so the loss is visible rather than silent.
+   */
+  incomplete?: boolean;
 }
 
 /**
@@ -128,6 +139,27 @@ export interface EventLike {
 export const MAX_SETTLEMENTS = 10;
 
 /**
+ * The status chain, in order.
+ *
+ * A trial moves `open → assigned → judging → challenged → settled`, and the
+ * order is what makes "never back" enforceable. The old guard only refused to
+ * move out of `settled`, so every other transition was free: a re-read
+ * `TrialClaimed` after a `RunSubmitted` moved a judging trial back to
+ * assigned, and a re-read `RunSubmitted` after a `BreakFiled` moved a
+ * challenged trial back to judging — erasing the challenge while leaving
+ * `breakSkeptic` and the stake set, so the row said "judging" about a trial
+ * that was under dispute. The log-sorted replay path hid it; `applyEvent` is
+ * public and order-agnostic, so a shard overlap or a reorg could produce it.
+ */
+const STATUS_ORDER: Record<TrialStatus, number> = {
+  open: 0,
+  assigned: 1,
+  judging: 2,
+  challenged: 3,
+  settled: 4,
+};
+
+/**
  * Move a trial forward, never back.
  *
  * Settlement is terminal on chain — `_settle` reverts `AlreadySettled` and no function
@@ -137,7 +169,9 @@ export const MAX_SETTLEMENTS = 10;
  * only ever see the status the previous case had just reset.
  */
 function advance(t: TrialRow, to: TrialStatus): void {
-  if (t.status === "settled") return;
+  // Forward only, and only strictly forward: a status is a place on a chain,
+  // not a bag of labels.
+  if (STATUS_ORDER[to] <= STATUS_ORDER[t.status]) return;
   t.status = to;
 }
 
@@ -291,20 +325,51 @@ function didMutate(next: ReadModel, ev: EventLike): boolean {
       // been applied — from an overlapping shard, or from a reorg that re-mined the block
       // under a new tx hash. Skipping keeps a replay from minting reputation the chain never
       // awarded.
-      if (!t || t.status === "settled") return false;
+      if (t?.status === "settled") return false;
+      // A verdict for a trial this index never saw is not dropped. It means the
+      // index started after the trial was created, and the old behaviour —
+      // returning false — lost the settlement, the win and the receipt with no
+      // trace, so a paid trial simply did not appear on the hall. The row is
+      // created, marked incomplete, and the operator is told by the count.
+      const row =
+        t ??
+        ({
+          id: num(a.id),
+          sponsor: "",
+          specCID: null,
+          testsCID: null,
+          specDigest: "0x" + "00".repeat(32),
+          testsDigest: "0x" + "00".repeat(32),
+          rewardWei: 0n,
+          bondWei: 0n,
+          createdAt: Number(ev.blockNumber),
+          deadline: 0,
+          breakWindow: 0,
+          agentId: null,
+          runHash: null,
+          runAt: null,
+          breakSkeptic: null,
+          breakStakeWei: null,
+          breakProofCID: null,
+          status: "open",
+          verdict: "none",
+          disputeOpenedAt: null,
+          incomplete: true,
+        } satisfies TrialRow);
+      if (!t) next.trials.set(row.id, row);
       {
-        t.status = "settled";
-        t.verdict = verdictName(num(a.verdict));
+        row.status = "settled";
+        row.verdict = verdictName(num(a.verdict));
 
         // The hall exists because of this counter. A paid trial increments wins, and a
         // paid trial that had a break filed against it increments survived — that is
         // the "quoted the whole attack and held" signal. A slash increments scars.
-        const agent = t.agentId !== null ? next.agents.get(t.agentId) : undefined;
+        const agent = row.agentId !== null ? next.agents.get(row.agentId) : undefined;
         if (agent) {
-          if (t.verdict === "paid") {
+          if (row.verdict === "paid") {
             agent.wins += 1;
-            if (t.breakSkeptic !== null) agent.survived += 1;
-          } else if (t.verdict === "slashed") {
+            if (row.breakSkeptic !== null) agent.survived += 1;
+          } else if (row.verdict === "slashed") {
             agent.slashes += 1;
           }
 
@@ -312,12 +377,12 @@ function didMutate(next: ReadModel, ev: EventLike): boolean {
           // that can only produce receipts for wins is a hall row that cannot be checked.
           agent.settlements = [
             {
-              trialId: t.id,
-              verdict: t.verdict,
+              trialId: row.id,
+              verdict: row.verdict,
               txHash: ev.transactionHash,
               blockNumber: Number(ev.blockNumber),
               payoutWei: big(a.agentPayout),
-              breakFiled: t.breakSkeptic !== null,
+              breakFiled: row.breakSkeptic !== null,
             },
             ...agent.settlements,
           ].slice(0, MAX_SETTLEMENTS);

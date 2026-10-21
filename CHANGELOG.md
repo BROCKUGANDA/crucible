@@ -31,6 +31,59 @@ migration. See [`SECURITY.md`](SECURITY.md) before deploying value.
   page sat on "weighing the alloy…" until the socket died. Polling now starts
   immediately and stops as soon as the stream proves itself, and the stream's
   first frame has a deadline.
+- **The indexer could not index a real chain.** The cursor only moved across a
+  window once the blocks themselves said nothing was there to find, and the
+  check REFUSED to advance across a window wider than 64 blocks. On any real
+  chain the first gap longer than that is two minutes, so the cursor could
+  never move again, the sync error stayed set, `/health` answered 503, the
+  container was marked unhealthy, and the site went down with nothing to
+  indicate why. The window is now walked in chunks and the cursor advances by
+  however much was proved, so a quiet stretch is crossed over several ticks.
+  The same change catches a response that was quietly truncated: the cursor
+  stops at the block whose bloom says an event was dropped, and the next tick
+  re-reads it. `getLogs` is sharded by default now, a chain that was reset
+  under the indexer rebuilds instead of serving a frozen pre-reset index, and
+  a block timestamp that could not be read is retried rather than lost.
+- **The sign-in could be walked into.** The challenge message names the host
+  the user is signing in to, and the wallet shows that text verbatim — so a
+  host taken from a request header let a third party ask a victim to sign a
+  message of the attacker's choosing, and the server verified that signature
+  and issued the victim's session. The origin is configuration now, the
+  challenge is bound to the browser that asked for it, and it has to be the
+  one issued for the address being claimed. The development secret is opt-in
+  by name, so a deployment that forgets `AUTH_SECRET` gets a 503 instead of a
+  session signed with a key from the repository. The message carries the chain
+  id, the session carries an audience, and an EIP-4361 signature is accepted
+  rather than rejected.
+- **The rate limiter could be escaped, and could be starved.** The key was the
+  left-most `X-Forwarded-For` entry, which is the one a caller writes, so a
+  client minted a fresh bucket per request. It is now `X-Real-IP` — which a
+  proxy overwrites with the peer it saw — and then the RIGHT-MOST forwarded
+  hop. Behind the deployed proxy the old default had the opposite failure:
+  every visitor in the world shared one bucket.
+- **The read model could say something the chain did not.** A trial's status
+  was a bag of labels rather than a place on a chain, so a re-read run erased
+  a challenge and the row said "judging" about a trial under dispute. A
+  verdict for a trial the index never saw was dropped with no trace, so a paid
+  trial simply did not appear on the hall; the row is created, marked
+  incomplete, and counted now. And a throw that was not an `Error` could kill
+  the indexer process outright.
+- **The host's configuration never reached the API.** Compose only passes on
+  the variables a service names, and the API named the chain's two addresses
+  and nothing else — so `AUTH_SECRET`, `AUTH_ORIGIN` and `TRUST_PROXY` stopped
+  at the host and the API ran on its defaults no matter what the host was
+  configured with.
+- **The deployment proved that it started, not that it was right.** A
+  post-deploy assertion now reads the live chain and fails the deploy if the
+  fee, the bond rule, the committee, the roles or the money invariant are not
+  what the documentation claims.
+- **The shared edge could take the site down and leave every container
+  reporting itself healthy.** The site is served by a proxy another project on
+  the same box owns, and it reaches this stack by service name, which only
+  works from inside this stack's compose network. That attachment is made by
+  hand and does not survive a recreate of the proxy, so every request answered
+  502 while nothing here was wrong. The repair now runs on a host timer, at
+  the start of every deploy, and on demand.
 
 ### Added
 
@@ -49,6 +102,19 @@ migration. See [`SECURITY.md`](SECURITY.md) before deploying value.
   extension is skipped when the chain already holds an open trial.
 - A read-only host diagnostic workflow. The runner is the VPS, so it is the
   only way to look at the box without an SSH key.
+- **A secret gate over the whole history.** A dependency audit asks whether a
+  package is known-vulnerable; it says nothing about a key that was committed
+  once and never rotated, because the vulnerable version is not in the
+  lockfile at all. CI now scans every commit, and every suppression states
+  what the value is and why it is not a secret.
+- **A post-deploy assertion.** It reads the live chain and fails the deploy
+  when the fee, the bond rule, the committee's threshold, the roles or the
+  money invariant are not what the documentation claims — including the
+  failure a health check cannot see, where the web bundle's baked-in contract
+  address and the chain's actual contract have drifted apart.
+- **A key inventory.** Every key the project uses, every power an address
+  holds, what a compromise reaches, and what changes when a real chain is in
+  front of it.
 
 ## [0.1.0] - 2026-10-07
 

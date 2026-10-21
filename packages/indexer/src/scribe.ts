@@ -47,13 +47,14 @@ export interface IndexerConfig {
    */
   onError?: (kind: string, detail: string) => void;
   /**
-   * Blocks per backfill shard. 0 disables sharding (one big `getLogs`).
+   * Blocks per shard for the backfill. 0 disables sharding (one big
+   * `getLogs` over the whole range), which is only safe on a node that
+   * answers a wide range without truncating it.
    *
-   * "Sharding" here means partitioning the catch-up window by block range, not a second
-   * database. A single `getLogs` over months of blocks can be tens of thousands of
-   * events, which is slow and often larger than the RPC's response cap. Windowing it
-   * into shards lets the gaps be fetched in parallel (still through `rpc`, one ceiling)
-   * and keeps every individual call small.
+   * The default is a shard, not a single call: one `getLogs` over months of
+   * blocks can be tens of thousands of events, which is slow and often
+   * larger than the RPC's response cap — and a response that is quietly
+   * truncated is a response that loses events without saying so.
    */
   shardSizeBlocks?: bigint;
   /**
@@ -114,8 +115,37 @@ export function bloomMayContain(bloom: Hex, topic: `0x${string}`): boolean {
   return true;
 }
 
-/** How far the bloom cross-check will walk a quiet window, in blocks. */
+/** How far the bloom cross-check walks in one chunk. */
 const BLOOM_PROBE_LIMIT = 64n;
+
+/**
+ * How many blocks one tick will PROVE quiet.
+ *
+ * The cross-check reads every block's `logsBloom`, so proving a long quiet
+ * stretch costs one read per block. This bounds that work per tick: a long
+ * stretch is walked over several ticks, and the cursor advances by however
+ * much was proved.
+ *
+ * The bound matters because the OLD behaviour was to refuse to advance across
+ * a window wider than `BLOOM_PROBE_LIMIT` at all. On any real chain the
+ * first gap longer than 64 blocks — two minutes on Base — froze the index
+ * permanently: the cursor could not move, the sync error stayed set, `/health`
+ * answered 503, the container was marked unhealthy, and the site went down
+ * with nothing to indicate why. Bounding the work keeps a tick short; never
+ * refusing to advance keeps the index moving.
+ */
+const MAX_PROOF_BLOCKS_PER_TICK = 4096n;
+
+/**
+ * The default width of one `getLogs` request.
+ *
+ * A single call over the whole chain history is what the sharding exists to
+ * avoid: it is slow, and it is often larger than the RPC's response cap —
+ * and a response that is silently truncated is a response that loses events
+ * without saying so. Sharding is the safe default; a single wide call stays
+ * available as an explicit opt-out.
+ */
+const DEFAULT_SHARD_SIZE = 2000n;
 
 export interface ScribeStatus {
   /** highest block the node reported */
@@ -124,6 +154,14 @@ export interface ScribeStatus {
   indexedTo: bigint;
   /** why the last tick did not advance, or null when it did */
   syncError: string | null;
+  /**
+   * Trials that settled before this index started listening, so their rows are
+   * incomplete. Non-zero means the index is not reading the whole history —
+   * a `FROM_BLOCK` that is too high, or a cursor file from a chain that was
+   * rebuilt. It is counted because the alternative is a hall that quietly
+   * omits trials that were paid out.
+   */
+  partialTrials: number;
 }
 
 export class Scribe {
@@ -143,18 +181,25 @@ export class Scribe {
   private model: ReadModel = emptyModel();
   private cursor: bigint;
   private readonly blockTimes = new Map<bigint, number>();
+  /** Blocks whose timestamp could not be read, retried on the next tick. */
+  private readonly pendingBlockTimes = new Set<bigint>();
   private running = false;
   private head: bigint | null = null;
   private syncError: string | null = null;
   /** The trip this process last reported, so an outage writes one line rather than one per tick. */
   private lastTripReportedAt: number | null = null;
+  /** The incomplete-trial count last reported, so it is written once rather than every tick. */
+  private reportedPartialTrials = 0;
   /** One ceiling on concurrent RPC calls for the whole indexer. */
   private readonly rpc = new RpcThrottler(8);
 
   constructor(private readonly cfg: IndexerConfig) {
     this.client = createPublicClient({
       chain: cfg.chain,
-      transport: http(cfg.rpcUrl),
+      // Batched: the bloom cross-check reads a chunk of blocks at a time, and
+      // without batching that is one HTTP request per block. The batch
+      // transport coalesces them into a single JSON-RPC batch.
+      transport: http(cfg.rpcUrl, { batch: { wait: 20, batchSize: 64 } }),
     }) as PublicClient;
     this.cursor = cfg.fromBlock ?? 0n;
     this.loadCursor();
@@ -202,7 +247,25 @@ export class Scribe {
    * protocol — which is the difference between a demo and an outage nobody notices.
    */
   get status(): ScribeStatus {
-    return { head: this.head, indexedTo: this.cursor, syncError: this.syncError };
+    return {
+      head: this.head,
+      indexedTo: this.cursor,
+      syncError: this.syncError,
+      partialTrials: this.countPartialTrials(),
+    };
+  }
+
+  /**
+   * How many rows are incomplete because the index missed their creation.
+   *
+   * Counted rather than remembered, so it cannot drift from the model.
+   */
+  private countPartialTrials(): number {
+    let n = 0;
+    for (const trial of this.model.trials.values()) {
+      if (trial.incomplete) n += 1;
+    }
+    return n;
   }
 
   /**
@@ -220,7 +283,23 @@ export class Scribe {
       withBackoff(() => this.client.getBlockNumber(), { operation: "scribe.getBlockNumber" }),
     );
     this.head = head;
-    if (this.cursor > head) return this.model;
+
+    // A chain that was reset — an anvil restart, a fork, a devnet rebuilt from
+    // its seed — leaves the cursor ahead of the head, and the cursor file
+    // survives the restart. The old code returned the model as it was, so the
+    // indexer served a frozen pre-reset index forever, and `/ready` computed
+    // a lag of zero because the cursor was above the head. The API reported
+    // healthy while nothing was being indexed. A reset is a rebuild.
+    if (this.cursor > head) {
+      this.cursor = this.cfg.fromBlock ?? 0n;
+      this.model = emptyModel();
+      this.blockTimes.clear();
+      this.pendingBlockTimes.clear();
+      this.syncError = "the chain was reset; the index is rebuilding from the start block";
+      this.saveCursor();
+      return this.model;
+    }
+
     const events = await this.fetchLogs(this.cursor, head);
 
     if (events.length > 0) {
@@ -240,37 +319,104 @@ export class Scribe {
       hydrateTimestamps(this.model, this.blockTimes, touched);
       // Bounded to one batch: every entry here has now been applied to a row.
       this.blockTimes.clear();
-      this.cursor = head + 1n;
+
+      // Trials that settled before this index started are reported once, so a
+      // hall that quietly omits a paid trial has a cause somebody can act on.
+      const partial = this.countPartialTrials();
+      if (partial > 0 && partial !== this.reportedPartialTrials) {
+        this.reportedPartialTrials = partial;
+        this.cfg.onError?.(
+          "partial",
+          `${partial} trial(s) settled before this index started reading; their rows are incomplete. Set FROM_BLOCK to the deployment block and re-index.`,
+        );
+      }
+
+      // The cursor moves only as far as the chain has been PROVEN to hold
+      // nothing.
+      //
+      // `getLogs` cannot distinguish "there were no events" from "this node
+      // has no answer for that range": a truncated response, a pruned archive
+      // node, a proxy with a cap. The old code advanced to `head + 1` on the
+      // strength of a non-empty array, so a response that was quietly cut off
+      // lost the tail of the chain permanently — the same class of loss the
+      // empty case was guarded against, in the branch that was not.
+      //
+      // So the tail after the last event is proved quiet, block by block, and
+      // the cursor stops at the first block whose bloom says an event might be
+      // in it. The next tick re-reads from there and picks up what was
+      // dropped. The projection is replay-safe, so re-reading costs nothing.
+      const lastEventBlock = events.reduce((max, e) => (e.blockNumber > max ? e.blockNumber : max), this.cursor - 1n);
+      this.cursor = await this.proveQuietThrough(lastEventBlock + 1n, head);
       this.syncError = null;
       this.saveCursor();
       return this.model;
     }
 
-    // An empty answer is the dangerous one: `getLogs` cannot distinguish "there were no
-    // events" from "this node has no answer for that range", and the old code advanced the
-    // cursor either way. One such reply — a truncated response, a pruned archive node, a
-    // proxy with a cap — skipped the entire chain permanently and `/hall` answered `[]` with
-    // HTTP 200. So the cursor only moves across a quiet window once the blocks themselves
-    // say nothing was there to find.
-    if (await this.windowIsQuiet(this.cursor, head)) {
-      this.cursor = head + 1n;
+    // An empty answer is the dangerous one, for the same reason: the cursor
+    // only moves across a window once the blocks themselves say nothing was
+    // there to find. The difference from the old code is that this now makes
+    // PROGRESS instead of refusing: the window is walked in chunks, and the
+    // cursor advances by however much was proved. A quiet window of any width
+    // is crossed; a window with a lie in it is re-read.
+    this.cursor = await this.proveQuietThrough(this.cursor, head);
+    if (this.cursor > head) {
       this.syncError = null;
-      this.saveCursor();
     } else {
-      this.syncError = `getLogs returned nothing for blocks ${this.cursor}–${head} but a logsBloom there may contain a Crucible event`;
-      console.error(`[scribe] refusing to advance cursor: ${this.syncError}`);
-      this.cfg.onError?.("stall", this.syncError);
+      this.syncError = `a block between ${this.cursor} and ${head} may hold an event; the index is re-reading it`;
     }
+    this.saveCursor();
     return this.model;
+  }
+
+  /**
+   * The first block at or after `from` whose `logsBloom` says a Crucible event
+   * might be in it — or `to + 1` when every block up to `to` is provably
+   * quiet.
+   *
+   * The walk is bounded by `MAX_PROOF_BLOCKS_PER_TICK`, so a long quiet
+   * stretch is proved over several ticks and the cursor advances a little each
+   * time. That is the whole difference from the old behaviour, which refused
+   * to advance across a window wider than the chunk size and so froze the
+   * index on the first gap longer than 64 blocks.
+   */
+  private async proveQuietThrough(from: bigint, to: bigint): Promise<bigint> {
+    if (to < from) return to + 1n;
+    const limit = from + MAX_PROOF_BLOCKS_PER_TICK - 1n;
+    const end = limit < to ? limit : to;
+
+    let block = from;
+    while (block <= end) {
+      const chunkEnd = block + BLOOM_PROBE_LIMIT - 1n > end ? end : block + BLOOM_PROBE_LIMIT - 1n;
+      const blocks = await this.rpc.run(() =>
+        Promise.all(
+          Array.from({ length: Number(chunkEnd - block + 1n) }, (_, i) =>
+            withBackoff(() => this.client.getBlock({ blockNumber: block + BigInt(i) }), {
+              operation: "scribe.getBlock",
+            }),
+          ),
+        ),
+      );
+      for (const b of blocks) {
+        const bloom = b.logsBloom;
+        if (bloom && bloom !== "0x" && TOPIC0S.some((t) => bloomMayContain(bloom, t))) {
+          return b.number;
+        }
+      }
+      block = chunkEnd + 1n;
+    }
+    return end + 1n;
   }
 
   /**
    * Independent evidence that a window really held no matching events.
    *
-   * Reads the blocks' `logsBloom` rather than asking the same `getLogs` again — a second
-   * identical answer from the same node proves nothing. Windows wider than the probe limit
-   * are treated as *not* confirmed, because advancing on a partial check is the same bug
-   * wearing a lab coat; the caller re-reads the whole range next tick instead.
+   * Reads the blocks' `logsBloom` rather than asking the same `getLogs` again
+   * — a second identical answer from the same node proves nothing.
+   *
+   * This is kept as a whole-window check for callers that want a yes/no
+   * answer. The cursor uses `proveQuietThrough`, which walks the same blocks
+   * but can stop part-way and report how far it got, so a long quiet stretch
+   * is crossed rather than refused.
    */
   private async windowIsQuiet(from: bigint, to: bigint): Promise<boolean> {
     const width = to - from + 1n;
@@ -301,7 +447,14 @@ export class Scribe {
       } catch (err) {
         // A dropped RPC must not kill the indexer; the next tick retries from the
         // same cursor, and the gap is re-scanned rather than skipped.
-        const detail = (err as Error).message;
+        //
+        // The message is read defensively: a throw that is not an `Error` —
+        // a string, a plain object — has no `.message`, and the old code
+        // handed `undefined` to the dead-letter queue, whose `detail.slice(...)`
+        // then threw INSIDE this catch. The watch loop's promise rejected, and
+        // nothing awaited it, so the process died: a malformed throw took the
+        // whole indexer with it.
+        const detail = err instanceof Error ? err.message : String(err);
         // A refused tick carries no news: the failure that tripped the breaker already
         // reported itself, and every tick until the cooldown ends would report the same
         // sentence. One line per trip, or an outage writes the log and the DLQ ring dead.
@@ -323,9 +476,17 @@ export class Scribe {
   }
 
   private async fetchLogs(from: bigint, to: bigint): Promise<EventLike[]> {
-    const shard = this.cfg.shardSizeBlocks ?? 0n;
+    // Sharding is the DEFAULT, not an opt-in.
+    //
+    // The old default was one `getLogs` over the entire chain history, which
+    // is exactly what this function's own doc warns about: slow, and often
+    // larger than the RPC's response cap — and a response that is silently
+    // truncated is a response that loses events without saying so. A
+    // default that only a careful configuration avoided was a default that
+    // would eventually bite.
+    const shard = this.cfg.shardSizeBlocks ?? DEFAULT_SHARD_SIZE;
 
-    // No sharding configured: one honest call, same as before.
+    // A shard of 0 is the explicit opt-out: one call for the whole range.
     if (shard <= 0n || to - from < shard) {
       return this.fetchLogsWindow(from, to);
     }
@@ -375,13 +536,44 @@ export class Scribe {
               { operation: "scribe.getBlock" },
             ).then((ts) => this.blockTimes.set(b, Number(ts))),
           );
+          this.pendingBlockTimes.delete(b);
         } catch {
-          // A missing timestamp leaves that row on its block number for this tick. The row
-          // is not marked hydrated, so the next sync re-reads the block and applies it —
-          // `blockTimes` is only cleared for entries that were actually consumed below.
+          // A failed read is PENDING, not lost.
+          //
+          // The old comment here said the row was not marked hydrated, so the
+          // next sync re-reads the block and applies it. It did not: the
+          // batch's block times were cleared right after the hydrate, and the
+          // next sync only fetched times for the blocks in the NEW batch. A
+          // trial that missed one read kept its raw block number as
+          // `createdAt` and `runAt` forever — and `breakWindowEndsAt` is
+          // `runAt + breakWindow`, so the UI counted down from 1970 and the
+          // deadline was nonsense. The promise was in the comment and not in
+          // the code.
+          this.pendingBlockTimes.add(b);
         }
       }),
     );
+
+    // A pending read is retried, on its own, before the next batch is
+    // hydrated. A trial whose timestamp is missing is a row that cannot be
+    // trusted, so it is worth a call on its own.
+    if (this.pendingBlockTimes.size > 0) {
+      for (const b of [...this.pendingBlockTimes]) {
+        try {
+          const ts = await this.rpc.run(() =>
+            withBackoff(() => this.client.getBlock({ blockNumber: b }).then((blk) => blk.timestamp), {
+              operation: "scribe.getBlock",
+            }),
+          );
+          this.blockTimes.set(b, Number(ts));
+          this.pendingBlockTimes.delete(b);
+          // The row is re-hydrated with the timestamp it was missing.
+          hydrateTimestamps(this.model, this.blockTimes, []);
+        } catch {
+          // Still unavailable; it stays pending and is retried next tick.
+        }
+      }
+    }
   }
 
   /** Replace timestamps with real seconds after a sync. */
