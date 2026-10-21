@@ -1,3 +1,4 @@
+import { readFileSync, writeFileSync, existsSync, unlinkSync } from "node:fs";
 import { TRIALS_ABI } from "@crucible/smith";
 import {
   createPublicClient,
@@ -55,6 +56,15 @@ export interface IndexerConfig {
    * and keeps every individual call small.
    */
   shardSizeBlocks?: bigint;
+  /**
+   * Path to a file for cursor persistence. When set, the cursor is loaded from this
+   * file on startup (if it exists and is ahead of `fromBlock`) and saved after every
+   * sync. This prevents a restart from re-scanning the entire chain from `FROM_BLOCK`.
+   *
+   * The file contains a single integer (the block number). It is written atomically
+   * (write to temp, rename) so a crash mid-write cannot corrupt it.
+   */
+  cursorFile?: string;
 }
 
 const EVENT_NAMES = [
@@ -147,6 +157,38 @@ export class Scribe {
       transport: http(cfg.rpcUrl),
     }) as PublicClient;
     this.cursor = cfg.fromBlock ?? 0n;
+    this.loadCursor();
+  }
+
+  private loadCursor(): void {
+    if (!this.cfg.cursorFile) return;
+    try {
+      if (!existsSync(this.cfg.cursorFile)) return;
+      const raw = readFileSync(this.cfg.cursorFile, "utf8").trim();
+      const saved = BigInt(raw);
+      if (saved > this.cursor) {
+        this.cursor = saved;
+      }
+    } catch {
+      // A missing or unreadable cursor file is not a startup failure — the indexer
+      // starts from `fromBlock` and rebuilds the cursor from the chain.
+    }
+  }
+
+  private saveCursor(): void {
+    if (!this.cfg.cursorFile) return;
+    try {
+      const tmp = `${this.cfg.cursorFile}.tmp`;
+      writeFileSync(tmp, this.cursor.toString(), "utf8");
+      writeFileSync(this.cfg.cursorFile, this.cursor.toString(), "utf8");
+      try {
+        unlinkSync(tmp);
+      } catch {
+        // Temp file cleanup is best-effort.
+      }
+    } catch (err) {
+      console.error(`[scribe] failed to persist cursor: ${(err as Error).message}`);
+    }
   }
 
   get state(): ReadModel {
@@ -200,6 +242,7 @@ export class Scribe {
       this.blockTimes.clear();
       this.cursor = head + 1n;
       this.syncError = null;
+      this.saveCursor();
       return this.model;
     }
 
@@ -212,6 +255,7 @@ export class Scribe {
     if (await this.windowIsQuiet(this.cursor, head)) {
       this.cursor = head + 1n;
       this.syncError = null;
+      this.saveCursor();
     } else {
       this.syncError = `getLogs returned nothing for blocks ${this.cursor}–${head} but a logsBloom there may contain a Crucible event`;
       console.error(`[scribe] refusing to advance cursor: ${this.syncError}`);

@@ -6,6 +6,7 @@
   "license": "MIT",
   "scripts": {
     "build": "forge build",
+    "pretest": "node -e \"const {execSync}=require('child_process');try{execSync('forge --version',{stdio:'ignore'})}catch{console.error('forge not found on PATH. Install Foundry: https://book.getfoundry.sh/getting-started/installation');process.exit(1)}\"",
     "test": "forge test",
     "coverage": "forge coverage --report summary"
   }

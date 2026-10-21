@@ -34,3 +34,6 @@ apps/web/.env.local
 # graphflow
 .graphflow-cache/
 graphflow-out/
+
+# markdown docs (untracked)
+HARDENING.md
