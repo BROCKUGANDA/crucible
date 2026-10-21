@@ -89,6 +89,45 @@ mode. Create a new Secret API Key while the portal is in Sandbox mode. A 403
 means the key was created without the **Accounts** permission; that cannot be
 edited after creation, so make a new key.
 
+That diagnosis needs proof before it needs a new key: run the pair against
+**both** hosts. On 2026-10-21 the stored sandbox pair and the stored live pair
+each returned 401 against `sandbox.cdp.coinbase.com` **and** against
+`api.cdp.coinbase.com`, which rules the mode out and leaves the credential —
+the CLI signs a JWT from a PEM EC key or an Ed25519 seed, and a Portal *Client*
+key string is neither.
+
+## Transfers: validate, then execute, with headers on both calls
+
+```bash
+npm run cdp:transfer -- --validate-only          # inspect fees, move nothing
+npm run cdp:transfer                             # validate → fees → execute → poll → summary
+npm run cdp:transfer -- --amount=1.00 --target=0xC05691A17dce4e65Be539adbd7b82be48f933F95
+```
+
+`scripts/cdp-transfer.mjs` prints the request and response headers of every call
+with credential values redacted, because three of this API's behaviours are only
+visible there:
+
+- **A header token must start with an uppercase letter.** `cdp api` reads a bare
+  `Name:value` argument as an HTTP header, and its parser decides by looking at
+  the first character: `Idempotency-Key:abc` is a header, `idempotency-key:abc`
+  is silently a body field. Lowercasing one of these is a bug that still returns
+  200.
+- **`-v`, not `-i`, keeps the response parseable.** `--include` writes the header
+  block to *stdout*, ahead of the JSON body; `--verbose` writes the same block to
+  *stderr*. The wrapper uses `-v`, parses the `> `/`< ` lines, and prints them
+  itself with `Authorization` and friends redacted.
+- **`Idempotency-Key` is what makes a retry safe.** The wrapper derives it from a
+  run id printed at the top of every run, so a transfer whose connection dropped
+  mid-flight can be re-run as `CDP_RUN_ID=<id> npm run cdp:transfer` and the API
+  replays its first answer instead of paying twice.
+
+The validate call sends `validateOnly:=true` **and** `execute:=false`; the API
+returns 400 without the second one, and the printed `fees` array is the point of
+running it. Execution against `live` is refused unless `CDP_ENABLE_LIVE=1` *and*
+`--execute-live` are both present — one of those is a feature flag, the other is
+a human deciding.
+
 ## What the Sandbox is — and is not
 
 - It is an isolated, simulated **custodial** environment with the same

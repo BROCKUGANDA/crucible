@@ -10,7 +10,7 @@ import { VoiceControl } from "@/components/VoiceControl";
 import { Modal } from "@/components/Modal";
 import { formatWei } from "@/lib/eth";
 import { buildWithdraw, useTx } from "@/lib/useTx";
-import { activeChain, deployment, explorerTxUrl, ZERO_ADDRESS } from "@/lib/wagmi";
+import { activeChain, deployment, environmentBadge, explorerTxUrl, ZERO_ADDRESS } from "@/lib/wagmi";
 
 const NAV = [
   { href: "/trials", label: "Trials" },
@@ -24,6 +24,7 @@ const NAV = [
 export function Chrome({ children }: { children: ReactNode }) {
   const [sheet, setSheet] = useState(false);
   const pathname = usePathname();
+  const env = environmentBadge();
 
   // A route change is an answer to the question the menu was asked. Leaving it open would
   // strand the next page behind a scrim.
@@ -36,9 +37,19 @@ export function Chrome({ children }: { children: ReactNode }) {
       </a>
 
       <header className="chrome">
-        <Link href="/" aria-label="Crucible — home" className="wordmark chrome__mark">
-          CRUCIBLE
-        </Link>
+        <div className="chrome__brand">
+          <Link href="/" aria-label="Crucible — home" className="wordmark chrome__mark">
+            CRUCIBLE
+          </Link>
+          {/* Which money this is, said before the user has to ask. A demo that cannot name its
+              own network is a demo the judge has to audit. */}
+          <span className="chip chrome__env chrome__env--wide" title={env.title}>
+            {env.label}
+          </span>
+          <span className="chip chrome__env chrome__env--compact" title={env.title}>
+            {env.compact}
+          </span>
+        </div>
 
         <div className="chrome__right">
           {/* The current page is stated in the markup, not only by colour: a route you
