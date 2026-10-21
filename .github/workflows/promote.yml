@@ -54,6 +54,49 @@ jobs:
           echo "ci concluded '${{ github.event.workflow_run.conclusion }}' on ${{ github.event.workflow_run.head_branch }}; promotion refused"
           exit 1
 
+      # The promotion must never merge a commit whose own CI is not green.
+      #
+      # The workflow_run event is not enough: a workflow_dispatch promotion has
+      # no conclusion to read, and the post-dispatch wait can race the run-id
+      # lookup. This check binds the merge to the exact source commit and waits
+      # for its latest ci run. A queued or running gate is a wait; a cancelled
+      # or failed gate is a stop.
+      - name: wait for the source gate
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          FROM=${{ github.event.workflow_run.head_branch || inputs.from }}
+          SHA=$(git rev-parse HEAD)
+          echo "waiting for ci on $FROM at $SHA"
+          for _ in $(seq 1 60); do
+            RESULT=$(gh run list \
+              --workflow ci.yml \
+              --commit "$SHA" \
+              --limit 1 \
+              --json status,conclusion \
+              --jq '.[0] | (.status + "/" + (.conclusion // ""))' 2>/dev/null || true)
+            case "$RESULT" in
+              completed/success)
+                echo "source gate is green"
+                exit 0
+                ;;
+              completed/*)
+                echo "::error::ci on $FROM at $SHA is $RESULT"
+                exit 1
+                ;;
+              "")
+                echo "no ci run yet for $SHA"
+                ;;
+              *)
+                echo "waiting: $RESULT"
+                ;;
+            esac
+            sleep 10
+          done
+          echo "::error::timed out waiting for ci on $FROM at $SHA"
+          exit 1
+
       - name: merge forward
         id: merge
         env:
@@ -137,6 +180,17 @@ jobs:
         run: |
           set -euo pipefail
           TARGET=$([ "$FROM" = "develop" ] && echo "staging" || echo "main")
+          # The dispatch endpoint returns no run id. Record the newest run of
+          # this kind before dispatching, then wait for a run with a greater id;
+          # otherwise the lookup can pick up the previous run and "wait" on an
+          # already-green result while the new gate is still queued.
+          BEFORE=$(gh run list \
+            --workflow ci.yml \
+            --branch "$TARGET" \
+            --event workflow_dispatch \
+            --limit 1 \
+            --json databaseId \
+            --jq '.[0].databaseId // 0' 2>/dev/null || echo 0)
           echo "dispatching ci on $TARGET"
 
           # The status code is checked, not printed.
@@ -161,17 +215,19 @@ jobs:
           fi
           echo "dispatched ci on $TARGET"
 
-          # Find the run we just asked for. The dispatch endpoint returns no
-          # run id, so poll the newest workflow_dispatch ci run on this branch.
+          # Find the run we just asked for: a workflow_dispatch ci run on this
+          # branch with an id greater than the pre-dispatch newest.
           RUN_ID=""
           for _ in $(seq 1 20); do
             RUN_ID=$(gh run list \
               --workflow ci.yml \
               --branch "$TARGET" \
               --event workflow_dispatch \
-              --limit 1 \
+              --limit 10 \
               --json databaseId \
-              --jq '.[0].databaseId // empty' 2>/dev/null || true)
+              --jq '.[].databaseId' 2>/dev/null | sort -nr | while read -r id; do
+                if [ "$id" -gt "$BEFORE" ]; then echo "$id"; break; fi
+              done || true)
             if [ -n "$RUN_ID" ]; then break; fi
             sleep 3
           done
