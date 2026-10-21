@@ -26,11 +26,11 @@
   },
   "dependencies": {
     "json-canonicalize": "^3.0.1",
-    "viem": "^2.21.55"
+    "viem": "^2.57.7"
   },
   "devDependencies": {
     "@types/node": "^22.10.7",
     "typescript": "^5.7.3",
-    "vitest": "^5.0.3"
+    "vitest": "^5.0.5"
   }
 }
