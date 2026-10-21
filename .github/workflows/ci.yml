@@ -18,7 +18,7 @@ jobs:
       run:
         working-directory: crucible-contracts
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           submodules: recursive
 
@@ -79,7 +79,7 @@ jobs:
       run:
         working-directory: crucible-contracts
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           submodules: recursive
 
@@ -108,7 +108,7 @@ jobs:
           export PATH="$FOUNDRY_DIR:$PATH"
           forge --version
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
@@ -130,7 +130,7 @@ jobs:
       run:
         working-directory: crucible-contracts
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           submodules: recursive
 
@@ -179,7 +179,7 @@ jobs:
     name: Secrets (gitleaks)
     runs-on: [self-hosted, linux, X64, crucible]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -210,7 +210,7 @@ jobs:
     name: TypeScript (all workspaces)
     runs-on: [self-hosted, linux, X64, crucible]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-node@v4
         with:
@@ -259,7 +259,7 @@ jobs:
     name: Build (next)
     runs-on: [self-hosted, linux, X64, crucible]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -272,7 +272,7 @@ jobs:
     name: Dependency audit
     runs-on: [self-hosted, linux, X64, crucible]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: 20

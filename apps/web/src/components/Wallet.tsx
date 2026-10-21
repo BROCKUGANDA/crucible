@@ -73,24 +73,36 @@ function InjectedConnect() {
         <button
           className="btn btn-primary"
           disabled={isPending}
+          aria-label="Connect wallet"
+          title="Connect wallet"
           onClick={() => {
             vibrate(haptics.bondStaked, true);
             connect({ connector: injected });
           }}
         >
-          {isPending ? "Connecting…" : "Connect wallet"}
+          {isPending ? (
+            "Connecting…"
+          ) : (
+            <>
+              <span className="wallet-label-full">Connect wallet</span>
+              <span className="wallet-label-short">Connect</span>
+            </>
+          )}
         </button>
       ) : null}
       {coinbase ? (
         <button
           className="btn btn-ghost"
           disabled={isPending}
+          aria-label="Connect Coinbase Wallet"
+          title="Connect Coinbase Wallet"
           onClick={() => {
             vibrate(haptics.bondStaked, true);
             connect({ connector: coinbase });
           }}
         >
-          Coinbase Wallet
+          <span className="wallet-label-full">Coinbase Wallet</span>
+          <span className="wallet-label-short">Coinbase</span>
         </button>
       ) : null}
       {error ? (

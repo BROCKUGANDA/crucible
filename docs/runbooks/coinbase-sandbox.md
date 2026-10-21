@@ -22,16 +22,27 @@ Both modes can live in the same file; the flag selects which one runs:
 ```bash
 CDP_ENV=sandbox                 # demo / hackathon default
 CDP_ENABLE_LIVE=0               # live is refused unless this is 1
+
+# Either the JSON path or the inline pair for each mode:
 CDP_SANDBOX_API_KEY_FILE=C:\Users\HP\Downloads\sandbox-api-key.json
+CDP_SANDBOX_API_KEY_ID=
+CDP_SANDBOX_API_KEY_SECRET=
 CDP_LIVE_API_KEY_FILE=C:\Users\HP\Downloads\live-api-key.json
+CDP_LIVE_API_KEY_ID=
+CDP_LIVE_API_KEY_SECRET=
+
 CDP_ALLOW_PLAINTEXT_SECRETS=1   # only where the OS keychain is unavailable
 CDP_SANDBOX_BASE_URL=https://sandbox.cdp.coinbase.com
 ```
 
-The wrapper selects `CDP_SANDBOX_API_KEY_FILE` for `sandbox` and
-`CDP_LIVE_API_KEY_FILE` for `live`; `CDP_API_KEY_FILE` remains an optional
-single-key fallback. A live run requires both `CDP_ENV=live` and
+The wrapper selects the `sandbox` or `live` pair by `CDP_ENV`; a mode can use
+either its key-file path or its ID/secret pair. `CDP_API_KEY_FILE` remains an
+optional single-key fallback. A live run requires both `CDP_ENV=live` and
 `CDP_ENABLE_LIVE=1`; the demo never sets the second flag.
+
+If both modes are in one `.env`, use the explicit `CDP_SANDBOX_*` and
+`CDP_LIVE_*` names. Do not reuse `CDP_API_KEY_ID`/`CDP_SECRET` for both: the
+duplicate is ambiguous and the last value wins.
 
 These flags belong to the **agent tooling**, not the Crucible web app. The app
 does not call the CDP API; the VPS flag keeps the operational default explicit.
@@ -42,9 +53,10 @@ does not call the CDP API; the VPS flag keeps the operational default explicit.
    **Sandbox** mode (top-left switcher — not Live).
 2. **Settings → Create Secret API Key**, enable the **Accounts** permission,
    download the JSON file, and store it outside this repository.
-3. Set `CDP_SANDBOX_API_KEY_FILE` and keep `CDP_ENV=sandbox` /
-   `CDP_ENABLE_LIVE=0` in `.env`. Never commit the key; `.gitignore` covers
-   `cdp_api_key*.json`, `.cdp/` and `*.cdp-key.json`.
+3. Set either `CDP_SANDBOX_API_KEY_FILE` or the
+   `CDP_SANDBOX_API_KEY_ID`/`CDP_SANDBOX_API_KEY_SECRET` pair, and keep
+   `CDP_ENV=sandbox` / `CDP_ENABLE_LIVE=0` in `.env`. Never commit the key;
+   `.gitignore` covers `cdp_api_key*.json`, `.cdp/` and `*.cdp-key.json`.
 4. Configure and list:
    ```bash
    npm run cdp:sandbox
@@ -118,8 +130,8 @@ For an agent:
 - `coinbase`/`cdp` not found: the npm global bin is
   `C:\Users\HP\scoop\persist\nodejs\bin`; add it to the shell PATH or use the
   full path. Both commands are installed.
-- `CDP_SANDBOX_API_KEY_FILE is empty`: the wrapper is deliberately refusing;
-  download the Sandbox key and set the path.
+- `CDP_SANDBOX_API_KEY_FILE is empty, and the ..._API_KEY_ID/_SECRET pair is
+  incomplete`: the wrapper is deliberately refusing; set one of the two forms.
 - `No CDP Sandbox key file`: the path is wrong or the file was moved.
 - `Environment "sandbox" has no stored credentials`: run
   `npm run cdp:sandbox` after setting the key.
