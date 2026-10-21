@@ -46,6 +46,11 @@ migration. See [`SECURITY.md`](SECURITY.md) before deploying value.
 
 ### Fixed
 
+- **The RPC-breaker test no longer flakes on a loaded runner.** It waited 5
+  seconds for three backed-off failures to trip the breaker, which is a
+  wall-clock budget on a shared self-hosted box. The wait now has 20 seconds and
+  the tests have 30; a breaker that never trips still fails the test.
+
 - **The promotion ladder now waits for the gate it dispatches.** A
   `workflow_dispatch` CI run's completion did not reliably raise the next
   `workflow_run`: the ladder reached `staging`, the gate passed, and no
