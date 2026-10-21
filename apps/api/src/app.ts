@@ -63,6 +63,15 @@ export interface ApiDeps {
    * the HTTP code stays the index's verdict.
    */
   breakers?: () => Record<string, BreakerStatus>;
+  /**
+   * The chain's settlement fee, in basis points.
+   *
+   * The contract keeps a fee for the treasury on every settlement, and nothing
+   * published it — so the platform's revenue was a number in a constant that
+   * nobody could see. The host reads it from the contract, because the number
+   * the snapshot shows has to be the number the chain charges.
+   */
+  protocolFeeBps?: () => number;
 }
 
 const VALID_STATUSES: TrialStatus[] = ["open", "assigned", "judging", "challenged", "settled"];
@@ -144,7 +153,11 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
     // somebody adds a second derived timestamp, and a periodic refresh is cheaper than
     // discovering that.
     if (!tick || version !== tick.version || now - tick.builtAt >= MAX_TICK_AGE_MS) {
-      const snap = buildSnapshot(model, { now, alloyState: deps.alloyState });
+      const snap = buildSnapshot(model, {
+        now,
+        alloyState: deps.alloyState,
+        feeBps: deps.protocolFeeBps?.() ?? 0,
+      });
       tick = {
         builtAt: now,
         version,

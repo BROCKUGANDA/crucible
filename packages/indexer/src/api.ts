@@ -231,6 +231,65 @@ export interface ApiSnapshot {
   agents: ApiAgent[];
   hall: ApiHallEntry[];
   counts: Record<TrialStatus | "all", number>;
+  economics: ApiEconomics;
+}
+
+/**
+ * The protocol's books.
+ *
+ * The contract keeps a settlement fee for the treasury — `FEE_BPS` of every
+ * reward a trial settles in an agent's favour. Nothing published it: the fee
+ * was a number in a constant and a credit in a mapping, so the product could
+ * not say what it earned. A platform whose revenue is invisible is a platform
+ * nobody can price, and a fee the reader has to take on faith is not much
+ * better than no fee at all.
+ *
+ * So the books are derived here, from the same events the leaderboard is
+ * built from — a settlement the hall counts is a settlement the books count,
+ * because both read the same `VerdictFinalized` log.
+ */
+export interface ApiEconomics {
+  /** settlements that paid an agent, in ETH */
+  paidOutEth: string;
+  /** the protocol's fee on those settlements, in ETH */
+  feesEth: string;
+  /** the total reward escrowed by sponsors, in ETH */
+  volumeEth: string;
+  /** how many trials settled in an agent's favour */
+  paidSettlements: number;
+  /** the fee in basis points, as the chain's own constant has it */
+  feeBps: number;
+}
+
+/**
+ * The protocol's books, from the read model.
+ *
+ * The fee is the contract's own arithmetic — `reward * FEE_BPS / BPS` — so the
+ * number here is the number the chain used, not one this process invented.
+ */
+export function buildEconomics(model: ReadModel, feeBps: number): ApiEconomics {
+  let paidOutWei = 0n;
+  let feesWei = 0n;
+  let volumeWei = 0n;
+  let paidSettlements = 0;
+
+  for (const trial of model.trials.values()) {
+    volumeWei += trial.rewardWei;
+    if (trial.verdict !== "paid") continue;
+    // The contract's own arithmetic: `reward * FEE_BPS / BPS`.
+    const fee = (trial.rewardWei * BigInt(feeBps)) / 10_000n;
+    feesWei += fee;
+    paidOutWei += trial.rewardWei - fee;
+    paidSettlements += 1;
+  }
+
+  return {
+    paidOutEth: weiToEth(paidOutWei),
+    feesEth: weiToEth(feesWei),
+    volumeEth: weiToEth(volumeWei),
+    paidSettlements,
+    feeBps,
+  };
 }
 
 export function buildSnapshot(
@@ -238,6 +297,12 @@ export function buildSnapshot(
   opts: {
     now: number;
     alloyState?: (agentId: number) => AlloyState;
+    /**
+     * The chain's settlement fee, in basis points. Read from the contract by
+     * the host rather than hardcoded here, so the published number is the one
+     * the chain actually charges.
+     */
+    feeBps?: number;
   },
 ): ApiSnapshot {
   const trials = listTrials(model).map((t) => toApiTrial(t, model));
@@ -268,5 +333,6 @@ export function buildSnapshot(
     agents,
     hall: hall(model).map((e) => toApiHallEntry(e, alloyById.get(e.agentId)?.tier ?? null)),
     counts,
+    economics: buildEconomics(model, opts.feeBps ?? 0),
   };
 }
