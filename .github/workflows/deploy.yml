@@ -15,7 +15,16 @@ name: deploy
 #      container keeps its state across every deploy.
 
 on:
-  push:
+  # The deploy rides the gate, not the push.
+  #
+  # `main` is reached by the promotion job, and that job pushes with
+  # GITHUB_TOKEN — which does not raise a `push` event. A deploy that waited
+  # for the push therefore never ran, and the site kept serving whatever was
+  # last built. The gate's completion is the honest moment to ship: ci on
+  # `main` has already finished, and its conclusion is right there.
+  workflow_run:
+    workflows: ["ci"]
+    types: [completed]
     branches: [main]
   workflow_dispatch:
 
@@ -30,6 +39,14 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
+          ref: main
+
+      # Nothing ships on a red gate.
+      - name: refuse a red gate
+        if: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'success' }}
+        run: |
+          echo "ci concluded '${{ github.event.workflow_run.conclusion }}' on main; deploy refused"
+          exit 1
 
       # The API entrypoint must stay executable: a tar round-trip once stripped
       # the bit and the API container refused to start for two minutes.
