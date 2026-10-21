@@ -103,6 +103,11 @@ jobs:
           #
           # A host cron entry has neither dependency. It runs whether or not
           # this repository is touched.
+          if [ ! -f deploy/edge-attach.sh ]; then
+            echo "::warning::deploy/edge-attach.sh is not in this checkout yet; the timer was not installed"
+            echo "::warning::the next deploy syncs the tree, and running this job again installs it"
+            exit 0
+          fi
           sudo install -m 0755 deploy/edge-attach.sh /usr/local/bin/crucible-edge-attach
           ( crontab -l 2>/dev/null | grep -v 'crucible-edge-attach' ; \
             echo '*/2 * * * * /usr/local/bin/crucible-edge-attach >> /var/log/crucible-edge-attach.log 2>&1' \
