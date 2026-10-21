@@ -142,3 +142,33 @@ jobs:
           [ "$CODE" = "200" ] || { echo "health check failed: $CODE"; exit 1; }
           curl -sk -o /dev/null -w 'home %{http_code}\n' https://crucible.svalley.tech/
           git -C "$GITHUB_WORKSPACE" rev-parse --short HEAD | xargs echo "serving commit:"
+
+      # A deploy that answers 200 is not the same as a deploy that is correct.
+      #
+      # The assertions read the chain that is actually live — the fee, the bond
+      # rule, the committee's threshold, the roles, and the money invariant
+      # (the ETH the contract holds against everything it owes) — and they read
+      # the public surface to catch the failure a health check cannot see: the
+      # web bundle bakes its contract address at build time, so a rebuilt chain
+      # leaves the site pointing at a contract that is not there.
+      #
+      # It runs inside the seed image because that is where foundry lives, and
+      # it runs ON the compose network because that is where anvil is.
+      - name: assert the deployment
+        working-directory: /home/ubuntu/crucible
+        run: |
+          set -euo pipefail
+          trials=$(grep -E '^TRIALS_ADDRESS=' .env | tail -n 1 | cut -d= -f2- | tr -d '[:space:]')
+          alloy=$(grep -E '^ALLOY_ADDRESS=' .env | tail -n 1 | cut -d= -f2- | tr -d '[:space:]')
+          if [ -z "$trials" ] || [ -z "$alloy" ]; then
+            echo "::error::no contract addresses in .env"
+            exit 1
+          fi
+          docker compose -f compose.yaml -f compose.vps.yaml run --rm --no-deps \
+            --entrypoint sh \
+            -e RPC_URL=http://anvil:8545 \
+            -e TRIALS_ADDRESS="$trials" \
+            -e ALLOY_ADDRESS="$alloy" \
+            -e PUBLIC_URL=https://crucible.svalley.tech \
+            seed scripts/assert-deployment.sh
+
