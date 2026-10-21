@@ -123,6 +123,20 @@ jobs:
             echo "::warning::no edge container found on this host; the site may be served from elsewhere"
           fi
 
+          # The repair belongs on a host timer, not on this pipeline.
+          #
+          # The attachment is dropped by a deploy of a DIFFERENT project, so
+          # nothing about this one happens at that moment, and a watchdog that
+          # depends on the thing it watches cannot report that the thing is
+          # broken. A cron entry on the box has neither dependency.
+          if [ -f deploy/edge-attach.sh ]; then
+            sudo install -m 0755 deploy/edge-attach.sh /usr/local/bin/crucible-edge-attach
+            ( crontab -l 2>/dev/null | grep -v 'crucible-edge-attach' ; \
+              echo '*/2 * * * * /usr/local/bin/crucible-edge-attach >> /var/log/crucible-edge-attach.log 2>&1' \
+            ) | crontab -
+            echo "host timer installed"
+          fi
+
       - name: build web and api
         working-directory: /home/ubuntu/crucible
         run: docker compose -f compose.yaml -f compose.vps.yaml build web api
