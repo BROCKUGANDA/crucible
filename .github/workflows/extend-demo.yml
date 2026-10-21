@@ -1,0 +1,99 @@
+name: extend-demo
+
+# Adds trials a visitor can act on to the chain the site is already serving.
+#
+# The seeded chain carries four settled trials: a hall worth reading, and nothing
+# to do. A visitor who arrives has no trial to claim, nothing to break and nothing
+# to wait for. This adds one trial open for claim and one claimed and awaiting a
+# run, so the product is a market rather than a screenshot.
+#
+# It extends the chain in place. Nothing is redeployed, so the addresses the API
+# and the web bundle already carry stay valid and the settled hall keeps pointing
+# at the transactions that produced it.
+#
+# It runs inside the seed image, on the compose network, because the anvil
+# container publishes no host port on the VPS override — the runner is not on that
+# network, so it reaches anvil the way the stack does.
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Print what would be extended without sending a transaction"
+        type: boolean
+        default: false
+
+concurrency:
+  group: extend-demo
+  cancel-in-progress: false
+
+jobs:
+  extend:
+    name: Extend the live chain
+    runs-on: [self-hosted, linux, X64, crucible]
+    steps:
+      - name: read the deployed addresses
+        id: addresses
+        run: |
+          set -euo pipefail
+          cd "$HOME/crucible"
+          if [ ! -f .env ]; then
+            echo "::error::no .env on this host"
+            exit 1
+          fi
+          trials=$(grep -E '^TRIALS_ADDRESS=' .env | tail -n 1 | cut -d= -f2- | tr -d '[:space:]')
+          if [ -z "$trials" ]; then
+            echo "::error::TRIALS_ADDRESS is not set in .env"
+            exit 1
+          fi
+          echo "trials=$trials" >> "$GITHUB_OUTPUT"
+          echo "chain carries $trials"
+
+      - name: build the seed image
+        working-directory: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          cd "$HOME/crucible"
+          docker compose -f compose.yaml -f compose.vps.yaml build seed
+
+      - name: extend the chain
+        working-directory: ${{ github.workspace }}
+        env:
+          TRIALS: ${{ steps.addresses.outputs.trials }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          cd "$HOME/crucible"
+
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "dry run: the chain would be extended with two trials"
+            docker compose -f compose.yaml -f compose.vps.yaml run --rm --no-deps \
+              --entrypoint cast \
+              -e TRIALS_ADDRESS="$TRIALS" \
+              seed call "$TRIALS" "trialCount()(uint256)" --rpc-url http://anvil:8545
+            exit 0
+          fi
+
+          docker compose -f compose.yaml -f compose.vps.yaml run --rm --no-deps \
+            --entrypoint forge \
+            -e TRIALS_ADDRESS="$TRIALS" \
+            seed script script/Extend.s.sol:Extend --rpc-url http://anvil:8545 --broadcast
+
+      - name: confirm the API sees it
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 20); do
+            body=$(curl -sk https://crucible.svalley.tech/api/snapshot || true)
+            counts=$(printf '%s' "$body" | sed -n 's/.*"counts":{\([^}]*\)}.*/\1/p')
+            case "$counts" in
+              *'"open":0'*)
+                echo "open trials still 0; the indexer has not caught up yet (attempt $i)"
+                sleep 5
+                ;;
+              *)
+                echo "counts: $counts"
+                exit 0
+                ;;
+            esac
+          done
+          echo "::warning::the chain was extended but the API still reports no open trial"

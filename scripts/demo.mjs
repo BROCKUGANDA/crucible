@@ -104,6 +104,16 @@ async function main() {
     cwd: `${ROOT}crucible-contracts`,
   });
 
+  // The loop leaves four settled trials: a hall worth reading, and nothing to do.
+  // Two more make the chain something a visitor can act on — one open for claim,
+  // one claimed and waiting for a run.
+  console.log("▸ extending the chain with trials a visitor can act on");
+  await run(
+    "forge",
+    ["script", "script/Extend.s.sol:Extend", "--rpc-url", RPC, "--broadcast", "--private-key", ANVIL_KEY],
+    { cwd: `${ROOT}crucible-contracts`, env: { TRIALS_ADDRESS: trials } },
+  );
+
   console.log("");
   console.log("  the forge is lit. anvil stays up on %s", RPC);
   console.log("");
