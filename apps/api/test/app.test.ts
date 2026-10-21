@@ -262,6 +262,38 @@ describe("routes", () => {
     expect(body.meta.alloyLock).toBe("registry");
   });
 
+  it("tells the same story on every route about the same chain", async () => {
+    // The bug this covers: every route built its own snapshot, and they drifted.
+    // The live stream carried the registry tier and the settlement fee while
+    // `/snapshot` carried neither — so a refresh and a live update described the
+    // same chain differently, and the published books read zero on a protocol
+    // that was taking five percent. One payload, served everywhere.
+    const feeApp = createApp(
+      {
+        getModel: () => hallModel(),
+        alloyState: (id) => ({ tier: 2, locked: id === 1, tokenUri: `data:x/${id}` }),
+        proofSource: { chain: "Foundry", chainId: 31337, trialsAddress: TRIALS },
+        protocolFeeBps: () => 500,
+      },
+      { rateLimit: false },
+    );
+
+    const snapshot = await (await feeApp.request("/snapshot")).json();
+    const hall = await (await feeApp.request("/hall")).json();
+    const agents = await (await feeApp.request("/agents")).json();
+
+    // The books carry the chain's own fee, not a copy this process keeps.
+    expect(snapshot.economics.feeBps).toBe(500);
+    expect(snapshot.economics.feesEth).toBe("0.05");
+    expect(snapshot.economics.paidOutEth).toBe("0.95");
+    expect(snapshot.economics.paidSettlements).toBe(1);
+
+    // The tier the registry reported is the tier every route reports.
+    expect(snapshot.agents[0].tier).toBe(2);
+    expect(agents.agents[0].tier).toBe(2);
+    expect(hall.data.hall[0].tier).toBe(2);
+  });
+
   it("prints no tier for a hall row it never read from the registry", async () => {
     // The bug this covers: `/hall` rendered the indexer's frozen `tier: 0`, so an agent
     // the chain had already moved to Iron was published as "Unforged" — a wrong number
