@@ -171,6 +171,9 @@ const HEX_KEY = /^[0-9a-f]{64}$/;
 
 let tempSerial = 0;
 
+/** One second survives whole-second filesystem mtime; one millisecond does not. */
+const STAMP_STEP_MS = 1000;
+
 class DiskBackend implements Backend {
   private readonly dataDir: string;
 
@@ -209,8 +212,12 @@ class DiskBackend implements Backend {
   /**
    * `at` is stamped onto the file instead of being trusted from the clock: entries
    * written in the same millisecond share a natural mtime on a real filesystem, and
-   * eviction that cannot order them evicts the wrong one. One millisecond per entry is
-   * enough to keep publication order and costs a single extra syscall.
+   * eviction that cannot order them evicts the wrong one.
+   *
+   * The step is one second, not one millisecond. Some filesystems (and the CI runner
+   * that caught this) store mtime at whole-second resolution, so a one-millisecond
+   * step rounds two publications into the same second and the tie-break becomes the
+   * content hash. One second per entry costs the same single syscall and survives that.
    */
   write(key: string, bytes: Uint8Array, at: number): void {
     const temp = join(this.dataDir, `.tmp-${key}-${process.pid}-${(tempSerial += 1)}`);
@@ -386,7 +393,10 @@ export class CidStore {
   /** Strictly after every entry already held, so publication order survives coarse clocks. */
   private stamp(held: Entry[]): number {
     const newest = held.at(-1)?.at ?? 0;
-    this.lastAt = Math.max(Date.now(), Math.floor(newest) + 1, this.lastAt + 1);
+    // The next whole second after the newest entry, not the next millisecond: a
+    // second-resolution filesystem would round both into the same stamp.
+    const afterNewest = (Math.floor(newest / STAMP_STEP_MS) + 1) * STAMP_STEP_MS;
+    this.lastAt = Math.max(Date.now(), afterNewest, this.lastAt + STAMP_STEP_MS);
     return this.lastAt;
   }
 

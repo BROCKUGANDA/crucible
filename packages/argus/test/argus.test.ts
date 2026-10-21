@@ -190,6 +190,23 @@ describe("runRubric", () => {
   const judges = (answers: string[]) =>
     answers.map((a, i) => ({ id: `j${i + 1}`, judge: async () => a }));
 
+  it("refuses a panel that is not exactly three", async () => {
+    // Four judges would let a two-vote minority settle a three-vote majority: with
+    // 2 for break and 2 abstaining, `agreeCount = 2` and the seat would vote break.
+    await expect(
+      runRubric({
+        judges: judges([
+          '{"breakWins":true,"reason":"a"}',
+          '{"breakWins":true,"reason":"b"}',
+          '{"breakWins":false,"reason":"c"}',
+          '{"breakWins":false,"reason":"d"}',
+        ]),
+        spec: "s",
+        artifactJson: "{}",
+      }),
+    ).rejects.toThrow(/exactly three/);
+  });
+
   it("resolves a 2-of-3 majority for the break", async () => {
     const out = await runRubric({
       judges: judges([

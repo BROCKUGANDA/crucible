@@ -20,10 +20,48 @@ function required(name: string): string {
   return v;
 }
 
-const port = Number(process.env.PORT ?? 8787);
+/**
+ * A required address, checked rather than cast.
+ *
+ * The old code cast whatever the environment held to an address type, so a
+ * typo — `0x123` — passed the check and then failed at the first call, with
+ * viem's error naming a method rather than the variable that was wrong. A
+ * deployment that is misconfigured should say so at boot, in one sentence,
+ * naming the variable.
+ */
+function requiredAddress(name: string): `0x${string}` {
+  const value = required(name).trim();
+  if (!/^0x[0-9a-fA-F]{40}$/.test(value)) {
+    throw new Error(`${name} must be a 0x-prefixed 20-byte address; got "${value}"`);
+  }
+  return value as `0x${string}`;
+}
+
+/** A port, checked rather than trusted. `Number("nonsense")` is NaN. */
+function requiredPort(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (raw === undefined || raw === "") return fallback;
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < 1 || value > 65_535) {
+    throw new Error(`${name} must be a TCP port between 1 and 65535; got "${raw}"`);
+  }
+  return value;
+}
+
+/** A block number, checked rather than thrown at the first use. */
+function optionalBlock(name: string): bigint {
+  const raw = process.env[name];
+  if (raw === undefined || raw === "") return 0n;
+  if (!/^\d+$/.test(raw.trim())) {
+    throw new Error(`${name} must be a whole number of blocks; got "${raw}"`);
+  }
+  return BigInt(raw.trim());
+}
+
+const port = requiredPort("PORT", 8787);
 const rpcUrl = process.env.RPC_URL ?? "http://127.0.0.1:8545";
-const trialsAddress = required("TRIALS_ADDRESS") as `0x${string}`;
-const alloyAddress = required("ALLOY_ADDRESS") as `0x${string}`;
+const trialsAddress = requiredAddress("TRIALS_ADDRESS");
+const alloyAddress = requiredAddress("ALLOY_ADDRESS");
 
 /**
  * How often the alloy sweep runs. A floor, not a guess at a block time: a malformed
@@ -35,6 +73,24 @@ const ALLOY_TTL_MS = (() => {
   return Number.isFinite(v) && v > 0 ? v : 2000;
 })();
 
+/**
+ * Frenchy is optional. Both the key and the voice id are configuration; a missing
+ * either keeps the voice host off, and the web app hides the control. `VOICE_DISABLED=1`
+ * is the kill switch for a deployment that has the credentials but wants silence.
+ */
+const voice = (() => {
+  if (process.env.VOICE_DISABLED === "1") return null;
+  const apiKey = process.env.ELEVENLABS_API_KEY?.trim();
+  const voiceId = process.env.ELEVENLABS_VOICE_ID?.trim();
+  const baseUrl = process.env.ELEVENLABS_BASE_URL?.trim() || undefined;
+  const modelId = process.env.ELEVENLABS_MODEL_ID?.trim() || "eleven_flash_v2_5";
+  if (!apiKey || !voiceId) return null;
+  if (baseUrl && !/^https?:\/\//.test(baseUrl)) {
+    throw new Error(`ELEVENLABS_BASE_URL must be an http(s) URL; got "${baseUrl}"`);
+  }
+  return { apiKey, voiceId, modelId, baseUrl };
+})();
+
 const publicClient = createPublicClient({ chain: foundry, transport: http(rpcUrl) });
 
 const scribe = new Scribe({
@@ -42,7 +98,7 @@ const scribe = new Scribe({
   alloyAddress,
   chain: foundry,
   rpcUrl,
-  fromBlock: process.env.FROM_BLOCK ? BigInt(process.env.FROM_BLOCK) : 0n,
+  fromBlock: optionalBlock("FROM_BLOCK"),
   cursorFile: process.env.CRUSIBLE_CURSOR_FILE,
   // Every failure the indexer survives lands in the dead-letter queue — a sync tick
   // that could not advance, a window it refused to cross — so /health tells an
@@ -72,7 +128,7 @@ const alloyById = new Map<number, AlloyState>();
  * a zero: `tokenURI` reverts with `NotMinted` for an agent with no alloy, and an agent
  * the registry never touched is not the same as an agent whose tier is 0.
  */
-async function readAlloy(agentId: number): Promise<AlloyState> {
+async function readAlloy(agentId: number): Promise<AlloyState | null> {
   const args = [BigInt(agentId)] as const;
   // "NotMinted" is the registry saying *this agent has no alloy yet* — an answer, not a
   // failure, and the common state for a fresh agent. The selector check keeps that
@@ -87,12 +143,12 @@ async function readAlloy(agentId: number): Promise<AlloyState> {
       return null;
     });
 
-  const [record, isLocked, tokenUri] = await Promise.all([
+  const [tier, isLocked, tokenUri] = await Promise.all([
     attempt(() =>
       publicClient.readContract({
         address: alloyAddress,
         abi: ALLOY_ABI,
-        functionName: "records",
+        functionName: "tierOf",
         args,
       }),
     ),
@@ -114,10 +170,20 @@ async function readAlloy(agentId: number): Promise<AlloyState> {
     ),
   ]);
 
+  // A failure is not a null tier — it is the absence of a tier, and the two
+  // are different. The caller keeps the last good value so that one
+  // transient RPC error does not turn a measured tier into "tier unknown"
+  // for a whole TTL.
+  if (tier === null && isLocked === null && tokenUri === null) return null;
+
   return {
-    // `records(agentId)` is `(wins, survived, slashes, tier)`; only the tier is published,
-    // because the counters on a hall row are the logs this process actually saw.
-    tier: record === null ? null : record[3],
+    // `tierOf(agentId)` is read on its own rather than as the fourth
+    // element of `records(...)`. A tuple is read by position, and the
+    // position is a property of the contract's output ORDER: if that order
+    // ever changed, `record[3]` would be a different field, and a number
+    // that was never measured as a tier would be published as one. A
+    // dedicated getter cannot drift that way.
+    tier,
     locked: isLocked,
     tokenUri,
   };
@@ -132,7 +198,13 @@ async function sweepAlloy(): Promise<void> {
   const ids = [...scribe.state.agents.keys()];
   await Promise.all(
     ids.map(async (id) => {
-      alloyById.set(id, await readAlloy(id));
+      const state = await readAlloy(id);
+      // A failed read does NOT overwrite what is known. The old code stored the
+      // failure's nulls, so one transient RPC error turned a measured tier
+      // into "tier unknown" for a whole TTL — and "the registry could not be
+      // read" and "this agent has no alloy" became the same answer.
+      if (state === null) return;
+      alloyById.set(id, state);
     }),
   );
 }
@@ -150,8 +222,47 @@ await sweepAlloy();
 selfSchedulingLoop(sweepAlloy, {
   intervalMs: ALLOY_TTL_MS,
   runImmediately: false,
-  onError: (err) => dlq.push("alloy.sweep", (err as Error).message),
+  // A throw that is not an `Error` has no `.message`, and the dead-letter queue slices
+  // whatever it is given — so `(err as Error).message` handed it `undefined` and the queue
+  // threw while reporting the failure that had just been caught. The sweep's failure was
+  // then swallowed by the loop and never reached the log either.
+  onError: (err) => dlq.push("alloy.sweep", err instanceof Error ? err.message : String(err)),
 }).start();
+
+/**
+ * The settlement fee, in basis points, read from the contract.
+ *
+ * It is a `constant`, so it cannot change, and it is read once: the host knows
+ * the chain's own number rather than carrying a copy that could drift from it.
+ *
+ * **Null when the read fails, not zero.** The comment here used to say "a read
+ * that fails leaves the books at zero rather than publishing a guess — a fee
+ * nobody can verify is worse than an absent one", and the code did exactly the
+ * opposite: it left the books at zero AND published it, as `feeBps: 0` and a
+ * fee of "0" ETH, which reads as a measured fact. Zero is not an absent fee;
+ * it is a claim that the protocol charges nothing.
+ *
+ * The money itself no longer depends on this read: the settlement logs carry
+ * the payout the chain actually made, and the fee is the difference between
+ * that and the escrowed reward. So the only thing lost by an unreadable
+ * constant is the rate in basis points, and that is published as unknown.
+ */
+let protocolFeeBps: number | null = null;
+try {
+  protocolFeeBps = Number(
+    await publicClient.readContract({
+      address: trialsAddress,
+      abi: [{ type: "function", name: "FEE_BPS", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] }],
+      functionName: "FEE_BPS",
+    }),
+  );
+  console.log(`[crucible] protocol settlement fee: ${protocolFeeBps / 100}%`);
+} catch (err) {
+  console.error(
+    `[crucible] could not read FEE_BPS: ${err instanceof Error ? err.message : String(err)} — ` +
+      "the rate is published as unknown; the settled amounts are read from the chain's own logs",
+  );
+}
 
 const trustProxy = process.env.TRUST_PROXY === "1";
 
@@ -162,12 +273,55 @@ const trustProxy = process.env.TRUST_PROXY === "1";
  */
 const security = resolveSecurity({ trustProxy }, process.env);
 
+/**
+ * The transport flags have to move together, and nothing enforced that.
+ *
+ * `ENFORCE_HTTPS=1` makes the API refuse any request it cannot see as TLS.
+ * Behind a proxy that terminates TLS, the request arrives in plaintext and
+ * the scheme is only in `X-Forwarded-Proto` — which is believed only when
+ * `TRUST_PROXY=1`. So `ENFORCE_HTTPS=1` with `TRUST_PROXY=0` answers 403 to
+ * EVERY request, and the boot log mentions it in a parenthetical nobody
+ * reads. A deployment that refuses to start is better than one that starts
+ * and serves nothing.
+ */
+if (security.enforceHttps && !trustProxy) {
+  throw new Error(
+    "ENFORCE_HTTPS=1 with TRUST_PROXY=0 would answer 403 to every request: " +
+      "the proxy's X-Forwarded-Proto is not believed without TRUST_PROXY=1. " +
+      "Set TRUST_PROXY=1 (only behind a proxy that overwrites it), or turn ENFORCE_HTTPS off.",
+  );
+}
+
+/**
+ * Credentials over plaintext are not a policy anybody wants.
+ *
+ * `ALLOW_CREDENTIALS=1` with an `http://` origin means the browser is told
+ * to send cookies to that origin with every request. The wildcard case is
+ * already refused, and the boot log states the policy — but a configuration
+ * that hands a credentialed CORS policy to a plaintext origin is a mistake
+ * that should be refused rather than reported.
+ */
+if (security.allowCredentials) {
+  for (const origin of security.allowedOrigins) {
+    if (origin === "*") continue;
+    if (!origin.startsWith("https://") && !/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) {
+      throw new Error(
+        `ALLOW_CREDENTIALS=1 with a plaintext origin (${origin}) would tell a browser to send ` +
+          "credentials over http. Use https, or a local address.",
+      );
+    }
+  }
+}
+
 const app = createApp({
   getModel: () => scribe.state,
   // The hall's txHashes are only checkable against one chain and one contract, and the
   // read model cannot infer either — this process is the only party that knows them.
   proofSource: { chain: foundry.name, chainId: foundry.id, trialsAddress },
   alloyState: (agentId) => alloyById.get(agentId) ?? UNKNOWN_ALLOY,
+  // The chain's own fee constant, so the published books are the ones the
+  // contract charges rather than ones this process keeps a copy of.
+  protocolFeeBps: () => protocolFeeBps,
   indexStatus: () => scribe.status,
   // The one breaker this process runs: the node the index is read from. Reporting it is what
   // turns "the hall stopped moving" into "the node is tripped, with 12s of cooldown left".
@@ -179,12 +333,18 @@ const app = createApp({
   // `X-Forwarded-Proto` believable for the TLS check.
   trustProxy,
   security,
+  voice,
 });
 
 serve({ fetch: app.fetch, port }, (info) => {
   console.log(`[crucible] api listening on :${info.port}`);
   console.log(`[crucible] indexing ${trialsAddress}`);
   console.log(`[crucible] alloy from ${alloyAddress} every ${ALLOY_TTL_MS}ms`);
+  console.log(
+    voice
+      ? `[crucible] voice: Frenchy on (${voice.modelId})`
+      : "[crucible] voice: off (set ELEVENLABS_API_KEY and ELEVENLABS_VOICE_ID to enable)",
+  );
   // The transport policy, stated as what it is rather than as a checkbox. `*` here means
   // "reads are public by design, credentialed reads are impossible" — see security.ts.
   console.log(
@@ -199,6 +359,17 @@ serve({ fetch: app.fetch, port }, (info) => {
       security.enforceHttps
         ? `https required, HSTS max-age=${security.hstsMaxAge}s over TLS${trustProxy ? "" : " (TRUST_PROXY off: X-Forwarded-Proto will not be believed)"}`
         : "plaintext accepted (this is a local demo; set ENFORCE_HTTPS=1 behind a TLS proxy)"
+    }`,
+  );
+  // Which address the limiter buckets by. This is the whole control, so it is stated
+  // rather than left to be discovered: behind a proxy with TRUST_PROXY off, every visitor
+  // shares ONE bucket because the only address this process can see is the proxy's, and
+  // one refresh loop starves everyone else.
+  console.log(
+    `[crucible] rate limit key: ${
+      trustProxy
+        ? "the right-most X-Forwarded-For entry (the address the proxy recorded)"
+        : "the socket peer (every visitor behind a proxy shares one bucket)"
     }`,
   );
   console.log(

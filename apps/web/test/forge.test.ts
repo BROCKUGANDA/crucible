@@ -9,8 +9,31 @@ import {
   haptics,
   shortCid,
   shortHash,
+  tierMeta,
 } from "../src/lib/forge";
 import { EMPTY_WIZARD, validateWizard } from "../src/lib/wizard";
+
+describe("tierMeta", () => {
+  it("names the tiers the chain can mint", () => {
+    expect(tierMeta(0).name).toBe("Unforged");
+    expect(tierMeta(1).name).toBe("Iron");
+    expect(tierMeta(4).name).toBe("Damascus");
+  });
+
+  it("says so when the registry could not be read", () => {
+    expect(tierMeta(null).name).not.toBe("Unforged");
+    expect(tierMeta(null).name).toBe("Tier unread");
+  });
+
+  it("does not publish tier 0 for a tier this bundle does not know", () => {
+    // A tier the chain has moved to and the bundle has not heard of is not
+    // tier 0. Rendering it as "Unforged" is a row claiming a tier it never
+    // measured — the same defect the null case exists to avoid.
+    expect(tierMeta(5).name).not.toBe("Unforged");
+    expect(tierMeta(5).name).toBe("Tier unread");
+    expect(tierMeta(99).name).toBe("Tier unread");
+  });
+});
 
 describe("shortHash", () => {
   it("truncates to the copy deck's format", () => {

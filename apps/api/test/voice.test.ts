@@ -1,0 +1,147 @@
+import { describe, expect, it, vi } from "vitest";
+import { emptyModel } from "@crucible/indexer";
+import { createApp } from "../src/app.js";
+import { voiceCopy, type VoiceConfig } from "../src/voice.js";
+
+const AUDIO = new Uint8Array([0xff, 0xf1, 0x50, 0x80, 0x00, 0x1f]);
+
+function appWith(voice: VoiceConfig | null, opts: { voiceRateLimit?: false } = {}) {
+  return createApp({ getModel: () => emptyModel() }, {
+    rateLimit: false,
+    voiceRateLimit: opts.voiceRateLimit ?? false,
+    voice,
+  });
+}
+
+function config(over: Partial<VoiceConfig> = {}): VoiceConfig {
+  return {
+    apiKey: "xi-test-key",
+    voiceId: "voice-123",
+    modelId: "eleven_flash_v2_5",
+    baseUrl: "https://voice.example",
+    ...over,
+  };
+}
+
+describe("voice host", () => {
+  it("reports off and refuses to speak when unconfigured", async () => {
+    const app = appWith(null);
+    const status = await app.request("/voice/status");
+    expect(status.status).toBe(200);
+    expect(await status.json()).toEqual({ configured: false, model: null });
+
+    const res = await app.request("/voice/speak", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ moment: "greeting" }),
+    });
+    expect(res.status).toBe(503);
+  });
+
+  it("sends the provider the fixed moment copy and the PRD voice settings", async () => {
+    let seen: { url: string; init?: RequestInit } | null = null;
+    const fetchImpl = (async (url: string | URL | Request, init?: RequestInit) => {
+      seen = { url: String(url), init };
+      return new Response(AUDIO, {
+        status: 200,
+        headers: { "content-type": "audio/mpeg" },
+      });
+    }) as typeof fetch;
+
+    const app = appWith(config({ fetchImpl }));
+    const res = await app.request("/voice/speak", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ moment: "verdict", text: "ignored because verdict is fixed" }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("audio/mpeg");
+    expect(res.headers.get("x-voice-moment")).toBe("verdict");
+    expect(new Uint8Array(await res.arrayBuffer())).toEqual(AUDIO);
+
+    expect(seen!.url).toBe("https://voice.example/v1/text-to-speech/voice-123/stream");
+    const headers = new Headers(seen!.init!.headers);
+    expect(headers.get("xi-api-key")).toBe("xi-test-key");
+    const body = JSON.parse(String(seen!.init!.body));
+    expect(body.model_id).toBe("eleven_flash_v2_5");
+    expect(body.text).toContain("Payment is the verification.");
+    expect(body.text).not.toContain("ignored");
+    expect(body.voice_settings).toEqual({ stability: 0.55, style: 0.35, speed: 0.95 });
+  });
+
+  it("accepts a bounded spec text and normalises its whitespace", async () => {
+    let body: { text?: string } = {};
+    const fetchImpl = (async (_url: string | URL | Request, init?: RequestInit) => {
+      body = JSON.parse(String(init!.body));
+      return new Response(AUDIO, { status: 200, headers: { "content-type": "audio/mpeg" } });
+    }) as typeof fetch;
+
+    const app = appWith(config({ fetchImpl }));
+    const res = await app.request("/voice/speak", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ moment: "spec", text: "  The  claim\n has   two lines.  " }),
+    });
+    expect(res.status).toBe(200);
+    expect(body.text).toBe("The claim has two lines.");
+  });
+
+  it("rejects unknown moments and over-long or empty spec text", async () => {
+    const app = appWith(config());
+    const post = (payload: unknown) =>
+      app.request("/voice/speak", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+    expect((await post({ moment: "goodbye" })).status).toBe(400);
+    expect((await post({ moment: "spec", text: "" })).status).toBe(400);
+    expect((await post({ moment: "spec", text: "x".repeat(601) })).status).toBe(400);
+    expect((await post({})).status).toBe(400);
+    expect((await post(null)).status).toBe(400);
+  });
+
+  it("returns 502 without reflecting the provider body or the key", async () => {
+    const fetchImpl = (async () =>
+      new Response("account detail xi-test-key", { status: 429 })) as typeof fetch;
+    const app = appWith(config({ fetchImpl }));
+
+    const res = await app.request("/voice/speak", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ moment: "greeting" }),
+    });
+    expect(res.status).toBe(502);
+    const text = await res.text();
+    expect(text).not.toContain("xi-test-key");
+    expect(text).not.toContain("account detail");
+  });
+
+  it("has a bucket of its own", async () => {
+    // The route itself is cheap to build; the bucket is tested through createApp with
+    // a real limiter in app.test's style, where the peer address is stable.
+    const limited = createApp({ getModel: () => emptyModel() }, {
+      rateLimit: false,
+      trustProxy: true,
+      voiceRateLimit: { limit: 1, windowMs: 60_000, burst: 0 },
+      voice: config({
+        fetchImpl: (async () =>
+          new Response(AUDIO, { status: 200, headers: { "content-type": "audio/mpeg" } })) as typeof fetch,
+      }),
+    });
+    const headers = { "x-forwarded-for": "10.0.10.10", "content-type": "application/json" };
+    const body = JSON.stringify({ moment: "greeting" });
+    expect((await limited.request("/voice/speak", { method: "POST", headers, body })).status).toBe(200);
+    expect((await limited.request("/voice/speak", { method: "POST", headers, body })).status).toBe(429);
+  });
+
+  it("keeps the copy free of amounts, deadlines and CIDs", () => {
+    for (const moment of ["greeting", "tour", "verdict", "verdict-repeat"] as const) {
+      const text = voiceCopy(moment, undefined)!;
+      expect(text).not.toMatch(/\d/);
+      expect(text.length).toBeGreaterThan(0);
+    }
+  });
+});

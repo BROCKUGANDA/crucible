@@ -1,13 +1,13 @@
 import { createConfig, http, cookieStorage, createStorage } from "wagmi";
 import { foundry, sepolia } from "wagmi/chains";
-import { walletConnect, injected as injectedConnector } from "wagmi/connectors";
+import { coinbaseWallet, walletConnect, injected as injectedConnector } from "wagmi/connectors";
 import { getDefaultConfig } from "@rainbow-me/rainbowkit";
 import type { Address, Transport } from "viem";
 import type { Chain } from "viem/chains";
 
 /**
  * Wallet configuration: injected wallets (MetaMask, Rabby, Brave, and anything
- * EIP-1193 / EIP-6963) plus WalletConnect for mobile.
+ * EIP-1193 / EIP-6963), Coinbase Wallet, and WalletConnect for mobile.
  *
  * Phantom is deliberately absent. Phantom Portal — the route for Phantom Connect, which
  * offers embedded wallets via Google/Apple sign-in — is not accepting new applications,
@@ -147,6 +147,10 @@ export function buildConfig() {
     chains: [chain],
     connectors: [
       injectedConnector({ shimDisconnect: true }),
+      // Coinbase Wallet is explicit, not left to the injected fallback: its extension
+      // and mobile app are a real path for the Base audience, and the classic SDK
+      // connector does not need a WalletConnect project id.
+      coinbaseWallet({ appName: "Crucible", preference: "all" }),
       ...(projectId ? [walletConnect({ projectId })] : []),
     ],
     transports: { [chain.id]: transportFor() },
