@@ -319,4 +319,4 @@ jobs:
       - name: audit (documented set, with severity ceilings)
         run: |
           npm audit --json > audit.json || true
-          node ../scripts/audit-gate.mjs audit.json
+          node scripts/audit-gate.mjs audit.json
