@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { mkdtemp, rm, writeFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, basename } from "node:path";
 
 /**
  * Execution sandbox for a single trial run.
@@ -80,6 +80,18 @@ export class SandboxOOM extends Error {
   }
 }
 
+/**
+ * Docker label stamped on every container a Sandbox starts. A run needs a handle that survives
+ * the loss of its client process, and a label is how a caller — the timeout below, or whoever
+ * is cleaning up after a crashed verifier — finds the containers one workspace owns.
+ */
+export const SANDBOX_LABEL = "crucible.sandbox";
+
+/** The label value for a workspace: its directory name, unique per Sandbox (mkdtemp). */
+export function sandboxLabel(root: string): string {
+  return basename(root);
+}
+
 async function dockerAvailable(): Promise<boolean> {
   const r = await execIn("docker", ["version", "--format", "{{.Server.Version}}"], undefined, 10);
   return r.code === 0;
@@ -88,32 +100,64 @@ async function dockerAvailable(): Promise<boolean> {
 /**
  * Run a binary, capturing output. Resolves even on a non-zero exit so callers can
  * inspect the output; rejects only when the binary cannot be spawned at all.
+ *
+ * `onTimeout` runs the moment this call decides the budget is spent, and is the only way to
+ * stop a child that supervises something the parent cannot signal. `execFile`'s own `timeout`
+ * only reaches the child: measured on the CI runner with a 10s budget around
+ * `docker run … python3 -c "time.sleep(120)"`, Node marked the CLI killed at 10s, the CLI
+ * survived it (it stays attached while the container streams), the container stayed `Up`, and
+ * the callback did not fire until 120 156ms — when the workload finished on its own. A caller
+ * that cannot end the workload has not capped it, it has only stopped watching, so `runSuite`
+ * uses the hook to destroy the container itself.
+ *
+ * The kill is SIGKILL rather than the default SIGTERM for the same reason: a cap that a
+ * trapped signal can ignore is not a cap.
  */
 export function execIn(
   bin: string,
   args: string[],
   cwd?: string,
   timeoutSec = 60,
+  onTimeout?: () => void,
 ): Promise<CommandResult> {
   return new Promise((resolve, reject) => {
     const started = Date.now();
-    execFile(
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    // Set by this watchdog, not by Node's `killed` flag: once the hook destroys the container,
+    // the CLI exits on its own with a plain non-zero status and `killed` would read false.
+    let outOfBudget = false;
+
+    const settle = (
+      error: Error & { killed?: boolean } | null,
+      stdout: string | undefined,
+      stderr: string | undefined,
+    ) => {
+      if (timer) clearTimeout(timer);
+      resolve({
+        stdout: stdout ?? "",
+        stderr: stderr ?? "",
+        code: error ? 1 : 0,
+        timedOut: outOfBudget || Boolean(error?.killed),
+        durationMs: Date.now() - started,
+      });
+    };
+
+    const child = execFile(
       bin,
       args,
-      { timeout: timeoutSec * 1000, maxBuffer: 64 * 1024 * 1024, cwd },
-      (error, stdout, stderr) => {
-        const killed = Boolean(error && (error as { killed?: boolean }).killed);
-        resolve({
-          stdout: stdout?.toString() ?? "",
-          stderr: stderr?.toString() ?? "",
-          code: error ? 1 : 0,
-          timedOut: killed,
-          durationMs: Date.now() - started,
-        });
-      },
-    ).on("error", (err) =>
-      reject(Object.assign(new Error(`cannot execute ${bin}: ${err.message}`), { cause: err })),
-    );
+      { timeout: timeoutSec * 1000, maxBuffer: 64 * 1024 * 1024, cwd, killSignal: "SIGKILL" },
+      (error, stdout, stderr) =>
+        settle(error as (Error & { killed?: boolean }) | null, stdout?.toString(), stderr?.toString()),
+    ).on("error", (err) => {
+      if (timer) clearTimeout(timer);
+      reject(Object.assign(new Error(`cannot execute ${bin}: ${err.message}`), { cause: err }));
+    });
+
+    timer = setTimeout(() => {
+      outOfBudget = true;
+      onTimeout?.();
+      child.kill("SIGKILL");
+    }, timeoutSec * 1000);
   });
 }
 
@@ -161,6 +205,8 @@ export function parseCommandLine(command: string): string[] {
  * A workspace the agent works in, plus the pinned suite it must satisfy.
  */
 export class Sandbox {
+  private runSeq = 0;
+
   private constructor(
     readonly root: string,
     readonly docker: boolean,
@@ -259,9 +305,18 @@ export class Sandbox {
     const rest = argv.slice(1);
 
     if (this.docker) {
+      // Named and labelled so the timeout below can reach the container. Without a name the
+      // only handle to the run is the CLI's own process, and the CLI is not the workload —
+      // see execIn. The sequence keeps successive runs of one sandbox from colliding.
+      const label = sandboxLabel(this.root);
+      const name = `${label}-${++this.runSeq}`;
       const args = [
         "run",
         "--rm",
+        "--name",
+        name,
+        "--label",
+        `${SANDBOX_LABEL}=${label}`,
         "--network=none",
         `--memory=${this.spec.memory}`,
         `--cpus=${this.spec.cpus}`,
@@ -298,7 +353,13 @@ export class Sandbox {
         bin,
         ...rest,
       ];
-      const r = await execIn("docker", args, undefined, this.spec.timeoutSec);
+      const r = await execIn("docker", args, undefined, this.spec.timeoutSec, () => {
+        // `--force` stops and removes in one call, so the container cannot outlive the budget
+        // and `--rm` cannot be left waiting on a workload that ignores SIGTERM. The result is
+        // discarded: whether this call reports success, the CLI's stream is closing and the run
+        // is already recorded as timed out.
+        void execIn("docker", ["rm", "--force", name], undefined, 15).catch(() => {});
+      });
       if (r.timedOut) throw new SandboxTimeout(this.spec.timeoutSec);
       if (/OutOfMemory|Killed|oom-kill/i.test(r.stderr)) throw new SandboxOOM();
       return r;
