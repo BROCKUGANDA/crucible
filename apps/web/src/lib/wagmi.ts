@@ -43,6 +43,24 @@ export function activeChainDef(): Chain {
 }
 
 /**
+ * The header's environment chip. Neither arm of this deployment moves value, and a visitor
+ * should not have to read a chain id to learn that.
+ */
+export function environmentBadge(): { label: string; compact: string; title: string } {
+  return activeChain() === "foundry"
+    ? {
+        label: "LOCAL FORGE",
+        compact: "ANVIL",
+        title: "Anvil: a local chain run by this deployment. The ETH here has no value.",
+      }
+    : {
+        label: "TESTNET",
+        compact: "TESTNET",
+        title: "Sepolia: test network ETH. No mainnet funds move here.",
+      };
+}
+
+/**
  * The explorer URL for a transaction on the active chain, or null when that chain has no
  * explorer to name.
  *

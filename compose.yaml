@@ -20,6 +20,34 @@ services:
       interval: 2s
       timeout: 3s
       retries: 60
+    # Restart policy for the node. Read the persistence question honestly:
+    #
+    # The chain is DELIBERATELY stateless — there is no data volume, anvil keeps every block
+    # in memory, and the stack's whole recovery story (see the top of this file and
+    # .github/workflows/deploy.yml) is "a fresh `compose up` re-runs the one-shot seed against a
+    # new deterministic chain". So a restart policy here cannot preserve anything: after a crash
+    # or a host reboot anvil comes back EMPTY no matter which policy it carries.
+    #
+    # The policy still matters, though, and it is not "no": with `restart: "no"` a reboot leaves
+    # the node down and the site silently 502s until someone notices. `unless-stopped` brings the
+    # node back so the box is at least reachably up. What it CANNOT do is make a reboot
+    # self-healing — a lone anvil restart comes back with no contracts at the addresses the seed
+    # published, and the keeper/api will index an empty chain until an operator runs a FULL
+    # `docker compose up` (which re-runs the seed). That gap is called out plainly rather than
+    # papered over: making a bare anvil restart correct would require a chain data volume this
+    # demo deliberately does not have.
+    restart: unless-stopped
+    logging: &log-rotation
+      driver: json-file
+      options:
+        # Bounded per-service log disk. The demo churns logs continuously (health probes, sweeps,
+        # request lines) and no driver was set before, so json-file grew unbounded against the host
+        # disk. 10 MB/file x 3 files = ~30 MB ceiling per long-running service (~90 MB across the
+        # four), which is enough recent history to debug a crash without risking the disk that ran
+        # the deploy out of space once. `anvil` runs `--silent` so it barely writes, but it shares
+        # the cap so nothing here is unlimited.
+        max-size: "10m"
+        max-file: "3"
 
   seed:
     build:
@@ -34,6 +62,12 @@ services:
     depends_on:
       anvil:
         condition: service_healthy
+    # A one-shot on purpose. The seed broadcasts the demo deployment and publishes the
+    # addresses that landed; `restart: "no"` is deliberate and load-bearing: a re-run would
+    # broadcast a SECOND Demo onto whatever chain is live and land it at different addresses,
+    # which is exactly the double-seed the VPS override's `--no-deps` guidance is built to
+    # avoid. It gets no restart policy and no log cap because it exits, and a finished
+    # container does not churn disk the way the four services beside it do.
     restart: "no"
 
   api:
@@ -63,6 +97,13 @@ services:
       TRIALS_ADDRESS: ${TRIALS_ADDRESS:-}
       ALLOY_ADDRESS: ${ALLOY_ADDRESS:-}
       FROM_BLOCK: "0"
+      # How often the index asks the node for new logs, and therefore the biggest single
+      # term in how long a visitor waits to see a chain event happen. Here the node is a
+      # container on the same bridge network, so asking four times as often costs the local
+      # loopback almost nothing and cuts the wait by 1.5s. Against a public RPC the code
+      # default of 2000 is the right number, which is why this is set per deployment
+      # rather than baked into the API.
+      SCRIBE_POLL_MS: ${SCRIBE_POLL_MS:-500}
       # The chain this deployment signs for, and the origin it names in the
       # sign-in message. Both are configuration rather than something the
       # request may say.
@@ -90,10 +131,19 @@ services:
       interval: 5s
       timeout: 3s
       retries: 30
+    # Long-running read service: after a crash or a host reboot it must come back on its own,
+    # or the site serves 502s with nothing telling anyone. `unless-stopped` over `always`
+    # because an operator who deliberately `docker compose stop api`s should not have dockerd
+    # resurrect it on its next bounce — but both survive a reboot, which is the point.
+    restart: unless-stopped
+    logging: *log-rotation
 
-  # The Warden as a service: quenches trials whose windows closed. Permissionless
-  # actions signed by a bystander key (demo default = Anvil's published dev key #0;
-  # set KEEPER_PRIVATE_KEY to override). Publishes no port on the VPS override.
+  # The Warden as a service: quenches trials whose windows closed. Permissionless actions
+  # signed by a bystander key. The key comes from KEEPER_PRIVATE_KEY -> PRIVATE_KEY; there is
+  # no silent demo default any more. `apps/keeper` will only fall back to Anvil's published dev
+  # key when the RPC is provably a loopback node reporting chain 31337, so THIS service — which
+  # talks to the `anvil` container over the compose network, a non-loopback host — must be given
+  # KEEPER_PRIVATE_KEY or it refuses to start. Publishes no port on the VPS override.
   keeper:
     build:
       context: .
@@ -106,6 +156,14 @@ services:
       ALLOY_ADDRESS: ${ALLOY_ADDRESS:-}
       FROM_BLOCK: "0"
       PRIVATE_KEY: ${KEEPER_PRIVATE_KEY:-}
+      # The trace spine. Only sweeps that actually acted are recorded, so an idle demo adds
+      # nothing to the file — a line here means a trial was finalized or reclaimed, or an
+      # action was skipped, with the reason. It is a projection of things the chain already
+      # decided, never a source of truth, and the keeper's appends are guarded so a full disk
+      # records a missing line instead of stopping settlements.
+      CRUCIBLE_TRACE_FILE: /trace/keeper.jsonl
+    volumes:
+      - trace:/trace
     depends_on:
       anvil:
         condition: service_healthy
@@ -116,6 +174,74 @@ services:
       interval: 10s
       timeout: 3s
       retries: 30
+    # THE fix of this pass. Without a policy the keeper ran under Docker's default `no`: one
+    # crash, or one VPS reboot, and it stayed down silently — nothing finalized or refunded
+    # trials and the stack still reported itself healthy, because every other container was up.
+    # `unless-stopped` makes the deployed keeper survive a reboot; note it only ever fires on a
+    # host reboot, since the deploy pipeline never recreates the keeper (it swaps web/api with
+    # --no-deps, and the keeper was started by the initial full `up`).
+    restart: unless-stopped
+    logging: *log-rotation
+
+  # One Argus seat, as a service. The committee is the product's answer to "who decides", and until
+  # now that answer was a library: `LiveVerifier`, `ContentService` and the commit/reveal calls all
+  # existed, `ArgusSeat` had no importer anywhere in the repository, and a skeptic's challenge on a
+  # live chain could only ever be settled by a demo key held by whoever ran the box. This is the
+  # production caller that closes that gap: it reads a Challenged trial, fetches the content the
+  # trial committed to, re-runs the pinned suite, and commits a verdict — then reveals it once a
+  # second seat has sealed (ADR-0004's anti-collusion rule, which is why the count comes from the
+  # `VoteCommitted` logs rather than from the seat's own eagerness).
+  juror:
+    build:
+      context: .
+      dockerfile: apps/juror/Dockerfile
+    environment:
+      NODE_ENV: production
+      PORT: 8790
+      RPC_URL: http://anvil:8545
+      TRIALS_ADDRESS: ${TRIALS_ADDRESS:-}
+      ALLOY_ADDRESS: ${ALLOY_ADDRESS:-}
+      CHAIN_ID: ${CHAIN_ID:-31337}
+      FROM_BLOCK: "0"
+      # The seat key, and no default for it. Anvil's dev mnemonic is public, so a fallback would
+      # not be a convenience — it would be a voting key everyone in the world can derive, silently
+      # used by a service that reports itself healthy. `config.ts` refuses an unset value.
+      SEAT_PRIVATE_KEY: ${JUROR_SEAT_PRIVATE_KEY:-}
+      CONTENT_DIR: /content
+      STATE_DIR: /state
+      CRUCIBLE_CONTENT_DIR: /content
+      PATROL_MS: ${JUROR_PATROL_MS:-30000}
+      # The re-run budget has to fit inside the commit window the contract enforces (24h from the
+      # dispute opening) with room for the rest of the pass, and the seat checks its own margin
+      # before it starts a suite it cannot finish.
+      REVERIFY_MS: ${JUROR_REVERIFY_MS:-900000}
+    volumes:
+      # Two volumes, and the second is the reason the service can be restarted at all.
+      #
+      # `content` is the pinned bytes. The entrypoint fills it from the fixtures in the image before
+      # the first pass and refuses to start if the digests do not answer to them, so this is the
+      # only writer of a hash-chained disclosure log — running a second seat against the same mount
+      # would be two processes appending to one chain, and each seat gets its own service (and its
+      # own store) instead of sharing this one.
+      #
+      # `state` holds each sealed vote together with the salt that opens it. Losing it is not a
+      # restart inconvenience: the chain remembers the commitment and `commitVote` refuses a second
+      # one from the same seat (CrucibleTrials.sol:559), so a seat that loses a salt can neither
+      # reveal nor replace that vote — it is mute on the dispute for the life of the chain.
+      - content:/content
+      - juror-state:/state
+    depends_on:
+      anvil:
+        condition: service_healthy
+      seed:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8790/health >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+    logging: *log-rotation
 
   web:
     build:
@@ -140,6 +266,18 @@ services:
       interval: 10s
       timeout: 5s
       retries: 12
+    restart: unless-stopped
+    logging: *log-rotation
 
 volumes:
   deployed:
+  # Survives a keeper restart so the hash chain continues rather than restarting at genesis;
+  # two chains in two files would each verify and neither would be the record.
+  trace:
+  # The pinned trial bytes (see the `juror` service). Content-addressed and regenerable from the
+  # repository's fixtures, but a volume rather than a per-boot re-pin: the disclosure log is an
+  # append-only chain, and one writer over its lifetime is the simpler true statement.
+  content:
+  # The seats' sealed votes and their salts. Never a bind mount of a host directory that might be
+  # cleaned: this is the only copy of the opening to a commitment the chain still holds.
+  juror-state:

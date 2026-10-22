@@ -28,6 +28,47 @@ const UNUSED_WALLET_SUBTREES = [
 ];
 
 /**
+ * `@crucible/indexer` resolves to its `api` module alone, not to its barrel.
+ *
+ * The repo has exactly one wei -> ETH formatter, and it lives in
+ * `packages/indexer/src/api.ts` — it has to, because it builds every ETH string in every
+ * API payload and the browser must not compute the same amount a second way. `src/lib/eth.ts`
+ * therefore imports it as a value, which is the first time the indexer's runtime has ever
+ * been in the client bundle, and the bundle does not compile:
+ *
+ *   node:fs -> packages/indexer/dist/scribe.js -> dist/index.js -> src/lib/eth.ts
+ *
+ * `Scribe` reads and writes a cursor file, so it legitimately imports `node:fs`; the barrel
+ * re-exports it, so importing *anything* from the package drags the filesystem reader into
+ * the browser. Webpack then fails the build with `UnhandledSchemeError: Reading from
+ * "node:fs" is not handled by plugins` — a real error, and a fair one: a browser has no `fs`.
+ *
+ * Aliasing the package id to the api module cuts the barrel out of the graph while leaving
+ * the shared formatter itself reachable. `api.js` imports only `./model.js` and
+ * `@crucible/smith`, and neither touches a Node builtin, so what lands in the bundle is the
+ * formatter and the read-model projections it builds payloads from.
+ *
+ * The `$` suffix keeps the alias exact, so a future deep import of another submodule
+ * resolves normally instead of being silently rewritten. Every type-only import of this
+ * package is unaffected — they are erased before bundling, which is why this hazard only
+ * surfaced once a value was needed.
+ *
+ * Remove this when the indexer package publishes an `./api` subpath export (or when `Scribe`
+ * stops sharing a barrel with the payload builders). Both are changes in
+ * `packages/indexer`, which this file must not need to know about.
+ */
+const INDEXER_API_MODULE = path.join(
+  here,
+  "..",
+  "..",
+  "node_modules",
+  "@crucible",
+  "indexer",
+  "dist",
+  "api.js",
+);
+
+/**
  * Response headers for the web app, and why each one is where it is.
  *
  * The measured constraints, from loading the running app in Chromium with policies injected
@@ -104,6 +145,10 @@ const CSP = [
   // codes; https: is left open because a wallet icon host is not something this repo controls.
   "img-src 'self' data: blob: https:",
   "font-src 'self' data:",
+  // Frenchy's clip is fetched as bytes and played from a blob: object URL, and `default-src
+  // 'self'` does not cover blob: for media — the element reports "no supported source was
+  // found", which is indistinguishable from a dead provider unless the CSP is stated here.
+  "media-src 'self' blob:",
   `connect-src 'self' ${[...API_ORIGINS, ...THIRD_PARTY].join(" ")}`,
   "worker-src 'self' blob:",
   "manifest-src 'self'",
@@ -152,6 +197,7 @@ const nextConfig = {
     for (const pkg of UNUSED_WALLET_SUBTREES) {
       config.resolve.alias[pkg] = false;
     }
+    config.resolve.alias["@crucible/indexer$"] = INDEXER_API_MODULE;
     return config;
   },
 };

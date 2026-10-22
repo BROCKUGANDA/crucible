@@ -6,8 +6,9 @@
   key.
 - `GET /voice/status` → `{configured, model}`. The web control is hidden when
   `configured` is false.
-- `POST /voice/speak` accepts `{moment}` for fixed copy, or `{moment:"spec",
-text}` with 1–600 characters. It has its own 8/minute per-client bucket.
+- `POST /voice/speak` accepts `{moment}` and nothing else — one of
+  `greeting`, `tour`, `verdict`, `verdict-repeat`. A body carrying `text` is
+  refused. It has its own 8/minute per-client bucket.
 - `apps/web/src/components/VoiceControl.tsx` owns the muted-by-default control;
   `apps/web/src/lib/voice.ts` owns the once-a-day and reduced-motion policy.
 - The trial page announces a verdict only for a **paid** verdict while the
@@ -47,8 +48,10 @@ The greeting is the consent/gate. A Tour button appears once enabled.
 
 ## Cost and abuse
 
-- The route is not a general TTS API: the copy for greeting/tour/verdict is
-  fixed server-side; only `spec` accepts text, capped at 600 characters.
+- The route is not a TTS API at all: every phrase is in `COPY` server-side and a
+  request carrying `text` is refused before the provider is contacted. The
+  account therefore never synthesizes words nobody reviewed — see
+  "Caller text is refused" below.
 - The global limiter plus the 8/minute voice bucket apply. Neither is a global
   budget across instances; the demo runs one API process.
 - If the bill is a concern, set `VOICE_DISABLED=1` and recreate the API. The
@@ -79,11 +82,40 @@ curl -sS https://crucible.svalley.tech/api/health   # dlq count/last kind
 Do not put the provider body in a client response; it can contain account
 details.
 
-## "Read the spec" is not wired
+## Caller text is refused — and why
 
-The web has the spec CID, not its text, so no button sends a `spec` moment yet.
-When a spec viewer exists, call the same endpoint with `moment:"spec"` and the
-visible text; the server caps and normalises it.
+`POST /voice/speak` used to accept `{moment:"spec", text}` up to 600 characters.
+Nothing in the product ever called it; the public internet found it. Measured on
+the deployed site before removal:
+
+```
+curl -X POST https://crucible.svalley.tech/api/voice/speak \
+  -d '{"moment":"spec","text":"..."}'  → HTTP 200, 66917 bytes, audio/mpeg
+```
+
+That is an unauthenticated, unmoderated text-to-speech proxy running on the
+account holder's key and voice. Under the provider's Usage Policy the account is
+answerable for Input and Output produced through a product built on the service,
+and arbitrary synthetic speech is the mechanism for impersonation, harassment,
+and fraudulent endorsement — so the capability is gone rather than guarded. The
+test asserts the provider is never contacted when text arrives, because "we
+rejected it" is only worth something if no audio was produced on our account.
+
+## What the provider's policy asks of us
+
+| Obligation | Where it holds |
+|---|---|
+| No unreviewed Input | `COPY` is the whole vocabulary; `text` is refused with 400. |
+| Disclosure that the voice is synthetic | The control reads `Frenchy (AI) on/off` in its visible label, and the tooltip says AI-generated. |
+| No impersonation of a real person | One licensed stock voice (`ELEVENLABS_VOICE_ID`), no cloning, no voice swap from a request. |
+| No deceptive or unverifiable claims in Output | The four lines name no amount, deadline, address or CID — asserted by a test that rejects digits in the copy. |
+| Key never in a client | The proxy is server-side; `/voice/status` returns only `{configured, model}`; the provider body is never reflected. |
+| Abuse ceiling | 8/minute per-client voice bucket plus the global limiter. |
+| High-impact decisions not made by audio | The voice is decoration; every fact stays on screen, and the app is fully usable with the route deleted. |
+
+Reporting and appeals routes exist at the provider; an unauthorized-voice claim
+against us would arrive through those, and the key rotation procedure below is
+the response that does not need an incident channel to start.
 
 ## This is not a conversational agent
 

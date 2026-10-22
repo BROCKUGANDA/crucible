@@ -365,6 +365,36 @@
   font-size: clamp(1.35rem, 4vw, 1.75rem);
 }
 
+.chrome__brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.chrome__env {
+  color: var(--ash);
+  flex: none;
+}
+
+.chrome__env--compact {
+  display: none;
+}
+
+/* Why a click produced no sound belongs to the screen reader and the console, not to the
+   header layout — so it is announced and not drawn. */
+.voice-note {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
 .chrome__right {
   display: flex;
   align-items: center;
@@ -415,6 +445,20 @@
 
 /* The menu button and the inline nav are the same control at two widths. */
 .chrome__menu {
+  display: none;
+  align-items: center;
+  gap: 8px;
+}
+
+.menu-glyph {
+  display: none;
+  width: 18px;
+  height: 14px;
+}
+
+/* The wallet buttons keep their full labels on desktop and a compact label on
+   phones, so the header does not wrap into a third row at 320px. */
+.wallet-label-short {
   display: none;
 }
 
@@ -471,9 +515,12 @@
 
 @media (max-width: 520px) {
   /* Two buttons cannot share a phone header at full size; the wallet wins, the wordmark
-     shrinks, and the menu becomes an icon-width target. */
+     shrinks, and the menu becomes an icon-width target. The header is already two rows
+     here, so the brand row is pinned to the top — a centred brand would drop the
+     environment chip on top of the wrapped wallet buttons. */
   .chrome {
     gap: 10px;
+    align-items: flex-start;
   }
   .chrome__right {
     gap: 10px;
@@ -485,7 +532,32 @@
      though it wears the compact button class. */
   .chrome__menu {
     min-height: 44px;
-    padding-inline: 16px;
+    min-width: 44px;
+    padding-inline: 12px;
+  }
+
+  .chrome__menu .menu-label {
+    display: none;
+  }
+
+  .chrome__menu .menu-glyph {
+    display: block;
+  }
+
+  .wallet-label-full {
+    display: none;
+  }
+
+  .chrome__env--wide {
+    display: none;
+  }
+
+  .chrome__env--compact {
+    display: inline-flex;
+  }
+
+  .wallet-label-short {
+    display: inline;
   }
 }
 

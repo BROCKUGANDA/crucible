@@ -10,11 +10,18 @@ COPY package.json package-lock.json ./
 COPY crucible-contracts/package.json crucible-contracts/package.json
 COPY packages/agent-security/package.json packages/agent-security/
 COPY packages/argus/package.json packages/argus/
+# cidstore is named as a workspace dependency of @crucible/argus, so `npm ci` here resolves it
+# whether or not the api ever imports it: an omitted manifest makes the install ask the registry for
+# a package that exists only in this repository. `node scripts/workspace-coverage-gate.mjs` in the
+# TypeScript job now fails on that omission rather than the deploy discovering it.
+COPY packages/cidstore/package.json packages/cidstore/
 COPY packages/forge-runner/package.json packages/forge-runner/
 COPY packages/indexer/package.json packages/indexer/
 COPY packages/smith-sdk/package.json packages/smith-sdk/
 COPY packages/warden/package.json packages/warden/
 COPY apps/api/package.json apps/api/
+COPY apps/keeper/package.json apps/keeper/
+COPY apps/juror/package.json apps/juror/
 COPY apps/web/package.json apps/web/
 RUN npm ci --ignore-scripts
 

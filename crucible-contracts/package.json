@@ -9,6 +9,7 @@
     "pretest": "node ../scripts/run-forge.mjs --version",
     "test": "node ../scripts/run-forge.mjs test",
     "coverage": "node ../scripts/run-forge.mjs coverage --ir-minimum --report summary",
+    "coverage:gate": "node ../scripts/run-forge.mjs coverage --ir-minimum --report summary > coverage-summary.txt && node ../scripts/coverage-gate.mjs coverage-summary.txt",
     "demo": "node ../scripts/run-forge.mjs script script/Demo.s.sol:Demo --rpc-url http://127.0.0.1:8545 --broadcast"
   }
 }

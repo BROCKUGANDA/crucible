@@ -12,6 +12,93 @@ migration. See [`SECURITY.md`](SECURITY.md) before deploying value.
 
 ### Added
 
+- **A trial whose content is real, and a command that proves the verifier runs.**
+  `fixtures/trials/counter` is a genuine spec plus a self-contained Foundry project that
+  passes `forge test` (two named tests, no library outside itself, because a pinned suite is
+  fetched by a process that has none of this repository). `npm run verify:roundtrip` pins it,
+  executes it, signs the resulting run with a real key, publishes it, and then verifies three
+  cases: the honest claim comes back `agent-wins`, a claim naming a test the suite does not
+  run comes back `break-wins`, and a run signed by an unregistered key comes back
+  `break-wins`. It exits non-zero if any of those flip — it has been seen to, and it was
+  right to. `test/no-orphan.test.ts` fails if `@crucible/argus` or `ContentService` ever
+  again have no importer outside a test directory.
+
+- **Argus now has a supplier for its outside world.** `@crucible/argus` gains `LiveVerifier`,
+  which resolves a chain run hash to the published artifact, rebuilds the EIP-712 digest the
+  runner signed, recovers the signer from it, and re-executes the pinned suite against the
+  pinned repo on a fresh bench. Until now `fetchArtifact` and `rerunSuite` were implemented
+  only inside the package's own tests, so the oracle ADR-0005 centres the product on could
+  not run anywhere else. Two properties it enforces rather than assumes: the runner key is
+  compared against the registry, never against the address the artifact claims for itself,
+  and a digest handed in for recovery must equal the one reconstructed from the artifact.
+- **The content layer exists on the producing side.** `@crucible/forge-runner` gains
+  `ContentService`: `pinText` / `pinSuite` hand back the keccak digest a sponsor must put on
+  chain, `fetchSpec` resolves a digest or a cid back to bytes through the disclosure,
+  `fetchSuite` unpacks a pinned tree into the bench, `uploadRepo` pins what the bench holds,
+  `uploadLogs` pins the log text, and `publishArtifact` announces a run under its chain run
+  hash together with the signature and deadline `submitRun` throws away. Until now all four
+  `RunnerDeps` content functions existed only as inline fakes in another package's tests, so
+  every `specCID` / `testsCID` / `repoCID` in an artifact named bytes that were stored
+  nowhere. Two properties are asserted rather than assumed: a pinned spec answers to the
+  digest the chain would hold and resolves in a second process over the same directory, and a
+  suite entry named `../../outside.sol` is refused before anything is written — the sponsor
+  picks the paths, so paths are the untrusted part of a trusted pin.
+- **A hash-chained trace spine, with a real producer.** `@crucible/smith` gains
+  `TraceLog`: append-only JSONL where each entry seals keccak over RFC 8785 canonical JSON
+  of itself plus the previous hash, using the same canonicalization rule as the run
+  artifact. Opening a file verifies the whole chain first and refuses to extend a broken
+  one; appends are serialized through one promise chain so two callers cannot fork the
+  chain; a span carrying a `bigint`, `undefined` or a non-finite number is refused by name
+  rather than sealed over bytes JSON would silently change. The keeper writes it when
+  `CRUCIBLE_TRACE_FILE` is set (compose does, on a named volume): `keeper.start`,
+  `keeper.sweep` only when it actually acted, and one `keeper.act` per finalize, reclaim or
+  skip with the trial id, reason and tx hash. Appends are guarded, so a trace write that
+  fails costs a line, not a settlement. Tests cover editing an entry, swapping two,
+  appending to a tampered chain, resuming after restart, fifty concurrent appends, and a
+  crash-truncated last line; mutation-proved by disabling the content check and by
+  removing the append queue. **Stated limit, asserted as a test:** truncating the tail
+  leaves a chain that still verifies, because nothing anchors the head outside the writer.
+  This records keeper actions only — there are no `warden.gate.*` spans to emit, since no
+  service runs those gates yet.
+
+- **Four gates that can actually fail, each mutation-proved.** `forge coverage` has
+  no threshold flag (checked against 1.8.5), so the coverage step was `forge coverage | tee
+  file` — a pipeline that reports `tee`'s exit code and cannot go red. It now runs
+  `scripts/coverage-gate.mjs`, which fails on a dropped floor, on a production contract
+  vanishing from the report, on an unparseable table, and on a missing file, and reports
+  `CrucibleHall` at 72% branches as under target rather than excusing it. Dependency audit
+  moved from an inline `node -e` blob to `scripts/audit-gate.mjs`: it refuses a payload
+  without an `auditReportVersion` and reconciles 26 entries against npm's own total
+  (`{}` used to print "only documented advisories" and pass), and every documented name
+  now carries a severity ceiling, so `viem@critical` is no longer excused by a prefix
+  match. The `fork` job says SKIPPED in its own summary instead of a quiet green, and
+  `fork-nightly.yml` runs those tests on a schedule and fails if the credential is missing
+  or the suite reports zero passing. `extend-demo`'s final check now distinguishes "open
+  trials 0" from "I could not read the API" — previously an unreachable API fell through an
+  empty `sed` match to the success branch and exited 0.
+- **EIP-712 digest parity with the contract source.**
+  `packages/smith-sdk/test/eip712-parity.test.ts` (14 tests) parses the `Run` encode-type,
+  the domain typehash and `submitRun`'s digest formula out of `CrucibleTrials.sol` and
+  asserts viem's `hashTypedData` reaches the same bytes, field order included. Reordering
+  two struct fields in the contract turns five of them red. The source comment that cited a
+  `test/abi-parity.test.ts` which never existed now names this file.
+- **One shared clock for every live stream.** `/stream` gave each subscriber its own
+  one-second sleep and its own signature comparison, so a change waited up to a full tick
+  to be noticed and the per-tick work grew with the audience. `apps/api/src/tick-pump.ts`
+  reads the shared read model once and wakes every waiter in one pass; the pump is
+  refcounted off the existing stream-slot release, so one interval serves any audience and
+  none runs when nobody is watching. A visible chain change now reaches a subscriber in
+  ~200ms. `SCRIBE_POLL_MS` is exposed (floor-checked, default 2000ms) and set to 500 for the
+  compose demo, where the node is a container on the same network — that poll, not the
+  stream, was the dominant term in how long a visitor waited.
+
+- **The phone header has a real hamburger and compact wallet labels.** The
+  menu button shows a three-line glyph and drops the word "Menu" below 520px;
+  the injected and Coinbase wallet buttons shorten to "Connect" and "Coinbase"
+  at the same width. At 320px the header height fell from 189px to 131px, the
+  nav sheet still opens, and there is no horizontal overflow. The tests and the
+  local 320/390px browser check cover it.
+
 - **Coinbase CDP CLI and a Sandbox profile for agents.** Both the Advanced Trade
   `coinbase` CLI and the custodial `cdp` CLI are installed, the Qoder skill set is
   installed (`coinbase*`, `cdp-*`, and the root `coinbase-agent-skill`), and
@@ -19,7 +106,9 @@ migration. See [`SECURITY.md`](SECURITY.md) before deploying value.
   printing the key. The profile refuses to run until the key file is supplied.
   Sandbox and live keys can coexist in one `.env`: `CDP_ENV` selects the profile,
   `CDP_ENABLE_LIVE=0` keeps the demo on sandbox, and live is refused unless the
-  flag is explicitly enabled. CDP Sandbox is simulated custodial testing, not a
+  flag is explicitly enabled. A mode can use either its key-file path or its
+  inline `CDP_*_API_KEY_ID`/`CDP_*_API_KEY_SECRET` pair; the wrapper resolves the
+  `cdp` binary from npm's global bin when PATH does not. CDP Sandbox is simulated custodial testing, not a
   Base testnet; x402 remains a live USDC rail. See
   `docs/runbooks/coinbase-sandbox.md`.
 - **Coinbase Wallet is a first-class connector.** The web app now includes the
@@ -36,6 +125,88 @@ migration. See [`SECURITY.md`](SECURITY.md) before deploying value.
   [`apps/api/src/voice.ts`](apps/api/src/voice.ts).
 
 ### Fixed
+
+- **`parseForgeTests` could not parse output from the forge version this repo pins.** Real
+  `forge test --json` keys its suites at the top level (`path/File.sol:Contract`) with
+  `test_results` nested inside each; the parser only looked for `tests` or `test_results` at
+  the root, so genuine output was an "unrecognised shape" error and the deterministic re-run
+  — the oracle ADR-0005 puts at the centre of the product — would have abstained on every
+  real run even once content existed. Its own unit tests never caught this because they fed
+  it a flattened document that this forge does not emit. Now tested against
+  `packages/smith-sdk/test/fixtures/forge-1.8.5.json`, which is that output byte for byte.
+  Test names are kept exactly as forge spells them, `()` included: the claim and the re-run
+  would have agreed with each other while both disagreed with the artifact contract that
+  already pins these strings.
+
+- **`/trials` and `/agents` are pageable, and the default is not to page.** The cursor is an
+  item id rather than an offset — on a chain that only grows, "row 10 onward" is a different
+  set of rows on every request — and `page` reports `returned`, `total`, `truncated` and
+  `nextCursor`. No limit returns the whole list on purpose: a silent cap is a lie of
+  omission, and a monitor counting trials would read a truncated page as a shorter chain and
+  call it healthy. A limit outside 1..500 is a 400, and a cursor that has aged out of a
+  filtered list restarts from the top and says so rather than blaming the client for the
+  chain moving.
+- **Checked, not added, on the rest of the list.** Rate limiting (per-peer buckets plus the
+  200-stream ceiling), exponential backoff (`withBackoff`), a bounded RPC queue
+  (`RpcThrottler`), a circuit breaker with an operator kill switch, a dead-letter ring, the
+  per-tick snapshot cache and the per-agent alloy TTL cache all already exist and are covered
+  by tests. The N+1 the list implied is not there: `alloyState` is one synchronous cache read
+  per agent, not a call per agent, and the indexer shards `getLogs` and caps blocks per tick.
+  Two things were deliberately not built: ETags, because every response is `Cache-Control:
+  no-store` by design and a browser that is told not to store never revalidates — the header
+  would be decorative or would weaken a money-state guarantee; and a job queue, because the
+  API is a read service with nothing to enqueue.
+
+- **Frenchy no longer re-synthesises a line the tab already has, and starts sooner.**
+  Every moment was a fresh round trip; the copy is fixed, so a repeat cost the same as the
+  first and the greeting waited behind a synthesis before any sound. Clips are now held for
+  the session, keyed by moment (and by the text for the one open-ended line), with
+  concurrent asks for the same clip sharing one request and failures deliberately not
+  cached. The greeting is warmed as soon as the host is known to be on. Tests cover
+  repeat-from-memory, three simultaneous asks collapsing to one request, a failure retried
+  rather than remembered, and separate keys for caller text; mutation-proved by bypassing
+  the cache and watching exactly those two fail.
+- **The docs page explains the product instead of naming it.** It was accurate and
+  unreadable — "pinned CID", "RunArtifact", "ERC-5192", "settlement logs" — and carried no
+  instructions. It now says what the place is, what a person can do here in order, how a
+  decision is actually reached, what it costs, and a vocabulary list that translates each
+  forge term in the same breath. It also states the honest limit of this build: demo
+  trials were posted before anything pinned their content, so a challenged demo trial goes
+  to the committee rather than to a re-run.
+
+- **The index could be frozen forever by a log from another contract.** Reproduced on a
+  live demo chain: running `script/Demo.s.sol` a second time deploys a second
+  `CrucibleTrials`, which emits the same events with the same topic0s from a different
+  address. Every block it touched matched the logs bloom, the address-filtered `getLogs`
+  correctly returned nothing, and `proveQuietThrough` stopped on that same block on every
+  tick — `/health` sat at `ok:false` with `indexedTo` pinned at 54 while `head` was 91, and
+  the live view could never take another event. The proof now confirms a bloom hit against
+  the block's own logs without the address filter: a same-signature log that belongs to
+  nobody we index means the block is quiet for us and the walk continues; a log of ours, or
+  a bloom the node contradicts, still stops the cursor exactly as before. On the frozen
+  chain the same process went from `ok:false 54/91` to `ok:true 92/91` without a restart of
+  anything but the API. Covered by a mock-node test that fails on the previous behaviour,
+  with the two anti-truncation tests still green. Also removed `windowIsQuiet`, an
+  unreferenced private method that encoded a second, different proof rule.
+- **The keeper no longer signs with a publicly known key by default.** `PRIVATE_KEY ||
+  DEMO_RELAYER_KEY` fell through whenever compose set `PRIVATE_KEY` to the empty string,
+  which is exactly what the VPS override does, so the deployed keeper ran on Anvil's
+  published dev key #0. It now uses that key only when the node itself answers
+  `eth_chainId` with 31337 over a loopback host, and otherwise refuses to start naming the
+  variable to set. An unreachable loopback node fails closed.
+- **The long-running services come back on their own.** `compose.yaml` set no `restart:`
+  on any of them, so Docker's default `no` applied and a crash or a host reboot left the
+  site down with nothing finalizing or refunding trials. `anvil`, `api`, `keeper` and `web`
+  are `restart: unless-stopped` with `json-file` log rotation (~30MB per service); the
+  one-shot `seed` deliberately stays `restart: "no"`, because re-running it double-seeds.
+- **`crucible/verifier:latest` was described as digest-pinned.** The comment claimed a pin
+  the value does not provide; it now says what is true — the isolation holds either way,
+  and reproducibility would require publishing by `@sha256:`, which is not done.
+
+- **The RPC-breaker test no longer flakes on a loaded runner.** It waited 5
+  seconds for three backed-off failures to trip the breaker, which is a
+  wall-clock budget on a shared self-hosted box. The wait now has 20 seconds and
+  the tests have 30; a breaker that never trips still fails the test.
 
 - **The promotion ladder now waits for the gate it dispatches.** A
   `workflow_dispatch` CI run's completion did not reliably raise the next

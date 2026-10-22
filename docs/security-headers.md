@@ -276,6 +276,17 @@ actually doing rather than what the environment file appears to say:
 [crucible] limits: body <= 65536B announced, request <= 10000ms (/stream exempt)
 ```
 
+## Media needs its own directive
+
+`default-src 'self'` does not extend to `blob:` for `<audio>`. Frenchy's clip is fetched as
+bytes and played from an object URL, so the element reported *"Failed to load because no
+supported source was found"* — the same message an unsupported codec produces, from a response
+that was a valid 81 kB MP3. Two things hid it: the client treated every voice failure as
+silence, and the header is only emitted in a production build, so local development played the
+clip happily. `media-src 'self' blob:` is now in the policy and asserted by
+`apps/web/test/csp-media.test.ts`, which loads the real `next.config.mjs` under
+`NODE_ENV=production` rather than a copy of the string.
+
 ## Not done, and not pretend-done
 
 * **No HSTS from the API over a real TLS socket was observed.** The TLS branch is exercised by

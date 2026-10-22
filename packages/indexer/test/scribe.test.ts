@@ -4,7 +4,7 @@ import { keccak256, hexToBytes, toHex, decodeAbiParameters, encodeAbiParameters,
 import { TRIALS_ABI } from "@crucible/smith";
 import { bloomMayContain, Scribe, toEventLike } from "../src/scribe.js";
 import { foundry } from "viem/chains";
-import { applyEvent, emptyModel } from "../src/model.js";
+import { applyEvent, disputeState, emptyModel, replay } from "../src/model.js";
 
 /**
  * `toEventLike` is the only place a chain log becomes a read-model event, and it is the
@@ -95,6 +95,17 @@ async function lyingNode(opts: {
    * indexer has to decide what that means for the cursor.
    */
   failBlockRead?: (blockNumber: number) => boolean;
+  /**
+   * A second contract emitting the SAME events, from a different address, from this block
+   * onward.
+   *
+   * This is not a contrived shape: running `script/Demo.s.sol` twice against one chain
+   * deploys a second `CrucibleTrials`, as does any redeploy. Its logs share every topic0
+   * with the contract we index, so they light up the bloom while an address-filtered
+   * `getLogs` legitimately returns nothing. When the node answers only the unfiltered
+   * query, that is exactly what the indexer sees.
+   */
+  foreignFrom?: number;
 }): Promise<{
   url: string;
   address: `0x${string}`;
@@ -143,7 +154,31 @@ async function lyingNode(opts: {
 
   const answer = (method: string, params: unknown[]): unknown => {
     if (method === "eth_blockNumber") return toHex(head);
-    if (method === "eth_getLogs") return opts.logs;
+    if (method === "eth_getLogs") {
+      const filter = params?.[0] as { address?: unknown; fromBlock?: string } | undefined;
+      if (opts.foreignFrom !== undefined && filter?.address === undefined) {
+        // The unfiltered probe. A log with our topic0 exists, and it belongs to the other
+        // contract — the node is telling the truth and so is the bloom.
+        const n = Number(filter?.fromBlock ? BigInt(filter.fromBlock) : 0n);
+        if (n >= opts.foreignFrom) {
+          return [
+            {
+              address: "0xa513e6e4b8f2a923d98304ec87f64353c4d5c853",
+              topics: [trialTopic],
+              data: "0x",
+              blockNumber: toHex(n),
+              transactionHash: `0x${"77".repeat(32)}`,
+              transactionIndex: "0x0",
+              blockHash: `0x${"11".repeat(32)}`,
+              logIndex: "0x0",
+              removed: false,
+            },
+          ];
+        }
+      }
+      // The address-filtered read — what the indexer actually asks for. Nothing of ours.
+      return opts.logs;
+    }
     if (method === "eth_chainId") return "0x7a69";
     if (method === "eth_getBlock" || method === "eth_getBlockByNumber") {
       // viem sends `eth_getBlockByNumber` with `params: ["0x5", false]`.
@@ -392,6 +427,42 @@ describe("bloom cross-check on a quiet window", () => {
    * The cursor now advances by however much was proved, and a long stretch is
    * proved over several ticks. It never stops.
    */
+  /**
+   * A bloom hit is not proof the log is OURS.
+   *
+   * Reproduced live before it was fixed: running `script/Demo.s.sol` a second time against
+   * a running chain deploys a second `CrucibleTrials`. That contract emits the same events
+   * with the same topic0s from a different address, so the block's bloom matches while the
+   * address-filtered `getLogs` correctly returns nothing. The proof stopped on that block,
+   * the next tick re-read it, and `/health` sat at `ok:false` with `indexedTo` pinned while
+   * the site showed a frozen index — for as long as the process lived.
+   *
+   * The block is quiet for an indexer that watches one address, and the walk must cross it.
+   */
+  it("crosses a block whose matching log belongs to another contract", async () => {
+    const node = await lyingNode({
+      logs: [],
+      head: 8,
+      bloomHasEvent: (n) => n >= 3,
+      foreignFrom: 3,
+    });
+    const scribe = new Scribe({
+      trialsAddress: node.address,
+      alloyAddress: node.address,
+      chain: foundry,
+      rpcUrl: node.url,
+      fromBlock: 0n,
+    });
+
+    await scribe.sync();
+
+    expect(scribe.status.syncError, "a foreign same-signature event is not our event").toBeNull();
+    expect(scribe.status.indexedTo).toBe(9n);
+    // Nothing was invented: the foreign log was never projected into the model.
+    expect(scribe.state.trials.size).toBe(0);
+    node.close();
+  });
+
   it("crosses a quiet window far wider than the probe chunk", async () => {
     const node = await lyingNode({ logs: [], quietBlocks: true, head: 200 });
     const scribe = new Scribe({
@@ -509,6 +580,69 @@ describe("bloom cross-check on a quiet window", () => {
   });
 
   /**
+   * A timestamp that could not be read is repaired later, on a tick with no events.
+   *
+   * This is the half the audit found missing in both directions. `recordBlockTimes` recorded the
+   * block as pending and `hydrateTimestamps(model, blockTimes, [])` was then called with an explicit
+   * empty list, which maps to an empty target set — the read succeeded, the seconds went into the
+   * map, and no row was touched. And the retry lived inside the events branch, so a caught-up chain
+   * — the only kind that has a pending block and nothing else happening — never ran it.
+   *
+   * The observable consequence is not cosmetic: `breakWindowEndsAt` is `runAt + breakWindow`, so a
+   * row left holding a block number publishes a deadline in 1970, and the first sync here is the
+   * shape that produces it.
+   */
+  it("repairs a row whose block was unreadable, on a later tick that carries no events", async () => {
+    const { data, topics, transactionHash } = liveLog("TrialCreated", {
+      id: 1n,
+      sponsor: "0x1111111111111111111111111111111111111111",
+      specCID: `0x${"11".repeat(32)}`,
+      testsCID: `0x${"22".repeat(32)}`,
+      reward: 1_000_000_000_000_000_000n,
+      bond: 0n,
+      deadline: 1_800_000_000,
+      breakWindow: 43_200,
+    });
+    // Mutable on purpose: the first tick refuses block 1, the second serves it.
+    const unreadable = new Set([1]);
+    const node = await lyingNode({
+      logs: [
+        {
+          address: "0x9fe46736679d2d9a65f0992f2272de9f3c7fa6e0",
+          blockNumber: "0x1",
+          transactionHash,
+          logIndex: "0x7",
+          removed: false,
+          data,
+          topics,
+        },
+      ],
+      quietBlocks: true,
+      head: 6,
+      failBlockRead: (n) => unreadable.has(n),
+    });
+    const scribe = new Scribe({
+      trialsAddress: node.address,
+      alloyAddress: node.address,
+      chain: foundry,
+      rpcUrl: node.url,
+      fromBlock: 0n,
+    });
+
+    await scribe.sync();
+    // The trial exists, but its `createdAt` is the block NUMBER: the node refused the block and
+    // there is nothing else it could honestly be.
+    expect(scribe.state.trials.get(1)?.createdAt).toBe(1);
+
+    // The node recovers, and the chain stays quiet: this tick sees no events at all, so only the
+    // pending-timestamp retry can be what repairs the row.
+    unreadable.clear();
+    await scribe.sync();
+    expect(scribe.state.trials.get(1)?.createdAt).toBe(0x67000000);
+    node.close();
+  });
+
+  /**
    * The other half: a response that was quietly cut off.
    *
    * `getLogs` cannot tell you that it gave you less than you asked for. The
@@ -611,5 +745,50 @@ describe("bloom cross-check on a quiet window", () => {
     expect(scribe.status.indexedTo).toBe(4n);
     expect(scribe.status.syncError).toBeNull();
     node.close();
+  });
+});
+
+/**
+ * The two seat votes, driven through the decoding path a live chain actually uses.
+ *
+ * A seat's reveal gate is "at least `ARGUS_THRESHOLD` seats have committed", and the only
+ * witness to that is the `VoteCommitted` log — `_disputes` is private and neither view
+ * enumerates who holds a commitment. If `judge` did not arrive on `args` (a topic that is not
+ * in the ABI, a renamed input), the count would be zero forever, every seat would wait for
+ * peers it could never see, and every dispute would settle by `DISPUTE_TIMEOUT` with nobody the
+ * wiser. The hand-built `args` in `model.test.ts` cannot catch that class of mistake, which is
+ * why this goes through `encodeEventTopics` + `parseEventLogs`.
+ */
+describe("the seat vote logs", () => {
+  // Anvil account #1 in checksummed form, i.e. exactly what viem hands back for an indexed
+  // address — the same shape the seat's own wallet address arrives in.
+  const SEAT = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8";
+  const PEER = "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC";
+
+  it("carries both the trial id and the seat, because both are indexed in the contract", () => {
+    const e = toEventLike(liveLog("VoteCommitted", { id: 7n, judge: SEAT }) as never);
+
+    expect(e.eventName).toBe("VoteCommitted");
+    expect(e.args.id).toBe(7n);
+    expect(e.args.judge).toBe(SEAT);
+  });
+
+  it("carries the revealed vote alongside the seat", () => {
+    const e = toEventLike(liveLog("VoteRevealed", { id: 7n, judge: SEAT, breakWins: true }) as never);
+
+    expect(e.args.breakWins).toBe(true);
+    expect(e.args.judge).toBe(SEAT);
+  });
+
+  it("projects two seats sealing and one opening into a count a seat can gate on", () => {
+    const model = replay([
+      toEventLike(liveLog("VoteCommitted", { id: 7n, judge: SEAT }) as never),
+      toEventLike(liveLog("VoteCommitted", { id: 7n, judge: PEER }) as never),
+      toEventLike(liveLog("VoteRevealed", { id: 7n, judge: SEAT, breakWins: false }) as never),
+    ]);
+
+    const d = disputeState(model, 7);
+    expect(d.committed).toEqual([SEAT.toLowerCase(), PEER.toLowerCase()]);
+    expect(d.revealed).toEqual([SEAT.toLowerCase()]);
   });
 });
