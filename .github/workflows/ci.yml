@@ -253,6 +253,14 @@ jobs:
       - name: build workspace libraries
         run: npm run build:libs
 
+      # The chain commits to two digests per trial. `script/SeedContent.sol` carries them as
+      # generated constants so a foundry-only container can post them, which makes a cached value
+      # load-bearing — so CI recomputes it from the fixture bytes every run and fails if the two
+      # have parted. Without this step a fixture edit would put a digest on a chain that resolves
+      # to nothing, and the only witness would be a skeptic who could not fetch the spec.
+      - name: seed digests answer to the content they name
+        run: npm run seed:check
+
       - name: typecheck (every workspace)
         run: |
           npm run typecheck \

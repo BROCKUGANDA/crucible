@@ -28,7 +28,9 @@
     "agent:live": "node --env-file-if-exists=.env scripts/live-agent.mjs",
     "cdp:sandbox": "node --env-file-if-exists=.env scripts/cdp-sandbox.mjs",
     "cdp:transfer": "node --env-file-if-exists=.env scripts/cdp-transfer.mjs",
-    "verify:roundtrip": "node --env-file-if-exists=.env scripts/verify-roundtrip.mjs"
+    "verify:roundtrip": "node --env-file-if-exists=.env scripts/verify-roundtrip.mjs",
+    "seed:content": "node --env-file-if-exists=.env scripts/seed-content.mjs --write",
+    "seed:check": "node --env-file-if-exists=.env scripts/seed-content.mjs --check"
   },
   "engines": {
     "node": ">=20 <27",

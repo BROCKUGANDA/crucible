@@ -54,25 +54,55 @@ current tree actually verifies, what it deliberately does not, and what is still
 - **A test that did not run says so.** The four ERC-8004 fork tests call `vm.skip`
   unless the suite is on a mainnet fork, so a run without `MAINNET_RPC_URL` reports
   `126 passed, 4 skipped` instead of four green tests that asserted nothing.
+- **Every seeded trial commits to content that exists.**
+  `scripts/seed-content.mjs` pins `fixtures/trials/counter` through the same
+  `ContentService` a verifier uses, generates `crucible-contracts/script/SeedContent.sol`
+  with the two digests, and resolves each digest back out of the store to prove the bytes
+  come home. The seeds post those constants instead of
+  `keccak256(abi.encodePacked("spec-open", i, block.timestamp))`, which named a string no
+  pinning process ever wrote. `scripts/demo.mjs` then reads `TrialCreated` off the chain and
+  compares the two data words to the committed constants, so the claim is the chain's, not
+  the script's: a local build reports `8 trials, every one committing to the pinned spec and
+  suite`, and putting one invented hash back at one of the two Extend sites fails it with
+  `3 of 8 trials commit to content that is not the pinned fixture`. CI re-runs
+  `npm run seed:check` on every push, and `packages/argus/test/no-orphan.test.ts` fails if
+  that step is ever unwired — a gate that exists but does not run is how PR #15's pagination
+  ended up merged and undeployed.
+- **The bytes behind a digest cannot be rewritten by a checkout.**
+  `.gitattributes` pins `fixtures/**` to LF. Measured on a Windows box with the default
+  `core.autocrlf=true`: a fresh `git worktree` checkout produced CR=6 in `foundry.toml` and
+  CR=17 in `SPEC.md` where the committed blob has none, so the *same commit* hashes to two
+  different digests depending on the machine. `seed-content.mjs` refuses any CR byte in a file
+  it is about to pin rather than posting a machine-specific digest.
 
 ## Still open from this pass, by severity
 
 These are known and intentional, not claims that the software is safe. Ordered by how
 much of the product's promise each one costs.
 
-1. **The content layer does not exist in production.** Every function that moves bytes
-   between a run and a verifier is injected — and every one of them is implemented only
-   by a test fake. `RunnerDeps.fetchSpec`, `fetchSuite`, `uploadRepo` and `uploadLogs`
-   (`packages/forge-runner/src/runner.ts:41`) and `VerifyInput.fetchArtifact` and
-   `rerunSuite` (`packages/argus/src/argus.ts:49`) have no production caller or
-   implementation. Consequence: `@crucible/argus` is imported by nothing outside its own
-   test directory, so the deterministic re-run that ADR-0005 makes the heart of the
-   product cannot execute as shipped, and the `specCID`/`testsCID`/`repoCID` an artifact
-   names are digests of bytes that were never pinned anywhere. `@crucible/cidstore`
-   already describes the right shape — a bounded store the runner publishes into and a
-   verifier reads back, plus a disclosure log, because the chain keeps only keccak
-   digests and a sha256 CID cannot be derived from one. Building that bridge is the work,
-   not more gate plumbing.
+1. **The content layer exists; the seat that uses it does not.** Bytes move for real on both
+   sides of a run now — `ContentService` (`packages/forge-runner/src/content.ts`) pins and
+   fetches spec, suite, repo and log content, `ContentBridge` (`packages/cidstore/src/bridge.ts`)
+   keeps the disclosure log that ties a keccak digest to the sha256 CID naming the same bytes,
+   and `LiveVerifier` (`packages/argus/src/live.ts`) runs the six deterministic gates against
+   them. `scripts/verify-roundtrip.mjs` exercises the whole path — pin, execute with a real
+   forge, sign, publish, verify — and catches an inflated claim and an unregistered key. What
+   is still missing, in the order that makes each checkable by the last:
+   - **No seat operator.** `commitVote` and `revealVote` (`packages/smith-sdk/src/client.ts`)
+     have no caller outside tests, so nobody reads a Challenged trial off a chain, runs the
+     gates, and signs what they found. Until that exists the deterministic phase is a library,
+     and a skeptic's challenge still resolves through the committee.
+   - **The live chain's store is not populated.** The VPS seed image and the deployed API have
+     no node path that pins, so the digests the hourly extend posts resolve to bytes only on a
+     machine that ran `scripts/seed-content.mjs`. Populating it belongs with the operator,
+     which is the first thing that would read it.
+   - **A re-run has never executed in a container.** `rerunOnFreshBench` has run locally and in
+     the degraded path; no test takes a pinned suite through the Docker sandbox end to end.
+   - **The demo hall's run hashes are still synthetic.** `Demo.s.sol` submits
+     `keccak256("RunArtifact{all-pass}")`, not a signed artifact, so its settled rows have
+     resolvable demands and unverifiable answers. Real ones come from a runner publishing a run.
+   Earlier text in this item described the whole layer as absent; that was true of the tree at
+   the time of the audit and is not true now.
 2. **No professional audit and no formal verification.** A settlement bug is not
    recoverable by anyone; the contracts are not upgradeable.
 3. **No pause or admin recovery.** This is deliberate for an escrow, but it means a bug

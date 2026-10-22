@@ -30,7 +30,12 @@ afterAll(async () => {
 });
 
 const RUNNER_KEY = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
-const OTHER_KEY = "0x59c6995e998f97a51e2767c046f5c6b7b42d0c4d95c3c6b7a5e2d1c0b9a8f7e6";
+// Anvil's published dev key #2, deliberately a different one from the runner's above. It used to
+// be a hex string made up for the test, which gitleaks is right to treat as a leaked credential:
+// a 64-hex literal that appears nowhere public looks exactly like a key that escaped into a
+// fixture. These two are on the allowlist because every account they control is publicly known
+// and holds only test ETH.
+const OTHER_KEY = "0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a";
 const CONTRACT = "0x5fbdb2315678afecb367f032d93f642f63180aa3" as const;
 
 async function harness(rerunNames: string[]) {

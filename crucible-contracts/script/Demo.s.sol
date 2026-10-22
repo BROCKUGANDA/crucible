@@ -6,6 +6,7 @@ import {console} from "forge-std/console.sol";
 import {CrucibleTrials} from "../contracts/CrucibleTrials.sol";
 import {AlloyRegistry} from "../contracts/AlloyRegistry.sol";
 import {MockIdentityRegistry} from "../contracts/mocks/ERC8004Mocks.sol";
+import {SeedContent} from "./SeedContent.sol";
 
 /// Replays the full Crucible loop locally and LEAVES IT ON THE CHAIN — stage insurance.
 ///   anvil                          # terminal 1
@@ -63,10 +64,21 @@ contract Demo is Script {
 
         // Every trial here settles through an Argus vote, which needs no clock travel and
         // therefore produces the same chain on a fresh Anvil and a week-old one.
-        _paidWithstand(agentA, pkOperatorA, keccak256("spec-1"), keccak256("tests-1"));
-        _paidWithstand(agentB, pkOperatorB, keccak256("spec-2"), keccak256("tests-2"));
-        _slashed(agentB, pkOperatorB, keccak256("spec-3"), keccak256("tests-3"));
-        _paidWithstand(agentA, pkOperatorA, keccak256("spec-4"), keccak256("tests-4"));
+        //
+        // The spec and suite digests are pinned content, so a skeptic who claimed one of these
+        // could fetch the bytes behind both hashes and re-run the suite. They share one fixture
+        // rather than carrying four: the four rows differ by what the agents claimed and how it
+        // settled, not by what was asked of them, and four `keccak256("spec-N")` values named
+        // content that was never anywhere.
+        //
+        // NOT pinned here: the run hashes below (`RunArtifact{...}`). Those are the agent's
+        // submission, and a real one comes from the runner signing real bytes — see
+        // scripts/verify-roundtrip.mjs. A demo hall therefore has resolvable demands and
+        // synthetic answers, which is the honest state until a run is published per trial.
+        _paidWithstand(agentA, pkOperatorA, SeedContent.SPEC_HASH, SeedContent.TESTS_HASH);
+        _paidWithstand(agentB, pkOperatorB, SeedContent.SPEC_HASH, SeedContent.TESTS_HASH);
+        _slashed(agentB, pkOperatorB, SeedContent.SPEC_HASH, SeedContent.TESTS_HASH);
+        _paidWithstand(agentA, pkOperatorA, SeedContent.SPEC_HASH, SeedContent.TESTS_HASH);
 
         console.log("2. identity links");
         _linkIdentity(agentA, pkOperatorA, "ipfs://identityA");

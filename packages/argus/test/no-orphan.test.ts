@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -58,5 +58,25 @@ describe("the verifier has a production caller", () => {
   it("the round trip is reachable as a command, not just as a file", () => {
     const pkg = JSON.parse(readFileSync(path.join(ROOT, "package.json"), "utf8"));
     expect(Object.keys(pkg.scripts)).toContain("verify:roundtrip");
+  });
+
+  /**
+   * The seeds post `SeedContent.sol`'s constants onto a chain. If nothing recomputes them from
+   * the bytes, editing a fixture leaves a digest that resolves to nothing — and the only witness
+   * is a skeptic who cannot fetch the spec. So the check has to exist, be a command, and be wired
+   * into the job that runs on every push. Each of the three is a separate way to lose it, and a
+   * script nobody invokes is how PR #15's pagination ended up merged and undeployed.
+   */
+  it("the seed digest check exists, is a command, and is wired into CI", () => {
+    expect(existsSync(path.join(ROOT, "scripts/seed-content.mjs")), "the pinning step is gone").toBe(true);
+
+    const pkg = JSON.parse(readFileSync(path.join(ROOT, "package.json"), "utf8"));
+    expect(Object.keys(pkg.scripts)).toContain("seed:check");
+
+    const ci = readFileSync(path.join(ROOT, ".github/workflows/ci.yml"), "utf8");
+    expect(
+      ci.includes("npm run seed:check"),
+      "seed:check is not run by ci.yml, so a fixture edit could post a digest that resolves to nothing",
+    ).toBe(true);
   });
 });
