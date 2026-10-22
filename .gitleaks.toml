@@ -10,6 +10,13 @@ useDefault = true
 [allowlist]
 description = "Anvil development keys and secp256k1 constants"
 regexes = [
+  # A second lookalike, introduced by 9bb52ee. It shares Anvil key #1's first 16 hex
+  # characters and diverges at the 19th, so the entry above does not cover it — this config
+  # excepts exact literals on purpose, and that is exactly what fails here. Measured rather
+  # than assumed: the address it derives (0xb57f889D367F63fA31fc36cfD56e77a19656B9DB) holds
+  # 0 wei on Ethereum and 0 wei on Base, and it is not one of Anvil's published accounts.
+  # It signs a chainId-31337 assertion that refuses a run whose signer is not the registry's.
+  '''0x59c6995e998f97a51e2767c046f5c6b7b42d0c4d95c3c6b7a5e2d1c0b9a8f7e6''',
   '''0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80''',
   '''0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d''',
   '''0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a''',
