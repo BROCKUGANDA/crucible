@@ -176,6 +176,12 @@ const nextConfig = {
   reactStrictMode: true,
   transpilePackages: ["@crucible/smith", "@crucible/indexer"],
 
+  // TypeScript 7 ships no compiler API, so Next's in-process tsconfig reader cannot load
+  // the `paths` aliases; CLI mode reads them back through `tsc --showConfig`.
+  experimental: {
+    useTypeScriptCli: true,
+  },
+
   // Traced server for the Docker runner stage (apps/web/Dockerfile); `next start`
   // is unaffected.
   output: "standalone",
