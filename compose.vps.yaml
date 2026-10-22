@@ -1,9 +1,15 @@
 # VPS edge override: stack with the server and anvil reachable only on the docker
-# network. The host's existing Caddy (the shared reverse proxy on 80/443) is
-# attached to this project's network and proxies crucible.<host> to `web:3000`
-# and <host>/api/* to `api:8787` by service name, so nothing here publishes a
-# host port — the origin is unreachable except through the proxy, which is what
-# keeps a Cloudflare-or-Let's-Encrypt edge trustworthy.
+# network. This project has its OWN edge now — `deploy/edge/` — running as its own
+# compose project on this project's network, publishing on the host's loopback
+# only. It serves crucible.<host> and proxies /api/* to `api:8787` and
+# <host>/api/* by service name, so nothing here publishes a host port - the
+# origin is unreachable except through the edge, which is what keeps a
+# Cloudflare-or-Let's-Encrypt edge trustworthy.
+#
+# The edge used to be another project's Caddy container, hand-attached to this
+# network, and a recreate of it dropped the attachment. See
+# `docs/adr/009-isolated-edge-per-project.md` in the other repository, and
+# `deploy/edge/` here.
 #
 #   docker compose -f compose.yaml -f compose.vps.yaml up -d --build
 #
