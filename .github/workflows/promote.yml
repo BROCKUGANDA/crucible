@@ -23,19 +23,16 @@ on:
         required: true
         default: develop
 
-# Declared at the top level, and it has to be: `workflows` is not a valid key inside a job's
-# `permissions:` block, so the version that put it on the job made the WHOLE file unparseable —
-# GitHub answered the dispatch with
-#   HTTP 422: failed to parse workflow: (Line: 52, Col: 7): Unexpected value 'workflows'
-# which is worse than a failing step, because the workflow never starts and every branch behind it
-# stops shipping without anything showing red. Promotion merges branches that contain edits to
-# `.github/workflows/*`, and an App token writing those files needs this scope; the job-level
-# `contents`/`actions` below stay where they are because those two ARE valid per job.
-permissions:
-  contents: read
-  actions: write
-  workflows: write
-
+# Permissions stay at contents+actions, which is what this job has always needed to merge and
+# to ask for the next gate. `workflows: write` is what promotion ALSO needs in order to push a
+# branch containing edits to .github/workflows/* — and both placements I tried were refused by
+# GitHub when the workflow was dispatched, so the file was left unparseable, which is worse than a
+# failing step because nothing shows red:
+#   job level    -> HTTP 422 failed to parse workflow: (Line: 52, Col: 7): Unexpected value workflows
+#   workflow level-> HTTP 422 failed to parse workflow: (Line: 37, Col: 3): Unexpected value workflows
+# Whether the key is spelled differently, gated by an organisation setting, or simply unavailable to
+# GITHUB_TOKEN here is NOT settled. Until it is, a promotion whose branch touches a workflow file
+# must be run by a human push; that is a real limit on the ladder, recorded rather than papered over.
 concurrency:
   group: promote-${{ github.event.workflow_run.head_branch || inputs.from }}
   cancel-in-progress: false
