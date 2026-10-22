@@ -4,32 +4,33 @@ import { dlq } from "./dlq.js";
 /**
  * Frenchy — the optional voice host.
  *
- * The browser never sees the ElevenLabs key. It asks this process for one of a small,
- * fixed set of moments; the copy lives here, not in the request, so an open endpoint
- * cannot be used to synthesize arbitrary text on our account. The only caller-supplied
- * text is `spec`, and it is capped and normalised because a future spec viewer may
- * genuinely need to read a task aloud.
+ * The browser never sees the ElevenLabs key, and it never supplies words. Every phrase
+ * this route can synthesize is listed in `COPY` below; a request that carries text is
+ * refused. That is a policy boundary, not tidiness: under the ElevenLabs Usage Policy the
+ * account holder is responsible for Input and Output produced on their key, including
+ * Input arriving through a product built with the service, and an unmoderated
+ * text-to-speech endpoint on the public internet is exactly the impersonation,
+ * harassment and platform-abuse surface that policy prohibits. A product cannot moderate
+ * what it never accepts, so it accepts nothing.
  *
- * The voice is decoration, never a source of truth: amounts, deadlines, CIDs and
- * verdicts stay on screen. If this route is absent, misconfigured or the provider is
- * down, the product behaves exactly as it did without it.
+ * Two consequences are visible to users and deliberate: the host is labelled as an AI
+ * voice wherever it is offered (§AI Transparency), and the voice is decoration, never a
+ * source of truth — amounts, deadlines, CIDs and verdicts stay on the screen. If this
+ * route is absent, misconfigured or the provider is down, the product behaves exactly as
+ * it did without it.
  */
 
-export type VoiceMoment = "greeting" | "tour" | "verdict" | "verdict-repeat" | "spec";
+export type VoiceMoment = "greeting" | "tour" | "verdict" | "verdict-repeat";
 
 const MOMENTS: ReadonlySet<string> = new Set([
   "greeting",
   "tour",
   "verdict",
   "verdict-repeat",
-  "spec",
 ] satisfies VoiceMoment[]);
 
-/**
- * Fixed copy, deliberately short. Two sentences except the tour, which the PRD allows
- * to run longer. No amounts, deadlines, addresses or CIDs — those are the screen's job.
- */
-const COPY: Record<Exclude<VoiceMoment, "spec">, string> = {
+/** Fixed copy, deliberately short. Two sentences except the tour. */
+const COPY: Record<VoiceMoment, string> = {
   greeting:
     "Welcome, apprentice. The forge is lit; this is where agents earn trust under fire.",
   tour: "Three families, one law. BUILD a solution against a pinned suite; BREAK a claim and get paid when it cracks; JUDGE with your stake on the line.",
@@ -43,7 +44,6 @@ export interface VoiceConfig {
   modelId: string;
   /** Overridable only from the environment, never from a request. */
   baseUrl?: string;
-  maxTextChars?: number;
   /** Injected by tests; production uses the platform fetch. */
   fetchImpl?: typeof fetch;
   /** Injected by tests; production uses the real clock only for timeout aborts. */
@@ -60,18 +60,10 @@ export function voiceStatus(config: VoiceConfig | null | undefined): {
     : { configured: false, model: null };
 }
 
-/** The text for a moment, or null when the request cannot be answered as asked. */
-export function voiceCopy(
-  moment: string,
-  text: string | undefined,
-  maxTextChars = 600,
-): string | null {
-  if (moment === "spec") {
-    const cleaned = (text ?? "").replace(/\s+/g, " ").trim();
-    return cleaned.length >= 1 && cleaned.length <= maxTextChars ? cleaned : null;
-  }
-  if (!MOMENTS.has(moment) || moment === "spec") return null;
-  return COPY[moment as Exclude<VoiceMoment, "spec">] ?? null;
+/** The words for a moment, or null when the moment is not one this host owns. */
+export function voiceCopy(moment: string): string | null {
+  if (!MOMENTS.has(moment)) return null;
+  return COPY[moment as VoiceMoment] ?? null;
 }
 
 const DEFAULT_BASE = "https://api.elevenlabs.io";
@@ -126,20 +118,18 @@ export function createVoiceRoutes(config: VoiceConfig | null): Hono {
     }
 
     const { moment, text } = body as { moment?: unknown; text?: unknown };
+    if (text !== undefined && text !== null) {
+      // Refused rather than ignored, so an integrator learns that this is not a
+      // text-to-speech proxy instead of watching their words vanish.
+      return c.json({ error: "the voice host speaks only its own lines; text is not accepted" }, 400);
+    }
     if (typeof moment !== "string" || !MOMENTS.has(moment)) {
       return c.json({ error: "unknown voice moment" }, 400);
     }
 
-    const copy = voiceCopy(
-      moment,
-      typeof text === "string" ? text : undefined,
-      config.maxTextChars ?? 600,
-    );
+    const copy = voiceCopy(moment);
     if (!copy) {
-      return c.json(
-        { error: `text must be 1-${config.maxTextChars ?? 600} characters for this moment` },
-        400,
-      );
+      return c.json({ error: "the voice host has no line for that moment" }, 400);
     }
 
     const request = elevenLabsRequest({ config, text: copy });
