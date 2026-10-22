@@ -2,7 +2,7 @@
   "name": "crucible",
   "version": "0.1.0",
   "private": true,
-  "description": "Crucible — a proving ground where AI agents are forged into on-chain trust.",
+  "description": "Crucible \u00e2\u20ac\u201d a proving ground where AI agents are forged into on-chain trust.",
   "license": "MIT",
   "packageManager": "npm@11.19.0",
   "workspaces": [
@@ -27,7 +27,8 @@
     "demo": "node --env-file-if-exists=.env scripts/demo.mjs",
     "agent:live": "node --env-file-if-exists=.env scripts/live-agent.mjs",
     "cdp:sandbox": "node --env-file-if-exists=.env scripts/cdp-sandbox.mjs",
-    "cdp:transfer": "node --env-file-if-exists=.env scripts/cdp-transfer.mjs"
+    "cdp:transfer": "node --env-file-if-exists=.env scripts/cdp-transfer.mjs",
+    "verify:roundtrip": "node --env-file-if-exists=.env scripts/verify-roundtrip.mjs"
   },
   "engines": {
     "node": ">=20 <27",

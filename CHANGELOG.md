@@ -12,6 +12,17 @@ migration. See [`SECURITY.md`](SECURITY.md) before deploying value.
 
 ### Added
 
+- **A trial whose content is real, and a command that proves the verifier runs.**
+  `fixtures/trials/counter` is a genuine spec plus a self-contained Foundry project that
+  passes `forge test` (two named tests, no library outside itself, because a pinned suite is
+  fetched by a process that has none of this repository). `npm run verify:roundtrip` pins it,
+  executes it, signs the resulting run with a real key, publishes it, and then verifies three
+  cases: the honest claim comes back `agent-wins`, a claim naming a test the suite does not
+  run comes back `break-wins`, and a run signed by an unregistered key comes back
+  `break-wins`. It exits non-zero if any of those flip — it has been seen to, and it was
+  right to. `test/no-orphan.test.ts` fails if `@crucible/argus` or `ContentService` ever
+  again have no importer outside a test directory.
+
 - **Argus now has a supplier for its outside world.** `@crucible/argus` gains `LiveVerifier`,
   which resolves a chain run hash to the published artifact, rebuilds the EIP-712 digest the
   runner signed, recovers the signer from it, and re-executes the pinned suite against the
@@ -114,6 +125,18 @@ migration. See [`SECURITY.md`](SECURITY.md) before deploying value.
   [`apps/api/src/voice.ts`](apps/api/src/voice.ts).
 
 ### Fixed
+
+- **`parseForgeTests` could not parse output from the forge version this repo pins.** Real
+  `forge test --json` keys its suites at the top level (`path/File.sol:Contract`) with
+  `test_results` nested inside each; the parser only looked for `tests` or `test_results` at
+  the root, so genuine output was an "unrecognised shape" error and the deterministic re-run
+  — the oracle ADR-0005 puts at the centre of the product — would have abstained on every
+  real run even once content existed. Its own unit tests never caught this because they fed
+  it a flattened document that this forge does not emit. Now tested against
+  `packages/smith-sdk/test/fixtures/forge-1.8.5.json`, which is that output byte for byte.
+  Test names are kept exactly as forge spells them, `()` included: the claim and the re-run
+  would have agreed with each other while both disagreed with the artifact contract that
+  already pins these strings.
 
 - **`/trials` and `/agents` are pageable, and the default is not to page.** The cursor is an
   item id rather than an offset — on a chain that only grows, "row 10 onward" is a different
