@@ -751,3 +751,94 @@ describe("/health", () => {
     expect((await (await app.request("/health")).json()).breakers).toEqual({});
   });
 });
+
+/**
+ * The list routes are pageable, and the default is not to page.
+ *
+ * A silent cap would be the worse half of this feature: a monitor that counts trials
+ * reading a truncated page would report a shorter chain as a healthy one. So the default
+ * returns everything, `limit` is opt-in, and when there genuinely is more the response says
+ * so with `truncated` and a `nextCursor` that is an id rather than an offset.
+ */
+describe("pagination", () => {
+  async function get(url: string): Promise<{ status: number; body: any }> {
+    const res = await app.request(`http://localhost${url}`);
+    return { status: res.status, body: await res.json() };
+  }
+
+  it("returns the whole list and says there is nothing held back", async () => {
+    const { body } = await get("/trials");
+    const all = body.trials.length;
+    expect(body.page.total).toBe(all);
+    expect(body.page.truncated).toBe(false);
+    expect(body.page.nextCursor).toBeNull();
+  });
+
+  /**
+   * A model with three trials, on its own app.
+   *
+   * The shared fixture holds a single trial, and paging one item proves nothing about
+   * cursors. Mutating the shared model to add rows would leak into every other test in this
+   * file, so this builds a private one instead.
+   */
+  function threeTrialApp() {
+    const m = seededModel();
+    const base = [...m.trials.values()][0]!;
+    m.trials.set(base.id + 1, { ...base, id: base.id + 1 });
+    m.trials.set(base.id + 2, { ...base, id: base.id + 2 });
+    m.version += 1;
+    return createApp({ getModel: () => m }, { rateLimit: false });
+  }
+
+  it("pages by id and the second page continues without overlap", async () => {
+    const paged = await threeTrialApp().request("http://localhost/trials?limit=2");
+    const first = await paged.json();
+    expect(first.trials).toHaveLength(2);
+    expect(first.page.truncated).toBe(true);
+    expect(first.page.total).toBe(3);
+    // Ids descend, so the cursor is the smaller of the two it just returned.
+    expect(first.page.nextCursor).toBe(first.trials[1].id);
+
+    const next = await (
+      await threeTrialApp().request(`http://localhost/trials?limit=2&after=${first.page.nextCursor}`)
+    ).json();
+    expect(next.trials).toHaveLength(1);
+    expect(next.trials[0].id).toBe(first.trials[1].id - 1);
+    expect(next.page.truncated).toBe(false);
+    expect(next.page.nextCursor).toBeNull();
+
+    const ids = [...first.trials.map((t: { id: number }) => t.id), ...next.trials.map((t: { id: number }) => t.id)];
+    expect(new Set(ids).size, "a page boundary repeated or dropped a trial").toBe(3);
+  });
+
+  it("refuses a limit that is not a bounded whole number", async () => {
+    for (const bad of ["0", "-1", "abc", "1.5", "99999"]) {
+      const { status, body } = await get(`/trials?limit=${bad}`);
+      expect(status, `limit=${bad} was accepted`).toBe(400);
+      expect(body.error).toMatch(/limit/);
+    }
+  });
+
+  it("keeps a status filter and a page together, and totals the filtered set", async () => {
+    const full = await get("/trials");
+    const open = (full.body.trials as { status: string }[]).filter((t) => t.status === "open");
+    const { body } = await get("/trials?status=open&limit=1");
+    expect(body.counts).toBeTruthy();
+    expect(body.page.total).toBe(open.length);
+  });
+
+  it("starts over rather than failing when a cursor has aged out of the list", async () => {
+    const { body } = await get("/trials?limit=1&after=999999");
+    // An id that is no longer here is not the client's fault — a filtered list loses
+    // members as the chain settles trials. Say so, and hand back page one.
+    expect(body.page.cursorStale).toBe(true);
+    expect(body.trials.length).toBeGreaterThan(0);
+  });
+
+  it("pages the agent list the same way", async () => {
+    const all = (await get("/agents")).body.agents as { id: number }[];
+    const { body } = await get("/agents?limit=1");
+    expect(body.agents.length).toBeLessThanOrEqual(1);
+    expect(body.page.total).toBe(all.length);
+  });
+});

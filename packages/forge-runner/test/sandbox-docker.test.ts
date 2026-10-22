@@ -1,5 +1,13 @@
 import { afterAll, describe, expect, it } from "vitest";
-import { Sandbox, execIn, SandboxOOM, SandboxTimeout, type SandboxSpec } from "../src/sandbox.js";
+import {
+  Sandbox,
+  execIn,
+  SANDBOX_LABEL,
+  SandboxOOM,
+  SandboxTimeout,
+  sandboxLabel,
+  type SandboxSpec,
+} from "../src/sandbox.js";
 
 /**
  * The sandbox's Docker path, actually exercised.
@@ -39,6 +47,34 @@ async function ensureImage(image: string): Promise<boolean> {
   await execIn("docker", ["pull", image], undefined, 300);
   inspect = await execIn("docker", ["image", "inspect", image], undefined, 20);
   return inspect.code === 0;
+}
+
+/**
+ * Poll for the containers one workspace owns, up to 10s, and return the last non-empty listing
+ * ("" once they are all gone). `--all` because an exited container left behind is still a
+ * container holding a bind mount: the timeout is supposed to destroy the run, not outwait it.
+ */
+async function containersUntilGone(label: string): Promise<string> {
+  let last = "";
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const ps = await execIn(
+      "docker",
+      [
+        "ps",
+        "--all",
+        "--filter",
+        `label=${SANDBOX_LABEL}=${label}`,
+        "--format",
+        "{{.ID}} {{.State}}",
+      ],
+      undefined,
+      20,
+    );
+    last = ps.stdout.trim();
+    if (last === "") return "";
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  return last;
 }
 
 // Probed at module load, before `describe` runs, so the skip condition is decided once and is
@@ -153,9 +189,26 @@ describe(`Docker sandbox enforcement${enforcementReady ? "" : " — SKIPPED (nee
   testEnforce(
     "wall-clock is capped: a workload that sleeps past the timeout is terminated, and the queue survives",
     async () => {
-      const sandbox = await dockerSandbox({ timeoutSec: 2 });
-      await sandbox.writeFile("sleep.py", "import time\ntime.sleep(60)\nprint('woke')\n");
+      // The budget is 10s against a 120s sleep, and the assertion is about the CONTAINER, not
+      // the promise. Both halves matter. This test used to pass by racing the sleep length
+      // against vitest's limit: `execFile`'s timeout only signals the `docker` CLI, the CLI
+      // ignores it while its container is still streaming, and the run settled only when the
+      // workload finished on its own — so a 60s sleep slipped under 90s on an idle runner and
+      // over on a loaded one. The cap it celebrated had never terminated anything. Measured
+      // before this was fixed: budget 10s, container still `Up` at 40s, callback at 120 156ms.
+      const sandbox = await dockerSandbox({ timeoutSec: 10 });
+      await sandbox.writeFile("sleep.py", "import time\ntime.sleep(120)\nprint('woke')\n");
+      const started = Date.now();
       await expect(sandbox.runSuite("python3 sleep.py")).rejects.toBeInstanceOf(SandboxTimeout);
+
+      // The claim the name makes: the run was cut short, not merely stopped being watched.
+      // If the container were left to finish, this call would return long after its budget.
+      expect(Date.now() - started).toBeLessThan(60_000);
+
+      // And nothing of it survives: force-removed, so not even an exited shell is left holding
+      // the workspace's bind mount. The removal is issued at the deadline, so allow it a moment.
+      const leftover = await containersUntilGone(sandboxLabel(sandbox.root));
+      expect(leftover.length, `the timed-out container is still listed: ${leftover}`).toBe(0);
 
       // The sandbox is not poisoned by an expired run: it accepts the next job.
       const follow = await sandbox.runSuite('python3 -c "print(3)"');
