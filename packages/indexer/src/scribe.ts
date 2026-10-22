@@ -85,6 +85,12 @@ const EVENT_NAMES = [
   "RunSubmitted",
   "BreakFiled",
   "DisputeOpened",
+  // The two seat votes. A dispute's `_disputes` mapping is private and neither
+  // `disputeOf` nor `disputeVote` can enumerate WHO holds a commitment, so these logs are
+  // the only source for "how many seats have committed" — the count an Argus seat must
+  // wait for before revealing, per ADR-0004.
+  "VoteCommitted",
+  "VoteRevealed",
   "VerdictFinalized",
   "StakeWithdrawn",
   "Withdrawn",

@@ -4,7 +4,7 @@ import { keccak256, hexToBytes, toHex, decodeAbiParameters, encodeAbiParameters,
 import { TRIALS_ABI } from "@crucible/smith";
 import { bloomMayContain, Scribe, toEventLike } from "../src/scribe.js";
 import { foundry } from "viem/chains";
-import { applyEvent, emptyModel } from "../src/model.js";
+import { applyEvent, disputeState, emptyModel, replay } from "../src/model.js";
 
 /**
  * `toEventLike` is the only place a chain log becomes a read-model event, and it is the
@@ -682,5 +682,50 @@ describe("bloom cross-check on a quiet window", () => {
     expect(scribe.status.indexedTo).toBe(4n);
     expect(scribe.status.syncError).toBeNull();
     node.close();
+  });
+});
+
+/**
+ * The two seat votes, driven through the decoding path a live chain actually uses.
+ *
+ * A seat's reveal gate is "at least `ARGUS_THRESHOLD` seats have committed", and the only
+ * witness to that is the `VoteCommitted` log — `_disputes` is private and neither view
+ * enumerates who holds a commitment. If `judge` did not arrive on `args` (a topic that is not
+ * in the ABI, a renamed input), the count would be zero forever, every seat would wait for
+ * peers it could never see, and every dispute would settle by `DISPUTE_TIMEOUT` with nobody the
+ * wiser. The hand-built `args` in `model.test.ts` cannot catch that class of mistake, which is
+ * why this goes through `encodeEventTopics` + `parseEventLogs`.
+ */
+describe("the seat vote logs", () => {
+  // Anvil account #1 in checksummed form, i.e. exactly what viem hands back for an indexed
+  // address — the same shape the seat's own wallet address arrives in.
+  const SEAT = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8";
+  const PEER = "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC";
+
+  it("carries both the trial id and the seat, because both are indexed in the contract", () => {
+    const e = toEventLike(liveLog("VoteCommitted", { id: 7n, judge: SEAT }) as never);
+
+    expect(e.eventName).toBe("VoteCommitted");
+    expect(e.args.id).toBe(7n);
+    expect(e.args.judge).toBe(SEAT);
+  });
+
+  it("carries the revealed vote alongside the seat", () => {
+    const e = toEventLike(liveLog("VoteRevealed", { id: 7n, judge: SEAT, breakWins: true }) as never);
+
+    expect(e.args.breakWins).toBe(true);
+    expect(e.args.judge).toBe(SEAT);
+  });
+
+  it("projects two seats sealing and one opening into a count a seat can gate on", () => {
+    const model = replay([
+      toEventLike(liveLog("VoteCommitted", { id: 7n, judge: SEAT }) as never),
+      toEventLike(liveLog("VoteCommitted", { id: 7n, judge: PEER }) as never),
+      toEventLike(liveLog("VoteRevealed", { id: 7n, judge: SEAT, breakWins: false }) as never),
+    ]);
+
+    const d = disputeState(model, 7);
+    expect(d.committed).toEqual([SEAT.toLowerCase(), PEER.toLowerCase()]);
+    expect(d.revealed).toEqual([SEAT.toLowerCase()]);
   });
 });

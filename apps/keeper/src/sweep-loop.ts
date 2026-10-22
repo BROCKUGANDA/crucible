@@ -2,9 +2,9 @@ import {
   CircuitBreaker,
   Flags,
   Killed,
+  envKillSwitches,
   selfSchedulingLoop,
   type BreakerStatus,
-  type FlagMap,
   type LoopHandle,
 } from "@crucible/smith";
 
@@ -21,24 +21,11 @@ import {
 export const SWEEP_FLAG = "keeper.sweep";
 
 /**
- * Kill switches read from the environment: `KILL_SWITCHES` is a comma-separated list of the
- * flags that are on, so `KILL_SWITCHES=keeper.sweep` halts acting and
- * `KILL_SWITCHES=keeper.sweep,other.thing` halts two. Names are trimmed, blanks ignored, and
- * an unset variable means nothing is killed.
- *
- * Env-driven because that is the switch this deployment already has; `Flags` takes any async
- * source, so moving to a flag service later is one argument at the call site in `main.ts`.
+ * Hoisted to `@crucible/smith` when the seat operator needed the same switch semantics — kept
+ * re-exported here so `main.ts`, the keeper's own tests and every existing import specifier
+ * keep pointing at the one implementation rather than a copy.
  */
-export function envKillSwitches(env: NodeJS.ProcessEnv = process.env): () => Promise<FlagMap> {
-  return async () => {
-    const flags: FlagMap = {};
-    for (const name of (env.KILL_SWITCHES ?? "").split(",")) {
-      const key = name.trim();
-      if (key) flags[key] = true;
-    }
-    return flags;
-  };
-}
+export { envKillSwitches };
 
 export interface SweepLoopDeps {
   intervalMs: number;
