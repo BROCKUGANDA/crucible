@@ -153,8 +153,14 @@ describe(`Docker sandbox enforcement${enforcementReady ? "" : " — SKIPPED (nee
   testEnforce(
     "wall-clock is capped: a workload that sleeps past the timeout is terminated, and the queue survives",
     async () => {
-      const sandbox = await dockerSandbox({ timeoutSec: 2 });
-      await sandbox.writeFile("sleep.py", "import time\ntime.sleep(60)\nprint('woke')\n");
+      // The budget has to be long enough to start a container and short enough to cut a
+      // sleep, because the same sandbox is reused for the follow-up below and its timeout
+      // applies to that call too. At 2s this assertion was about how fast `docker run`
+      // answers on an idle machine rather than whether the cap bites, and it failed on a
+      // loaded runner while passing on an unloaded one. 120s of sleep cannot be reached
+      // inside 10s by anything but a working timeout.
+      const sandbox = await dockerSandbox({ timeoutSec: 10 });
+      await sandbox.writeFile("sleep.py", "import time\ntime.sleep(120)\nprint('woke')\n");
       await expect(sandbox.runSuite("python3 sleep.py")).rejects.toBeInstanceOf(SandboxTimeout);
 
       // The sandbox is not poisoned by an expired run: it accepts the next job.
