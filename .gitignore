@@ -50,3 +50,11 @@ graphflow-out/
 
 # OpenChamber session screenshots
 .openchamber/
+
+# Content store for pinned demo trial content (scripts/seed-content.mjs). Bytes addressed
+# by a chain digest, regenerable from the fixtures; not a build artifact to commit.
+.crucible-content/
+
+# forge writes this on any build in the contracts directory; it pins resolved lib commits,
+# which are already pinned by lib/.gitmodules — so it is a build artifact here, not a lockfile.
+crucible-contracts/foundry.lock

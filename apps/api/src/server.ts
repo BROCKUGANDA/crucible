@@ -213,24 +213,39 @@ async function readAlloy(agentId: number): Promise<AlloyState | null> {
   };
 }
 
+/** Concurrent registry reads per sweep. The size of the registry is not allowed to choose this. */
+const ALLOY_SWEEP_BATCH = 8;
+
 /**
  * The agent ids can only come from the read model: `records` is a mapping, not a list, so
  * the registry itself cannot be enumerated. An agent the indexer has not seen yet is
  * therefore absent for one tick, and renders as unknown rather than as a guessed tier.
  */
 async function sweepAlloy(): Promise<void> {
+  // A boot-time blip used to cost the rate for the life of the process: the read happened once,
+  // its `catch` only logged, and every snapshot then published `feeBps: null`. `FEE_BPS` is a
+  // public constant, so there is nothing to invalidate — retrying until it is read is free.
+  if (protocolFeeBps === null) await readProtocolFee();
+
   const ids = [...scribe.state.agents.keys()];
-  await Promise.all(
-    ids.map(async (id) => {
-      const state = await readAlloy(id);
-      // A failed read does NOT overwrite what is known. The old code stored the
-      // failure's nulls, so one transient RPC error turned a measured tier
-      // into "tier unknown" for a whole TTL — and "the registry could not be
-      // read" and "this agent has no alloy" became the same answer.
-      if (state === null) return;
-      alloyById.set(id, state);
-    }),
-  );
+  // Bounded fan-out. This used to be one unbounded `Promise.all`, at three `readContract` calls
+  // per agent, every `ALLOY_TTL_MS` — and `registerAgent` costs only `MIN_BOND` and is never
+  // removed, so anyone could add three permanent reads per two seconds to the node that the
+  // indexer and `/snapshot` share. Eight at a time keeps a full sweep honest without letting the
+  // registry's size choose this process's concurrency.
+  for (let i = 0; i < ids.length; i += ALLOY_SWEEP_BATCH) {
+    await Promise.all(
+      ids.slice(i, i + ALLOY_SWEEP_BATCH).map(async (id) => {
+        const state = await readAlloy(id);
+        // A failed read does NOT overwrite what is known. The old code stored the
+        // failure's nulls, so one transient RPC error turned a measured tier
+        // into "tier unknown" for a whole TTL — and "the registry could not be
+        // read" and "this agent has no alloy" became the same answer.
+        if (state === null) return;
+        alloyById.set(id, state);
+      }),
+    );
+  }
 }
 
 // `sync()` is the breaker-guarded pass: a node that is down at boot is the outage the breaker
@@ -272,21 +287,30 @@ selfSchedulingLoop(sweepAlloy, {
  * constant is the rate in basis points, and that is published as unknown.
  */
 let protocolFeeBps: number | null = null;
-try {
-  protocolFeeBps = Number(
-    await publicClient.readContract({
-      address: trialsAddress,
-      abi: [{ type: "function", name: "FEE_BPS", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] }],
-      functionName: "FEE_BPS",
-    }),
-  );
-  console.log(`[crucible] protocol settlement fee: ${protocolFeeBps / 100}%`);
-} catch (err) {
-  console.error(
-    `[crucible] could not read FEE_BPS: ${err instanceof Error ? err.message : String(err)} — ` +
-      "the rate is published as unknown; the settled amounts are read from the chain's own logs",
-  );
+
+/**
+ * Read `FEE_BPS` again. Called at boot and again from every alloy sweep while the value is null,
+ * because a boot-time blip used to make the rate unknown for the life of the process — the value
+ * is a public constant, so a retry can only succeed or stay honestly null.
+ */
+async function readProtocolFee(): Promise<void> {
+  try {
+    protocolFeeBps = Number(
+      await publicClient.readContract({
+        address: trialsAddress,
+        abi: [{ type: "function", name: "FEE_BPS", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] }],
+        functionName: "FEE_BPS",
+      }),
+    );
+    console.log(`[crucible] protocol settlement fee: ${protocolFeeBps / 100}%`);
+  } catch (err) {
+    console.error(
+      `[crucible] could not read FEE_BPS: ${err instanceof Error ? err.message : String(err)} — ` +
+        "the rate is published as unknown; the settled amounts are read from the chain's own logs",
+    );
+  }
 }
+await readProtocolFee();
 
 const trustProxy = process.env.TRUST_PROXY === "1";
 

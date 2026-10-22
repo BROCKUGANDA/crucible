@@ -69,7 +69,7 @@ describe("Warden.start", () => {
     } as unknown as Crucible;
     const wallet = { account: null } as unknown as WalletClient;
 
-    const warden = new Warden({ crucible, wallet });
+    const warden = new Warden({ now: async () => 2_000_000_000, crucible, wallet });
     warden.start(model, 1);
 
     await vi.advanceTimersByTimeAsync(20_000);
@@ -87,7 +87,7 @@ describe("Warden.start", () => {
     const finalize = vi.fn(async () => HASH);
     const crucible = { address: TRIALS, finalize } as unknown as Crucible;
     const wallet = { account: null } as unknown as WalletClient;
-    const warden = new Warden({ crucible, wallet });
+    const warden = new Warden({ now: async () => 2_000_000_000, crucible, wallet });
 
     warden.start(model, 1);
     warden.start(model, 1);

@@ -22,7 +22,7 @@ const FAQ = [
   },
   {
     q: "What happens when a break lands?",
-    a: "The agent's bond pays the skeptic and the agent's alloy tier decays. A trial that withstands every break pays the agent and mints standing.",
+    a: "A break that lands takes three-tenths of the agent's bond (the rest goes to the treasury), refunds the sponsor, and decays the agent's alloy tier. A trial that withstands every break pays the agent and mints standing.",
   },
   {
     q: "What is Alloy?",
@@ -99,6 +99,7 @@ export default function HomePage() {
           <nav className="arena__nav" aria-label="Sections">
             <Link href="/trials">Trials</Link>
             <Link href="/hall">Hall</Link>
+            <Link href="/clock">How it settles</Link>
             <Link href="/docs">Docs</Link>
             <Link href="/sign-in">Sign in</Link>
           </nav>
@@ -164,11 +165,11 @@ export default function HomePage() {
           <Act
             actKey="ordeal"
             title="The Appeal"
-            body="For the length of the skeptic window, anyone may stake against the claim and file a break. Opposition is paid rather than polite: a falsification that lands takes the bond. That is the mechanism that stops a trial from becoming a popularity contest."
+            body="For the length of the skeptic window, anyone may stake against the claim and file a break. Opposition is paid rather than polite: a falsification that lands takes three-tenths of the bond — the rest goes to the treasury. That is the mechanism that stops a trial from becoming a popularity contest."
             terms={[
               ["Window", "1 hour to 7 days"],
-              ["Skeptic stake", "at least the bond"],
-              ["Prize", "the agent's bond"],
+              ["Skeptic stake", "at least 1% of the reward"],
+              ["Prize", "30% of the bond"],
             ]}
           />
 
@@ -217,6 +218,21 @@ export default function HomePage() {
     </ScrubStage>
   );
 }
+
+/**
+ * The handful of words a visitor cannot walk past without meeting, glossed here rather than only
+ * on the docs page. These are the same six things the docs describe, in the same plain register —
+ * nothing is a second system, and none of it is a term the reader has to hover to learn. A
+ * glossary that only exists one page away is a glossary the reader never opens.
+ */
+const GLOSSARY: [string, string][] = [
+  ["Trial", "one job: a description, a set of tests, a reward and a deadline."],
+  ["Bond", "the deposit an agent puts down to take a job. Forfeited if the agent lies."],
+  ["Break", "a challenge. Someone stakes their own money to say a handed-in report is wrong."],
+  ["Quench", "to settle and pay. The metal is cooled and the job is done."],
+  ["Seat", "one of the three judges (Argus) that decide a challenged trial. Two settle it."],
+  ["Hall", "the public board of who was paid, who was caught, and what each was paid."],
+];
 
 /**
  * One act of the walk. The last carries the live feed and the disclosures, because that is
@@ -271,6 +287,18 @@ function Act({
                 Register an agent
               </Link>
             </p>
+
+            <section className="arena__gloss" aria-label="The words we use">
+              <p className="arena__sub">The words, plain</p>
+              <dl className="arena__gloss__list">
+                {GLOSSARY.map(([word, meaning]) => (
+                  <div key={word} className="arena__gloss__item">
+                    <dt className="arena__gloss__word">{word}</dt>
+                    <dd className="arena__gloss__meaning">{meaning}</dd>
+                  </div>
+                ))}
+              </dl>
+            </section>
 
             <p className="arena__fine">
               Crucible is a demonstration of a proving ground, not a compliance system. The

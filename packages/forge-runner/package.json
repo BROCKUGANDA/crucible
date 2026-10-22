@@ -1,7 +1,7 @@
 {
   "name": "@crucible/forge-runner",
   "version": "0.1.0",
-  "description": "ForgeRunner — the work-performing agent. Fetches a pinned spec, iterates against the pinned suite in a sealed sandbox, emits a signed RunArtifact.",
+  "description": "ForgeRunner \u00e2\u20ac\u201d the work-performing agent. Fetches a pinned spec, iterates against the pinned suite in a sealed sandbox, emits a signed RunArtifact.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",
@@ -12,7 +12,9 @@
       "default": "./dist/index.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
@@ -20,6 +22,7 @@
   },
   "dependencies": {
     "@crucible/agent-security": "*",
+    "@crucible/cidstore": "*",
     "@crucible/smith": "*",
     "json-canonicalize": "^3.0.1",
     "viem": "^2.21.55"

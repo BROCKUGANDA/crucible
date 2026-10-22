@@ -57,17 +57,40 @@ function extractTestArray(parsed: unknown): RawTestResult[] | null {
     const tr = o.test_results;
     if (tr && typeof tr === "object") {
       // v1: { suite, test_results: { "testName()": { ... } } }
-      const entries = Object.entries(tr as Record<string, unknown>);
-      const mapped = entries.map(([name, v]) => {
-        if (v && typeof v === "object") {
-          return { name, ...(v as Record<string, unknown>) } as RawTestResult;
-        }
-        return { name, status: String(v) } as RawTestResult;
-      });
-      return mapped;
+      return mapTestResults(tr as Record<string, unknown>);
+    }
+    // What `forge test --json` actually prints on the version this repository pins
+    // (1.8.5): the suites are the top level, keyed `path/File.sol:Contract`, each holding
+    // its own `test_results`. The two shapes above are what a flattened release produces
+    // and what the unit fixtures used to claim — the parser accepted neither of the shapes
+    // real output arrives in, so a genuine re-run was an "unrecognised shape" error and
+    // Argus abstained. A verifier that abstains on every real run is not a verifier.
+    const suiteMaps = Object.entries(o).filter(
+      ([, value]) => value && typeof value === "object" && "test_results" in (value as object),
+    );
+    if (suiteMaps.length) {
+      // Recognised even when every map is empty: "the shape is right and no test ran" and
+      // "this is not forge output" are different operational facts, and only the second one
+      // points at the parser.
+      return suiteMaps.flatMap(([, value]) =>
+        mapTestResults((value as { test_results: Record<string, unknown> }).test_results),
+      );
     }
   }
   return null;
+}
+
+/** `test_results` keyed by signature, e.g. `test_set_number()` → { status: "Success" }. */
+function mapTestResults(tr: Record<string, unknown>): RawTestResult[] {
+  // Names are kept exactly as forge spells them, trailing `()` included. Renaming here would
+  // mean the claim and the re-run agree with each other while both disagreed with the
+  // artifact contract that already pins these strings.
+  return Object.entries(tr).map(([name, v]) => {
+    if (v && typeof v === "object") {
+      return { name, ...(v as Record<string, unknown>) } as RawTestResult;
+    }
+    return { name, status: String(v) } as RawTestResult;
+  });
 }
 
 function toTestResult(t: RawTestResult): TestResult {

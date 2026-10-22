@@ -108,6 +108,89 @@ function positiveId(raw: string | undefined): number | null {
   return value;
 }
 
+/** The largest page a caller may ask for. A "limit" is not a licence to ask for everything. */
+const MAX_PAGE = 500;
+
+interface PageRequest {
+  limit: number | null;
+  after: number | null;
+  error: string | null;
+}
+
+/**
+ * Cursor pagination over the list routes.
+ *
+ * The cursor is an item id, not an offset. An offset is wrong the moment anything is added
+ * above it — the page shifts under a client that is already looking at one, and on a chain
+ * that only ever grows, "row 10 onward" is a different set of rows on every request.
+ *
+ * No limit means the whole list, deliberately rather than lazily. A silent default cap is
+ * a lie of omission: a monitor that counts trials would read a truncated page as a shorter
+ * chain and call it healthy. Callers who want a page ask for one, and `truncated` plus
+ * `nextCursor` say out loud that there is more.
+ */
+function parsePage(query: Record<string, string | undefined>): PageRequest {
+  let limit: number | null = null;
+  const rawLimit = query.limit;
+  if (rawLimit !== undefined && rawLimit !== "") {
+    if (!/^\d+$/.test(rawLimit)) {
+      return { limit: null, after: null, error: "limit must be a whole number of items" };
+    }
+    limit = Number(rawLimit);
+    if (limit < 1 || limit > MAX_PAGE) {
+      return {
+        limit: null,
+        after: null,
+        error: `limit must be between 1 and ${MAX_PAGE}`,
+      };
+    }
+  }
+  let after: number | null = null;
+  const rawAfter = query.after;
+  if (rawAfter !== undefined && rawAfter !== "") {
+    if (!/^\d+$/.test(rawAfter)) {
+      return { limit: null, after: null, error: "after must be an item id from a previous page" };
+    }
+    after = Number(rawAfter);
+  }
+  return { limit, after, error: null };
+}
+
+function paginate<T>(
+  items: T[],
+  idOf: (item: T) => number,
+  page: PageRequest,
+): { items: T[]; page: Record<string, unknown> } {
+  let start = 0;
+  let cursorStale = false;
+  if (page.after !== null) {
+    const found = items.findIndex((item) => idOf(item) === page.after);
+    if (found === -1) {
+      // Legitimate, not an error: a filtered list loses members as the chain settles
+      // trials, so a cursor can age out between pages. Resuming from the start with the
+      // flag set is honest; a 400 would blame the client for the chain moving.
+      cursorStale = true;
+    } else {
+      start = found + 1;
+    }
+  }
+  const rest = items.slice(start);
+  const slice = page.limit === null ? rest : rest.slice(0, page.limit);
+  const more = start + slice.length < items.length;
+  return {
+    items: slice,
+    page: {
+      limit: page.limit,
+      after: page.after,
+      returned: slice.length,
+      total: items.length,
+      truncated: page.limit !== null && more,
+      nextCursor: page.limit !== null && more && slice.length ? idOf(slice[slice.length - 1]!) : null,
+      cursorStale,
+    },
+  };
+}
+
 /**
  * How many live streams this process will hold at once.
  *
@@ -410,7 +493,7 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
    */
   const health = (c: Context) => {
     const index = deps.indexStatus?.() ?? null;
-    const stalled = index?.syncError != null;
+    const stalled = index?.syncStalled === true;
     return c.json(
       {
         ok: !stalled,
@@ -428,6 +511,7 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
         // on a provider with a key in it hands the key to whoever provoked the
         // error. The detail is still on disk and still in the log.
         syncError: index?.syncError ?? null,
+        syncStalled: index?.syncStalled ?? false,
         // Failures the process survived — failed syncs, failed registry reads, SSE
         // frames a dead client refused. A size that only grows is an operator's alarm.
         dlq: { ...dlq.summary(), lastDetail: null },
@@ -477,7 +561,7 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
     const lag = head === null ? null : Math.max(0, head - indexedTo);
 
     const reasons: string[] = [];
-    if (index.syncError) reasons.push(`last sync tick failed: ${index.syncError}`);
+    if (index.syncStalled) reasons.push(`last sync tick failed: ${index.syncError ?? "unknown error"}`);
     if (head === null) reasons.push("the chain head has never been read");
     else if (lag !== null && lag > security.readyMaxLag) {
       reasons.push(`index is ${lag} blocks behind the head, tolerance is ${security.readyMaxLag}`);
@@ -493,6 +577,7 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
         lag,
         maxLag: security.readyMaxLag,
         syncError: index.syncError ?? null,
+        syncStalled: index.syncStalled,
         trials,
       },
       ready ? 200 : 503,
@@ -513,18 +598,18 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
 
   app.get("/trials", (c) => {
     const status = c.req.query("status");
+    const page = parsePage(c.req.query());
+    if (page.error) return c.json({ error: page.error }, 400);
     const snap = sharedTick().snapshot;
-    if (!status) return c.json({ trials: snap.trials, counts: snap.counts });
-    if (!VALID_STATUS_SET.has(status)) {
+    if (status && !VALID_STATUS_SET.has(status)) {
       return c.json(
         { error: `unknown status "${status}"`, valid: [...VALID_STATUSES] },
         400,
       );
     }
-    return c.json({
-      trials: snap.trials.filter((t) => t.status === status),
-      counts: snap.counts,
-    });
+    const list = status ? snap.trials.filter((t) => t.status === status) : snap.trials;
+    const paged = paginate(list, (t) => t.id, page);
+    return c.json({ trials: paged.items, counts: snap.counts, page: paged.page });
   });
 
   app.get("/trials/:id", (c) => {
@@ -561,7 +646,10 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
   });
 
   app.get("/agents", (c) => {
-    return c.json({ agents: sharedTick().snapshot.agents });
+    const page = parsePage(c.req.query());
+    if (page.error) return c.json({ error: page.error }, 400);
+    const paged = paginate(sharedTick().snapshot.agents, (a) => a.id, page);
+    return c.json({ agents: paged.items, page: paged.page });
   });
 
   app.get("/agents/:id", (c) => {

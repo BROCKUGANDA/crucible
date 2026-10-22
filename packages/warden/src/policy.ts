@@ -17,6 +17,8 @@ export type FinalizeReason =
   | "break-window-expired"
   | "dispute-timeout"
   | "deadline-passed-reclaim"
+  /** an Open trial nobody claimed: its reward is still in escrow and only `reclaimExpired` frees it */
+  | "unclaimed-past-deadline-reclaim"
   | "nothing-to-do";
 
 export interface FinalizeDecision {
@@ -46,7 +48,7 @@ export const DEFAULT_CONSTANTS: WardenConstants = {
  *   - Judging  → finalize once runAt + breakWindow has passed
  *   - Challenged → finalize once disputeOpenedAt + DISPUTE_TIMEOUT has passed
  *   - Assigned → the sponsor reclaims (NOT finalize; finalize would revert)
- *   - Open     → nothing to do
+ *   - Open     → the sponsor reclaims once its deadline has passed (unclaimed escrow)
  *   - Settled  → nothing to do
  */
 export function decide(row: TrialRow, nowSeconds: number, k: WardenConstants = DEFAULT_CONSTANTS): FinalizeDecision {
@@ -85,7 +87,24 @@ export function decide(row: TrialRow, nowSeconds: number, k: WardenConstants = D
       };
     }
 
-    case "open":
+    case "open": {
+      // A trial nobody claimed still has money in it, and `reclaimExpired` is the contract's only
+      // exit for that money: `CrucibleTrials.sol:425` accepts an Open trial on purpose, and its own
+      // comment says why — without that branch the reward sits in escrow forever and the
+      // `MAX_TOTAL_ESCROWED` slot stays consumed. Leaving `open` as "nothing to do" left the newest
+      // guard with no consumer, so a sponsor's dead trial had no watcher at all.
+      const reclaimableAt = row.deadline + k.graceSec;
+      if (nowSeconds >= reclaimableAt) {
+        return { ...base, action: "reclaim", reason: "unclaimed-past-deadline-reclaim", waitSec: 0 };
+      }
+      return {
+        ...base,
+        action: "wait",
+        reason: "unclaimed-past-deadline-reclaim",
+        waitSec: reclaimableAt - nowSeconds,
+      };
+    }
+
     case "settled":
     default:
       return { ...base, action: "wait", reason: "nothing-to-do", waitSec: null };

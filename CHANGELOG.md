@@ -12,6 +12,37 @@ migration. See [`SECURITY.md`](SECURITY.md) before deploying value.
 
 ### Added
 
+- **A trial whose content is real, and a command that proves the verifier runs.**
+  `fixtures/trials/counter` is a genuine spec plus a self-contained Foundry project that
+  passes `forge test` (two named tests, no library outside itself, because a pinned suite is
+  fetched by a process that has none of this repository). `npm run verify:roundtrip` pins it,
+  executes it, signs the resulting run with a real key, publishes it, and then verifies three
+  cases: the honest claim comes back `agent-wins`, a claim naming a test the suite does not
+  run comes back `break-wins`, and a run signed by an unregistered key comes back
+  `break-wins`. It exits non-zero if any of those flip — it has been seen to, and it was
+  right to. `test/no-orphan.test.ts` fails if `@crucible/argus` or `ContentService` ever
+  again have no importer outside a test directory.
+
+- **Argus now has a supplier for its outside world.** `@crucible/argus` gains `LiveVerifier`,
+  which resolves a chain run hash to the published artifact, rebuilds the EIP-712 digest the
+  runner signed, recovers the signer from it, and re-executes the pinned suite against the
+  pinned repo on a fresh bench. Until now `fetchArtifact` and `rerunSuite` were implemented
+  only inside the package's own tests, so the oracle ADR-0005 centres the product on could
+  not run anywhere else. Two properties it enforces rather than assumes: the runner key is
+  compared against the registry, never against the address the artifact claims for itself,
+  and a digest handed in for recovery must equal the one reconstructed from the artifact.
+- **The content layer exists on the producing side.** `@crucible/forge-runner` gains
+  `ContentService`: `pinText` / `pinSuite` hand back the keccak digest a sponsor must put on
+  chain, `fetchSpec` resolves a digest or a cid back to bytes through the disclosure,
+  `fetchSuite` unpacks a pinned tree into the bench, `uploadRepo` pins what the bench holds,
+  `uploadLogs` pins the log text, and `publishArtifact` announces a run under its chain run
+  hash together with the signature and deadline `submitRun` throws away. Until now all four
+  `RunnerDeps` content functions existed only as inline fakes in another package's tests, so
+  every `specCID` / `testsCID` / `repoCID` in an artifact named bytes that were stored
+  nowhere. Two properties are asserted rather than assumed: a pinned spec answers to the
+  digest the chain would hold and resolves in a second process over the same directory, and a
+  suite entry named `../../outside.sol` is refused before anything is written — the sponsor
+  picks the paths, so paths are the untrusted part of a trusted pin.
 - **A hash-chained trace spine, with a real producer.** `@crucible/smith` gains
   `TraceLog`: append-only JSONL where each entry seals keccak over RFC 8785 canonical JSON
   of itself plus the previous hash, using the same canonicalization rule as the run
@@ -94,6 +125,37 @@ migration. See [`SECURITY.md`](SECURITY.md) before deploying value.
   [`apps/api/src/voice.ts`](apps/api/src/voice.ts).
 
 ### Fixed
+
+- **`parseForgeTests` could not parse output from the forge version this repo pins.** Real
+  `forge test --json` keys its suites at the top level (`path/File.sol:Contract`) with
+  `test_results` nested inside each; the parser only looked for `tests` or `test_results` at
+  the root, so genuine output was an "unrecognised shape" error and the deterministic re-run
+  — the oracle ADR-0005 puts at the centre of the product — would have abstained on every
+  real run even once content existed. Its own unit tests never caught this because they fed
+  it a flattened document that this forge does not emit. Now tested against
+  `packages/smith-sdk/test/fixtures/forge-1.8.5.json`, which is that output byte for byte.
+  Test names are kept exactly as forge spells them, `()` included: the claim and the re-run
+  would have agreed with each other while both disagreed with the artifact contract that
+  already pins these strings.
+
+- **`/trials` and `/agents` are pageable, and the default is not to page.** The cursor is an
+  item id rather than an offset — on a chain that only grows, "row 10 onward" is a different
+  set of rows on every request — and `page` reports `returned`, `total`, `truncated` and
+  `nextCursor`. No limit returns the whole list on purpose: a silent cap is a lie of
+  omission, and a monitor counting trials would read a truncated page as a shorter chain and
+  call it healthy. A limit outside 1..500 is a 400, and a cursor that has aged out of a
+  filtered list restarts from the top and says so rather than blaming the client for the
+  chain moving.
+- **Checked, not added, on the rest of the list.** Rate limiting (per-peer buckets plus the
+  200-stream ceiling), exponential backoff (`withBackoff`), a bounded RPC queue
+  (`RpcThrottler`), a circuit breaker with an operator kill switch, a dead-letter ring, the
+  per-tick snapshot cache and the per-agent alloy TTL cache all already exist and are covered
+  by tests. The N+1 the list implied is not there: `alloyState` is one synchronous cache read
+  per agent, not a call per agent, and the indexer shards `getLogs` and caps blocks per tick.
+  Two things were deliberately not built: ETags, because every response is `Cache-Control:
+  no-store` by design and a browser that is told not to store never revalidates — the header
+  would be decorative or would weaken a money-state guarantee; and a job queue, because the
+  API is a read service with nothing to enqueue.
 
 - **Frenchy no longer re-synthesises a line the tab already has, and starts sooner.**
   Every moment was a fresh round trip; the copy is fixed, so a repeat cost the same as the

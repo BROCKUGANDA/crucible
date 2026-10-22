@@ -79,6 +79,13 @@ site — so the figure here and the figure on the chain cannot drift apart.`}</p
 posting a trial     free
 reading the site    free
 challenging         at least 1% of the reward, returned if you are right`}</pre>
+        <p className="doc__body">
+          <Link href="/clock" data-tone="ember">
+            See the clock and the books, read live from the chain
+          </Link>{" "}
+          — the windows, the two-of-three, the fee and the bond, straight from the contract rather
+          than typed onto this page.
+        </p>
       </section>
 
       <section className="surface doc">

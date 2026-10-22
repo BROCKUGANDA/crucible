@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useRef, useState } from "react";
+import { staticScrub } from "@/lib/scrub/progress";
 import type { ScrubController } from "@/lib/scrub/progress";
 import { ACTS, type Act } from "@/lib/scrub/timeline";
 
@@ -40,13 +41,13 @@ function requireScrub(): ScrubController {
   if (!controller) {
     // During a build-time prerender, a route can render without the scrub stage mounted.
     // A missing provider should not crash the whole static build: fall back to the first act
-    // so the page still renders, and the real stage will mount in the browser.
-    return {
-      sample: () => ({ act: 0, progress: 0, frame: 0, step: 0 }),
-      start: () => {},
-      stop: () => {},
-      subscribe: () => () => {},
-    } as ScrubController;
+
+    // so the page still renders, and the real stage will mount in the browser. `staticScrub(0)`
+    // is the controller this repo already builds for a surface with no scrollbar of its own —
+    // it pins progress at the top, carries every field of a real sample, and answers `refresh()`
+    // — so the prerendered tree and the mounted one cannot disagree about the shape.
+    return staticScrub(0);
+
   }
   return controller;
 }

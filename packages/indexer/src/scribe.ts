@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, existsSync, unlinkSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, renameSync } from "node:fs";
 import { TRIALS_ABI } from "@crucible/smith";
 import {
   createPublicClient,
@@ -85,6 +85,12 @@ const EVENT_NAMES = [
   "RunSubmitted",
   "BreakFiled",
   "DisputeOpened",
+  // The two seat votes. A dispute's `_disputes` mapping is private and neither
+  // `disputeOf` nor `disputeVote` can enumerate WHO holds a commitment, so these logs are
+  // the only source for "how many seats have committed" — the count an Argus seat must
+  // wait for before revealing, per ADR-0004.
+  "VoteCommitted",
+  "VoteRevealed",
   "VerdictFinalized",
   "StakeWithdrawn",
   "Withdrawn",
@@ -193,6 +199,8 @@ export interface ScribeStatus {
   indexedTo: bigint;
   /** why the last tick did not advance, or null when it did */
   syncError: string | null;
+  /** true only when a read failed; a lagging but ticking index is not stalled */
+  syncStalled: boolean;
   /**
    * Trials that settled before this index started listening, so their rows are
    * incomplete. Non-zero means the index is not reading the whole history —
@@ -225,6 +233,15 @@ export class Scribe {
   private running = false;
   private head: bigint | null = null;
   private syncError: string | null = null;
+  /**
+   * Whether the last tick stopped because a read FAILED, as opposed to merely being behind.
+   *
+   * `/health` used `syncError != null` for this, and the sentence is also set while the cursor is
+   * legitimately walking a gap at 64 blocks a tick — so a cold index reported itself stalled for as
+   * long as the backfill took, and the compose probe gave up on a service that was working. A
+   * missing measurement and a slow one are different states, and only one of them is an error.
+   */
+  private syncStalled = false;
   /** The trip this process last reported, so an outage writes one line rather than one per tick. */
   private lastTripReportedAt: number | null = null;
   /** The incomplete-trial count last reported, so it is written once rather than every tick. */
@@ -273,14 +290,16 @@ export class Scribe {
   private saveCursor(): void {
     if (!this.cfg.cursorFile) return;
     try {
-      const tmp = `${this.cfg.cursorFile}.tmp`;
+      // Temp-then-rename, the same rule the juror's seat state follows. `writeFileSync` truncates
+      // before it writes, so a death mid-write left a half-written cursor — and `loadCursor`'s
+      // catch treats an unparseable cursor as no cursor, i.e. a silent full re-scan from
+      // `fromBlock`. The old code wrote the real file in place and deleted a temp file nothing had
+      // read, so the "written atomically" in the comment above was never true. `rename` is atomic
+      // on one filesystem, and the pid keeps two processes from sharing a temp path — three
+      // services already read the same `CRUSIBLE_CURSOR_FILE` name.
+      const tmp = `${this.cfg.cursorFile}.${process.pid}.tmp`;
       writeFileSync(tmp, this.cursor.toString(), "utf8");
-      writeFileSync(this.cfg.cursorFile, this.cursor.toString(), "utf8");
-      try {
-        unlinkSync(tmp);
-      } catch {
-        // Temp file cleanup is best-effort.
-      }
+      renameSync(tmp, this.cfg.cursorFile);
     } catch (err) {
       console.error(`[scribe] failed to persist cursor: ${(err as Error).message}`);
     }
@@ -301,6 +320,7 @@ export class Scribe {
       head: this.head,
       indexedTo: this.cursor,
       syncError: this.syncError,
+      syncStalled: this.syncStalled,
       partialTrials: this.countPartialTrials(),
     };
   }
@@ -334,6 +354,15 @@ export class Scribe {
     );
     this.head = head;
 
+    // Every tick, including the caught-up one that returns a few lines below.
+    //
+    // This used to live inside `recordBlockTimes`, which is called only when a batch has logs, so a
+    // block whose `getBlock` failed once was retried only if some later batch happened to carry an
+    // event — and a caught-up chain has no later batch at all. The pending read sat there while the
+    // row kept a block number as its `createdAt`/`runAt`, and `breakWindowEndsAt` is
+    // `runAt + breakWindow`, which is how a trial came to publish a deadline in 1970.
+    await this.retryPendingBlockTimes();
+
     // The cursor is the NEXT block to read, so `head + 1` is the caught-up
     // state, not a reset. Treating it as one cleared the model and restarted
     // the backfill on every idle tick: the hall emptied, `/ready` flipped
@@ -342,6 +371,7 @@ export class Scribe {
     if (this.cursor > head) {
       if (this.cursor === head + 1n) {
         this.syncError = null;
+        this.syncStalled = false;
         this.saveCursor();
         return this.model;
       }
@@ -357,6 +387,7 @@ export class Scribe {
       this.blockTimes.clear();
       this.pendingBlockTimes.clear();
       this.syncError = "the chain was reset; the index is rebuilding from the start block";
+      this.syncStalled = false;
       this.saveCursor();
       return this.model;
     }
@@ -410,6 +441,7 @@ export class Scribe {
       const proof = await this.proveQuietThrough(lastEventBlock + 1n, head);
       this.cursor = proof.cursor;
       this.syncError = describeProof(proof, head);
+      this.syncStalled = proof.stoppedBecause === "unreadable";
       this.saveCursor();
       return this.model;
     }
@@ -423,6 +455,7 @@ export class Scribe {
     const proof = await this.proveQuietThrough(this.cursor, head);
     this.cursor = proof.cursor;
     this.syncError = describeProof(proof, head);
+    this.syncStalled = proof.stoppedBecause === "unreadable";
     this.saveCursor();
     return this.model;
   }
@@ -657,24 +690,34 @@ export class Scribe {
       }),
     );
 
-    // A pending read is retried, on its own, before the next batch is
-    // hydrated. A trial whose timestamp is missing is a row that cannot be
-    // trusted, so it is worth a call on its own.
-    if (this.pendingBlockTimes.size > 0) {
-      for (const b of [...this.pendingBlockTimes]) {
-        try {
-          const ts = await this.rpc.run(() =>
-            withBackoff(() => this.client.getBlock({ blockNumber: b }).then((blk) => blk.timestamp), {
-              operation: "scribe.getBlock",
-            }),
-          );
-          this.blockTimes.set(b, Number(ts));
-          this.pendingBlockTimes.delete(b);
-          // The row is re-hydrated with the timestamp it was missing.
-          hydrateTimestamps(this.model, this.blockTimes, []);
-        } catch {
-          // Still unavailable; it stays pending and is retried next tick.
-        }
+  }
+
+  /**
+   * Retry the block timestamps that could not be read, and apply each one to the rows that name it.
+   *
+   * `hydrateTimestamps(model, blockTimes, [])` does nothing at all — an explicit empty list maps to
+   * an empty target set — and that is what this call used to pass. The comment promised "the row is
+   * re-hydrated with the timestamp it was missing"; the read succeeded, the seconds went into the
+   * map, the map was discarded at the end of the next batch, and the row kept a block number as its
+   * `createdAt`/`runAt`. Omitting the list means "every row", which is the only correct filter when
+   * the input is "this block became readable again" rather than "these trials changed".
+   */
+  private async retryPendingBlockTimes(): Promise<void> {
+    for (const b of [...this.pendingBlockTimes]) {
+      try {
+        const ts = await this.rpc.run(() =>
+          withBackoff(() => this.client.getBlock({ blockNumber: b }).then((blk) => blk.timestamp), {
+            operation: "scribe.getBlock",
+          }),
+        );
+        this.blockTimes.set(b, Number(ts));
+        this.pendingBlockTimes.delete(b);
+        hydrateTimestamps(this.model, this.blockTimes);
+        // Only this block's entry is dropped: `blockTimes` may also hold the current batch's
+        // times, which `syncOnce` clears after applying them.
+        this.blockTimes.delete(b);
+      } catch {
+        // Still unavailable; it stays pending and is retried on the next tick.
       }
     }
   }

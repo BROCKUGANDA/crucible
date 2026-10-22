@@ -54,25 +54,60 @@ current tree actually verifies, what it deliberately does not, and what is still
 - **A test that did not run says so.** The four ERC-8004 fork tests call `vm.skip`
   unless the suite is on a mainnet fork, so a run without `MAINNET_RPC_URL` reports
   `126 passed, 4 skipped` instead of four green tests that asserted nothing.
+- **Every seeded trial commits to content that exists.**
+  `scripts/seed-content.mjs` pins `fixtures/trials/counter` through the same
+  `ContentService` a verifier uses, generates `crucible-contracts/script/SeedContent.sol`
+  with the two digests, and resolves each digest back out of the store to prove the bytes
+  come home. The seeds post those constants instead of
+  `keccak256(abi.encodePacked("spec-open", i, block.timestamp))`, which named a string no
+  pinning process ever wrote. `scripts/demo.mjs` then reads `TrialCreated` off the chain and
+  compares the two data words to the committed constants, so the claim is the chain's, not
+  the script's: a local build reports `8 trials, every one committing to the pinned spec and
+  suite`, and putting one invented hash back at one of the two Extend sites fails it with
+  `3 of 8 trials commit to content that is not the pinned fixture`. CI re-runs
+  `npm run seed:check` on every push, and `packages/argus/test/no-orphan.test.ts` fails if
+  that step is ever unwired — a gate that exists but does not run is how PR #15's pagination
+  ended up merged and undeployed.
+- **The bytes behind a digest cannot be rewritten by a checkout.**
+  `.gitattributes` pins `fixtures/**` to LF. Measured on a Windows box with the default
+  `core.autocrlf=true`: a fresh `git worktree` checkout produced CR=6 in `foundry.toml` and
+  CR=17 in `SPEC.md` where the committed blob has none, so the *same commit* hashes to two
+  different digests depending on the machine. `seed-content.mjs` refuses any CR byte in a file
+  it is about to pin rather than posting a machine-specific digest.
 
 ## Still open from this pass, by severity
 
 These are known and intentional, not claims that the software is safe. Ordered by how
 much of the product's promise each one costs.
 
-1. **The content layer does not exist in production.** Every function that moves bytes
-   between a run and a verifier is injected — and every one of them is implemented only
-   by a test fake. `RunnerDeps.fetchSpec`, `fetchSuite`, `uploadRepo` and `uploadLogs`
-   (`packages/forge-runner/src/runner.ts:41`) and `VerifyInput.fetchArtifact` and
-   `rerunSuite` (`packages/argus/src/argus.ts:49`) have no production caller or
-   implementation. Consequence: `@crucible/argus` is imported by nothing outside its own
-   test directory, so the deterministic re-run that ADR-0005 makes the heart of the
-   product cannot execute as shipped, and the `specCID`/`testsCID`/`repoCID` an artifact
-   names are digests of bytes that were never pinned anywhere. `@crucible/cidstore`
-   already describes the right shape — a bounded store the runner publishes into and a
-   verifier reads back, plus a disclosure log, because the chain keeps only keccak
-   digests and a sha256 CID cannot be derived from one. Building that bridge is the work,
-   not more gate plumbing.
+1. **The content layer exists; the seat that uses it does not.** Bytes move for real on both
+   sides of a run now — `ContentService` (`packages/forge-runner/src/content.ts`) pins and
+   fetches spec, suite, repo and log content, `ContentBridge` (`packages/cidstore/src/bridge.ts`)
+   keeps the disclosure log that ties a keccak digest to the sha256 CID naming the same bytes,
+   and `LiveVerifier` (`packages/argus/src/live.ts`) runs the six deterministic gates against
+   them. `scripts/verify-roundtrip.mjs` exercises the whole path — pin, execute with a real
+   forge, sign, publish, verify — and catches an inflated claim and an unregistered key. What
+   is still missing, in the order that makes each checkable by the last:
+   - **The seat operator exists; its bench does not.** `apps/juror` is the production caller: it
+     reads a Challenged trial off the chain, fetches the content the trial committed to, runs the
+     six deterministic gates, and casts this seat's commit and reveal with the salt held in a
+     durable store. What it cannot do on the deployed box is *execute*: the image carries no
+     container runtime and no daemon socket, because a container that can ask the host daemon for
+     containers holds the host, and this box runs other projects. So every verification on the VPS
+     fails before a suite can run — there is no `docker` binary to spawn, and `dockerAvailable()`
+     rejects rather than reporting a clean "no daemon" — the seat records the error, abstains, and
+     `/health` shows it. The challenge still falls to the committee. The seat is honest about being
+     unable to check, which is the right failure — but it is not yet the product. The two ways out
+     are a bench the seat talks to over the compose network (no socket, more moving parts) or an
+     explicit operator decision to mount the socket and accept what that grants. Neither has been
+     run: this is a reading of the image, not a measured abstain on the live box.
+   - **A re-run has never executed in a container.** `rerunOnFreshBench` has run locally and in
+     the degraded path; no test takes a pinned suite through the Docker sandbox end to end.
+   - **The demo hall's run hashes are still synthetic.** `Demo.s.sol` submits
+     `keccak256("RunArtifact{all-pass}")`, not a signed artifact, so its settled rows have
+     resolvable demands and unverifiable answers. Real ones come from a runner publishing a run.
+   Earlier text in this item described the whole layer as absent; that was true of the tree at
+   the time of the audit and is not true now.
 2. **No professional audit and no formal verification.** A settlement bug is not
    recoverable by anyone; the contracts are not upgradeable.
 3. **No pause or admin recovery.** This is deliberate for an escrow, but it means a bug
@@ -102,5 +137,58 @@ much of the product's promise each one costs.
 9. **The demo scripts are not covered.** Coverage is measured over the contracts; the
    `script/` files that deploy and replay the loop are exercised by the demo and the
    golden path instead, which is why they read 0%.
+10. **Open from the 2026-10-22 race-and-edge audit.** Four were fixed in `apps/juror` (the salt
+    outliving the broadcast, one bench per pass, a fresh chain-clock read per candidate, and a
+    `FileState` that shared its forfeit map with a module constant) and each has a mutation that
+    now fails. These were found and are **not** fixed; they are listed with their evidence so the
+    next reader does not have to rediscover them.
+
+    - **A repaired block timestamp is thrown away.** `packages/indexer/src/scribe.ts:680` calls
+      `hydrateTimestamps(model, blockTimes, [])` with an empty id list, which `model.ts:592` turns
+      into "hydrate nothing" — and `:388` then clears `blockTimes`. A block whose `getBlock` failed
+      once keeps a *block number* in `createdAt`/`runAt` forever, so `breakWindowEndsAt`
+      (`model.ts:706`) publishes a 1970 deadline on `/snapshot`, `/trials` and `/stream`, with
+      nothing saying so. The comment above the call claims the row is re-hydrated. It is not.
+    - **An unclaimed trial's reward has no watcher.** `CrucibleTrials.sol:425` lets
+      `reclaimExpired` fire on `Status.Open` precisely so orphaned escrow has an exit, but
+      `packages/warden/src/policy.ts:88` lumps `open` with `settled` as "nothing to do". The newest
+      guard on the contract has no consumer: dead trials hold `MAX_TOTAL_ESCROWED` forever.
+    - **`Warden.start()` still decides on the host clock.** `packages/warden/src/warden.ts:100`
+      passes `Math.floor(Date.now() / 1000)` and `WardenDeps` has no `chainNow` seam, so the fix in
+      `apps/keeper` is only there because the keeper refuses to call `start()` and drives `sweep`
+      itself. Any other embedder inherits the bug, and on a warped demo chain settlement silently
+      stalls while `/health` answers.
+    - **Nothing reaps sandbox containers by label.** `SANDBOX_LABEL` (`sandbox.ts:88`) is documented
+      as the handle "whoever is cleaning up after a crashed verifier" would use; the only readers
+      are the tests. After a death that is not a timeout — an OOM-killed node, a container restart —
+      workloads stay alive holding CPU and memory claims.
+    - **The cursor write is not atomic, and its temp name is fixed.** `scribe.ts:279-293` writes the
+      temp file, then writes the real file, then unlinks the temp; there is no `renameSync`, so the
+      documented "written atomically" is not true and a death mid-write leaves a truncated cursor
+      that `loadCursor` treats as absent — a silent full re-scan. All three services read the same
+      `CRUSIBLE_CURSOR_FILE` name, so the shared temp path is shared too.
+    - **Registry fan-out has no ceiling.** `apps/api/src/server.ts:221` runs `Promise.all` over every
+      agent, three `readContract` calls each, every 2s, on a path with no throttler — and one
+      `registerAgent` at `MIN_BOND` permanently adds three reads per sweep. 500 agents is about 750
+      concurrent reads against the node the indexer shares.
+    - **"Catching up" is reported as "failing".** `scribe.ts:429` assigns the same `syncError` field
+      for a tick that threw and for a cursor legitimately behind the head, and `MAX_PROOF_BLOCKS_PER_TICK`
+      (64) means a 40,000-block gap takes ~5 minutes of `/health` 503 — during which `web`, which
+      waits on `api: service_healthy`, does not come up. The message even says "re-reading it".
+    - **Front-end money and clocks.** `apps/web/src/lib/wizard.ts:75` computes the bond in floats and
+      rounds to 4 decimals, so the advertised bond can be short of the contract's floor-divided wei
+      and the claim reverts `StakeTooSmall`; `apps/web/src/lib/forge.ts:93` `formatEth` uses
+      `toFixed` (rounds *up*), printing a stake larger than the operator signed for, against the rule
+      written in `api.ts:119`; `apps/web/src/app/trials/new/page.tsx:112` derives the deadline from
+      `Date.now()` against a `block.timestamp` guard, so on a warped chain every new trial reverts
+      `BadDeadline` and the error names the method, not the clock; `trials/[id]/page.tsx:53` closes
+      the break UI one second before the contract does (`>=` vs the contract's `>`).
+    - **`FEE_BPS` is read once at boot.** `apps/api/src/server.ts:274` fills it inside a single `try`
+      and never retries; a boot-time blip leaves the published fee rate `null` for the life of the
+      process. It is a `public constant`, so there is no reason not to re-read it.
+    - **`notifications()` has no memory.** `packages/warden/src/policy.ts:114` re-emits every
+      settled trial's `verdict-landed` on every pass; latent only because the keeper does not
+      attach a notifier today.
+
 
 Report a vulnerability as described in [`SECURITY.md`](SECURITY.md), not in a public issue.

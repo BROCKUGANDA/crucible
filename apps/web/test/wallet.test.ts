@@ -212,7 +212,7 @@ describe("wizard to transaction", () => {
       rewardEth: "0.5",
     });
     expect(v.ok).toBe(true);
-    expect(v.bondEth).toBe("0.1000");
+    expect(v.bondEth).toBe("0.1");
   });
 });
 

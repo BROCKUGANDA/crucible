@@ -18,6 +18,46 @@
   flex-wrap: wrap;
 }
 
+/* The filter is a control now, not a decoration: it is a real button, it shows which one is
+   pressed, and the selected chip heats up the way every other affordance here does. The count
+   rides inside as a tabular figure so a list growing under a filter does not shift the label. */
+.filter-chip {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--bg2);
+  background: transparent;
+  color: var(--dim);
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    color var(--t-tap) var(--ease-ignite),
+    border-color var(--t-tap) var(--ease-ignite),
+    background var(--t-tap) var(--ease-ignite);
+}
+
+.filter-chip:hover {
+  color: var(--text);
+  border-color: var(--ash);
+}
+
+.filter-chip[data-selected] {
+  color: var(--ink);
+  border-color: transparent;
+  background: linear-gradient(90deg, var(--ember) 0%, var(--gold) 55%, var(--hot) 100%);
+  font-weight: 600;
+}
+
+.filter-chip__count {
+  font-variant-numeric: tabular-nums lining-figures;
+  opacity: 0.8;
+}
+
 /* ── sponsor wizard ───────────────────────────────────────── */
 
 .wizard-field {
@@ -204,6 +244,69 @@
 }
 
 .hall-receipt__hash {
+  color: var(--dim);
+}
+
+/* ── the clock: the chain's own constants, read live ──────── */
+
+.clock-lede {
+  max-width: 66ch;
+}
+
+.clock-panel {
+  margin-bottom: var(--s-4);
+}
+
+.clock-prose {
+  color: var(--dim);
+  max-width: 68ch;
+  margin: 0 0 var(--s-3);
+}
+
+.clock-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--s-3);
+}
+
+/* The line is a label over its value and a source, allowed to wrap whole at narrow widths so a
+   long label and a long getter name never overlap or clip. */
+.clock-line {
+  display: grid;
+  gap: 2px;
+  padding: var(--s-3) 0;
+  border-top: 1px solid var(--bg2);
+  min-width: 0;
+}
+
+.clock-line:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+
+.clock-line__label {
+  color: var(--text);
+}
+
+.clock-line__value {
+  font-size: 1rem;
+  overflow-wrap: anywhere;
+}
+
+.clock-line__source {
+  color: var(--faint);
+  overflow-wrap: anywhere;
+}
+
+.clock-line:not([data-read]) .clock-line__value {
+  color: var(--faint);
+}
+
+.clock-unread {
+  padding: var(--s-4) var(--s-5);
+  margin: var(--s-4) 0;
   color: var(--dim);
 }
 

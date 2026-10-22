@@ -253,6 +253,24 @@ jobs:
       - name: build workspace libraries
         run: npm run build:libs
 
+      # The chain commits to two digests per trial. `script/SeedContent.sol` carries them as
+      # generated constants so a foundry-only container can post them, which makes a cached value
+      # load-bearing — so CI recomputes it from the fixture bytes every run and fails if the two
+      # have parted. Without this step a fixture edit would put a digest on a chain that resolves
+      # to nothing, and the only witness would be a skeptic who could not fetch the spec.
+      - name: seed digests answer to the content they name
+        run: npm run seed:check
+
+      # Two lists below, and both are maintained by a gate rather than by memory:
+      # `scripts/workspace-coverage-gate.mjs` reads the workspaces out of the repository and fails
+      # if any of them has a script that this job does not run. The enumeration is not laziness —
+      # `crucible-contracts` has `test` and `build` scripts that need forge, which this job does
+      # not install (the Contracts job owns them) — but an enumerated list is a list that silently
+      # forgets the next package. `apps/juror` is the one this repo nearly forgot: it arrived with
+      # 70 tests that no job would have run.
+      - name: every workspace is actually covered by this job
+        run: node scripts/workspace-coverage-gate.mjs .github/workflows/ci.yml
+
       - name: typecheck (every workspace)
         run: |
           npm run typecheck \
@@ -264,6 +282,7 @@ jobs:
             --workspace @crucible/agent-security \
             --workspace @crucible/cidstore \
             --workspace @crucible/keeper \
+            --workspace @crucible/juror \
             --workspace @crucible/api \
             --workspace @crucible/web
 
@@ -278,6 +297,7 @@ jobs:
             --workspace @crucible/agent-security \
             --workspace @crucible/cidstore \
             --workspace @crucible/keeper \
+            --workspace @crucible/juror \
             --workspace @crucible/api \
             --workspace @crucible/web
 
@@ -299,9 +319,33 @@ jobs:
     runs-on: [self-hosted, linux, X64, crucible]
     steps:
       - uses: actions/checkout@v7
+
+      # Node 24 here, and only here, because it is the audit client that broke, not the app.
+      #
+      # On 2026-10-22 every audit job began failing the same way, whatever the push contained:
+      #   npm notice This endpoint is being retired. Use the bulk advisory endpoint instead.
+      #   npm warn audit 400 Bad Request - POST .../-/npm/v1/security/audits/quick - Bad Request
+      #   dependency audit FAILED: audit.json has no auditReportVersion
+      # npm 10 posts to that retired endpoint, so the file the gate read was an error object rather
+      # than an audit. The gate refused it instead of calling that clean — exactly the behaviour it
+      # was written to have after the version that read an empty payload as "only documented
+      # advisories" — and the fix is a client that asks the registry's current question.
+      #
+      # The versions are measured, not remembered: `deps/npm/package.json` on the node release
+      # branches gives v22.x npm 10.9.9 and v24.x npm 11.19.1. An earlier revision of this step said
+      # "node 22, because npm 11 uses the bulk endpoint", and the next run failed with the identical
+      # 400 — node 22 does not ship npm 11. npm 11.19 was checked against a real payload: it reaches
+      # `/security/advisories/bulk`, reports 26 vulnerable packages, and the gate reconciles that
+      # against npm's own summary and passes every name under its ceiling.
+      #
+      # Deliberately NOT `npm i -g npm@11`: these are long-lived self-hosted runners, and a global
+      # upgrade silently changes the npm every later job on that machine inherits. `npx npm@11` was
+      # tried and fails before it reaches the audit (EALLOWSCRIPTS on a project-scoped install).
+      # setup-node puts this version on one job's PATH and leaves the runner as it found it.
       - uses: actions/setup-node@v7
+
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
       - run: npm ci
       # Known-unfixable, and documented as such in the README's "Known limits":
