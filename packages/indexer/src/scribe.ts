@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, existsSync, unlinkSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, renameSync } from "node:fs";
 import { TRIALS_ABI } from "@crucible/smith";
 import {
   createPublicClient,
@@ -199,6 +199,8 @@ export interface ScribeStatus {
   indexedTo: bigint;
   /** why the last tick did not advance, or null when it did */
   syncError: string | null;
+  /** true only when a read failed; a lagging but ticking index is not stalled */
+  syncStalled: boolean;
   /**
    * Trials that settled before this index started listening, so their rows are
    * incomplete. Non-zero means the index is not reading the whole history —
@@ -231,6 +233,15 @@ export class Scribe {
   private running = false;
   private head: bigint | null = null;
   private syncError: string | null = null;
+  /**
+   * Whether the last tick stopped because a read FAILED, as opposed to merely being behind.
+   *
+   * `/health` used `syncError != null` for this, and the sentence is also set while the cursor is
+   * legitimately walking a gap at 64 blocks a tick — so a cold index reported itself stalled for as
+   * long as the backfill took, and the compose probe gave up on a service that was working. A
+   * missing measurement and a slow one are different states, and only one of them is an error.
+   */
+  private syncStalled = false;
   /** The trip this process last reported, so an outage writes one line rather than one per tick. */
   private lastTripReportedAt: number | null = null;
   /** The incomplete-trial count last reported, so it is written once rather than every tick. */
@@ -279,14 +290,16 @@ export class Scribe {
   private saveCursor(): void {
     if (!this.cfg.cursorFile) return;
     try {
-      const tmp = `${this.cfg.cursorFile}.tmp`;
+      // Temp-then-rename, the same rule the juror's seat state follows. `writeFileSync` truncates
+      // before it writes, so a death mid-write left a half-written cursor — and `loadCursor`'s
+      // catch treats an unparseable cursor as no cursor, i.e. a silent full re-scan from
+      // `fromBlock`. The old code wrote the real file in place and deleted a temp file nothing had
+      // read, so the "written atomically" in the comment above was never true. `rename` is atomic
+      // on one filesystem, and the pid keeps two processes from sharing a temp path — three
+      // services already read the same `CRUSIBLE_CURSOR_FILE` name.
+      const tmp = `${this.cfg.cursorFile}.${process.pid}.tmp`;
       writeFileSync(tmp, this.cursor.toString(), "utf8");
-      writeFileSync(this.cfg.cursorFile, this.cursor.toString(), "utf8");
-      try {
-        unlinkSync(tmp);
-      } catch {
-        // Temp file cleanup is best-effort.
-      }
+      renameSync(tmp, this.cfg.cursorFile);
     } catch (err) {
       console.error(`[scribe] failed to persist cursor: ${(err as Error).message}`);
     }
@@ -307,6 +320,7 @@ export class Scribe {
       head: this.head,
       indexedTo: this.cursor,
       syncError: this.syncError,
+      syncStalled: this.syncStalled,
       partialTrials: this.countPartialTrials(),
     };
   }
@@ -357,6 +371,7 @@ export class Scribe {
     if (this.cursor > head) {
       if (this.cursor === head + 1n) {
         this.syncError = null;
+        this.syncStalled = false;
         this.saveCursor();
         return this.model;
       }
@@ -372,6 +387,7 @@ export class Scribe {
       this.blockTimes.clear();
       this.pendingBlockTimes.clear();
       this.syncError = "the chain was reset; the index is rebuilding from the start block";
+      this.syncStalled = false;
       this.saveCursor();
       return this.model;
     }
@@ -425,6 +441,7 @@ export class Scribe {
       const proof = await this.proveQuietThrough(lastEventBlock + 1n, head);
       this.cursor = proof.cursor;
       this.syncError = describeProof(proof, head);
+      this.syncStalled = proof.stoppedBecause === "unreadable";
       this.saveCursor();
       return this.model;
     }
@@ -438,6 +455,7 @@ export class Scribe {
     const proof = await this.proveQuietThrough(this.cursor, head);
     this.cursor = proof.cursor;
     this.syncError = describeProof(proof, head);
+    this.syncStalled = proof.stoppedBecause === "unreadable";
     this.saveCursor();
     return this.model;
   }

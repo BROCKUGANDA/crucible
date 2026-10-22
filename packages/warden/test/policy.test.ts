@@ -183,7 +183,7 @@ describe("Warden.sweep", () => {
 
   it("finalizes an expired break window and reports the tx", async () => {
     const finalize = vi.fn(async () => `0x${"ff".repeat(32)}` as `0x${string}`);
-    const w = new Warden({
+    const w = new Warden({ now: async () => 2_000_000_000,
       crucible: { ...crucible, finalize } as unknown as Crucible,
       wallet,
     });
@@ -201,7 +201,7 @@ describe("Warden.sweep", () => {
     const finalize = vi.fn(async () => {
       throw new Error("execution reverted: NotFinalizable");
     });
-    const w = new Warden({
+    const w = new Warden({ now: async () => 2_000_000_000,
       crucible: { ...crucible, finalize } as unknown as Crucible,
       wallet,
     });
@@ -216,7 +216,7 @@ describe("Warden.sweep", () => {
 
   it("sends notifications through the notifier when configured", async () => {
     const send = vi.fn(async () => {});
-    const w = new Warden({ crucible, wallet, notifier: { send } });
+    const w = new Warden({ now: async () => 2_000_000_000, crucible, wallet, notifier: { send } });
     const model = {
       ...replay([]),
       trials: new Map([[1, row({ status: "judging", runAt: NOW - 100_000 })]]),
