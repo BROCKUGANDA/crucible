@@ -78,6 +78,12 @@ export interface OperatorDeps {
   state: VoteState;
   /** how long a recorded abstention sits before its suite is re-run; see `reverifyAt` */
   reverifyMs: number;
+  /**
+   * How many benches one pass may run. Default 1: the cost of a pass must not be set by strangers,
+   * because `fileBreak` is permissionless and every dispute it opens can put a full sandboxed
+   * re-run in front of this seat.
+   */
+  maxVerifies?: number;
   log(line: string): void;
   /**
    * Wall clock, in ms, for the re-verification backoff only.
@@ -117,6 +123,8 @@ export function createOperator(deps: OperatorDeps): JurorOperator {
     let considered = 0;
     /** Trials this pass freed a junk seal for — see the `drop` case below for why they are skipped. */
     const dropped = new Set<number>();
+    /** Benches actually run this pass, against `maxVerifies`. */
+    let verified = 0;
 
     const record = (trialId: number, action: ActionKind, detail: string, txHash: Hex | null = null): void => {
       counts[action] += 1;
@@ -192,7 +200,14 @@ export function createOperator(deps: OperatorDeps): JurorOperator {
         }
 
         const view = await deps.chain.disputeView(trialId, deps.index.votes(trialId));
-        const gate = gateCommit(view, deps.constants, now);
+        // The clock is read again here, not reused from the top of the pass. The margin rule exists
+        // to refuse starting a suite that cannot finish inside the commit window, and a pass that
+        // gates every candidate against a timestamp taken before the first candidate's re-run is
+        // answering that question about a moment that has already passed: with a 900s bench budget,
+        // the second candidate in a pass would be told it has the full window left when the chain has
+        // moved a quarter-hour on. The post-run re-check catches the mistake before a vote is cast,
+        // so the seat does not decide wrongly — it pays a full container run to find out.
+        const gate = gateCommit(view, deps.constants, await deps.chain.chainNow());
         if (gate.act === "forfeit") {
           await deps.state.recordForfeit({ trialId, reason: gate.reason, at: deps.wallNow() });
           record(trialId, "forfeit", gate.reason);
@@ -200,6 +215,16 @@ export function createOperator(deps: OperatorDeps): JurorOperator {
         }
         if (gate.act === "hold") {
           record(trialId, "hold", gate.reason);
+          continue;
+        }
+        if (verified >= (deps.maxVerifies ?? 1)) {
+          // One bench per pass, so a pass's cost is not chosen by whoever can send the most
+          // `fileBreak` transactions. Each of those costs `reward/100` and each candidate can put a
+          // 900s container in front of the seat; unbounded, one skeptic with a script could make
+          // every pass outlast the health window in `main.ts`, and the seat would read as dead for
+          // as long as they kept the disputes coming.
+          record(trialId, "hold", `already ran ${verified} bench(es) this pass, ${deps.maxVerifies ?? 1} allowed`);
+          record(trialId, "hold", `already ran ${verified} bench(es) this pass, ${deps.maxVerifies ?? 1} allowed`);
           continue;
         }
 
@@ -210,6 +235,7 @@ export function createOperator(deps: OperatorDeps): JurorOperator {
         if (prior) await deps.state.clearAbstention(trialId);
 
         const facts = await deps.judge.facts(trialId);
+        verified += 1;
         const report = await deps.judge.verify(facts);
         const ballot = ballotFor(report);
 

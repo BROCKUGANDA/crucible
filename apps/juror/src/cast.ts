@@ -88,11 +88,21 @@ export class DurableSeat implements SeatCast {
       // condition — the gates never reach it — so it throws rather than reverting on chain.
       throw new Error(`seat ${this.deps.seat} has no stored seal for trial ${trialId}`);
     }
-    const tx = await this.deps.poster.revealVote(trialId, vote.breakWins, vote.salt);
-    // After, never before: a reveal that was sent but not yet mined must still be openable by
-    // the next pass. Once it is mined, the salt is public and the record is worthless.
-    await this.deps.state.remove(trialId);
-    return tx;
+    // The salt OUTLIVES the send, and is dropped only when the chain says the reveal is on it.
+    //
+    // `writeContract` resolves with a transaction hash — the node's acceptance, not a block. Deleting
+    // here on the strength of that hash would reproduce, in the one place designed to prevent it, the
+    // destroyed vote `state.ts` exists to avoid: broadcast, restart before it mines (the health
+    // probe, an OOM, a `compose up`), and the seat holds neither a commitment the chain will accept
+    // again (`AlreadyRevealed`/`AlreadyCommitted`) nor the salt that opens what it did send.
+    //
+    // So the next pass decides. If the reveal mined, `disputeVote` reads `revealed` and `gateReveal`
+    // returns `drop`, which is where the record is finally discarded. If it did not mine, the next
+    // pass simply sends it again. The one wasteful case is a reveal that mined while nobody was
+    // looking: the retry reverts `AlreadyRevealed`, the pass records the error, and the pass after
+    // reads the chain and drops it. A seat that guesses from an error string would be reading meaning
+    // out of viem's wording rather than out of the contract.
+    return this.deps.poster.revealVote(trialId, vote.breakWins, vote.salt);
   }
 
   async discard(trialId: number): Promise<void> {

@@ -121,7 +121,7 @@ describe("DurableSeat.seal", () => {
 });
 
 describe("DurableSeat.unseal", () => {
-  it("posts the stored salt, then forgets it", async () => {
+  it("posts the stored salt and KEEPS it, because a hash is not a block", async () => {
     const h = harness();
     await h.cast.seal(7, true);
     const salt = await peek(h);
@@ -129,7 +129,27 @@ describe("DurableSeat.unseal", () => {
     await h.cast.unseal(7);
 
     expect(h.reveals[0]).toEqual({ trialId: 7, breakWins: true, salt });
-    expect(h.trace).toEqual(["state.put", "commitVote", "revealVote", "state.remove"]);
+    // `state.remove` is deliberately absent. `writeContract` resolves when the node accepts the
+    // transaction, not when it is mined, so a seat that deleted the salt here would lose the vote on
+    // any death between the send and the block — and `AlreadyCommitted` means the seat cannot replace
+    // it. The record is discarded by the pass that reads `revealed` off the chain (via `discard`),
+    // which is the only moment the salt is genuinely worthless.
+    expect(h.trace).toEqual(["state.put", "commitVote", "revealVote"]);
+  });
+
+  it("still holds the salt after a broadcast, so a restart can finish the reveal", async () => {
+    // The shape of the crash this whole module exists for: the transaction is out, the process dies
+    // before anybody has seen it mined.
+    const h = harness();
+    await h.cast.seal(7, true);
+    const before = await peek(h);
+    await h.cast.unseal(7);
+
+    expect(await h.store.get(7)).not.toBeNull();
+    expect((await h.store.get(7))!.salt).toBe(before);
+    // The next pass, seeing no `revealed` on the chain, sends it again; seeing it, drops the record.
+    await h.cast.discard(7);
+    expect(await h.store.get(7)).toBeNull();
   });
 
   it("keeps the salt when the reveal reverts, so the next pass can decide from the chain", async () => {

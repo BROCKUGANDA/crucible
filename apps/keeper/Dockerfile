@@ -7,6 +7,9 @@ COPY package.json package-lock.json ./
 COPY crucible-contracts/package.json crucible-contracts/package.json
 COPY packages/agent-security/package.json packages/agent-security/
 COPY packages/argus/package.json packages/argus/
+# See apps/api/Dockerfile: `npm ci` resolves the whole workspace set, and @crucible/argus names
+# cidstore as a workspace dependency.
+COPY packages/cidstore/package.json packages/cidstore/
 COPY packages/forge-runner/package.json packages/forge-runner/
 COPY packages/indexer/package.json packages/indexer/
 COPY packages/smith-sdk/package.json packages/smith-sdk/
@@ -14,6 +17,7 @@ COPY packages/warden/package.json packages/warden/
 COPY apps/api/package.json apps/api/
 COPY apps/web/package.json apps/web/
 COPY apps/keeper/package.json apps/keeper/
+COPY apps/juror/package.json apps/juror/
 RUN npm ci --ignore-scripts
 
 COPY . .

@@ -182,7 +182,17 @@ async function boot(): Promise<void> {
   createServer(async (req, res) => {
     if (req.url === "/health") {
       const status = patrol.status();
-      const fresh = status.lastPassAt !== null && Date.now() - status.lastPassAt < cfg.patrolMs * 4;
+      // Freshness has to be longer than the work, or the probe calls a working seat dead.
+      //
+      // `patrolMs * 4` alone is 120s at the compose default, while one verification can take the
+      // sandbox's whole budget (`DEFAULT_SANDBOX.timeoutSec`, 900s) and `lastPassAt` is only stamped
+      // when the pass returns. So a single open dispute would leave `/health` answering 503 for
+      // fifteen minutes at a time — an operator watching a seat that is working, and a
+      // `docker compose up --wait` that never becomes healthy. (Not a restart: compose does not
+      // recreate a container for being unhealthy, whatever the comment in this file's first draft
+      // claimed about it. The damage is a service that reports itself down while it is busy.)
+      const budgetMs = marginSec * 1000 + cfg.patrolMs * 4;
+      const fresh = status.lastPassAt !== null && Date.now() - status.lastPassAt < budgetMs;
       // Read off the durable store rather than the loop's memory: after a restart this is the
       // number that says whether the seat still holds votes it has to finish.
       const recovered = (await state.pending()).length;

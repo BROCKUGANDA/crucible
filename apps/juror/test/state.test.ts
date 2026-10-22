@@ -74,6 +74,31 @@ describe("FileState", () => {
     expect(await (await FileState.open(dir)).abstention(7)).toBeNull();
   });
 
+  it("keeps one seat's decisions out of another seat's memory", async () => {
+    // Two instances, two directories, nothing shared. This is the case that a `{ ...EMPTY, sealed:
+    // {}, abstained: {} }` initialiser silently broke: the third map, `givenUp`, kept pointing at the
+    // module constant, so the first seat to forfeit a trial wrote that decision into `EMPTY` itself
+    // and a second seat — with no state file of its own — inherited a give-up it had never made and
+    // skipped a dispute it was perfectly able to judge.
+    const a = await FileState.open(await tempDir());
+    const b = await FileState.open(await tempDir());
+
+    await a.recordForfeit({ trialId: 9, reason: "the window closed", at: 1 });
+    await a.recordAbstention({ trialId: 10, reason: "no disclosure", phase: "abstain", at: 1 });
+    await a.put({ trialId: 11, breakWins: true, salt: SALT, commit: COMMIT, sealedAt: 1 });
+
+    expect(await b.forfeit(9)).toBeNull();
+    expect(await b.abstention(10)).toBeNull();
+    expect(await b.get(11)).toBeNull();
+    expect(await b.pending()).toEqual([]);
+
+    // And the first seat still holds all three, so the assertion above is about isolation rather
+    // than about a store that records nothing at all.
+    expect(await a.forfeit(9)).not.toBeNull();
+    expect(await a.abstention(10)).not.toBeNull();
+    expect((await a.pending()).map((s) => s.trialId)).toEqual([11]);
+  });
+
   it("reads a state file written before forfeits existed", async () => {
     // An upgrade path, not a corruption: an older file simply carries no decisions of that kind.
     const dir = await tempDir();

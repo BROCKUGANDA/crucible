@@ -261,6 +261,16 @@ jobs:
       - name: seed digests answer to the content they name
         run: npm run seed:check
 
+      # Two lists below, and both are maintained by a gate rather than by memory:
+      # `scripts/workspace-coverage-gate.mjs` reads the workspaces out of the repository and fails
+      # if any of them has a script that this job does not run. The enumeration is not laziness —
+      # `crucible-contracts` has `test` and `build` scripts that need forge, which this job does
+      # not install (the Contracts job owns them) — but an enumerated list is a list that silently
+      # forgets the next package. `apps/juror` is the one this repo nearly forgot: it arrived with
+      # 70 tests that no job would have run.
+      - name: every workspace is actually covered by this job
+        run: node scripts/workspace-coverage-gate.mjs .github/workflows/ci.yml
+
       - name: typecheck (every workspace)
         run: |
           npm run typecheck \
@@ -272,6 +282,7 @@ jobs:
             --workspace @crucible/agent-security \
             --workspace @crucible/cidstore \
             --workspace @crucible/keeper \
+            --workspace @crucible/juror \
             --workspace @crucible/api \
             --workspace @crucible/web
 
@@ -286,6 +297,7 @@ jobs:
             --workspace @crucible/agent-security \
             --workspace @crucible/cidstore \
             --workspace @crucible/keeper \
+            --workspace @crucible/juror \
             --workspace @crucible/api \
             --workspace @crucible/web
 

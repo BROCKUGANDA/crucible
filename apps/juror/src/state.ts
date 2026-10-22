@@ -153,7 +153,11 @@ export class MemoryState implements VoteState {
  * until the rename lands.
  */
 export class FileState implements VoteState {
-  private snapshot: Snapshot = { ...EMPTY, sealed: {}, abstained: {} };
+  // All three maps fresh. `{ ...EMPTY, sealed: {}, abstained: {} }` rebound two of them and left
+  // `givenUp` pointing at the module constant, so a seat with no state file wrote its forfeits into
+  // `EMPTY` itself — and a second seat constructed against a different directory, with no file of
+  // its own, would inherit the first one's decisions and skip trials it had never given up on.
+  private snapshot: Snapshot = { version: 1, sealed: {}, abstained: {}, givenUp: {} };
   private loaded = false;
   /** Serialises writes: two passes on one process must not interleave a read-modify-write. */
   private queue: Promise<void> = Promise.resolve();

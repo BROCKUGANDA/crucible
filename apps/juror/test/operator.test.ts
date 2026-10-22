@@ -238,7 +238,17 @@ describe("the seat operator's pass", () => {
     expect(f.reveals).toHaveLength(1);
     expect(f.reveals[0]).toMatchObject({ trialId: 7, breakWins: true });
     expect(third.counts.reveal).toBe(1);
-    // Opened salt is worthless; keeping it would have the loop re-read a finished dispute.
+    // The salt is still on disk at the end of the pass that sent the reveal. `revealVote` returning
+    // a hash means a node accepted it, not that a block contains it, and a seat that forgot the salt
+    // here would have no way to open its own vote if it died before the chain did.
+    expect(await f.state.get(7)).not.toBeNull();
+
+    // The pass that sees `revealed` on the chain is the one that discards it — which is also what
+    // happens after a restart between the two, from the same durable record.
+    const fourth = await f.operator.pass();
+    expect(fourth.counts.drop).toBe(1);
+    expect(f.reveals).toHaveLength(1);
+    expect(f.commits).toHaveLength(1);
     expect(await f.state.get(7)).toBeNull();
   });
 
@@ -285,6 +295,72 @@ describe("the seat operator's pass", () => {
     expect(f.reveals[0]!.salt).toBe(saltFromDisk);
     // And the restarted seat did not try to post its commitment a second time.
     expect(f.commits).toEqual([]);
+  });
+
+  it("reads the chain clock again for each candidate, because the bench in between is not free", async () => {
+    // The margin rule exists to stop a seat starting a suite it cannot post the answer to. A pass
+    // that reads the clock once, at the top, and gates every candidate against that instant is
+    // answering the question about a moment that has already gone: candidate 7's bench burns the
+    // budget, and candidate 8 is then told it has the whole window left.
+    const f = await harness();
+    let reads = 0;
+    const benched: number[] = [];
+    const operator = createOperator({
+      seat: SEAT,
+      constants: CONSTANTS,
+      chain: {
+        chainNow: async () => {
+          reads += 1;
+          // The third read is candidate 8's gate, taken after candidate 7's bench. The chain has
+          // crossed the boundary the contract enforces (`block.timestamp >= openedAt + COMMIT_WINDOW`
+          // reverts `CommitClosed`), so this seat must not start that suite at all.
+          return reads >= 3 ? OPENED_AT + CONSTANTS.commitWindowSec : OPENED_AT + 60;
+        },
+        disputeView: async (id) => view(id),
+      },
+      index: { candidates: () => [7, 8], votes: () => ({ committed: [], revealed: [] }) },
+      judge: {
+        facts: async (id) => ({ trialId: id, agentId: 1, runHash: RUN_HASH, chainId: 31_337, verifyingContract: SEAT, runner: PEER2, sigDeadline: 1n }),
+        verify: async (facts) => {
+          benched.push(facts.trialId);
+          return report({ verdict: "agent-wins" });
+        },
+      },
+      cast: f.cast,
+      state: f.state,
+      reverifyMs: 900_000,
+      // Two benches allowed, so it is the clock that has to stop candidate 8, not the cap.
+      maxVerifies: 2,
+      wallNow: () => f.wall,
+      log: (line) => f.logs.push(line),
+    });
+
+    const result = await operator.pass();
+
+    expect(benched).toEqual([7]);
+    expect(reads).toBeGreaterThanOrEqual(3);
+    expect(result.actions.some((a) => a.trialId === 8 && a.action === "forfeit")).toBe(true);
+    expect(await f.state.forfeit(8)).not.toBeNull();
+  });
+
+  it("runs one bench per pass, because nobody else should set the pass's cost", async () => {
+    // `fileBreak` is permissionless and costs `reward / 100` (CrucibleTrials.sol:533), so without a
+    // bound here the number of sandbox re-runs in a pass is chosen by whoever can open the most
+    // disputes — and each one can take the suite's whole 900s budget. Trial 8 is the second dispute
+    // in the same pass: it waits, and it is not dropped or decided on someone else's evidence.
+    const f = await harness();
+    f.setView(8, {});
+
+    const first = await f.operator.pass();
+    expect(f.verified).toEqual([7]);
+    expect(first.counts.commit).toBe(1);
+    // Held, not given up on: a bounded pass is a queue, and confusing the two would strand the trial.
+    expect(await f.state.forfeit(8)).toBeNull();
+
+    const second = await f.operator.pass();
+    expect(f.verified).toEqual([7, 8]);
+    expect(second.counts.commit).toBe(1);
+    expect(f.commits).toHaveLength(2);
   });
 
   it("does not seal twice when it already holds a seal", async () => {
