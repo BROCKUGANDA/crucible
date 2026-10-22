@@ -34,7 +34,16 @@ export interface SandboxSpec {
 }
 
 export const DEFAULT_SANDBOX: SandboxSpec = {
-  // Pinned by digest so Argus re-runs the identical environment.
+  // The verifier image, built locally from packages/forge-runner/Dockerfile.verifier and
+  // referenced by its MUTABLE `:latest` tag — this is NOT a digest pin. An earlier comment here
+  // claimed "pinned by digest so Argus re-runs the identical environment", which the value does
+  // not do: `:latest` moves whenever the image is rebuilt, so it is the opposite of a pin. The
+  // honest statement: the image is the same ENVIRONMENT by construction (the Dockerfile warms the
+  // solc set every offline run needs), but reproducibility across machines and over time is only
+  // real once the image is published to a registry and referenced by `@sha256:` digest. Argus's
+  // re-run claim depends on that digest; the sandbox's isolation claim does not — Docker enforces
+  // `--network=none`/`--memory`/`--read-only` regardless of how the tag is named. Fixing this is
+  // publishing the image by digest, not changing the comment to match a lie.
   image: "crucible/verifier:latest",
   memory: "1g",
   cpus: "1",
@@ -103,9 +112,7 @@ export function execIn(
         });
       },
     ).on("error", (err) =>
-      reject(
-        Object.assign(new Error(`cannot execute ${bin}: ${err.message}`), { cause: err }),
-      ),
+      reject(Object.assign(new Error(`cannot execute ${bin}: ${err.message}`), { cause: err })),
     );
   });
 }
@@ -245,10 +252,7 @@ export class Sandbox {
    * with the image pinned by digest; locally it is a direct exec, which the
    * caller must surface as degraded.
    */
-  async runSuite(
-    command: string,
-    workDir: string = this.repoDir,
-  ): Promise<CommandResult> {
+  async runSuite(command: string, workDir: string = this.repoDir): Promise<CommandResult> {
     const argv = parseCommandLine(command);
     const bin = argv[0];
     if (!bin) throw new Error(`empty suite command: "${command}"`);
@@ -268,7 +272,24 @@ export class Sandbox {
         "--read-only",
         "--tmpfs=/tmp:size=64m",
         "--user=1000:1000",
+        // The audit's two missing hardening flags.
+        //
+        // `--cap-drop=ALL`: Docker hands a non-privileged container ~14 capabilities even as a
+        // non-root user, and `forge build`/`forge test` is pure userspace compilation + EVM
+        // execution as uid 1000 — it needs none of them. Dropping the whole set is the default
+        // this sandbox should have always had; a suite that only passes with a capability added
+        // back is a suite doing something the container should never have let it do.
+        "--cap-drop=ALL",
+        // `--security-opt=no-new-privileges` blocks setuid/setgid escalation across the exec.
         "--security-opt=no-new-privileges",
+        // Seccomp, and why there is no explicit `--security-opt=seccomp=<profile>` here: Docker
+        // already applies its curated default seccomp profile to every non-`--privileged`
+        // container (unlike capabilities, which it grants by default), so `forge` and `solc` run
+        // under a syscall allowlist out of the box. Shipping a custom profile here would replace
+        // that maintained default with a hand-written list we have to keep in step with the
+        // kernel ourselves — a larger maintenance surface for no added isolation in this threat
+        // model. The one escape hatch it must not grow is `--privileged`, which would disable
+        // seccomp and caps together; the flags above are only ever added, never gated off.
         `-v`,
         `${workDir}:/work`,
         "-w",

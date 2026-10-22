@@ -8,6 +8,7 @@ import {
   localDay,
   markCatchphrase,
   markSpoken,
+  prefetchVoiceClip,
   readVoicePrefs,
   shouldSpeak,
   subscribeVoice,
@@ -140,6 +141,15 @@ export function VoiceControl() {
       stop();
     };
   }, [stop]);
+
+  // Warm the greeting as soon as the host is known to be on. Fetching is not playing, so
+  // no autoplay policy is involved — but it means the return-visit greeting and the next
+  // toggle both have the clip already, instead of waiting on a synthesis the tab does not
+  // need to repeat. A failure is silence, like every other failure here.
+  useEffect(() => {
+    if (!ready || !configured || !enabled) return;
+    void prefetchVoiceClip("greeting");
+  }, [ready, configured, enabled]);
 
   // Return visits: if the host was left on, try one greeting for the day. The
   // browser may refuse without a gesture; a refused play is not marked as spoken,

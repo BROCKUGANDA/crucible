@@ -18,6 +18,7 @@ const NAV = [
   { href: "/forge", label: "Forge" },
   { href: "/bounties", label: "The Break" },
   { href: "/hall", label: "Hall" },
+  { href: "/assay", label: "Assay" },
   { href: "/docs", label: "Docs" },
 ];
 

@@ -143,24 +143,73 @@ export function verdictMeta(verdict: string): { label: string; tone: Tone } {
 }
 
 const STATUS_META_TABLE = {
-  open: { label: "Open — awaiting a smith", tone: "dim", heat: 0 },
-  assigned: { label: "At the anvil", tone: "gold", heat: 1 },
-  judging: { label: "Judging — skeptics may strike", tone: "ember", heat: 2 },
-  challenged: { label: "Challenged", tone: "sear", heat: 3 },
-  settled: { label: "Settled", tone: "quench", heat: 0 },
-} satisfies Record<TrialStatusKey, { label: string; tone: Tone; heat: number }>;
+  open: { label: "Open — awaiting a smith", tone: "dim" },
+  assigned: { label: "At the anvil", tone: "gold" },
+  judging: { label: "Judging — skeptics may strike", tone: "ember" },
+  challenged: { label: "Challenged", tone: "sear" },
+  settled: { label: "Settled", tone: "quench" },
+} satisfies Record<TrialStatusKey, { label: string; tone: Tone }>;
 
 /** Accepts the widened `string` from API payloads; unknown states fall back. */
-export function statusMeta(status: string): { label: string; tone: Tone; heat: number } {
+export function statusMeta(status: string): { label: string; tone: Tone } {
   return STATUS_META_TABLE[status as TrialStatusKey] ?? {
     label: status,
     tone: "ash",
-    heat: 0,
   };
 }
 
-export const STATUS_META: Record<TrialStatusKey, { label: string; tone: Tone; heat: number }> =
+export const STATUS_META: Record<TrialStatusKey, { label: string; tone: Tone }> =
   STATUS_META_TABLE;
+
+/**
+ * Deadline heat: how close the fire is to going out.
+ *
+ * This used to be a `heat` field on `STATUS_META`, one number per status, read by nothing.
+ * It could not have been read for anything: status says what a trial *is*, and urgency says
+ * how much time is left, so a table keyed by the first can only ever invent the second. An
+ * "open" trial with three minutes left is not less urgent than a "challenged" one with a
+ * week — and the old number said it was, four to three, because it was looking at the wrong
+ * column.
+ *
+ * So the number is keyed on what it actually measures, which is the countdown
+ * `useCountdown` already anchors to the server clock. Nothing here knows or needs a status.
+ *
+ * `null` in, `null` out: a trial with no deadline to count down to has no heat, and reading
+ * one as cold would be the same fabricated measurement the tier table refuses to make.
+ */
+export type Heat = 0 | 1 | 2 | 3;
+
+/**
+ * The cut points, in seconds. An hour is the last stretch a smith can still lose the trial
+ * in; a day is long enough that the deadline is a fact rather than a pressure.
+ */
+export const DEADLINE_HEAT = {
+  imminentSec: 3_600,
+  soonSec: 86_400,
+} as const;
+
+export function deadlineHeat(remainingSec: number | null): Heat | null {
+  if (remainingSec === null || !Number.isFinite(remainingSec)) return null;
+  const s = Math.max(0, remainingSec);
+  // Past it and there is nothing left to hurry for — the fire is out, and a trial whose
+  // deadline has passed is reclaimable, not urgent.
+  if (s === 0) return 0;
+  if (s <= DEADLINE_HEAT.imminentSec) return 3;
+  if (s <= DEADLINE_HEAT.soonSec) return 2;
+  return 1;
+}
+
+/**
+ * The tone that carries a heat. `sear` is deliberately absent: it is the slash, and a
+ * countdown running out is not something that broke. An unread countdown is `faint`, the
+ * same tone the rest of the site uses for a quantity nobody measured.
+ */
+export function heatTone(heat: Heat | null): Tone {
+  if (heat === null) return "faint";
+  if (heat >= 3) return "ember";
+  if (heat === 2) return "gold";
+  return "dim";
+}
 
 export interface TierMeta {
   name: string;

@@ -74,6 +74,20 @@ export function ForgeAuth({ mode }: { mode: "sign-in" | "sign-up" }) {
                 ? "opening your wallet…"
                 : `running on ${activeChain()}`}
           </span>
+
+          {/* Said here, at the action, rather than left to the header chip's tooltip. The
+              chip names the network and is honest, but `title` text is invisible on a phone
+              and to anyone who never thinks to hover — and this is the one button in the
+              product that asks a stranger to sign something that moves money. A judge
+              should not have to discover the chain's status by inspecting the page.
+              Plain words on purpose: "Anvil", "31337" and "testnet" are the vocabulary of
+              whoever built this, not of the person being warned. */}
+          <p className="forge-auth__demo" data-stage="3">
+            <strong>This is a demonstration.</strong> The forge runs on a chain kept for
+            showing it off, and the metal here is test ETH — worth nothing, and nothing you
+            do on this page can spend anything real. Your wallet is still your wallet: we
+            ask it to sign, and we never hold a key for it.
+          </p>
         </div>
 
         <p className="forge-auth__switch" data-stage="4">

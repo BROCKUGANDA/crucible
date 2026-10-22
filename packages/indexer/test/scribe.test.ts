@@ -95,6 +95,17 @@ async function lyingNode(opts: {
    * indexer has to decide what that means for the cursor.
    */
   failBlockRead?: (blockNumber: number) => boolean;
+  /**
+   * A second contract emitting the SAME events, from a different address, from this block
+   * onward.
+   *
+   * This is not a contrived shape: running `script/Demo.s.sol` twice against one chain
+   * deploys a second `CrucibleTrials`, as does any redeploy. Its logs share every topic0
+   * with the contract we index, so they light up the bloom while an address-filtered
+   * `getLogs` legitimately returns nothing. When the node answers only the unfiltered
+   * query, that is exactly what the indexer sees.
+   */
+  foreignFrom?: number;
 }): Promise<{
   url: string;
   address: `0x${string}`;
@@ -143,7 +154,31 @@ async function lyingNode(opts: {
 
   const answer = (method: string, params: unknown[]): unknown => {
     if (method === "eth_blockNumber") return toHex(head);
-    if (method === "eth_getLogs") return opts.logs;
+    if (method === "eth_getLogs") {
+      const filter = params?.[0] as { address?: unknown; fromBlock?: string } | undefined;
+      if (opts.foreignFrom !== undefined && filter?.address === undefined) {
+        // The unfiltered probe. A log with our topic0 exists, and it belongs to the other
+        // contract — the node is telling the truth and so is the bloom.
+        const n = Number(filter?.fromBlock ? BigInt(filter.fromBlock) : 0n);
+        if (n >= opts.foreignFrom) {
+          return [
+            {
+              address: "0xa513e6e4b8f2a923d98304ec87f64353c4d5c853",
+              topics: [trialTopic],
+              data: "0x",
+              blockNumber: toHex(n),
+              transactionHash: `0x${"77".repeat(32)}`,
+              transactionIndex: "0x0",
+              blockHash: `0x${"11".repeat(32)}`,
+              logIndex: "0x0",
+              removed: false,
+            },
+          ];
+        }
+      }
+      // The address-filtered read — what the indexer actually asks for. Nothing of ours.
+      return opts.logs;
+    }
     if (method === "eth_chainId") return "0x7a69";
     if (method === "eth_getBlock" || method === "eth_getBlockByNumber") {
       // viem sends `eth_getBlockByNumber` with `params: ["0x5", false]`.
@@ -392,6 +427,42 @@ describe("bloom cross-check on a quiet window", () => {
    * The cursor now advances by however much was proved, and a long stretch is
    * proved over several ticks. It never stops.
    */
+  /**
+   * A bloom hit is not proof the log is OURS.
+   *
+   * Reproduced live before it was fixed: running `script/Demo.s.sol` a second time against
+   * a running chain deploys a second `CrucibleTrials`. That contract emits the same events
+   * with the same topic0s from a different address, so the block's bloom matches while the
+   * address-filtered `getLogs` correctly returns nothing. The proof stopped on that block,
+   * the next tick re-read it, and `/health` sat at `ok:false` with `indexedTo` pinned while
+   * the site showed a frozen index — for as long as the process lived.
+   *
+   * The block is quiet for an indexer that watches one address, and the walk must cross it.
+   */
+  it("crosses a block whose matching log belongs to another contract", async () => {
+    const node = await lyingNode({
+      logs: [],
+      head: 8,
+      bloomHasEvent: (n) => n >= 3,
+      foreignFrom: 3,
+    });
+    const scribe = new Scribe({
+      trialsAddress: node.address,
+      alloyAddress: node.address,
+      chain: foundry,
+      rpcUrl: node.url,
+      fromBlock: 0n,
+    });
+
+    await scribe.sync();
+
+    expect(scribe.status.syncError, "a foreign same-signature event is not our event").toBeNull();
+    expect(scribe.status.indexedTo).toBe(9n);
+    // Nothing was invented: the foreign log was never projected into the model.
+    expect(scribe.state.trials.size).toBe(0);
+    node.close();
+  });
+
   it("crosses a quiet window far wider than the probe chunk", async () => {
     const node = await lyingNode({ logs: [], quietBlocks: true, head: 200 });
     const scribe = new Scribe({

@@ -138,7 +138,10 @@ p {
   border-radius: var(--radius);
 }
 
-/* Cold metal skeletons. */
+/* Cold metal skeletons: the shape of the answer, before the answer. Used by `/assay`, where a
+   bar the height of the line it stands in means the number arriving moves nothing. A skeleton is
+   only worth having if it matches the final layout; anywhere it does not, `Quenching` is the
+   honest loading state. */
 .skeleton {
   background: var(--bg2);
   border-radius: 6px;

@@ -5,6 +5,8 @@ import type { ApiTrial } from "@crucible/indexer";
 import {
   statusMeta,
   verdictMeta,
+  deadlineHeat,
+  heatTone,
   formatDuration,
   formatEth,
   shortCid,
@@ -35,6 +37,14 @@ function TrialRow({ trial, serverNowMs }: { trial: ApiTrial; serverNowMs: number
   const cools = useCountdown(trial.deadlineAt, serverNowMs);
   const breakLeft = useCountdown(trial.breakWindowEndsAt, serverNowMs);
 
+  // A judging trial is already past its submission deadline: what is actually running out on
+  // that row is the skeptic window, so that is the countdown the row reads its urgency from.
+  // One number feeds both the text and the tone — a colour that described a different
+  // countdown than the one the reader is shown would be decoration wearing a measurement.
+  const onBreakWindow = trial.status === "judging" && breakLeft !== null;
+  const remaining = onBreakWindow ? breakLeft : cools;
+  const heat = deadlineHeat(remaining);
+
   return (
     <Link href={`/trials/${trial.id}`} className="surface trial-row">
       <div className="trial-row__head">
@@ -55,10 +65,10 @@ function TrialRow({ trial, serverNowMs }: { trial: ApiTrial; serverNowMs: number
               {verdict.label}
             </p>
           ) : null}
-          <p className="mono trial-row__cool" data-tone="dim">
-            {trial.status === "judging" && breakLeft !== null
-              ? `break window ${formatDuration(breakLeft)}`
-              : `cools in ${formatDuration(cools)}`}
+          <p className="mono trial-row__cool" data-tone={heatTone(heat)}>
+            {onBreakWindow
+              ? `break window ${formatDuration(remaining)}`
+              : `cools in ${formatDuration(remaining)}`}
           </p>
         </div>
       </div>
