@@ -42,6 +42,14 @@ jobs:
     permissions:
       contents: write
       actions: write
+      # Promotion merges a branch that can contain workflow edits, and GitHub
+      # refuses an App token that writes `.github/workflows/*` without this
+      # scope: `! [remote rejected] main -> main (refusing to allow a GitHub
+      # App to create or update workflow ... without 'workflows' permission)`.
+      # Declaring it here is necessary but not sufficient — the repository's
+      # Actions ceiling has to allow a workflow to hold it, and a read-only
+      # ceiling silently caps this back down.
+      workflows: write
     steps:
       - uses: actions/checkout@v7
         with:
