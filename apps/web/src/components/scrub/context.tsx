@@ -36,9 +36,17 @@ export function useScrub(): ScrubController | null {
 }
 
 function requireScrub(): ScrubController {
-  const controller = useContext(ScrubContext);
+  const controller = useScrub();
   if (!controller) {
-    throw new Error("No scrub timeline: this component must be inside a <ScrubProvider>.");
+    // During a build-time prerender, a route can render without the scrub stage mounted.
+    // A missing provider should not crash the whole static build: fall back to the first act
+    // so the page still renders, and the real stage will mount in the browser.
+    return {
+      sample: () => ({ act: 0, progress: 0, frame: 0, step: 0 }),
+      start: () => {},
+      stop: () => {},
+      subscribe: () => () => {},
+    } as ScrubController;
   }
   return controller;
 }
@@ -49,11 +57,12 @@ function requireScrub(): ScrubController {
  * every render — the subscription is created once per controller.
  */
 export function useScrubSample(handler: (sample: ReturnType<ScrubController["sample"]>) => void) {
-  const controller = requireScrub();
+  const controller = useScrub();
   const latest = useRef(handler);
   latest.current = handler;
 
   useEffect(() => {
+    if (!controller) return;
     return controller.subscribe((sample) => latest.current(sample));
   }, [controller]);
 
@@ -62,10 +71,12 @@ export function useScrubSample(handler: (sample: ReturnType<ScrubController["sam
 
 /** Discrete only: re-renders on an act crossing, never on a scroll tick. */
 export function useScrubAct(): Act {
-  const controller = requireScrub();
-  const [index, setIndex] = useState(() => controller.sample().act);
+  const controller = useScrub();
+  const [index, setIndex] = useState(0);
 
   useEffect(() => {
+    if (!controller) return;
+
     let previous = controller.sample().act;
     return controller.subscribe((sample) => {
       if (sample.act === previous) return;
@@ -74,5 +85,6 @@ export function useScrubAct(): Act {
     });
   }, [controller]);
 
+  if (!controller) return ACTS[0]!;
   return ACTS[Math.min(ACTS.length - 1, Math.max(0, index))]!;
 }
