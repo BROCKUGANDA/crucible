@@ -183,6 +183,55 @@
   color: var(--faint);
 }
 
+/* The inline glossary: the six unavoidable words, defined here on the arena rather than only one
+   page away in the docs. Two columns when there is room, one when there is not — the same shape
+   the per-act term list uses, so it reads as the same furniture and never clips a long meaning. */
+.arena__gloss {
+  margin-top: var(--s-5);
+  padding-top: var(--s-3);
+  border-top: 1px solid color-mix(in oklab, var(--bronze) 30%, transparent);
+  display: grid;
+  gap: var(--s-3);
+}
+
+.arena__gloss__list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+  gap: var(--s-3) var(--s-6);
+  margin: 0;
+}
+
+.arena__gloss__item {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: var(--s-2) var(--s-4);
+  align-items: baseline;
+}
+
+.arena__gloss__word {
+  margin: 0;
+  font-family: var(--font-roman);
+  font-weight: 600;
+  color: var(--ember);
+  letter-spacing: var(--track-roman);
+}
+
+.arena__gloss__meaning {
+  margin: 0;
+  color: var(--dim);
+  font-size: var(--fs-small);
+  text-wrap: pretty;
+}
+
+@media (max-width: 480px) {
+  /* On a phone the word sits above its meaning rather than beside it, so neither the label nor
+     the definition is squeezed into a column too narrow to read. */
+  .arena__gloss__item {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+}
+
 .arena__foot {
   display: grid;
   grid-template-columns: auto 1fr;
