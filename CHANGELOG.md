@@ -12,6 +12,14 @@ migration. See [`SECURITY.md`](SECURITY.md) before deploying value.
 
 ### Added
 
+- **Argus now has a supplier for its outside world.** `@crucible/argus` gains `LiveVerifier`,
+  which resolves a chain run hash to the published artifact, rebuilds the EIP-712 digest the
+  runner signed, recovers the signer from it, and re-executes the pinned suite against the
+  pinned repo on a fresh bench. Until now `fetchArtifact` and `rerunSuite` were implemented
+  only inside the package's own tests, so the oracle ADR-0005 centres the product on could
+  not run anywhere else. Two properties it enforces rather than assumes: the runner key is
+  compared against the registry, never against the address the artifact claims for itself,
+  and a digest handed in for recovery must equal the one reconstructed from the artifact.
 - **The content layer exists on the producing side.** `@crucible/forge-runner` gains
   `ContentService`: `pinText` / `pinSuite` hand back the keccak digest a sponsor must put on
   chain, `fetchSpec` resolves a digest or a cid back to bytes through the disclosure,
