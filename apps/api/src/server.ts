@@ -213,6 +213,11 @@ async function readAlloy(agentId: number): Promise<AlloyState | null> {
   };
 }
 
+// Declared before `sweepAlloy`, which runs at module init and reads it. As a `let` further down
+// the file it sat in its temporal dead zone and the container crash-looped on every boot with
+// "Cannot access protocolFeeBps before initialization".
+let protocolFeeBps: number | null = null;
+
 /** Concurrent registry reads per sweep. The size of the registry is not allowed to choose this. */
 const ALLOY_SWEEP_BATCH = 8;
 
@@ -286,8 +291,6 @@ selfSchedulingLoop(sweepAlloy, {
  * that and the escrowed reward. So the only thing lost by an unreadable
  * constant is the rate in basis points, and that is published as unknown.
  */
-let protocolFeeBps: number | null = null;
-
 /**
  * Read `FEE_BPS` again. Called at boot and again from every alloy sweep while the value is null,
  * because a boot-time blip used to make the rate unknown for the life of the process — the value
