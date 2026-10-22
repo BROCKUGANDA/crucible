@@ -10,6 +10,7 @@ import {
 } from "@crucible/indexer";
 import { rateLimit } from "./rate-limit.js";
 import { dlq } from "./dlq.js";
+import { TickPump } from "./tick-pump.js";
 import { authRoutes } from "./auth.js";
 import { createVoiceRoutes, type VoiceConfig } from "./voice.js";
 import {
@@ -145,6 +146,21 @@ export interface ApiOptions {
    */
   maxStreams?: number;
   /**
+   * How often the shared stream pump consults the read model. Default 250ms.
+   *
+   * This is the only knob for how quickly the live view can reflect a chain event, and it
+   * is one number for the whole audience rather than a per-client sleep — raising the
+   * client count does not raise it. Raising the rate costs one cheap version check per
+   * interval, not a rebuild: `sharedTick` only rebuilds when the read model's counter
+   * actually moved.
+   */
+  streamPollMs?: number;
+  /**
+   * Test seam: drive the pump's cadence by hand instead of on wall time. Absent in
+   * production, where the pump runs on one `setInterval`.
+   */
+  streamSchedule?: (fn: () => void, ms: number) => () => void;
+  /**
    * Transport-layer policy: browser origins, response headers, body ceiling, request
    * timeout, plaintext. Explicit values here beat `ALLOWED_ORIGINS` and friends in the
    * environment, which beat `DEFAULT_SECURITY`. See `security.ts` for what each buys and
@@ -183,7 +199,13 @@ function securityOverrides(opts: ApiOptions): Partial<SecurityConfig> {
 export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
   const app = new Hono();
 
-  const TICK_MS = 1000;
+  /**
+   * How often the shared pump consults the read model. This is a ceiling on the pump's
+   * own added delay, not a per-client sleep: a subscriber wakes when the frame changes,
+   * and it wakes at the same moment as everyone else. It was 1000ms while every client
+   * slept that long between looks, which is where the latency actually came from.
+   */
+  const PUMP_INTERVAL_MS = opts.streamPollMs ?? 250;
   /** Ceiling on how long a cached stream payload may go without a fresh `now`. */
   const MAX_TICK_AGE_MS = 30_000;
   /** Live streams currently open, against `MAX_OPEN_STREAMS`. */
@@ -250,6 +272,31 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
       };
     }
     return tick;
+  }
+
+  /**
+   * The single clock every live stream reads from.
+   *
+   * Refcounted off the stream slots rather than started per request: one interval while
+   * anyone is watching, none when nobody is, so a test that never opens a stream leaves
+   * no timer behind and an idle demo costs nothing. See tick-pump.ts for why the reading
+   * is shared instead of duplicated per client.
+   */
+  const pump = new TickPump({
+    read: () => {
+      const t = sharedTick();
+      return { signature: t.signature, payload: t.payload };
+    },
+    intervalMs: PUMP_INTERVAL_MS,
+    ...(opts.streamSchedule ? { schedule: opts.streamSchedule } : {}),
+  });
+
+  function retainPump(): void {
+    if (openStreams === 1) pump.start();
+  }
+
+  function releasePump(): void {
+    if (openStreams === 0) pump.stop();
   }
 
   /**
@@ -601,11 +648,13 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
       return c.json({ error: "too many live streams", maxStreams }, 503);
     }
     openStreams += 1;
+    retainPump();
     let released = false;
     const release = (): void => {
       if (released) return;
       released = true;
       openStreams -= 1;
+      releasePump();
     };
 
     // hono only attaches its own abort listener to `c.req.raw.signal` on old Bun
@@ -635,22 +684,28 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
 
           let lastSignature = "";
           let lastWriteAt = 0;
+          // The generation this client has been served. `wait` returns as soon as the
+          // pump's generation differs from it, so a client is never asleep on a frame it
+          // has already seen, and never asleep when a new one exists.
+          let served = pump.current.generation;
 
           while (running && Date.now() - started < maxMs) {
-            const { signature, payload } = sharedTick();
+            const frame = pump.current;
 
-            if (signature !== lastSignature) {
-              lastSignature = signature;
-              if (!(await write(stream, { event: "snapshot", data: payload }))) return;
+            if (frame.signature !== lastSignature) {
+              lastSignature = frame.signature;
+              if (!(await write(stream, { event: "snapshot", data: frame.payload }))) return;
               lastWriteAt = Date.now();
             } else if (Date.now() - lastWriteAt >= HEARTBEAT_MS) {
               if (!(await write(stream, { event: "heartbeat", data: "{}" }))) return;
               lastWriteAt = Date.now();
             }
 
-            await new Promise((r) => setTimeout(r, TICK_MS));
-            // Checked the moment the sleep lands: a subscriber that left during the wait must
-            // not get one more rebuild, so the shutdown is immediate rather than one tick late.
+            served = frame.generation;
+            // No sleep of its own. The one interval in `pump` does the reading for every
+            // client, so this awaits an announcement instead of re-asking.
+            await pump.wait(served, signal);
+            // A peer that left during the wait must not attempt one more write.
             if (!running) return;
           }
         } finally {

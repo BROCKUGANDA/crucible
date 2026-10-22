@@ -1,0 +1,93 @@
+name: fork-nightly
+
+# Exercises the ERC-8004 bridge against the registry as it is actually deployed.
+#
+# The default `ci` workflow has a fork job that skips when there is no
+# `MAINNET_RPC_URL`, and it skips quietly: the check goes green having asserted
+# nothing. That is the shape of gate this repo keeps having to find and remove —
+# HARDENING.md's own open list says the bridge "has never been exercised against
+# the registry as actually deployed, only against the mock".
+#
+# Splitting it is the fix. Keeping fork coverage inside the PR gate would make a
+# third party's RPC uptime decide whether a pull request can merge, which is not a
+# gate, it is a lottery. So the PR job stays optional and loudly honest about
+# skipping, and this job carries the actual obligation:
+#
+#   * it runs on a schedule, when nobody is waiting on it;
+#   * a missing `MAINNET_RPC_URL` FAILS here rather than skipping. This job exists
+#     only to run those tests; a version of it that runs nothing and reports
+#     success is the exact failure mode it was written to remove;
+#   * a real forge failure is a real red, so the four `vm.skip` guards in
+#     `test/Fork.t.sol` cannot silently convert "not checked" into "checked".
+
+on:
+  # 03:17 UTC daily. Off the hour and off the half hour on purpose: the runner
+  # box also hosts the production anvil and the hourly `extend-demo`, and a
+  # scheduled job that collides with a deploy looks like a flaky test.
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: fork-nightly
+  cancel-in-progress: false
+
+jobs:
+  fork:
+    name: Fork tests (ERC-8004 mainnet)
+    runs-on: [self-hosted, linux, X64, crucible]
+    defaults:
+      run:
+        working-directory: crucible-contracts
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: install foundry (pinned tarball)
+        run: |
+          set -euo pipefail
+          V="v1.8.5"
+          # Per-job private directory, same reason as ci.yml: three jobs extracting
+          # into /tmp raced on the same `forge` binary and failed with "Text file
+          # busy", a different job each time.
+          FOUNDRY_DIR="$RUNNER_TEMP/foundry"
+          mkdir -p "$FOUNDRY_DIR"
+          curl -fsSL "https://github.com/foundry-rs/foundry/releases/download/$V/foundry_${V}_linux_amd64.tar.gz" \
+            | tar xz -C "$FOUNDRY_DIR"
+          echo "$FOUNDRY_DIR" >> "$GITHUB_PATH"
+          export PATH="$FOUNDRY_DIR:$PATH"
+          forge --version
+
+      # The refusal is the point of this job. `ci.yml` may skip when the credential
+      # is absent because it has other work to do; this job has nothing else to do,
+      # so an absent credential means the obligation went unmet and must be red.
+      - name: require the RPC
+        env:
+          MAINNET_RPC_URL: ${{ secrets.MAINNET_RPC_URL }}
+        run: |
+          if [ -z "${MAINNET_RPC_URL}" ]; then
+            echo "::error::MAINNET_RPC_URL is not configured, so the ERC-8004 fork tests" \
+                 "cannot run. This is the job whose only purpose is to run them — a green" \
+                 "nightly here would mean the bridge went a full day unexercised."
+            exit 1
+          fi
+
+      - name: fork tests
+        env:
+          MAINNET_RPC_URL: ${{ secrets.MAINNET_RPC_URL }}
+        run: |
+          set -euo pipefail
+          # `-vv` because a fork failure is about which remote call disagreed, and
+          # a summary line does not carry that.
+          #
+          # Assert the tests actually ran: four of them are guarded by `vm.skip`
+          # when no fork is attached, and a run that reported "4 skipped" here would
+          # be the same silent green this job exists to eliminate.
+          output=$(forge test --fork-url "$MAINNET_RPC_URL" --match-contract ForkTests -vv)
+          echo "$output"
+          if ! echo "$output" | grep -qE "[1-9][0-9]* passed"; then
+            echo "::error::ForkTests reported no passing tests — the suite ran but" \
+                 "asserted nothing. Check the vm.skip guard and the fork URL."
+            exit 1
+          fi

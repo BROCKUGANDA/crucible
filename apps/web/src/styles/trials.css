@@ -1,5 +1,5 @@
 /* @file trials.css — the arena pages: trial index, sponsor wizard, trial detail, the
- * break board, the hall of alloy, docs, and the void pages. Imported last of the
+ * break board, the hall of alloy, the assay, docs, and the void pages. Imported last of the
  * page families.
  */
 
@@ -263,4 +263,108 @@
 .error-page__retry {
   margin-top: var(--s-4);
   text-align: center;
+}
+
+/* ── assay: the site's own operator readings ─────────────────────────────
+ *
+ * The panels are one grid of `.detail-panel` primitives with `.kv` rows inside, so the page
+ * introduces no new surface, no new type and no new colour: what it adds is only the arrangement
+ * and the two heights the loading skeleton has to reserve.
+ */
+
+.assay-lede {
+  max-width: 62ch;
+}
+
+/* Which endpoints answered, with the status they answered on. Small, mono and undecoration: it is
+   the line that tells a reader whether the rest of the page is evidence or absence of evidence. */
+.assay-sources {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2) var(--s-4);
+  margin: 0 0 var(--s-4);
+  color: var(--faint);
+}
+
+.assay-actions {
+  justify-content: space-between;
+  margin-bottom: var(--s-4);
+}
+
+.assay-verdict {
+  margin-bottom: var(--s-4);
+}
+
+.assay-verdict__reach {
+  font-size: var(--fs-small);
+  margin: 0;
+}
+
+.assay-verdict__reason {
+  margin: 0;
+  color: var(--dim);
+}
+
+/* Two columns when there is room, one when there is not. `align-items: start` keeps a panel that
+   grows (the breaker list has as many rows as the host publishes) from stretching its neighbours
+   to match it — a report where an empty panel is padded to its neighbour's height is a report
+   that has invented a row. */
+.assay-grid {
+  display: grid;
+  gap: var(--s-3);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 330px), 1fr));
+  align-items: start;
+}
+
+.assay-panel {
+  gap: var(--s-2);
+}
+
+.assay-panel__source {
+  display: block;
+}
+
+/* The breaker rows and their skeleton reserve the same two rows of height, so a host that
+ * publishes one breaker and a host that publishes three do not move the panels below them by
+ * different amounts on arrival. Beyond two the panel grows; it cannot fake a count it has not
+ * read.
+ */
+.assay-breakers {
+  min-height: calc(2 * 1.35rem);
+}
+
+.assay-breaker {
+  align-items: baseline;
+  gap: var(--s-3);
+}
+
+.assay-breaker__state {
+  justify-content: flex-end;
+  flex-wrap: nowrap;
+}
+
+.assay-note {
+  margin: 0;
+}
+
+/* Cold metal before the pour. The bar is exactly the height of the line it stands in — the
+ * `.kv__key` line box at `--fs-small` under the document's 1.6 leading — so the real value
+ * arriving changes what is painted, never where anything sits.
+ *
+ * `shimmer` is killed wholesale under prefers-reduced-motion by the token-level rule at the foot
+ * of motion.css, which is the only animation handling this needs.
+ */
+.assay-skel {
+  display: block;
+  width: 5.5rem;
+  height: 1.35rem;
+}
+
+.assay-skel--key {
+  width: 8rem;
+}
+
+.assay-foot {
+  margin-top: var(--s-5);
+  max-width: 70ch;
 }

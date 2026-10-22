@@ -21,6 +21,28 @@ export function computeRunHash(artifact: RunArtifact): Hex {
   return keccak256(stringToHex(canonicalizeArtifact(artifact)));
 }
 
+/**
+ * The digest a trial commits to for a piece of spec or suite content.
+ *
+ * `createTrial` accepts two `bytes32`s and stores them, and the seeds pass
+ * `keccak256("spec-1")` — an ordinary keccak over the content bytes, not a hash of a
+ * content id. That single fact is what makes already-running chains resolvable: the bytes
+ * behind a digest do not have to be invented, only pinned and announced, because the
+ * digest was computed from them.
+ *
+ * A sha256 content id cannot be derived from this value in the other direction, which is
+ * why `@crucible/cidstore` keeps a disclosure log. This is the half that goes from the
+ * bytes in hand to the number the chain already holds.
+ *
+ * Note the consequence for a seed that hashes `abi.encodePacked("spec-open", i,
+ * block.timestamp)`: that digest has no content behind it by construction, and nothing
+ * pinned later can ever match it. Content-addressing has to begin before the trial is
+ * posted.
+ */
+export function digestOfContent(content: string | Uint8Array): Hex {
+  return keccak256(typeof content === "string" ? stringToHex(content) : content);
+}
+
 /** ~10 minutes. Bounds the damage from a leaked signature. */
 export const SIG_DEADLINE_TTL_SECONDS = 600;
 
@@ -51,10 +73,12 @@ export const RUN_TYPES = {
 export const RUN_PRIMARY_TYPE = "Run" as const;
 
 /**
- * The struct typehash this SDK's `types` must produce, computed locally so a
- * mismatch is caught without a chain read. The contract asserts the same string
- * in CrucibleTrials.RUN_TYPEHASH; test/abi-parity.test.ts checks the two agree
- * against a real deployment, so neither side can drift silently.
+ * The struct typehash this SDK's `RUN_TYPES` must produce, computed locally so a
+ * mismatch is caught without a chain read. `CrucibleTrials.RUN_TYPEHASH` hashes the
+ * same string; test/eip712-parity.test.ts parses that string out of the committed .sol
+ * source and asserts the two agree — on the encode-type text, the field order, the
+ * domain separator and the full digest — so neither side can drift silently and the
+ * contract start rejecting every honest agent's signature with `BadSigner`.
  */
 export const RUN_TYPEHASH = keccak256(
   stringToHex("Run(uint256 trialId,uint256 agentId,bytes32 runHash,uint64 sigDeadline)"),

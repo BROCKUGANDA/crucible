@@ -58,7 +58,30 @@ function optionalBlock(name: string): bigint {
   return BigInt(raw.trim());
 }
 
+/**
+ * How often the indexer asks the node for new logs.
+ *
+ * This, not the stream, is the dominant term in how long a visitor waits to see a chain
+ * event: the pump turns a moved read model into a frame within its own interval, but there
+ * is nothing to deliver until the index has moved. The default is the indexer's own 2000ms
+ * because a small number is free against a local Anvil and is a real recurring load on a
+ * public RPC — so it is a deployment choice, not a code change. `compose.yaml` lowers it
+ * for the demo, where the node is a container on the same network.
+ *
+ * The floor exists because `watch()` would otherwise spin on a zero or negative interval.
+ */
+function optionalPollMs(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (raw === undefined || raw === "") return fallback;
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < 100 || value > 60_000) {
+    throw new Error(`${name} must be a whole number of milliseconds between 100 and 60000; got "${raw}"`);
+  }
+  return value;
+}
+
 const port = requiredPort("PORT", 8787);
+const scribePollMs = optionalPollMs("SCRIBE_POLL_MS", 2000);
 const rpcUrl = process.env.RPC_URL ?? "http://127.0.0.1:8545";
 const trialsAddress = requiredAddress("TRIALS_ADDRESS");
 const alloyAddress = requiredAddress("ALLOY_ADDRESS");
@@ -99,6 +122,7 @@ const scribe = new Scribe({
   chain: foundry,
   rpcUrl,
   fromBlock: optionalBlock("FROM_BLOCK"),
+  pollMs: scribePollMs,
   cursorFile: process.env.CRUSIBLE_CURSOR_FILE,
   // Every failure the indexer survives lands in the dead-letter queue — a sync tick
   // that could not advance, a window it refused to cross — so /health tells an
@@ -339,6 +363,10 @@ const app = createApp({
 serve({ fetch: app.fetch, port }, (info) => {
   console.log(`[crucible] api listening on :${info.port}`);
   console.log(`[crucible] indexing ${trialsAddress}`);
+  // The poll period is the biggest single term in how long a visitor waits to see a chain
+  // event, and it is now configurable. A number that decides perceived speed and appears
+  // nowhere in the log is a number an operator has to guess at while debugging exactly that.
+  console.log(`[crucible] polling the node every ${scribePollMs}ms`);
   console.log(`[crucible] alloy from ${alloyAddress} every ${ALLOY_TTL_MS}ms`);
   console.log(
     voice
