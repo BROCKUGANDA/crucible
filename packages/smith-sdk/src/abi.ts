@@ -99,6 +99,19 @@ export const TRIALS_ABI = [
     ],
     outputs: [],
   },
+  /**
+   * `mapping(address => bool) public isArgus` (CrucibleTrials.sol:199). A seat reads this before it
+   * loops: committing from an address the constructor never granted reverts `NotArgus` on every
+   * trial, so an unbounded retry is a self-inflicted DoS on a shared node.
+   */
+  {
+    type: "function",
+    name: "isArgus",
+    stateMutability: "view",
+    inputs: [{ name: "", type: "address" }],
+    outputs: [{ type: "bool" }],
+  },
+
   {
     type: "function",
     name: "disputeVote",
