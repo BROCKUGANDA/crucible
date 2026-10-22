@@ -30,26 +30,24 @@ concurrency:
 jobs:
   promote:
     runs-on: [self-hosted, linux, X64, crucible]
-    # The merge pushes to the repo, so the job's token needs contents:write.
-    # Declared here rather than inherited from the repository default: a
-    # setting a reviewer cannot see in the diff is a setting the next repo
-    # will not have.
+    # No `permissions:` block on this job — against the rule the earlier version
+    # of this comment stated, and here is why. The promotion push writes files
+    # under .github/workflows, and `workflows` is the one scope GitHub will not
+    # let a job ask for: `permissions: {workflows: write}` fails the parser with
+    # "Unexpected value 'workflows'" and takes the whole workflow down with it,
+    # dispatch included. The scope comes only from the repository setting
+    # Actions → General → "Read and write permissions", so this job inherits and
+    # the dependency is written where a reviewer can actually see it.
     #
-    # `actions: write` is the other half, and its absence was silent: the job
-    # asked for the next gate with a token that could not, the API answered
-    # 403, and the step printed the code and exited 0. The ladder then sat
-    # waiting for a gate that was never going to run, and nothing said so.
-    permissions:
-      contents: write
-      actions: write
-      # Promotion merges a branch that can contain workflow edits, and GitHub
-      # refuses an App token that writes `.github/workflows/*` without this
-      # scope: `! [remote rejected] main -> main (refusing to allow a GitHub
-      # App to create or update workflow ... without 'workflows' permission)`.
-      # Declaring it here is necessary but not sufficient — the repository's
-      # Actions ceiling has to allow a workflow to hold it, and a read-only
-      # ceiling silently caps this back down.
-      workflows: write
+    # If that ceiling is ever lowered back to read-only, promotion is refused at
+    # the push, not the merge:
+    #   ! [remote rejected] main -> main (refusing to allow a GitHub App to
+    #   create or update workflow `.github/workflows/ci.yml` without
+    #   `workflows` permission)
+    # `contents: write` and `actions: write` are what the ceiling grants, and the
+    # second is what the "ask for the next gate" step needs; its absence once
+    # produced a 403 that the step printed and exited 0 over, leaving the ladder
+    # waiting on a gate that would never run.
     steps:
       - uses: actions/checkout@v7
         with:
