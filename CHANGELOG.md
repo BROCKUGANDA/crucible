@@ -95,6 +95,25 @@ migration. See [`SECURITY.md`](SECURITY.md) before deploying value.
 
 ### Fixed
 
+- **`/trials` and `/agents` are pageable, and the default is not to page.** The cursor is an
+  item id rather than an offset — on a chain that only grows, "row 10 onward" is a different
+  set of rows on every request — and `page` reports `returned`, `total`, `truncated` and
+  `nextCursor`. No limit returns the whole list on purpose: a silent cap is a lie of
+  omission, and a monitor counting trials would read a truncated page as a shorter chain and
+  call it healthy. A limit outside 1..500 is a 400, and a cursor that has aged out of a
+  filtered list restarts from the top and says so rather than blaming the client for the
+  chain moving.
+- **Checked, not added, on the rest of the list.** Rate limiting (per-peer buckets plus the
+  200-stream ceiling), exponential backoff (`withBackoff`), a bounded RPC queue
+  (`RpcThrottler`), a circuit breaker with an operator kill switch, a dead-letter ring, the
+  per-tick snapshot cache and the per-agent alloy TTL cache all already exist and are covered
+  by tests. The N+1 the list implied is not there: `alloyState` is one synchronous cache read
+  per agent, not a call per agent, and the indexer shards `getLogs` and caps blocks per tick.
+  Two things were deliberately not built: ETags, because every response is `Cache-Control:
+  no-store` by design and a browser that is told not to store never revalidates — the header
+  would be decorative or would weaken a money-state guarantee; and a job queue, because the
+  API is a read service with nothing to enqueue.
+
 - **Frenchy no longer re-synthesises a line the tab already has, and starts sooner.**
   Every moment was a fresh round trip; the copy is fixed, so a repeat cost the same as the
   first and the greeting waited behind a synthesis before any sound. Clips are now held for
