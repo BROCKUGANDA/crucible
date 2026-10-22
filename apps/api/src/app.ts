@@ -493,7 +493,7 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
    */
   const health = (c: Context) => {
     const index = deps.indexStatus?.() ?? null;
-    const stalled = index?.syncError != null;
+    const stalled = index?.syncStalled === true;
     return c.json(
       {
         ok: !stalled,
@@ -511,6 +511,7 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
         // on a provider with a key in it hands the key to whoever provoked the
         // error. The detail is still on disk and still in the log.
         syncError: index?.syncError ?? null,
+        syncStalled: index?.syncStalled ?? false,
         // Failures the process survived — failed syncs, failed registry reads, SSE
         // frames a dead client refused. A size that only grows is an operator's alarm.
         dlq: { ...dlq.summary(), lastDetail: null },
@@ -560,7 +561,7 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
     const lag = head === null ? null : Math.max(0, head - indexedTo);
 
     const reasons: string[] = [];
-    if (index.syncError) reasons.push(`last sync tick failed: ${index.syncError}`);
+    if (index.syncStalled) reasons.push(`last sync tick failed: ${index.syncError ?? "unknown error"}`);
     if (head === null) reasons.push("the chain head has never been read");
     else if (lag !== null && lag > security.readyMaxLag) {
       reasons.push(`index is ${lag} blocks behind the head, tolerance is ${security.readyMaxLag}`);
@@ -576,6 +577,7 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
         lag,
         maxLag: security.readyMaxLag,
         syncError: index.syncError ?? null,
+        syncStalled: index.syncStalled,
         trials,
       },
       ready ? 200 : 503,

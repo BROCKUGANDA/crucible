@@ -188,6 +188,10 @@ async function boot(): Promise<void> {
   const warden = new Warden({
     crucible,
     wallet,
+    // The chain's clock, not this host's. `start()` now requires the seam because a demo chain is
+    // warped on purpose, and a sweep comparing window deadlines against wall time sits idle for the
+    // length of the warp while `/health` reports that everything is fine.
+    now: async () => Number((await crucible.publicClient.getBlock()).timestamp),
     onLog: (line) => console.log(`[warden] ${line}`),
   });
 

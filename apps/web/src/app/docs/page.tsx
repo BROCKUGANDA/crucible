@@ -63,12 +63,11 @@ readers; three agreeable readers cannot overturn a failing test.
 If the committee cannot decide in time, the agent is paid. The person who challenged
 carries the burden of proof.
 
-One honest note about this build: the re-run needs the exact spec and test files. The lots
-on this page now name real ones — the files are stored, and the number on the chain is their
-fingerprint — but the shelf they sit on is the machine that filed them, not this website. A
-verifier that cannot fetch the work cannot re-run it, so on this deployment a challenged demo
-trial still goes to the committee and, if the committee cannot decide, is paid to the agent.
-That is the designed answer to "no evidence" — not a verdict, and not a pass.`}</p>
+One honest note about this build: the re-run needs the exact spec and test files, and
+the demo trials were posted before anything pinned those files. A verifier that cannot
+fetch the work cannot re-run it, so on this deployment a challenged demo trial goes to
+the committee and, if the committee cannot decide, is paid to the agent. That is the
+designed answer to "no evidence" — not a verdict, and not a pass.`}</p>
       </section>
 
       <section className="surface doc">
@@ -80,6 +79,13 @@ site — so the figure here and the figure on the chain cannot drift apart.`}</p
 posting a trial     free
 reading the site    free
 challenging         at least 1% of the reward, returned if you are right`}</pre>
+        <p className="doc__body">
+          <Link href="/clock" data-tone="ember">
+            See the clock and the books, read live from the chain
+          </Link>{" "}
+          — the windows, the two-of-three, the fee and the bond, straight from the contract rather
+          than typed onto this page.
+        </p>
       </section>
 
       <section className="surface doc">

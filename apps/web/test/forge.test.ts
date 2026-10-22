@@ -222,11 +222,11 @@ describe("sponsor wizard validation", () => {
     expect(
       validateWizard({ ...base, testsCID: "bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi", rewardEth: "1" })
         .bondEth,
-    ).toBe("0.2000");
+    ).toBe("0.2");
     expect(
       validateWizard({ ...base, testsCID: "bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi", rewardEth: "0.02" })
         .bondEth,
-    ).toBe("0.0100");
+    ).toBe("0.01");
   });
 
   it("blocks the final step until everything is valid", () => {

@@ -26,6 +26,16 @@ export interface WardenDeps {
   notifier?: Notifier;
   constants?: WardenConstants;
   onLog?: (line: string) => void;
+  /**
+   * The clock every window is measured against, and it must be the CHAIN does.
+   *
+   * The demo chain is warpable — that is the point of a demo — so a sweep that compared a window
+   * deadline against `Date.now()` would sit on its hands for the length of the warp. `start()` used
+   * the host clock unconditionally, which meant the only correct caller was one that ignored
+   * `start()` entirely and drove `sweep` itself, as the keeper does; every other embedder inherited
+   * the bug. The seam is required rather than defaulted so the wall clock is unreachable from here.
+   */
+  now: () => Promise<number>;
 }
 
 export interface SweepResult {
@@ -97,7 +107,7 @@ export class Warden {
    */
   start(getModel: () => ReadModel, everySec = 60): void {
     if (this.loop) return;
-    this.loop = selfSchedulingLoop(() => this.sweep(getModel(), Math.floor(Date.now() / 1000)), {
+    this.loop = selfSchedulingLoop(async () => this.sweep(getModel(), await this.deps.now()), {
       intervalMs: everySec * 1000,
       runImmediately: false,
       // A library's own timer must not be what holds the host process open; the interval this
