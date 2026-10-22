@@ -74,6 +74,9 @@ interface Fixture {
 function view(trialId: number, patch: Partial<DisputeView> = {}): DisputeView {
   return {
     trialId,
+    // The view is read *for* a seat, and the rules answer per-seat questions, so a view without
+    // one is not a fixture — it is a seat that is nobody.
+    seat: SEAT,
     status: STATUS_CHALLENGED,
     openedAt: OPENED_AT,
     committed: [],
@@ -108,13 +111,17 @@ async function harness(opts: { stateDir?: string; initial?: VerifyReport } = {})
       fixture.commits!.push({ trialId, commit });
       // The real contract records the commitment; mirror that so a second pass sees the same
       // word the chain would, and a test cannot accidentally pass by leaving it at zero.
-      const v = views.get(trialId)!;
+      //
+      // A view this harness never seeded is still a trial the chain can accept a commit for — a
+      // fake that required its own map to be pre-populated would make any test using an id it did
+      // not declare fail inside the fake rather than inside the code under test.
+      const v = views.get(trialId) ?? view(trialId);
       views.set(trialId, { ...v, seatCommit: commit, committed: [...v.committed, SEAT.toLowerCase()] });
       return HASH;
     },
     revealVote: async (trialId, breakWins, salt) => {
       fixture.reveals!.push({ trialId, breakWins, salt });
-      const v = views.get(trialId)!;
+      const v = views.get(trialId) ?? view(trialId);
       views.set(trialId, {
         ...v,
         seatRevealed: true,
@@ -265,8 +272,10 @@ describe("the seat operator's pass", () => {
     expect(await f.state.pending()).toHaveLength(1);
     expect(f.commits).toEqual([]);
 
-    // Peers have filled the committee since the crash.
-    f.setView(7, { committed: [SEAT.toLowerCase(), PEER.toLowerCase()] });
+    // Peers have filled the committee since the crash. The commitment pass one posted is still on
+    // the chain — a new harness models a new process, not a chain that forgot the transaction —
+    // so the restarted seat must see both the peer seals and its own commitment word.
+    f.setView(7, { seatCommit: a.commits[0]!.commit, committed: [SEAT.toLowerCase(), PEER.toLowerCase()] });
     await f.operator.pass();
 
     expect(f.reveals).toHaveLength(1);

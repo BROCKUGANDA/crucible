@@ -174,6 +174,18 @@ export function gateReveal(
     }
     return { act: "hold", reason: "this seat has sealed on chain but the salt is not in the store" };
   }
+  if (d.seatCommit === NO_COMMIT) {
+    // The order matters, and this branch is the reason: `state.ts` writes the salt BEFORE the
+    // transaction, so a pass that died between the two leaves a stored seal with nothing on
+    // chain. Keeping it is not caution — the commit loop skips any trial this seat holds a seal
+    // for, so the seat would stay silent on a trial it never actually voted on, forever.
+    return {
+      act: "drop",
+      reason:
+        "a salt is stored but the chain holds no commitment from this seat, so the commit never " +
+        "landed — forget the seal and let this seat verify the trial again",
+    };
+  }
   if (d.committed.length < k.threshold) {
     return {
       act: "hold",

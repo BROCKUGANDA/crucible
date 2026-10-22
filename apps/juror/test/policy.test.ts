@@ -29,6 +29,10 @@ const K: SeatConstants = { commitWindowSec: 86_400, threshold: 2, marginSec: 960
 function d(patch: Partial<DisputeView> = {}): DisputeView {
   return {
     trialId: 7,
+    // Part of the view, not a parameter of the rules: the two questions the gates answer ("am I
+    // among the sealed?", "am I among the revealed?") are only answerable against the address the
+    // chain read was made with. Omitting it here would let a rule compare against `undefined`.
+    seat: SEAT,
     status: STATUS_CHALLENGED,
     openedAt: OPENED_AT,
     committed: [],
@@ -58,7 +62,12 @@ describe("gateCommit", () => {
     // `block.timestamp >= openedAt + COMMIT_WINDOW` reverts, so the same second is already too
     // late — a gate that used `>` would post a doomed transaction on the boundary.
     expect(gateCommit(d(), K, OPENED_AT + 86_400).act).toBe("forfeit");
-    expect(gateCommit(d(), K, OPENED_AT + 86_400 - 1)).toMatchObject({ act: "verify" });
+    // One second inside the window is NOT a `verify`: the margin says a run started now cannot
+    // finish, which is the next test's business. The last moment a run can still be started is one
+    // second before the margin bites, and that is what is asserted here so the two rules stay
+    // separately observable.
+    expect(gateCommit(d(), K, OPENED_AT + 86_400 - K.marginSec - 1)).toMatchObject({ act: "verify" });
+    expect(gateCommit(d(), K, OPENED_AT + 86_400 - 1).act).toBe("hold");
   });
 
   it("holds when the window is open but cannot survive a re-run", () => {
@@ -86,16 +95,25 @@ describe("gateCommit", () => {
 
 describe("gateReveal", () => {
   const sealed = { breakWins: true };
+  // A seat that appears in the sealed list has a commitment word on chain, and `disputeVote` is
+  // what says so. A fixture with the list but not the word describes a seat the logs have invented
+  // — which is a real case (the drop below), but not the case these two tests are about.
+  const MY_COMMIT = `0x${"cc".repeat(32)}` as const;
 
   it("will not unseal before the quorum has sealed", () => {
     // ADR-0004. One seal is this seat's own; revealing into that is voting alone.
-    const gate = gateReveal(d({ committed: [SEAT.toLowerCase()] }), SEAT, sealed, K);
+    const gate = gateReveal(d({ seatCommit: MY_COMMIT, committed: [SEAT.toLowerCase()] }), SEAT, sealed, K);
     expect(gate.act).toBe("hold");
     expect(gate.act === "hold" && gate.reason).toContain("waiting for 2 seats to seal; 1 have");
   });
 
   it("unseals once two seats have sealed, which is the count that settles the trial", () => {
-    const gate = gateReveal(d({ committed: [SEAT.toLowerCase(), PEER.toLowerCase()] }), SEAT, sealed, K);
+    const gate = gateReveal(
+      d({ seatCommit: MY_COMMIT, committed: [SEAT.toLowerCase(), PEER.toLowerCase()] }),
+      SEAT,
+      sealed,
+      K,
+    );
     expect(gate).toEqual({ act: "reveal", breakWins: true });
   });
 
@@ -104,7 +122,7 @@ describe("gateReveal", () => {
     // hash, so two seals are enough to make copying pointless. Requiring two reveals first
     // would deadlock the committee: nobody opens, nobody counts.
     const gate = gateReveal(
-      d({ committed: [SEAT.toLowerCase(), PEER.toLowerCase()], revealed: [] }),
+      d({ seatCommit: MY_COMMIT, committed: [SEAT.toLowerCase(), PEER.toLowerCase()], revealed: [] }),
       SEAT,
       sealed,
       K,

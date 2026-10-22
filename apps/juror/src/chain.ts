@@ -221,6 +221,7 @@ export class CrucibleChain implements VotePoster {
     const [commit, revealed] = seatVote as unknown as [Hex, boolean];
     return {
       trialId,
+      seat: this.seat,
       status: trial.status,
       openedAt: Number(openedAt),
       committed: votes.committed,

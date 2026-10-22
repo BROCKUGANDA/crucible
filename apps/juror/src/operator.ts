@@ -115,6 +115,8 @@ export function createOperator(deps: OperatorDeps): JurorOperator {
     const actions: PassAction[] = [];
     const counts = empty();
     let considered = 0;
+    /** Trials this pass freed a junk seal for — see the `drop` case below for why they are skipped. */
+    const dropped = new Set<number>();
 
     const record = (trialId: number, action: ActionKind, detail: string, txHash: Hex | null = null): void => {
       counts[action] += 1;
@@ -141,7 +143,15 @@ export function createOperator(deps: OperatorDeps): JurorOperator {
             // The salt is worthless: either the reveal is already on chain (so it is public) or
             // the seal can never be opened. Dropping is what stops the loop re-reading a dead
             // dispute forever.
+            //
+            // And the trial is skipped by the verify pass below, in this same pass. Without that,
+            // a seal whose transaction never landed would be dropped and then re-made in one pass
+            // — and if the commit keeps failing (a seat that is not granted, a window that closes
+            // mid-run) every pass would drop, re-verify a suite for the full budget, and re-seal.
+            // That is a self-inflicted load loop with no exit, and it is invisible from the
+            // report, which would read `drop, verify, seal` happily every time.
             await deps.cast.discard(seal.trialId);
+            dropped.add(seal.trialId);
             record(seal.trialId, "drop", gate.reason);
             break;
           }
@@ -167,6 +177,7 @@ export function createOperator(deps: OperatorDeps): JurorOperator {
         // is it merely waiting out a re-verification backoff.
         const givenUp = await deps.state.forfeit(trialId);
         if (givenUp) continue;
+        if (dropped.has(trialId)) continue;
         if (await deps.cast.holds(trialId)) continue;
 
         const prior = await deps.state.abstention(trialId);

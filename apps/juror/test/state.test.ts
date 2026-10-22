@@ -30,8 +30,8 @@ describe("FileState", () => {
     // A new process: nothing in the old one carries over.
     const second = await FileState.open(dir);
     expect(await second.get(7)).toMatchObject({ breakWins: true, salt: SALT, commit: COMMIT });
-    expect(await second.abstention(8)?.reason).toBe("no disclosure");
-    expect(await second.forfeit(9)?.reason).toBe("window closed");
+    expect((await second.abstention(8))?.reason).toBe("no disclosure");
+    expect((await second.forfeit(9))?.reason).toBe("window closed");
     expect((await second.pending()).map((s) => s.trialId)).toEqual([7]);
   });
 
