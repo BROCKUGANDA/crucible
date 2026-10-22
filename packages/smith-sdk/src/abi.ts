@@ -451,6 +451,24 @@ export const TRIALS_ABI = [
   },
   {
     type: "event",
+    name: "VoteCommitted",
+    inputs: [
+      { indexed: true, name: "id", type: "uint256" },
+      { indexed: true, name: "judge", type: "address" },
+    ],
+  },
+  {
+    type: "event",
+    name: "VoteRevealed",
+    inputs: [
+      { indexed: true, name: "id", type: "uint256" },
+      { indexed: true, name: "judge", type: "address" },
+      { indexed: false, name: "breakWins", type: "bool" },
+    ],
+  },
+
+  {
+    type: "event",
     name: "VerdictFinalized",
     inputs: [
       { indexed: true, name: "id", type: "uint256" },
