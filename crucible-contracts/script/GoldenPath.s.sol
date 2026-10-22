@@ -6,6 +6,7 @@ import {console} from "forge-std/console.sol";
 import {CrucibleTrials} from "../contracts/CrucibleTrials.sol";
 import {AlloyRegistry} from "../contracts/AlloyRegistry.sol";
 import {MockIdentityRegistry} from "../contracts/mocks/ERC8004Mocks.sol";
+import {SeedContent} from "./SeedContent.sol";
 
 /// The golden path against EXISTING deployments — the whole loop a judge can replay
 /// on a running chain, including the one step the seed cannot perform: finalize after
@@ -66,13 +67,14 @@ contract GoldenPath is Script {
 
     function _post(string memory tag) internal returns (uint256 id) {
         vm.broadcast(pkSponsor);
+        // The demand is the same pinned fixture for both golden paths — what the sponsor asks is
+        // "make this suite pass", and the two paths differ in what the agent answers, not in what
+        // was asked. The tag stays because it is what the log line and the judge's memory need.
         id = trials.createTrial{value: 0.5 ether}(
-            keccak256(abi.encodePacked("spec:", tag)),
-            keccak256(abi.encodePacked("tests:", tag)),
-            uint64(block.timestamp + 2 days),
-            1 hours
+            SeedContent.SPEC_HASH, SeedContent.TESTS_HASH, uint64(block.timestamp + 2 days), 1 hours
         );
-        console.log("trial", id, "posted (0.5 ETH, 1h window)");
+        console.log("trial posted:", tag);
+        console.log("  id", id, "0.5 ETH, 1h window");
     }
 
     function _claimAndSubmit(uint256 agentId, uint256 id, bytes32 runHash) internal {

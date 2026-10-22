@@ -139,6 +139,16 @@ export class ContentBridge {
   }
 
   /**
+   * The text stored under a cid, or null when nothing answers to it.
+   *
+   * The store re-hashes on read, so a null here means "absent" and a returned string has
+   * already been proved to hash to the name it was fetched by.
+   */
+  textForCid(cid: string): string | null {
+    return this.opts.store.get(cid);
+  }
+
+  /**
    * Fetch and parse a run artifact by cid, checking the cid owns its bytes first.
    *
    * The store already re-hashes on read, so a truncated or edited artifact cannot reach the

@@ -97,11 +97,58 @@ async function hasCode(address) {
  * The demo's own console output is not evidence: it is what the script believed it
  * did. The logs are what the chain says happened.
  */
-async function countLogs(address, eventName) {
+async function eventLogs(address, eventName) {
   const topics = await eventTopics();
   const toBlock = await rpc("eth_blockNumber");
   const logs = await rpc("eth_getLogs", [{ address, fromBlock: "0x0", toBlock, topics: [topics[eventName]] }]);
-  return Array.isArray(logs) ? logs.length : 0;
+  return Array.isArray(logs) ? logs : [];
+}
+
+async function countLogs(address, eventName) {
+  return (await eventLogs(address, eventName)).length;
+}
+
+/**
+ * The two digests the contracts were built with, read from the generated library.
+ *
+ * Read from `SeedContent.sol` rather than recomputed here on purpose: that file is what the
+ * Solidity scripts embed, so comparing the chain against it proves the *posted* value, not a
+ * value this script invented. CI's `seed:check` is what ties that file to the bytes.
+ */
+async function committedDigests() {
+  const src = await fs.readFile(`${ROOT}crucible-contracts/script/SeedContent.sol`, "utf8");
+  const spec = src.match(/bytes32 constant SPEC_HASH = (0x[0-9a-f]{64});/)?.[1];
+  const tests = src.match(/bytes32 constant TESTS_HASH = (0x[0-9a-f]{64});/)?.[1];
+  if (!spec || !tests) throw new Error("SeedContent.sol does not carry both constants");
+  return { spec, tests };
+}
+
+/**
+ * Every trial on this chain was created with the content that is in the store.
+ *
+ * `TrialCreated`'s data is `abi.encode(specCID, testsCID, reward, bond, deadline, breakWindow)`,
+ * so the first two words are the two commitments — no ABI needed to read them. This is the step
+ * that makes the seeds checkable rather than intended: a trial whose hash answers to nothing is
+ * a trial a skeptic cannot verify, and the chain would go on behaving as though it could.
+ */
+async function assertTrialsCarryPinnedContent(address) {
+  const pinned = await committedDigests();
+  const logs = await eventLogs(address, "TrialCreated");
+  if (logs.length === 0) throw new Error("no TrialCreated logs to check the commitments against");
+  const wrong = logs.filter((log) => {
+    // `0x` + 64 hex each: the log data is `0x` followed by six packed words, so the prefix has to
+    // be put back on the slices before comparing them to a digest that carries one.
+    const words = [`0x${log.data.slice(2, 66)}`, `0x${log.data.slice(66, 130)}`];
+    return words[0].toLowerCase() !== pinned.spec || words[1].toLowerCase() !== pinned.tests;
+  });
+  if (wrong.length > 0) {
+    const first = `${wrong[0].data.slice(2, 66)} ${wrong[0].data.slice(66, 130)}`;
+    throw new Error(
+      `${wrong.length} of ${logs.length} trials commit to content that is not the pinned fixture ` +
+        `(first: ${first}). A skeptic claiming one of these would be handed nothing to fetch.`,
+    );
+  }
+  console.log("  %d trials, every one committing to the pinned spec and suite", logs.length);
 }
 
 /**
@@ -171,6 +218,16 @@ async function main() {
   }
   console.log("✓ anvil ready");
 
+  // The claim the demo makes is that a trial's spec and suite can be fetched and re-run. That is
+  // only true if the bytes are in the store before the digest that names them goes on-chain, so
+  // pin first and let the seeds post what the pinning reported. `--check` guards the same match
+  // in CI; running the pin here is what makes this machine's store hold the bytes.
+  console.log("▸ pinning the demo trial's spec and suite");
+  await run(process.execPath, [join(ROOT, "scripts", "seed-content.mjs")], {
+    cwd: ROOT,
+    stdio: "inherit",
+  });
+
   // The demo script deploys its OWN AlloyRegistry and CrucibleTrials and replays the
   // loop into them. Deploy.s.sol would deploy a second, empty pair, and printing
   // those addresses would point the API at a contract that has never settled
@@ -211,6 +268,7 @@ async function main() {
   console.log("  %d trials on the chain, %d settled, %d still open for action", created, settled, created - settled);
   if (settled === 0) throw new Error("the demo settled nothing - the hall would open empty");
   if (created - settled === 0) throw new Error("nothing on the chain a visitor can act on");
+  await assertTrialsCarryPinnedContent(trials);
 
   // The compose seed publishes the addresses it deployed to a file, and the API
   // reads that file. The local demo publishes them the same way, so a script can

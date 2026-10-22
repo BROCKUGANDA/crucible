@@ -4,6 +4,7 @@ pragma solidity 0.8.26;
 import {Script} from "forge-std/Script.sol";
 import {console} from "forge-std/console.sol";
 import {CrucibleTrials} from "../contracts/CrucibleTrials.sol";
+import {SeedContent} from "./SeedContent.sol";
 
 /**
  * Extends a chain that already carries the demo loop with trials a visitor can act on.
@@ -74,11 +75,14 @@ contract Extend is Script {
             uint256 wanted = MIN_OPEN_TRIALS - open;
             for (uint256 i = 0; i < wanted; i++) {
                 vm.broadcast(pkSponsor);
+                // The same pinned fixture for every lot. These used to be
+                // keccak256(abi.encodePacked("spec-open", i, block.timestamp)) — a digest of a
+                // string and a timestamp, which no content service ever wrote. A visitor who
+                // claimed one and asked to be proven against could not be: there was nothing to
+                // fetch, so the deterministic phase could not run and every challenge on a demo
+                // trial went to the committee by default.
                 uint256 id = trials.createTrial{value: REWARD}(
-                    keccak256(abi.encodePacked("spec-open", i, block.timestamp)),
-                    keccak256(abi.encodePacked("tests-open", i, block.timestamp)),
-                    uint64(block.timestamp + RUN_WINDOW),
-                    BREAK_WINDOW
+                    SeedContent.SPEC_HASH, SeedContent.TESTS_HASH, uint64(block.timestamp + RUN_WINDOW), BREAK_WINDOW
                 );
                 console.log("  open trial   #", id, "- sponsored, awaiting a claim");
             }
@@ -93,10 +97,7 @@ contract Extend is Script {
             if (freeStake >= bond) {
                 vm.broadcast(pkSponsor);
                 uint256 id = trials.createTrial{value: REWARD}(
-                    keccak256(abi.encodePacked("spec-anvil", block.timestamp)),
-                    keccak256(abi.encodePacked("tests-anvil", block.timestamp)),
-                    uint64(block.timestamp + RUN_WINDOW),
-                    BREAK_WINDOW
+                    SeedContent.SPEC_HASH, SeedContent.TESTS_HASH, uint64(block.timestamp + RUN_WINDOW), BREAK_WINDOW
                 );
                 vm.broadcast(pkOperatorA);
                 trials.claimTrial(id);
