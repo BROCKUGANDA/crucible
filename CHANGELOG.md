@@ -12,6 +12,18 @@ migration. See [`SECURITY.md`](SECURITY.md) before deploying value.
 
 ### Added
 
+- **The content layer exists on the producing side.** `@crucible/forge-runner` gains
+  `ContentService`: `pinText` / `pinSuite` hand back the keccak digest a sponsor must put on
+  chain, `fetchSpec` resolves a digest or a cid back to bytes through the disclosure,
+  `fetchSuite` unpacks a pinned tree into the bench, `uploadRepo` pins what the bench holds,
+  `uploadLogs` pins the log text, and `publishArtifact` announces a run under its chain run
+  hash together with the signature and deadline `submitRun` throws away. Until now all four
+  `RunnerDeps` content functions existed only as inline fakes in another package's tests, so
+  every `specCID` / `testsCID` / `repoCID` in an artifact named bytes that were stored
+  nowhere. Two properties are asserted rather than assumed: a pinned spec answers to the
+  digest the chain would hold and resolves in a second process over the same directory, and a
+  suite entry named `../../outside.sol` is refused before anything is written — the sponsor
+  picks the paths, so paths are the untrusted part of a trusted pin.
 - **A hash-chained trace spine, with a real producer.** `@crucible/smith` gains
   `TraceLog`: append-only JSONL where each entry seals keccak over RFC 8785 canonical JSON
   of itself plus the previous hash, using the same canonicalization rule as the run
