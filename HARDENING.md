@@ -88,14 +88,19 @@ much of the product's promise each one costs.
    them. `scripts/verify-roundtrip.mjs` exercises the whole path — pin, execute with a real
    forge, sign, publish, verify — and catches an inflated claim and an unregistered key. What
    is still missing, in the order that makes each checkable by the last:
-   - **No seat operator.** `commitVote` and `revealVote` (`packages/smith-sdk/src/client.ts`)
-     have no caller outside tests, so nobody reads a Challenged trial off a chain, runs the
-     gates, and signs what they found. Until that exists the deterministic phase is a library,
-     and a skeptic's challenge still resolves through the committee.
-   - **The live chain's store is not populated.** The VPS seed image and the deployed API have
-     no node path that pins, so the digests the hourly extend posts resolve to bytes only on a
-     machine that ran `scripts/seed-content.mjs`. Populating it belongs with the operator,
-     which is the first thing that would read it.
+   - **The seat operator exists; its bench does not.** `apps/juror` is the production caller: it
+     reads a Challenged trial off the chain, fetches the content the trial committed to, runs the
+     six deterministic gates, and casts this seat's commit and reveal with the salt held in a
+     durable store. What it cannot do on the deployed box is *execute*: the image carries no
+     container runtime and no daemon socket, because a container that can ask the host daemon for
+     containers holds the host, and this box runs other projects. So every verification on the VPS
+     fails before a suite can run — there is no `docker` binary to spawn, and `dockerAvailable()`
+     rejects rather than reporting a clean "no daemon" — the seat records the error, abstains, and
+     `/health` shows it. The challenge still falls to the committee. The seat is honest about being
+     unable to check, which is the right failure — but it is not yet the product. The two ways out
+     are a bench the seat talks to over the compose network (no socket, more moving parts) or an
+     explicit operator decision to mount the socket and accept what that grants. Neither has been
+     run: this is a reading of the image, not a measured abstain on the live box.
    - **A re-run has never executed in a container.** `rerunOnFreshBench` has run locally and in
      the degraded path; no test takes a pinned suite through the Docker sandbox end to end.
    - **The demo hall's run hashes are still synthetic.** `Demo.s.sol` submits
@@ -132,5 +137,58 @@ much of the product's promise each one costs.
 9. **The demo scripts are not covered.** Coverage is measured over the contracts; the
    `script/` files that deploy and replay the loop are exercised by the demo and the
    golden path instead, which is why they read 0%.
+10. **Open from the 2026-10-22 race-and-edge audit.** Four were fixed in `apps/juror` (the salt
+    outliving the broadcast, one bench per pass, a fresh chain-clock read per candidate, and a
+    `FileState` that shared its forfeit map with a module constant) and each has a mutation that
+    now fails. These were found and are **not** fixed; they are listed with their evidence so the
+    next reader does not have to rediscover them.
+
+    - **A repaired block timestamp is thrown away.** `packages/indexer/src/scribe.ts:680` calls
+      `hydrateTimestamps(model, blockTimes, [])` with an empty id list, which `model.ts:592` turns
+      into "hydrate nothing" — and `:388` then clears `blockTimes`. A block whose `getBlock` failed
+      once keeps a *block number* in `createdAt`/`runAt` forever, so `breakWindowEndsAt`
+      (`model.ts:706`) publishes a 1970 deadline on `/snapshot`, `/trials` and `/stream`, with
+      nothing saying so. The comment above the call claims the row is re-hydrated. It is not.
+    - **An unclaimed trial's reward has no watcher.** `CrucibleTrials.sol:425` lets
+      `reclaimExpired` fire on `Status.Open` precisely so orphaned escrow has an exit, but
+      `packages/warden/src/policy.ts:88` lumps `open` with `settled` as "nothing to do". The newest
+      guard on the contract has no consumer: dead trials hold `MAX_TOTAL_ESCROWED` forever.
+    - **`Warden.start()` still decides on the host clock.** `packages/warden/src/warden.ts:100`
+      passes `Math.floor(Date.now() / 1000)` and `WardenDeps` has no `chainNow` seam, so the fix in
+      `apps/keeper` is only there because the keeper refuses to call `start()` and drives `sweep`
+      itself. Any other embedder inherits the bug, and on a warped demo chain settlement silently
+      stalls while `/health` answers.
+    - **Nothing reaps sandbox containers by label.** `SANDBOX_LABEL` (`sandbox.ts:88`) is documented
+      as the handle "whoever is cleaning up after a crashed verifier" would use; the only readers
+      are the tests. After a death that is not a timeout — an OOM-killed node, a container restart —
+      workloads stay alive holding CPU and memory claims.
+    - **The cursor write is not atomic, and its temp name is fixed.** `scribe.ts:279-293` writes the
+      temp file, then writes the real file, then unlinks the temp; there is no `renameSync`, so the
+      documented "written atomically" is not true and a death mid-write leaves a truncated cursor
+      that `loadCursor` treats as absent — a silent full re-scan. All three services read the same
+      `CRUSIBLE_CURSOR_FILE` name, so the shared temp path is shared too.
+    - **Registry fan-out has no ceiling.** `apps/api/src/server.ts:221` runs `Promise.all` over every
+      agent, three `readContract` calls each, every 2s, on a path with no throttler — and one
+      `registerAgent` at `MIN_BOND` permanently adds three reads per sweep. 500 agents is about 750
+      concurrent reads against the node the indexer shares.
+    - **"Catching up" is reported as "failing".** `scribe.ts:429` assigns the same `syncError` field
+      for a tick that threw and for a cursor legitimately behind the head, and `MAX_PROOF_BLOCKS_PER_TICK`
+      (64) means a 40,000-block gap takes ~5 minutes of `/health` 503 — during which `web`, which
+      waits on `api: service_healthy`, does not come up. The message even says "re-reading it".
+    - **Front-end money and clocks.** `apps/web/src/lib/wizard.ts:75` computes the bond in floats and
+      rounds to 4 decimals, so the advertised bond can be short of the contract's floor-divided wei
+      and the claim reverts `StakeTooSmall`; `apps/web/src/lib/forge.ts:93` `formatEth` uses
+      `toFixed` (rounds *up*), printing a stake larger than the operator signed for, against the rule
+      written in `api.ts:119`; `apps/web/src/app/trials/new/page.tsx:112` derives the deadline from
+      `Date.now()` against a `block.timestamp` guard, so on a warped chain every new trial reverts
+      `BadDeadline` and the error names the method, not the clock; `trials/[id]/page.tsx:53` closes
+      the break UI one second before the contract does (`>=` vs the contract's `>`).
+    - **`FEE_BPS` is read once at boot.** `apps/api/src/server.ts:274` fills it inside a single `try`
+      and never retries; a boot-time blip leaves the published fee rate `null` for the life of the
+      process. It is a `public constant`, so there is no reason not to re-read it.
+    - **`notifications()` has no memory.** `packages/warden/src/policy.ts:114` re-emits every
+      settled trial's `verdict-landed` on every pass; latent only because the keeper does not
+      attach a notifier today.
+
 
 Report a vulnerability as described in [`SECURITY.md`](SECURITY.md), not in a public issue.
