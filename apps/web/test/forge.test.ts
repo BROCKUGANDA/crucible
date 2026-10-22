@@ -1,14 +1,18 @@
 import { describe, expect, it } from "vitest";
 import {
+  DEADLINE_HEAT,
   ERROR_COPY,
   STATUS_META,
   TIER_META,
   VERDICT_META,
+  deadlineHeat,
   formatDuration,
   formatEth,
   haptics,
+  heatTone,
   shortCid,
   shortHash,
+  statusMeta,
   tierMeta,
 } from "../src/lib/forge";
 import { EMPTY_WIZARD, validateWizard } from "../src/lib/wizard";
@@ -91,6 +95,55 @@ describe("formatDuration", () => {
   });
 });
 
+describe("deadline heat", () => {
+  /**
+   * The assertion the old field could not pass.
+   *
+   * `STATUS_META[…].heat` was keyed on status, so two trials in the same state were forced to
+   * read the same urgency however far apart their deadlines were. Heat is a fact about time, so
+   * these tests hold it to time alone: two `judging` trials, one with two minutes left and one
+   * with three days, must not colour the same way.
+   */
+  it("separates two trials in one status by the time they have left", () => {
+    expect(deadlineHeat(120)).toBe(3);
+    expect(deadlineHeat(3 * 86_400)).toBe(1);
+    expect(heatTone(deadlineHeat(120))).not.toBe(heatTone(deadlineHeat(3 * 86_400)));
+    // And the status itself is no longer allowed to carry one: there is nothing for it to say.
+    expect(statusMeta("judging")).not.toHaveProperty("heat");
+  });
+
+  it("uses only the thresholds it is given", () => {
+    expect(deadlineHeat(DEADLINE_HEAT.imminentSec)).toBe(3);
+    expect(deadlineHeat(DEADLINE_HEAT.imminentSec + 1)).toBe(2);
+    expect(deadlineHeat(DEADLINE_HEAT.soonSec)).toBe(2);
+    expect(deadlineHeat(DEADLINE_HEAT.soonSec + 1)).toBe(1);
+  });
+
+  it("reads a passed deadline as out, not as urgent", () => {
+    // ERROR_COPY's own words: "The fire's out — submission deadline passed." A trial past its
+    // deadline is reclaimable rather than pressing, so it is not the hottest thing on the list.
+    expect(deadlineHeat(0)).toBe(0);
+    expect(deadlineHeat(-500)).toBe(0);
+    expect(heatTone(deadlineHeat(-500))).toBe("dim");
+  });
+
+  it("leaves the heat unread when there is no countdown to measure", () => {
+    // `deadlineEndsAt` answers null once a trial is settled, and `useCountdown` answers null for
+    // a row with nothing to count down to. Colouring that as any level of heat would be the
+    // page inventing a measurement — the same defect the tier table was fixed for.
+    expect(deadlineHeat(null)).toBeNull();
+    expect(heatTone(null)).toBe("faint");
+  });
+
+  it("never colours a countdown with the slash", () => {
+    // `sear` means something already went wrong. A deadline running low means something is about
+    // to, and the two must not share a colour or the list cannot be read at a glance.
+    for (const remaining of [null, 0, 1, 600, 90_000, 864_000 * 30]) {
+      expect(heatTone(deadlineHeat(remaining))).not.toBe("sear");
+    }
+  });
+});
+
 describe("design tokens", () => {
   it("has a colour for every trial status", () => {
     for (const s of ["open", "assigned", "judging", "challenged", "settled"]) {
@@ -169,11 +222,11 @@ describe("sponsor wizard validation", () => {
     expect(
       validateWizard({ ...base, testsCID: "bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi", rewardEth: "1" })
         .bondEth,
-    ).toBe("0.2000");
+    ).toBe("0.2");
     expect(
       validateWizard({ ...base, testsCID: "bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi", rewardEth: "0.02" })
         .bondEth,
-    ).toBe("0.0100");
+    ).toBe("0.01");
   });
 
   it("blocks the final step until everything is valid", () => {

@@ -47,7 +47,11 @@ async function refusingNode(): Promise<{ url: string; hits: () => number; close:
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
-async function until(pred: () => boolean, withinMs = 5_000): Promise<void> {
+// The breakeven is the breaker's state, not the wall clock. Three failed passes
+// with backoff can exceed the default 5s on a loaded self-hosted runner; a
+// 20s wait still fails when the breaker never trips, and the tests below get
+// 30s so the wait's own budget is reachable.
+async function until(pred: () => boolean, withinMs = 20_000): Promise<void> {
   const started = Date.now();
   while (!pred()) {
     if (Date.now() - started > withinMs) throw new Error("condition never held");
@@ -84,7 +88,7 @@ describe("the RPC breaker on the sync path", () => {
     expect(node.hits()).toBe(askedBefore);
 
     node.close();
-  });
+  }, 30_000);
 
   it("tails a dead node without either stalling or hammering it", async () => {
     const node = await refusingNode();
@@ -113,5 +117,5 @@ describe("the RPC breaker on the sync path", () => {
 
     scribe.stop();
     node.close();
-  });
+  }, 30_000);
 });

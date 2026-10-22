@@ -5,8 +5,8 @@
   "description": "Crucible web app — Next.js, the Industrial Forge design system.",
   "license": "MIT",
   "scripts": {
-    "dev": "next dev --port 3000",
-    "build": "next build",
+    "dev": "next dev --webpack --port 3000",
+    "build": "next build --webpack",
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
@@ -16,19 +16,19 @@
     "@crucible/indexer": "*",
     "@crucible/smith": "*",
     "@rainbow-me/rainbowkit": "^2.2.11",
-    "@tanstack/react-query": "^5.62.11",
-    "next": "^15.5.27",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "viem": "^2.21.55",
+    "@tanstack/react-query": "^5.104.4",
+    "next": "^16.4.2",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "viem": "^2.57.7",
     "wagmi": "^2.14.12"
   },
   "devDependencies": {
     "@resvg/resvg-js": "2.6.2",
-    "@types/node": "^22.10.7",
+    "@types/node": "^26.6.5",
     "@types/react": "^19.0.7",
     "@types/react-dom": "^19.0.3",
     "typescript": "^7.0.2",
-    "vitest": "^5.0.3"
+    "vitest": "^5.0.5"
   }
 }

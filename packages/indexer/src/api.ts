@@ -93,11 +93,39 @@ export interface ApiAgent {
   tokenUri: string | null;
 }
 
-export function weiToEth(wei: bigint): string {
+/** Wei in one ETH. */
+export const WEI_PER_ETH = 10n ** 18n;
+
+/** The most decimal places a wei amount can carry, so ETH has an exact decimal form. */
+export const MAX_DECIMALS = 18;
+
+/**
+ * The one wei -> ETH formatter in this repository.
+ *
+ * There were three: this function, `formatWei` in `apps/web/src/lib/eth.ts`, and viem's
+ * `formatEther` called straight from `hall.ts`. Three implementations of one amount is not
+ * three displays, it is three chances for the same wei to print as two different numbers —
+ * and a reader who catches the site disagreeing with itself about a stake has no way to know
+ * which of the two to distrust.
+ *
+ * It lives here rather than in the web app because every consumer must reach it: the read
+ * model's own payloads, the hall snapshot, and the browser. A package cannot import from an
+ * app, so this is the only shared position on the graph.
+ *
+ * Exact throughout — BigInt on the decimal string, never a float. `0.1 * 1e18` is
+ * 100000000000000008, and on a contract where the stake *is* the economic commitment an
+ * eight-wei lie is not a rounding note, it is a different transaction.
+ *
+ * `maxDecimals` truncates the fraction rather than rounding it, and trailing zeros are
+ * dropped: `1.5000` is not a more precise answer than `1.5`, and a display that rounds up
+ * would print a stake as larger than the operator signed for.
+ */
+export function weiToEth(wei: bigint, maxDecimals = MAX_DECIMALS): string {
   const negative = wei < 0n;
   const v = negative ? -wei : wei;
-  const whole = v / 10n ** 18n;
-  const frac = (v % 10n ** 18n).toString().padStart(18, "0").replace(/0+$/, "");
+  const places = Math.max(0, Math.min(Math.trunc(maxDecimals), MAX_DECIMALS));
+  const whole = v / WEI_PER_ETH;
+  const frac = (v % WEI_PER_ETH).toString().padStart(MAX_DECIMALS, "0").slice(0, places).replace(/0+$/, "");
   return `${negative ? "-" : ""}${whole}${frac ? `.${frac}` : ""}`;
 }
 

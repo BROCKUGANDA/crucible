@@ -10,6 +10,7 @@ import {
 } from "@crucible/indexer";
 import { rateLimit } from "./rate-limit.js";
 import { dlq } from "./dlq.js";
+import { TickPump } from "./tick-pump.js";
 import { authRoutes } from "./auth.js";
 import { createVoiceRoutes, type VoiceConfig } from "./voice.js";
 import {
@@ -107,6 +108,89 @@ function positiveId(raw: string | undefined): number | null {
   return value;
 }
 
+/** The largest page a caller may ask for. A "limit" is not a licence to ask for everything. */
+const MAX_PAGE = 500;
+
+interface PageRequest {
+  limit: number | null;
+  after: number | null;
+  error: string | null;
+}
+
+/**
+ * Cursor pagination over the list routes.
+ *
+ * The cursor is an item id, not an offset. An offset is wrong the moment anything is added
+ * above it — the page shifts under a client that is already looking at one, and on a chain
+ * that only ever grows, "row 10 onward" is a different set of rows on every request.
+ *
+ * No limit means the whole list, deliberately rather than lazily. A silent default cap is
+ * a lie of omission: a monitor that counts trials would read a truncated page as a shorter
+ * chain and call it healthy. Callers who want a page ask for one, and `truncated` plus
+ * `nextCursor` say out loud that there is more.
+ */
+function parsePage(query: Record<string, string | undefined>): PageRequest {
+  let limit: number | null = null;
+  const rawLimit = query.limit;
+  if (rawLimit !== undefined && rawLimit !== "") {
+    if (!/^\d+$/.test(rawLimit)) {
+      return { limit: null, after: null, error: "limit must be a whole number of items" };
+    }
+    limit = Number(rawLimit);
+    if (limit < 1 || limit > MAX_PAGE) {
+      return {
+        limit: null,
+        after: null,
+        error: `limit must be between 1 and ${MAX_PAGE}`,
+      };
+    }
+  }
+  let after: number | null = null;
+  const rawAfter = query.after;
+  if (rawAfter !== undefined && rawAfter !== "") {
+    if (!/^\d+$/.test(rawAfter)) {
+      return { limit: null, after: null, error: "after must be an item id from a previous page" };
+    }
+    after = Number(rawAfter);
+  }
+  return { limit, after, error: null };
+}
+
+function paginate<T>(
+  items: T[],
+  idOf: (item: T) => number,
+  page: PageRequest,
+): { items: T[]; page: Record<string, unknown> } {
+  let start = 0;
+  let cursorStale = false;
+  if (page.after !== null) {
+    const found = items.findIndex((item) => idOf(item) === page.after);
+    if (found === -1) {
+      // Legitimate, not an error: a filtered list loses members as the chain settles
+      // trials, so a cursor can age out between pages. Resuming from the start with the
+      // flag set is honest; a 400 would blame the client for the chain moving.
+      cursorStale = true;
+    } else {
+      start = found + 1;
+    }
+  }
+  const rest = items.slice(start);
+  const slice = page.limit === null ? rest : rest.slice(0, page.limit);
+  const more = start + slice.length < items.length;
+  return {
+    items: slice,
+    page: {
+      limit: page.limit,
+      after: page.after,
+      returned: slice.length,
+      total: items.length,
+      truncated: page.limit !== null && more,
+      nextCursor: page.limit !== null && more && slice.length ? idOf(slice[slice.length - 1]!) : null,
+      cursorStale,
+    },
+  };
+}
+
 /**
  * How many live streams this process will hold at once.
  *
@@ -144,6 +228,21 @@ export interface ApiOptions {
    * Lower it to refuse streams sooner; the default is far above what a real audience needs.
    */
   maxStreams?: number;
+  /**
+   * How often the shared stream pump consults the read model. Default 250ms.
+   *
+   * This is the only knob for how quickly the live view can reflect a chain event, and it
+   * is one number for the whole audience rather than a per-client sleep — raising the
+   * client count does not raise it. Raising the rate costs one cheap version check per
+   * interval, not a rebuild: `sharedTick` only rebuilds when the read model's counter
+   * actually moved.
+   */
+  streamPollMs?: number;
+  /**
+   * Test seam: drive the pump's cadence by hand instead of on wall time. Absent in
+   * production, where the pump runs on one `setInterval`.
+   */
+  streamSchedule?: (fn: () => void, ms: number) => () => void;
   /**
    * Transport-layer policy: browser origins, response headers, body ceiling, request
    * timeout, plaintext. Explicit values here beat `ALLOWED_ORIGINS` and friends in the
@@ -183,7 +282,13 @@ function securityOverrides(opts: ApiOptions): Partial<SecurityConfig> {
 export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
   const app = new Hono();
 
-  const TICK_MS = 1000;
+  /**
+   * How often the shared pump consults the read model. This is a ceiling on the pump's
+   * own added delay, not a per-client sleep: a subscriber wakes when the frame changes,
+   * and it wakes at the same moment as everyone else. It was 1000ms while every client
+   * slept that long between looks, which is where the latency actually came from.
+   */
+  const PUMP_INTERVAL_MS = opts.streamPollMs ?? 250;
   /** Ceiling on how long a cached stream payload may go without a fresh `now`. */
   const MAX_TICK_AGE_MS = 30_000;
   /** Live streams currently open, against `MAX_OPEN_STREAMS`. */
@@ -250,6 +355,31 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
       };
     }
     return tick;
+  }
+
+  /**
+   * The single clock every live stream reads from.
+   *
+   * Refcounted off the stream slots rather than started per request: one interval while
+   * anyone is watching, none when nobody is, so a test that never opens a stream leaves
+   * no timer behind and an idle demo costs nothing. See tick-pump.ts for why the reading
+   * is shared instead of duplicated per client.
+   */
+  const pump = new TickPump({
+    read: () => {
+      const t = sharedTick();
+      return { signature: t.signature, payload: t.payload };
+    },
+    intervalMs: PUMP_INTERVAL_MS,
+    ...(opts.streamSchedule ? { schedule: opts.streamSchedule } : {}),
+  });
+
+  function retainPump(): void {
+    if (openStreams === 1) pump.start();
+  }
+
+  function releasePump(): void {
+    if (openStreams === 0) pump.stop();
   }
 
   /**
@@ -363,7 +493,7 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
    */
   const health = (c: Context) => {
     const index = deps.indexStatus?.() ?? null;
-    const stalled = index?.syncError != null;
+    const stalled = index?.syncStalled === true;
     return c.json(
       {
         ok: !stalled,
@@ -381,6 +511,7 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
         // on a provider with a key in it hands the key to whoever provoked the
         // error. The detail is still on disk and still in the log.
         syncError: index?.syncError ?? null,
+        syncStalled: index?.syncStalled ?? false,
         // Failures the process survived — failed syncs, failed registry reads, SSE
         // frames a dead client refused. A size that only grows is an operator's alarm.
         dlq: { ...dlq.summary(), lastDetail: null },
@@ -430,7 +561,7 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
     const lag = head === null ? null : Math.max(0, head - indexedTo);
 
     const reasons: string[] = [];
-    if (index.syncError) reasons.push(`last sync tick failed: ${index.syncError}`);
+    if (index.syncStalled) reasons.push(`last sync tick failed: ${index.syncError ?? "unknown error"}`);
     if (head === null) reasons.push("the chain head has never been read");
     else if (lag !== null && lag > security.readyMaxLag) {
       reasons.push(`index is ${lag} blocks behind the head, tolerance is ${security.readyMaxLag}`);
@@ -446,6 +577,7 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
         lag,
         maxLag: security.readyMaxLag,
         syncError: index.syncError ?? null,
+        syncStalled: index.syncStalled,
         trials,
       },
       ready ? 200 : 503,
@@ -466,18 +598,18 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
 
   app.get("/trials", (c) => {
     const status = c.req.query("status");
+    const page = parsePage(c.req.query());
+    if (page.error) return c.json({ error: page.error }, 400);
     const snap = sharedTick().snapshot;
-    if (!status) return c.json({ trials: snap.trials, counts: snap.counts });
-    if (!VALID_STATUS_SET.has(status)) {
+    if (status && !VALID_STATUS_SET.has(status)) {
       return c.json(
         { error: `unknown status "${status}"`, valid: [...VALID_STATUSES] },
         400,
       );
     }
-    return c.json({
-      trials: snap.trials.filter((t) => t.status === status),
-      counts: snap.counts,
-    });
+    const list = status ? snap.trials.filter((t) => t.status === status) : snap.trials;
+    const paged = paginate(list, (t) => t.id, page);
+    return c.json({ trials: paged.items, counts: snap.counts, page: paged.page });
   });
 
   app.get("/trials/:id", (c) => {
@@ -514,7 +646,10 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
   });
 
   app.get("/agents", (c) => {
-    return c.json({ agents: sharedTick().snapshot.agents });
+    const page = parsePage(c.req.query());
+    if (page.error) return c.json({ error: page.error }, 400);
+    const paged = paginate(sharedTick().snapshot.agents, (a) => a.id, page);
+    return c.json({ agents: paged.items, page: paged.page });
   });
 
   app.get("/agents/:id", (c) => {
@@ -601,11 +736,13 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
       return c.json({ error: "too many live streams", maxStreams }, 503);
     }
     openStreams += 1;
+    retainPump();
     let released = false;
     const release = (): void => {
       if (released) return;
       released = true;
       openStreams -= 1;
+      releasePump();
     };
 
     // hono only attaches its own abort listener to `c.req.raw.signal` on old Bun
@@ -635,22 +772,28 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
 
           let lastSignature = "";
           let lastWriteAt = 0;
+          // The generation this client has been served. `wait` returns as soon as the
+          // pump's generation differs from it, so a client is never asleep on a frame it
+          // has already seen, and never asleep when a new one exists.
+          let served = pump.current.generation;
 
           while (running && Date.now() - started < maxMs) {
-            const { signature, payload } = sharedTick();
+            const frame = pump.current;
 
-            if (signature !== lastSignature) {
-              lastSignature = signature;
-              if (!(await write(stream, { event: "snapshot", data: payload }))) return;
+            if (frame.signature !== lastSignature) {
+              lastSignature = frame.signature;
+              if (!(await write(stream, { event: "snapshot", data: frame.payload }))) return;
               lastWriteAt = Date.now();
             } else if (Date.now() - lastWriteAt >= HEARTBEAT_MS) {
               if (!(await write(stream, { event: "heartbeat", data: "{}" }))) return;
               lastWriteAt = Date.now();
             }
 
-            await new Promise((r) => setTimeout(r, TICK_MS));
-            // Checked the moment the sleep lands: a subscriber that left during the wait must
-            // not get one more rebuild, so the shutdown is immediate rather than one tick late.
+            served = frame.generation;
+            // No sleep of its own. The one interval in `pump` does the reading for every
+            // client, so this awaits an announcement instead of re-asking.
+            await pump.wait(served, signal);
+            // A peer that left during the wait must not attempt one more write.
             if (!running) return;
           }
         } finally {

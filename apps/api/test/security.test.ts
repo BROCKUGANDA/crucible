@@ -477,7 +477,7 @@ describe("readiness, and the difference from health", () => {
 
   it("is not ready when the last tick failed, even if it is caught up", async () => {
     const app = createApp(
-      { getModel: () => model, indexStatus: () => ({ head: 42n, indexedTo: 42n, syncError: "rpc timeout" }) },
+      { getModel: () => model, indexStatus: () => ({ head: 42n, indexedTo: 42n, syncError: "rpc timeout", syncStalled: true }) },
       { rateLimit: false },
     );
     const res = await app.request("/ready");

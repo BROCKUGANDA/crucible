@@ -25,6 +25,9 @@ Start with the question you have, not the folder.
 - [`docs/setup.md`](setup.md) — local development and the shared edge.
 - [`docs/key-inventory.md`](key-inventory.md) — every key, what it can reach,
   and what a leak costs.
+- [`docs/crucible-deploy-day-gates.pdf`](crucible-deploy-day-gates.pdf) — the
+  printable one-page deploy checklist, corrected to this EVM/Anvil deployment.
+  The editable source is [`crucible-deploy-day-gates.md`](crucible-deploy-day-gates.md).
 - [`docs/security-headers.md`](security-headers.md) — the transport policy.
 - [`docs/since-submission.md`](since-submission.md) — what shipped after the
   hackathon window, with the exact commit boundary.

@@ -1,0 +1,192 @@
+#!/usr/bin/env node
+/**
+ * Coverage floor gate for the production contracts.
+ *
+ * `forge coverage` has no threshold flag (checked against forge 1.8.5: `--help` offers
+ * report types, matching and `--ir-minimum`, but nothing that fails a run). Before this
+ * script the CI step was `forge coverage --ir-minimum --report summary | tee file`, and a
+ * pipeline swallows the exit code of the left side, so the step reported whatever coverage
+ * happened to be and always exited 0. HARDENING.md described it as "a gate"; it was a
+ * printout.
+ *
+ * Why floors are per-file rather than one number on the `Total` row: the total is 66.5%,
+ * because `script/*.sol` (deploy, demo, golden path) sit at 0.00% — they are executed by
+ * the demo and the assertion scripts, not by the unit suite, which is a deliberate choice
+ * recorded in HARDENING.md. Gating the total would mean either shipping a floor of ~60%
+ * (which catches nothing about `CrucibleTrials`) or failing a healthy build forever. Both
+ * are worse than naming each contract.
+ *
+ * Floors are set just under the measured value so a removed or broken test trips the gate.
+ * Where the measured value is itself weak, the target is stated instead of quietly
+ * lowered: `CrucibleHall` branches are 72% and functions 75%, and that is a real gap, not
+ * a standard.
+ */
+
+import { readFile } from "node:fs/promises";
+
+/**
+ * Contracts that must clear a floor, and what they clear today.
+ *
+ * `floor` is the gate. `target` is where we want to be; falling short of target is
+ * reported loudly but does not fail the build, because failing on an aspirational number
+ * is how a gate gets deleted.
+ */
+const POLICY = [
+  {
+    file: "contracts/CrucibleTrials.sol",
+    floor: { lines: 95, statements: 93, branches: 88, functions: 95 },
+    target: { lines: 98, statements: 97, branches: 95, functions: 98 },
+  },
+  {
+    file: "contracts/AlloyRegistry.sol",
+    floor: { lines: 95, statements: 95, branches: 90, functions: 90 },
+    target: { lines: 98, statements: 98, branches: 95, functions: 96 },
+  },
+  {
+    file: "contracts/ReputationBridge.sol",
+    floor: { lines: 92, statements: 90, branches: 80, functions: 98 },
+    target: { lines: 96, statements: 95, branches: 90, functions: 100 },
+  },
+  {
+    // Branch and function coverage here are the weakest in the tree: the push-payout
+    // path and the underfunded-house clamp are exercised by fewer tests than the rest.
+    file: "contracts/CrucibleHall.sol",
+    floor: { lines: 91, statements: 90, branches: 70, functions: 73 },
+    target: { lines: 96, statements: 95, branches: 90, functions: 95 },
+  },
+];
+
+const METRICS = ["lines", "statements", "branches", "functions"];
+
+/**
+ * One row of the summary table:
+ *   | contracts/CrucibleTrials.sol     | 97.47% (270/277) | ... | N/A (0/0)   |
+ * The four percentage cells are lines, statements, branches, funcs, in that order.
+ */
+function parseRow(line) {
+  const cells = line
+    .split("|")
+    .map((c) => c.trim())
+    .filter((c) => c.length > 0);
+  if (cells.length < 5) return null;
+  const file = cells[0];
+  const values = cells.slice(1, 5);
+  const parsed = values.map((cell) => {
+    const m = /^(\d+(?:\.\d+)?)%\s*\((\d+)\/(\d+)\)$/.exec(cell);
+    if (!m) return null; // "N/A (0/0)" and any future shape are null, not zero.
+    return { pct: Number(m[1]), hit: Number(m[2]), total: Number(m[3]) };
+  });
+  const row = { file };
+  METRICS.forEach((metric, i) => {
+    row[metric] = parsed[i];
+  });
+  return row;
+}
+
+function parseReport(text) {
+  const rows = [];
+  for (const line of text.split(/\r?\n/)) {
+    if (!line.includes("|")) continue;
+    const row = parseRow(line);
+    if (row && row.file.endsWith(".sol")) rows.push(row);
+  }
+  return rows;
+}
+
+function format(value) {
+  if (!value) return "missing";
+  return `${value.pct.toFixed(2)}% (${value.hit}/${value.total})`;
+}
+
+async function main() {
+  const path = process.argv[2];
+  if (!path) {
+    console.error("usage: node scripts/coverage-gate.mjs <coverage-summary.txt>");
+    process.exit(2);
+  }
+
+  let text;
+  try {
+    text = await readFile(path, "utf8");
+  } catch (err) {
+    // An unreadable report is not a pass. This is the exact shape of the bug: a gate that
+    // cannot find its input must say so rather than reporting an empty set as clean.
+    console.error(`coverage gate: cannot read ${path}: ${err.message}`);
+    process.exit(1);
+  }
+
+  const rows = parseReport(text);
+  if (rows.length === 0) {
+    console.error(
+      "coverage gate: the summary table was not parsed at all. forge coverage output " +
+        "changed shape, so this gate is measuring nothing — treat it as a failure, not a pass.",
+    );
+    process.exit(1);
+  }
+
+  const byFile = new Map(rows.map((r) => [r.file, r]));
+  const failures = [];
+  const warnings = [];
+
+  for (const policy of POLICY) {
+    const row = byFile.get(policy.file);
+    if (!row) {
+      failures.push(
+        `${policy.file} does not appear in the coverage report at all — it was excluded, ` +
+          `renamed, or never compiled. A contract cannot opt out of the gate by vanishing.`,
+      );
+      continue;
+    }
+    for (const metric of METRICS) {
+      const value = row[metric];
+      const floor = policy.floor[metric];
+      if (!value) {
+        // A metric with no denominator (N/A) is not a violation, but it must be visible:
+        // silently skipping an unmeasured metric is how a gap becomes permanent.
+        warnings.push(`${policy.file} ${metric}: not measured (reported as N/A)`);
+        continue;
+      }
+      if (value.pct < floor) {
+        failures.push(
+          `${policy.file} ${metric} ${format(value)} is below the floor of ${floor}%`,
+        );
+        continue;
+      }
+      const target = policy.target[metric];
+      if (value.pct < target) {
+        warnings.push(
+          `${policy.file} ${metric} ${format(value)} clears the floor but is under the ` +
+            `target of ${target}%`,
+        );
+      }
+    }
+  }
+
+  console.log("coverage gate — production contracts");
+  for (const policy of POLICY) {
+    const row = byFile.get(policy.file);
+    if (!row) continue;
+    console.log(
+      `  ${policy.file.padEnd(32)} lines ${format(row.lines)}  stmts ${format(row.statements)}` +
+        `  branch ${format(row.branches)}  funcs ${format(row.functions)}`,
+    );
+  }
+
+  if (warnings.length) {
+    console.log("");
+    console.log("below target, not blocking:");
+    for (const w of warnings) console.log(`  ! ${w}`);
+  }
+
+  if (failures.length) {
+    console.error("");
+    console.error("coverage gate FAILED:");
+    for (const f of failures) console.error(`  x ${f}`);
+    process.exit(1);
+  }
+
+  console.log("");
+  console.log(`coverage gate passed: ${POLICY.length} contracts at or above their floors.`);
+}
+
+main();

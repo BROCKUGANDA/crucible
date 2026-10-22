@@ -52,7 +52,7 @@ describe("voice host", () => {
     const res = await app.request("/voice/speak", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ moment: "verdict", text: "ignored because verdict is fixed" }),
+      body: JSON.stringify({ moment: "verdict" }),
     });
 
     expect(res.status).toBe(200);
@@ -66,28 +66,43 @@ describe("voice host", () => {
     const body = JSON.parse(String(seen!.init!.body));
     expect(body.model_id).toBe("eleven_flash_v2_5");
     expect(body.text).toContain("Payment is the verification.");
-    expect(body.text).not.toContain("ignored");
     expect(body.voice_settings).toEqual({ stability: 0.55, style: 0.35, speed: 0.95 });
   });
 
-  it("accepts a bounded spec text and normalises its whitespace", async () => {
-    let body: { text?: string } = {};
-    const fetchImpl = (async (_url: string | URL | Request, init?: RequestInit) => {
-      body = JSON.parse(String(init!.body));
+  /**
+   * The policy boundary. Under the ElevenLabs Usage Policy the account is answerable for
+   * Input that reaches the service through a product built on it, so the route must not be
+   * a text-to-speech proxy — and the assertion that matters is that the provider is never
+   * contacted at all, not merely that the response is an error.
+   */
+  it("refuses caller-supplied text without ever reaching the provider", async () => {
+    let providerCalls = 0;
+    const fetchImpl = (async () => {
+      providerCalls += 1;
       return new Response(AUDIO, { status: 200, headers: { "content-type": "audio/mpeg" } });
     }) as typeof fetch;
 
     const app = appWith(config({ fetchImpl }));
-    const res = await app.request("/voice/speak", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ moment: "spec", text: "  The  claim\n has   two lines.  " }),
-    });
-    expect(res.status).toBe(200);
-    expect(body.text).toBe("The claim has two lines.");
+    const post = (payload: unknown) =>
+      app.request("/voice/speak", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+    for (const payload of [
+      { moment: "verdict", text: "words that are not Frenchy's" },
+      { moment: "spec", text: "the retired read-aloud path" },
+      { moment: "greeting", text: "" },
+    ]) {
+      const res = await post(payload);
+      expect(res.status).toBe(400);
+      expect((await res.json()).error).toContain("text is not accepted");
+    }
+    expect(providerCalls).toBe(0);
   });
 
-  it("rejects unknown moments and over-long or empty spec text", async () => {
+  it("rejects unknown moments and malformed bodies", async () => {
     const app = appWith(config());
     const post = (payload: unknown) =>
       app.request("/voice/speak", {
@@ -97,8 +112,7 @@ describe("voice host", () => {
       });
 
     expect((await post({ moment: "goodbye" })).status).toBe(400);
-    expect((await post({ moment: "spec", text: "" })).status).toBe(400);
-    expect((await post({ moment: "spec", text: "x".repeat(601) })).status).toBe(400);
+    expect((await post({ moment: "spec" })).status).toBe(400);
     expect((await post({})).status).toBe(400);
     expect((await post(null)).status).toBe(400);
   });
@@ -139,7 +153,7 @@ describe("voice host", () => {
 
   it("keeps the copy free of amounts, deadlines and CIDs", () => {
     for (const moment of ["greeting", "tour", "verdict", "verdict-repeat"] as const) {
-      const text = voiceCopy(moment, undefined)!;
+      const text = voiceCopy(moment)!;
       expect(text).not.toMatch(/\d/);
       expect(text.length).toBeGreaterThan(0);
     }

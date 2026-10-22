@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, existsSync, unlinkSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, renameSync } from "node:fs";
 import { TRIALS_ABI } from "@crucible/smith";
 import {
   createPublicClient,
@@ -34,7 +34,16 @@ import { RpcThrottler, withBackoff, BreakerOpen, CircuitBreaker } from "@crucibl
 
 export interface IndexerConfig {
   trialsAddress: Address;
-  alloyAddress: Address;
+  /**
+   * Accepted for callers that pass one chain config, and deliberately NOT indexed.
+   *
+   * The Scribe reads only the trials address. Alloy (tier and soulbound-lock) state is read
+   * live by the API with a short TTL — `server.ts`'s `alloyState` — because it changes
+   * rarely and a log projection of it would be a second source of truth for the same fact.
+   * Nothing here consumes this field; it is optional so that a caller cannot be misled into
+   * thinking its presence means alloy events are being projected.
+   */
+  alloyAddress?: Address;
   chain: Chain;
   rpcUrl: string;
   fromBlock?: bigint;
@@ -76,6 +85,12 @@ const EVENT_NAMES = [
   "RunSubmitted",
   "BreakFiled",
   "DisputeOpened",
+  // The two seat votes. A dispute's `_disputes` mapping is private and neither
+  // `disputeOf` nor `disputeVote` can enumerate WHO holds a commitment, so these logs are
+  // the only source for "how many seats have committed" — the count an Argus seat must
+  // wait for before revealing, per ADR-0004.
+  "VoteCommitted",
+  "VoteRevealed",
   "VerdictFinalized",
   "StakeWithdrawn",
   "Withdrawn",
@@ -162,7 +177,8 @@ function describeProof(proof: ProofResult, head: bigint): string | null {
   if (proof.stoppedBecause === "unreadable") {
     return `a block at or after ${proof.cursor} could not be read, so the index stopped there: ${proof.detail ?? "unknown error"}`;
   }
-  return `a block between ${proof.cursor} and ${head} may hold an event; the index is re-reading it`;
+  const why = proof.detail ? ` (${proof.detail})` : "";
+  return `a block between ${proof.cursor} and ${head} may hold an event; the index is re-reading it${why}`;
 }
 
 /**
@@ -183,6 +199,8 @@ export interface ScribeStatus {
   indexedTo: bigint;
   /** why the last tick did not advance, or null when it did */
   syncError: string | null;
+  /** true only when a read failed; a lagging but ticking index is not stalled */
+  syncStalled: boolean;
   /**
    * Trials that settled before this index started listening, so their rows are
    * incomplete. Non-zero means the index is not reading the whole history —
@@ -215,6 +233,15 @@ export class Scribe {
   private running = false;
   private head: bigint | null = null;
   private syncError: string | null = null;
+  /**
+   * Whether the last tick stopped because a read FAILED, as opposed to merely being behind.
+   *
+   * `/health` used `syncError != null` for this, and the sentence is also set while the cursor is
+   * legitimately walking a gap at 64 blocks a tick — so a cold index reported itself stalled for as
+   * long as the backfill took, and the compose probe gave up on a service that was working. A
+   * missing measurement and a slow one are different states, and only one of them is an error.
+   */
+  private syncStalled = false;
   /** The trip this process last reported, so an outage writes one line rather than one per tick. */
   private lastTripReportedAt: number | null = null;
   /** The incomplete-trial count last reported, so it is written once rather than every tick. */
@@ -263,14 +290,16 @@ export class Scribe {
   private saveCursor(): void {
     if (!this.cfg.cursorFile) return;
     try {
-      const tmp = `${this.cfg.cursorFile}.tmp`;
+      // Temp-then-rename, the same rule the juror's seat state follows. `writeFileSync` truncates
+      // before it writes, so a death mid-write left a half-written cursor — and `loadCursor`'s
+      // catch treats an unparseable cursor as no cursor, i.e. a silent full re-scan from
+      // `fromBlock`. The old code wrote the real file in place and deleted a temp file nothing had
+      // read, so the "written atomically" in the comment above was never true. `rename` is atomic
+      // on one filesystem, and the pid keeps two processes from sharing a temp path — three
+      // services already read the same `CRUSIBLE_CURSOR_FILE` name.
+      const tmp = `${this.cfg.cursorFile}.${process.pid}.tmp`;
       writeFileSync(tmp, this.cursor.toString(), "utf8");
-      writeFileSync(this.cfg.cursorFile, this.cursor.toString(), "utf8");
-      try {
-        unlinkSync(tmp);
-      } catch {
-        // Temp file cleanup is best-effort.
-      }
+      renameSync(tmp, this.cfg.cursorFile);
     } catch (err) {
       console.error(`[scribe] failed to persist cursor: ${(err as Error).message}`);
     }
@@ -291,6 +320,7 @@ export class Scribe {
       head: this.head,
       indexedTo: this.cursor,
       syncError: this.syncError,
+      syncStalled: this.syncStalled,
       partialTrials: this.countPartialTrials(),
     };
   }
@@ -324,6 +354,15 @@ export class Scribe {
     );
     this.head = head;
 
+    // Every tick, including the caught-up one that returns a few lines below.
+    //
+    // This used to live inside `recordBlockTimes`, which is called only when a batch has logs, so a
+    // block whose `getBlock` failed once was retried only if some later batch happened to carry an
+    // event — and a caught-up chain has no later batch at all. The pending read sat there while the
+    // row kept a block number as its `createdAt`/`runAt`, and `breakWindowEndsAt` is
+    // `runAt + breakWindow`, which is how a trial came to publish a deadline in 1970.
+    await this.retryPendingBlockTimes();
+
     // The cursor is the NEXT block to read, so `head + 1` is the caught-up
     // state, not a reset. Treating it as one cleared the model and restarted
     // the backfill on every idle tick: the hall emptied, `/ready` flipped
@@ -332,6 +371,7 @@ export class Scribe {
     if (this.cursor > head) {
       if (this.cursor === head + 1n) {
         this.syncError = null;
+        this.syncStalled = false;
         this.saveCursor();
         return this.model;
       }
@@ -347,6 +387,7 @@ export class Scribe {
       this.blockTimes.clear();
       this.pendingBlockTimes.clear();
       this.syncError = "the chain was reset; the index is rebuilding from the start block";
+      this.syncStalled = false;
       this.saveCursor();
       return this.model;
     }
@@ -400,6 +441,7 @@ export class Scribe {
       const proof = await this.proveQuietThrough(lastEventBlock + 1n, head);
       this.cursor = proof.cursor;
       this.syncError = describeProof(proof, head);
+      this.syncStalled = proof.stoppedBecause === "unreadable";
       this.saveCursor();
       return this.model;
     }
@@ -413,6 +455,7 @@ export class Scribe {
     const proof = await this.proveQuietThrough(this.cursor, head);
     this.cursor = proof.cursor;
     this.syncError = describeProof(proof, head);
+    this.syncStalled = proof.stoppedBecause === "unreadable";
     this.saveCursor();
     return this.model;
   }
@@ -466,45 +509,68 @@ export class Scribe {
       }
       for (const b of blocks) {
         const bloom = b.logsBloom;
-        if (bloom && bloom !== "0x" && TOPIC0S.some((t) => bloomMayContain(bloom, t))) {
-          // A block's own number is the authority, and it is null only for a
-          // pending block, which a mined range never holds.
-          return { cursor: b.number ?? block, stoppedBecause: "possible-event" };
+        if (!bloom || bloom === "0x" || !TOPIC0S.some((t) => bloomMayContain(bloom, t))) {
+          continue;
         }
+        // A block's own number is the authority, and it is null only for a
+        // pending block, which a mined range never holds.
+        const number = b.number ?? block;
+
+        // The bloom says a log with one of our topic0s is in this block. It does NOT say
+        // the log came from the contract we index, and treating the two as the same thing
+        // wedges the cursor permanently.
+        //
+        // Reproduced on this repository's own demo: run `script/Demo.s.sol` a second time
+        // against a live chain and it deploys a *second* `CrucibleTrials`. That contract
+        // emits the same events with the same topic0s, so every block it touches matches
+        // the bloom, `fetchLogs` (which filters on our address) finds nothing, the proof
+        // stops on the same block, and `/health` sits at `ok:false` forever while the site
+        // shows a frozen index. A redeploy, an old deployment still emitting, or a mock all
+        // produce the same deadlock.
+        //
+        // So ask the block, without the address filter: if a same-signature log exists and
+        // none of it is ours, this block is quiet for us and the walk continues. If the
+        // node returns logs and one IS ours, the range read missed something and we stop.
+        // If the node returns nothing at all while the bloom claims otherwise, the bloom
+        // and the node disagree, which is exactly the truncation/pruning case this guard
+        // exists for — stop.
+        let verdict: "ours" | "foreign" | "disagrees";
+        try {
+          const logs = await this.rpc.run(() =>
+            withBackoff(
+              () => this.client.getLogs({ fromBlock: number, toBlock: number, events: EVENTS }),
+              { operation: "scribe.getLogs" },
+            ),
+          );
+          if (logs.length === 0) {
+            verdict = "disagrees";
+          } else {
+            const ours = this.cfg.trialsAddress.toLowerCase();
+            verdict = logs.some((l) => l.address.toLowerCase() === ours) ? "ours" : "foreign";
+          }
+        } catch (err) {
+          return {
+            cursor: number,
+            stoppedBecause: "unreadable",
+            detail: err instanceof Error ? err.message : String(err),
+          };
+        }
+
+        if (verdict !== "foreign") {
+          return {
+            cursor: number,
+            stoppedBecause: "possible-event",
+            detail:
+              verdict === "ours"
+                ? "the range read returned no logs for a block that holds one of ours"
+                : "the block's bloom claims a log the node did not return",
+          };
+        }
+        // A foreign same-signature log. Not ours, nothing to index here.
       }
       block = chunkEnd + 1n;
     }
     return { cursor: end + 1n, stoppedBecause: "quiet" };
-  }
-
-  /**
-   * Independent evidence that a window really held no matching events.
-   *
-   * Reads the blocks' `logsBloom` rather than asking the same `getLogs` again
-   * — a second identical answer from the same node proves nothing.
-   *
-   * This is kept as a whole-window check for callers that want a yes/no
-   * answer. The cursor uses `proveQuietThrough`, which walks the same blocks
-   * but can stop part-way and report how far it got, so a long quiet stretch
-   * is crossed rather than refused.
-   */
-  private async windowIsQuiet(from: bigint, to: bigint): Promise<boolean> {
-    const width = to - from + 1n;
-    if (width <= 0n) return true;
-    if (width > BLOOM_PROBE_LIMIT) return false;
-
-    for (let n = from; n <= to; n++) {
-      const block = await this.rpc.run(() =>
-        withBackoff(
-          () => this.client.getBlock({ blockNumber: n }),
-          { operation: "scribe.getBlock" },
-        ),
-      );
-      const bloom = block.logsBloom;
-      if (!bloom || bloom === "0x") continue;
-      if (TOPIC0S.some((t) => bloomMayContain(bloom, t))) return false;
-    }
-    return true;
   }
 
   /** Poll until aborted. Resolves when stop() is called. */
@@ -624,24 +690,34 @@ export class Scribe {
       }),
     );
 
-    // A pending read is retried, on its own, before the next batch is
-    // hydrated. A trial whose timestamp is missing is a row that cannot be
-    // trusted, so it is worth a call on its own.
-    if (this.pendingBlockTimes.size > 0) {
-      for (const b of [...this.pendingBlockTimes]) {
-        try {
-          const ts = await this.rpc.run(() =>
-            withBackoff(() => this.client.getBlock({ blockNumber: b }).then((blk) => blk.timestamp), {
-              operation: "scribe.getBlock",
-            }),
-          );
-          this.blockTimes.set(b, Number(ts));
-          this.pendingBlockTimes.delete(b);
-          // The row is re-hydrated with the timestamp it was missing.
-          hydrateTimestamps(this.model, this.blockTimes, []);
-        } catch {
-          // Still unavailable; it stays pending and is retried next tick.
-        }
+  }
+
+  /**
+   * Retry the block timestamps that could not be read, and apply each one to the rows that name it.
+   *
+   * `hydrateTimestamps(model, blockTimes, [])` does nothing at all — an explicit empty list maps to
+   * an empty target set — and that is what this call used to pass. The comment promised "the row is
+   * re-hydrated with the timestamp it was missing"; the read succeeded, the seconds went into the
+   * map, the map was discarded at the end of the next batch, and the row kept a block number as its
+   * `createdAt`/`runAt`. Omitting the list means "every row", which is the only correct filter when
+   * the input is "this block became readable again" rather than "these trials changed".
+   */
+  private async retryPendingBlockTimes(): Promise<void> {
+    for (const b of [...this.pendingBlockTimes]) {
+      try {
+        const ts = await this.rpc.run(() =>
+          withBackoff(() => this.client.getBlock({ blockNumber: b }).then((blk) => blk.timestamp), {
+            operation: "scribe.getBlock",
+          }),
+        );
+        this.blockTimes.set(b, Number(ts));
+        this.pendingBlockTimes.delete(b);
+        hydrateTimestamps(this.model, this.blockTimes);
+        // Only this block's entry is dropped: `blockTimes` may also hold the current batch's
+        // times, which `syncOnce` clears after applying them.
+        this.blockTimes.delete(b);
+      } catch {
+        // Still unavailable; it stays pending and is retried on the next tick.
       }
     }
   }

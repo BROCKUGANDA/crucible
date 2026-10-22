@@ -760,3 +760,28 @@ export class Flags {
     }
   }
 }
+
+/**
+ * Kill switches read from the environment: `KILL_SWITCHES` is a comma-separated list of the
+ * flags that are on, so `KILL_SWITCHES=keeper.sweep` halts acting and
+ * `KILL_SWITCHES=keeper.sweep,juror.vote` halts two. Names are trimmed, blanks ignored, and an
+ * unset variable means nothing is killed.
+ *
+ * Env-driven because that is the switch this deployment already has; `Flags` takes any async
+ * source, so moving to a flag service later is one argument at the call site.
+ *
+ * This is `apps/keeper`'s function, hoisted rather than copied. The file it came from is an
+ * app's, and a second long-running service importing it would mean one app depending on
+ * another app's build output — nothing else in the repo does that, and the alternative was a
+ * duplicate of a switch every operator already types into `.env`.
+ */
+export function envKillSwitches(env: NodeJS.ProcessEnv = process.env): () => Promise<FlagMap> {
+  return async () => {
+    const flags: FlagMap = {};
+    for (const name of (env.KILL_SWITCHES ?? "").split(",")) {
+      const key = name.trim();
+      if (key) flags[key] = true;
+    }
+    return flags;
+  };
+}

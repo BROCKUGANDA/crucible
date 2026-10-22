@@ -5,6 +5,8 @@
  * so the form and any future API share one rule set.
  */
 
+import { parseEth } from "./eth";
+
 export interface WizardValues {
   spec: string;
   testsCID: string;
@@ -70,9 +72,29 @@ export function validateWizard(v: WizardValues): ValidationResult {
     errors.breakWindowHours = "Skeptic window must be between 1 hour and 7 days.";
   }
 
-  // mirrors CrucibleTrials.bondFor: 20% of reward, floor 0.01 ETH
-  const rewardNum = Number.isFinite(reward) ? reward : 0;
-  const bond = Math.max(0.01, rewardNum / 5);
+  // Mirrors `CrucibleTrials.bondFor`: uint128(reward / 5), floored at MIN_BOND — computed in wei.
+  //
+  // The old version did this in floats and printed `bond.toFixed(4)`. For a reward of 1.23456 ETH
+  // the contract demands 246912000000000000 wei and the page printed 0.2469 — *below* the bond, so
+  // an agent that staked the advertised figure reverted `StakeTooSmall`. A required minimum must
+  // never be rendered low, so the wei value is rounded UP at display precision and the arithmetic
+  // stays in bigint.
+  const rewardWei = parseEth(v.rewardEth) ?? 0n;
+  const minBondWei = 10n ** 16n; // 0.01 ETH
+  const exactBondWei = rewardWei / 5n;
+  return {
+    ok: Object.keys(errors).length === 0,
+    errors,
+    bondEth: displayBondEth(exactBondWei > minBondWei ? exactBondWei : minBondWei),
+  };
+}
 
-  return { ok: Object.keys(errors).length === 0, errors, bondEth: bond.toFixed(4) };
+/** 6 decimals, rounded up: a bond shown short is a claim that reverts. */
+function displayBondEth(wei: bigint): string {
+  const unit = 10n ** 12n;
+  const roundedUp = (wei + unit - 1n) / unit;
+  if (roundedUp === 0n) return "0";
+  const whole = roundedUp / 1_000_000n;
+  const frac = (roundedUp % 1_000_000n).toString().padStart(6, "0").replace(/0+$/, "");
+  return frac ? `${whole}.${frac}` : `${whole}`;
 }

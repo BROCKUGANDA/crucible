@@ -99,6 +99,19 @@ export const TRIALS_ABI = [
     ],
     outputs: [],
   },
+  /**
+   * `mapping(address => bool) public isArgus` (CrucibleTrials.sol:199). A seat reads this before it
+   * loops: committing from an address the constructor never granted reverts `NotArgus` on every
+   * trial, so an unbounded retry is a self-inflicted DoS on a shared node.
+   */
+  {
+    type: "function",
+    name: "isArgus",
+    stateMutability: "view",
+    inputs: [{ name: "", type: "address" }],
+    outputs: [{ type: "bool" }],
+  },
+
   {
     type: "function",
     name: "disputeVote",
@@ -181,6 +194,104 @@ export const TRIALS_ABI = [
     stateMutability: "view",
     inputs: [],
     outputs: [{ type: "address" }],
+  },
+  {
+    type: "function",
+    name: "FEE_BPS",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "BPS",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "BOND_NUM",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "BOND_DEN",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "BREAK_STAKE_DEN",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "SLASH_SKEPTIC_NUM",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "MIN_BOND",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "MAX_REWARD",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "MIN_RUN_WINDOW",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "MIN_BREAK_WINDOW",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "MAX_BREAK_WINDOW",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "COMMIT_WINDOW",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "DISPUTE_TIMEOUT",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "ARGUS_THRESHOLD",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ type: "uint256" }],
   },
   {
     type: "function",
@@ -338,6 +449,24 @@ export const TRIALS_ABI = [
     name: "DisputeOpened",
     inputs: [{ indexed: true, name: "id", type: "uint256" }],
   },
+  {
+    type: "event",
+    name: "VoteCommitted",
+    inputs: [
+      { indexed: true, name: "id", type: "uint256" },
+      { indexed: true, name: "judge", type: "address" },
+    ],
+  },
+  {
+    type: "event",
+    name: "VoteRevealed",
+    inputs: [
+      { indexed: true, name: "id", type: "uint256" },
+      { indexed: true, name: "judge", type: "address" },
+      { indexed: false, name: "breakWins", type: "bool" },
+    ],
+  },
+
   {
     type: "event",
     name: "VerdictFinalized",

@@ -5,6 +5,8 @@ import type { ApiTrial } from "@crucible/indexer";
 import {
   statusMeta,
   verdictMeta,
+  deadlineHeat,
+  heatTone,
   formatDuration,
   formatEth,
   shortCid,
@@ -35,6 +37,14 @@ function TrialRow({ trial, serverNowMs }: { trial: ApiTrial; serverNowMs: number
   const cools = useCountdown(trial.deadlineAt, serverNowMs);
   const breakLeft = useCountdown(trial.breakWindowEndsAt, serverNowMs);
 
+  // A judging trial is already past its submission deadline: what is actually running out on
+  // that row is the skeptic window, so that is the countdown the row reads its urgency from.
+  // One number feeds both the text and the tone — a colour that described a different
+  // countdown than the one the reader is shown would be decoration wearing a measurement.
+  const onBreakWindow = trial.status === "judging" && breakLeft !== null;
+  const remaining = onBreakWindow ? breakLeft : cools;
+  const heat = deadlineHeat(remaining);
+
   return (
     <Link href={`/trials/${trial.id}`} className="surface trial-row">
       <div className="trial-row__head">
@@ -43,7 +53,14 @@ function TrialRow({ trial, serverNowMs }: { trial: ApiTrial; serverNowMs: number
           <p className="trial-row__reward">
             {formatEth(trial.rewardEth)} <span className="trial-row__unit">reward</span>
           </p>
-          <p className="mono trial-row__suite">suite {shortCid(trial.testsCID)}</p>
+          {/* The suite line is the row's proof of *what was asked*, so an unknown here must say
+              what is unknown rather than print a bare em dash. The chain only ever holds a
+              fingerprint of the test suite; the readable address of the files is published
+              separately by the sponsor, and until they do this row has the fingerprint but not
+              the text — so it says so in plain words instead of "—". */}
+          <p className="mono trial-row__suite">
+            {trial.testsCID ? `suite ${shortCid(trial.testsCID)}` : "suite not disclosed yet"}
+          </p>
         </div>
 
         <div className="trial-row__side">
@@ -55,10 +72,10 @@ function TrialRow({ trial, serverNowMs }: { trial: ApiTrial; serverNowMs: number
               {verdict.label}
             </p>
           ) : null}
-          <p className="mono trial-row__cool" data-tone="dim">
-            {trial.status === "judging" && breakLeft !== null
-              ? `break window ${formatDuration(breakLeft)}`
-              : `cools in ${formatDuration(cools)}`}
+          <p className="mono trial-row__cool" data-tone={heatTone(heat)}>
+            {onBreakWindow
+              ? `break window ${formatDuration(remaining)}`
+              : `cools in ${formatDuration(remaining)}`}
           </p>
         </div>
       </div>

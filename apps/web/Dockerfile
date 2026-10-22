@@ -10,11 +10,17 @@ COPY package.json package-lock.json ./
 COPY crucible-contracts/package.json crucible-contracts/package.json
 COPY packages/agent-security/package.json packages/agent-security/
 COPY packages/argus/package.json packages/argus/
+# Every workspace belongs in every image that runs `npm ci` — see the note in apps/api/Dockerfile.
+# The web image builds Next, and Next's bundle graph reaches `@crucible/argus` through the app's own
+# imports; the install step does not care which of them are used at runtime.
+COPY packages/cidstore/package.json packages/cidstore/
 COPY packages/forge-runner/package.json packages/forge-runner/
 COPY packages/indexer/package.json packages/indexer/
 COPY packages/smith-sdk/package.json packages/smith-sdk/
 COPY packages/warden/package.json packages/warden/
 COPY apps/api/package.json apps/api/
+COPY apps/keeper/package.json apps/keeper/
+COPY apps/juror/package.json apps/juror/
 COPY apps/web/package.json apps/web/
 RUN npm ci --ignore-scripts
 

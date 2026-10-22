@@ -138,7 +138,10 @@ p {
   border-radius: var(--radius);
 }
 
-/* Cold metal skeletons. */
+/* Cold metal skeletons: the shape of the answer, before the answer. Used by `/assay`, where a
+   bar the height of the line it stands in means the number arriving moves nothing. A skeleton is
+   only worth having if it matches the final layout; anywhere it does not, `Quenching` is the
+   honest loading state. */
 .skeleton {
   background: var(--bg2);
   border-radius: 6px;
@@ -274,7 +277,18 @@ p {
 .kv {
   display: flex;
   justify-content: space-between;
+  align-items: baseline;
   gap: var(--s-4);
+}
+
+/* A value can be an unbroken 42-character address or a long seal — a single token with no
+   space to break at. Without this it overflows the panel and clips at phone widths, so the
+   value column is allowed to shrink below its content and wrap mid-token rather than push the
+   page sideways. */
+.kv > :last-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  text-align: right;
 }
 
 .kv__key {

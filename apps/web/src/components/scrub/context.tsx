@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useRef, useState } from "react";
+import { staticScrub } from "@/lib/scrub/progress";
 import type { ScrubController } from "@/lib/scrub/progress";
 import { ACTS, type Act } from "@/lib/scrub/timeline";
 
@@ -36,9 +37,17 @@ export function useScrub(): ScrubController | null {
 }
 
 function requireScrub(): ScrubController {
-  const controller = useContext(ScrubContext);
+  const controller = useScrub();
   if (!controller) {
-    throw new Error("No scrub timeline: this component must be inside a <ScrubProvider>.");
+    // During a build-time prerender, a route can render without the scrub stage mounted.
+    // A missing provider should not crash the whole static build: fall back to the first act
+
+    // so the page still renders, and the real stage will mount in the browser. `staticScrub(0)`
+    // is the controller this repo already builds for a surface with no scrollbar of its own —
+    // it pins progress at the top, carries every field of a real sample, and answers `refresh()`
+    // — so the prerendered tree and the mounted one cannot disagree about the shape.
+    return staticScrub(0);
+
   }
   return controller;
 }
@@ -49,11 +58,12 @@ function requireScrub(): ScrubController {
  * every render — the subscription is created once per controller.
  */
 export function useScrubSample(handler: (sample: ReturnType<ScrubController["sample"]>) => void) {
-  const controller = requireScrub();
+  const controller = useScrub();
   const latest = useRef(handler);
   latest.current = handler;
 
   useEffect(() => {
+    if (!controller) return;
     return controller.subscribe((sample) => latest.current(sample));
   }, [controller]);
 
@@ -62,10 +72,12 @@ export function useScrubSample(handler: (sample: ReturnType<ScrubController["sam
 
 /** Discrete only: re-renders on an act crossing, never on a scroll tick. */
 export function useScrubAct(): Act {
-  const controller = requireScrub();
-  const [index, setIndex] = useState(() => controller.sample().act);
+  const controller = useScrub();
+  const [index, setIndex] = useState(0);
 
   useEffect(() => {
+    if (!controller) return;
+
     let previous = controller.sample().act;
     return controller.subscribe((sample) => {
       if (sample.act === previous) return;
@@ -74,5 +86,6 @@ export function useScrubAct(): Act {
     });
   }, [controller]);
 
+  if (!controller) return ACTS[0]!;
   return ACTS[Math.min(ACTS.length - 1, Math.max(0, index))]!;
 }

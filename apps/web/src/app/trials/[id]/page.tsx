@@ -146,7 +146,7 @@ export default function TrialDetailPage() {
             value={
               trial.testsCID
                 ? shortCid(trial.testsCID)
-                : `${shortHash(trial.testsDigest)} (awaiting disclosure)`
+                : `${shortHash(trial.testsDigest)} — fingerprint only`
             }
             mono
           />
@@ -155,10 +155,23 @@ export default function TrialDetailPage() {
             value={
               trial.specCID
                 ? shortCid(trial.specCID)
-                : `${shortHash(trial.specDigest)} (awaiting disclosure)`
+                : `${shortHash(trial.specDigest)} — fingerprint only`
             }
             mono
           />
+          {/* This is the row a first-time reader cannot decode on their own, and the one place
+              the whole "can this claim be checked?" promise visibly depends on it. The chain
+              committed to a fingerprint of the spec and the test files at posting; the readable
+              files live off-chain and only appear when the sponsor discloses them. Saying that
+              out loud — and saying what it means for the work — is the honest answer, and it is
+              the answer the docs already give. */}
+          {trial.awaitingDisclosure ? (
+            <p className="hint hint--block">
+              What is pinned here is the <em>seal</em> on the spec and the tests — the exact
+              files they describe have not been made readable on this site yet. Until they are,
+              a checker holds the fingerprint but cannot re-run the work from it.
+            </p>
+          ) : null}
           <Field
             label="Countdown"
             value={
