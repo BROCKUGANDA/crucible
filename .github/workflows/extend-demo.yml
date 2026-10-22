@@ -87,21 +87,67 @@ jobs:
             -e TRIALS_ADDRESS="$TRIALS" \
             seed script script/Extend.s.sol:Extend --rpc-url http://anvil:8545 --broadcast
 
+      # Confirms the extension actually reached the read model.
+      #
+      # The previous version of this step was a warning on timeout, which understated the
+      # problem twice over. First, "the chain grew and nothing can act on it" is exactly
+      # the failure this job exists to prevent, so it must be red. Second, and worse: the
+      # old step took `sed`'s no-match result — an empty string, produced when the API is
+      # down, returns HTML, or renames `counts` — into the default `*)` case, printed
+      # `counts: ` and exited 0. An unreachable API was reported as a confirmed one. So
+      # this step now distinguishes three outcomes and treats the third as failure:
+      # open > 0 (success), open == 0 (not yet caught up), and unreadable (not evidence).
       - name: confirm the API sees it
         run: |
           set -euo pipefail
+          url="https://crucible.svalley.tech/api/snapshot"
+          confirmed=0
+          last="never read"
+
           for i in $(seq 1 20); do
-            body=$(curl -sk https://crucible.svalley.tech/api/snapshot || true)
-            counts=$(printf '%s' "$body" | sed -n 's/.*"counts":{\([^}]*\)}.*/\1/p')
-            case "$counts" in
-              *'"open":0'*)
-                echo "open trials still 0; the indexer has not caught up yet (attempt $i)"
+            body=""
+            body=$(curl -sk --max-time 10 "$url") || body=""
+
+            # Prints the open count, or a token naming why there is no count. The token
+            # is deliberate: a missing measurement must say it is missing rather than
+            # becoming a zero.
+            open=$(printf '%s' "$body" | node -e '
+              let s = "";
+              process.stdin.on("data", (d) => (s += d));
+              process.stdin.on("end", () => {
+                if (!s.trim()) { console.log("NO_RESPONSE"); return; }
+                let j;
+                try { j = JSON.parse(s); } catch { console.log("NOT_JSON"); return; }
+                const c = j && j.counts;
+                if (!c || typeof c.open !== "number") { console.log("NO_COUNTS_FIELD"); return; }
+                console.log(String(c.open));
+              });
+            ') || open="NODE_FAILED"
+
+            case "$open" in
+              NO_RESPONSE|NOT_JSON|NO_COUNTS_FIELD|NODE_FAILED)
+                last="unreadable ($open)"
+                echo "snapshot is $last — not evidence the API sees the trials (attempt $i)"
+                sleep 5
+                ;;
+              0)
+                last="open trials 0"
+                echo "chain extended but the API still reports no open trial (attempt $i)"
                 sleep 5
                 ;;
               *)
-                echo "counts: $counts"
-                exit 0
+                last="open trials $open"
+                echo "confirmed: the API reports $open open trial(s)"
+                confirmed=1
+                break
                 ;;
             esac
           done
-          echo "::warning::the chain was extended but the API still reports no open trial"
+
+          if [ "$confirmed" -ne 1 ]; then
+            echo "::error::the chain was extended but the live site did not confirm it " \
+                 "(last reading: $last). Visitors still have nothing to act on, or the " \
+                 "indexer is not serving what the chain holds — either way this job did " \
+                 "not do its work."
+            exit 1
+          fi

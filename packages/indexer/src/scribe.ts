@@ -34,7 +34,16 @@ import { RpcThrottler, withBackoff, BreakerOpen, CircuitBreaker } from "@crucibl
 
 export interface IndexerConfig {
   trialsAddress: Address;
-  alloyAddress: Address;
+  /**
+   * Accepted for callers that pass one chain config, and deliberately NOT indexed.
+   *
+   * The Scribe reads only the trials address. Alloy (tier and soulbound-lock) state is read
+   * live by the API with a short TTL — `server.ts`'s `alloyState` — because it changes
+   * rarely and a log projection of it would be a second source of truth for the same fact.
+   * Nothing here consumes this field; it is optional so that a caller cannot be misled into
+   * thinking its presence means alloy events are being projected.
+   */
+  alloyAddress?: Address;
   chain: Chain;
   rpcUrl: string;
   fromBlock?: bigint;
@@ -162,7 +171,8 @@ function describeProof(proof: ProofResult, head: bigint): string | null {
   if (proof.stoppedBecause === "unreadable") {
     return `a block at or after ${proof.cursor} could not be read, so the index stopped there: ${proof.detail ?? "unknown error"}`;
   }
-  return `a block between ${proof.cursor} and ${head} may hold an event; the index is re-reading it`;
+  const why = proof.detail ? ` (${proof.detail})` : "";
+  return `a block between ${proof.cursor} and ${head} may hold an event; the index is re-reading it${why}`;
 }
 
 /**
@@ -466,45 +476,68 @@ export class Scribe {
       }
       for (const b of blocks) {
         const bloom = b.logsBloom;
-        if (bloom && bloom !== "0x" && TOPIC0S.some((t) => bloomMayContain(bloom, t))) {
-          // A block's own number is the authority, and it is null only for a
-          // pending block, which a mined range never holds.
-          return { cursor: b.number ?? block, stoppedBecause: "possible-event" };
+        if (!bloom || bloom === "0x" || !TOPIC0S.some((t) => bloomMayContain(bloom, t))) {
+          continue;
         }
+        // A block's own number is the authority, and it is null only for a
+        // pending block, which a mined range never holds.
+        const number = b.number ?? block;
+
+        // The bloom says a log with one of our topic0s is in this block. It does NOT say
+        // the log came from the contract we index, and treating the two as the same thing
+        // wedges the cursor permanently.
+        //
+        // Reproduced on this repository's own demo: run `script/Demo.s.sol` a second time
+        // against a live chain and it deploys a *second* `CrucibleTrials`. That contract
+        // emits the same events with the same topic0s, so every block it touches matches
+        // the bloom, `fetchLogs` (which filters on our address) finds nothing, the proof
+        // stops on the same block, and `/health` sits at `ok:false` forever while the site
+        // shows a frozen index. A redeploy, an old deployment still emitting, or a mock all
+        // produce the same deadlock.
+        //
+        // So ask the block, without the address filter: if a same-signature log exists and
+        // none of it is ours, this block is quiet for us and the walk continues. If the
+        // node returns logs and one IS ours, the range read missed something and we stop.
+        // If the node returns nothing at all while the bloom claims otherwise, the bloom
+        // and the node disagree, which is exactly the truncation/pruning case this guard
+        // exists for — stop.
+        let verdict: "ours" | "foreign" | "disagrees";
+        try {
+          const logs = await this.rpc.run(() =>
+            withBackoff(
+              () => this.client.getLogs({ fromBlock: number, toBlock: number, events: EVENTS }),
+              { operation: "scribe.getLogs" },
+            ),
+          );
+          if (logs.length === 0) {
+            verdict = "disagrees";
+          } else {
+            const ours = this.cfg.trialsAddress.toLowerCase();
+            verdict = logs.some((l) => l.address.toLowerCase() === ours) ? "ours" : "foreign";
+          }
+        } catch (err) {
+          return {
+            cursor: number,
+            stoppedBecause: "unreadable",
+            detail: err instanceof Error ? err.message : String(err),
+          };
+        }
+
+        if (verdict !== "foreign") {
+          return {
+            cursor: number,
+            stoppedBecause: "possible-event",
+            detail:
+              verdict === "ours"
+                ? "the range read returned no logs for a block that holds one of ours"
+                : "the block's bloom claims a log the node did not return",
+          };
+        }
+        // A foreign same-signature log. Not ours, nothing to index here.
       }
       block = chunkEnd + 1n;
     }
     return { cursor: end + 1n, stoppedBecause: "quiet" };
-  }
-
-  /**
-   * Independent evidence that a window really held no matching events.
-   *
-   * Reads the blocks' `logsBloom` rather than asking the same `getLogs` again
-   * — a second identical answer from the same node proves nothing.
-   *
-   * This is kept as a whole-window check for callers that want a yes/no
-   * answer. The cursor uses `proveQuietThrough`, which walks the same blocks
-   * but can stop part-way and report how far it got, so a long quiet stretch
-   * is crossed rather than refused.
-   */
-  private async windowIsQuiet(from: bigint, to: bigint): Promise<boolean> {
-    const width = to - from + 1n;
-    if (width <= 0n) return true;
-    if (width > BLOOM_PROBE_LIMIT) return false;
-
-    for (let n = from; n <= to; n++) {
-      const block = await this.rpc.run(() =>
-        withBackoff(
-          () => this.client.getBlock({ blockNumber: n }),
-          { operation: "scribe.getBlock" },
-        ),
-      );
-      const bloom = block.logsBloom;
-      if (!bloom || bloom === "0x") continue;
-      if (TOPIC0S.some((t) => bloomMayContain(bloom, t))) return false;
-    }
-    return true;
   }
 
   /** Poll until aborted. Resolves when stop() is called. */

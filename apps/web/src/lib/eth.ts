@@ -5,13 +5,18 @@
  * is eight wei off what the operator typed. On a contract where the stake *is* the
  * economic commitment, an eight-wei lie is not acceptable, so everything here goes
  * through BigInt on the decimal string directly.
+ *
+ * The wei -> ETH direction is not implemented here. `weiToEth` in `@crucible/indexer` is
+ * the one formatter in the repository — it builds every ETH string in every API payload,
+ * and a browser that formatted the same wei its own server had already formatted would be
+ * free to disagree about a stake. What is left here is the parsing direction, which is
+ * input handling and has no server counterpart, and the display precision this app wants.
  */
 
-/** Wei in one ETH. */
-export const WEI_PER_ETH = 10n ** 18n;
+import { MAX_DECIMALS, WEI_PER_ETH, weiToEth } from "@crucible/indexer";
 
-/** The largest number of decimal places an ETH amount can express. */
-export const MAX_DECIMALS = 18;
+/** Wei in one ETH, and the widest fraction wei can express — both from the shared source. */
+export { MAX_DECIMALS, WEI_PER_ETH };
 
 /**
  * Parse decimal ETH into wei.
@@ -48,15 +53,16 @@ export function parseEth(eth: string): bigint | null {
  * `formatEth` that takes an ETH-denominated *string* straight from the API. Two
  * functions with one name and different argument types is a trap, not a convenience.
  *
+ * Four decimals is this app's display default — a wallet credit is not a scientific
+ * instrument — and callers that must show every digit (a stake being signed for, down to
+ * the wei) pass 18. `weiToEth`'s own default is full precision, because it is what the
+ * API puts in a payload: a payload that rounds is a payload a reader cannot reconcile
+ * against the chain.
+ *
  * Display only — never round-trip a stake through this and back.
  */
 export function formatWei(wei: bigint, maxDecimals = 4): string {
-  const negative = wei < 0n;
-  const abs = negative ? -wei : wei;
-  const whole = abs / WEI_PER_ETH;
-  const frac = (abs % WEI_PER_ETH).toString().padStart(MAX_DECIMALS, "0").slice(0, maxDecimals);
-  const trimmed = frac.replace(/0+$/, "");
-  return `${negative ? "-" : ""}${whole}${trimmed ? `.${trimmed}` : ""}`;
+  return weiToEth(wei, maxDecimals);
 }
 
 /** Accept only a plain `0x` + 40 hex address. */

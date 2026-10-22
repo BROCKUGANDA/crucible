@@ -269,6 +269,24 @@ a.tx-link {
   color: var(--faint);
 }
 
+/* The demonstration notice. `--ash` at body size, not `--faint`: this is the one line on
+   the screen a visitor has to actually read, and the faint rung of the grey ladder is for
+   metadata. No box and no warning colour — `sear` names a failure, and nothing here has
+   failed. `42ch` keeps it to a readable measure whatever the headline did. */
+.forge-auth__demo {
+  margin: 18px auto 0;
+  max-width: 42ch;
+  font-size: 0.86rem;
+  line-height: 1.5;
+  color: var(--ash);
+  text-align: center;
+}
+
+.forge-auth__demo strong {
+  color: var(--gold);
+  font-weight: 600;
+}
+
 .forge-auth__switch {
   margin-top: 34px;
   font-size: 0.82rem;
