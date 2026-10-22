@@ -134,6 +134,63 @@ export interface RunRow {
   artifactCID: string | null;
 }
 
+/**
+ * One dispute, as far as the vote logs can honestly describe it.
+ *
+ * `CrucibleTrials` keeps `mapping(uint256 => Dispute) private _disputes`, and its two views
+ * only answer about an address you already name: `disputeOf(id)` gives the tallies and
+ * `disputeVote(id, judge)` gives one seat's commitment. Neither can enumerate the seats that
+ * committed, and the seat set is not readable either (`isArgus` is a mapping, and the
+ * constructor keeps no public array). So "how many seats have committed?" — the question an
+ * Argus seat must be able to answer before it reveals, per ADR-0004's anti-collusion rule —
+ * can only be asked of the logs. This is that projection.
+ *
+ * Seats are stored lowercased. A logged address arrives EIP-55 checksummed and a wallet's
+ * arrives however its caller spelled it; a comparison that depends on that is a comparison
+ * that fails quietly, and this projection is not where the checksum decision belongs.
+ *
+ * Deliberately absent: the commitment bytes, the tallies, and any provenance per vote. The
+ * only consumers are seat operators deciding whether to act, and none of those three change
+ * that answer. A field nothing reads is the shape this repo keeps having to delete.
+ */
+export interface DisputeRow {
+  trialId: number;
+  /** seats that sealed a commitment, in the order the logs arrived */
+  committed: string[];
+  /** seats that unsealed, in the order the logs arrived */
+  revealed: string[];
+}
+
+/** The seat-address form this projection stores everything in. */
+export function seatKey(address: string): string {
+  return address.toLowerCase();
+}
+
+/**
+ * A dispute as the logs know it. An unknown trial answers with empty sets rather than null:
+ * "no votes seen yet" and "this index never saw the dispute" produce the same decision (do
+ * not reveal yet), and a caller that needs to tell them apart is asking the chain, not the
+ * projection.
+ */
+export function disputeState(model: ReadModel, trialId: number): DisputeRow {
+  return model.disputes.get(trialId) ?? { trialId, committed: [], revealed: [] };
+}
+
+/** Has this seat sealed? Answers the question `commitVote`'s `AlreadyCommitted` guard asks. */
+export function seatCommitted(model: ReadModel, trialId: number, seat: string): boolean {
+  return disputeState(model, trialId).committed.includes(seatKey(seat));
+}
+
+/** Has this seat unsealed? `revealVote` reverts `AlreadyRevealed` if it has. */
+export function seatRevealed(model: ReadModel, trialId: number, seat: string): boolean {
+  return disputeState(model, trialId).revealed.includes(seatKey(seat));
+}
+
+/** How many seats have sealed — the count ADR-0004 gates a reveal behind. */
+export function committedSeatCount(model: ReadModel, trialId: number): number {
+  return disputeState(model, trialId).committed.length;
+}
+
 export interface EventLike {
   blockNumber: bigint;
   transactionHash: string;
@@ -340,6 +397,31 @@ function didMutate(next: ReadModel, ev: EventLike): boolean {
       t.disputeOpenedAt = Number(ev.blockNumber);
       return true;
     }
+    case "VoteCommitted": {
+      // No trial-row guard here, unlike the cases above: a seat that reads the vote logs has
+      // to see every commit, and a commit whose `TrialCreated` this index never read is still
+      // a commit. Dropping it would under-count the seals and gate a reveal behind a quorum
+      // the chain already reached.
+      const d = disputeRow(next, num(a.id));
+      const seat = seatKey(str(a.judge));
+      // A re-read log must not count the same seat twice — the quorum gate would then be
+      // satisfiable by one seat's duplicated commit. `commitVote` reverts `AlreadyCommitted`,
+      // so a repeat here is a replay or a reorg, never a second seal.
+      if (d.committed.includes(seat)) return false;
+      d.committed.push(seat);
+      return true;
+    }
+    case "VoteRevealed": {
+      const d = disputeRow(next, num(a.id));
+      const seat = seatKey(str(a.judge));
+      if (d.revealed.includes(seat)) return false;
+      d.revealed.push(seat);
+      // Revealing implies a seal that this index may never have seen (a shard overlap, or a
+      // commit below `FROM_BLOCK`), and a seat list where a revealer is missing from the
+      // committers is a list that cannot be reasoned about. Keep it consistent.
+      if (!d.committed.includes(seat)) d.committed.push(seat);
+      return true;
+    }
     case "VerdictFinalized": {
       const t = next.trials.get(num(a.id));
       // The one transition in the protocol that *adds* to a counter, so the one a duplicate
@@ -456,6 +538,13 @@ export interface ReadModel {
   agents: Map<number, AgentRow>;
   runs: Map<number, RunRow>;
   /**
+   * Per-trial seat votes, projected from `VoteCommitted`/`VoteRevealed`. See `DisputeRow`
+   * for why the logs are the only possible source. Not published by the API — the UI shows
+   * a dispute's tallies from the chain, and a seat-level "who sealed" list is not a thing
+   * any reader asks for. Its consumer is the seat operator, which cannot ask the chain.
+   */
+  disputes: Map<number, DisputeRow>;
+  /**
    * Bumped once per log that actually changed something. A consumer that rebuilds a
    * projection of this model — the API's per-tick snapshot — can skip the rebuild when the
    * version is unchanged, which is the difference between rebuilding a 5 MB payload once a
@@ -472,6 +561,7 @@ export function emptyModel(): ReadModel {
     trials: new Map(),
     agents: new Map(),
     runs: new Map(),
+    disputes: new Map(),
     version: 0,
   };
 }
@@ -663,12 +753,29 @@ function cloneModel(m: ReadModel): ReadModel {
       ]),
     ),
     runs: new Map([...m.runs].map(([k, v]) => [k, { ...v }])),
+    // The same ownership rule `agents` had to learn the hard way: a spread would copy the
+    // seat arrays by reference, so a snapshot and the live model would share one `committed`
+    // list and `applyEvent`'s `push` would write through into a snapshot somebody already
+    // handed to a reader.
+    disputes: new Map(
+      [...m.disputes].map(([k, v]) => [k, { trialId: v.trialId, committed: [...v.committed], revealed: [...v.revealed] }]),
+    ),
     version: m.version,
   };
 }
 
 function str(v: unknown): string {
   return String(v ?? "");
+}
+
+/** The dispute row for a trial, created on first vote. Kept private so a caller cannot
+ *  fabricate a seat list; `disputeState` is the read side. */
+function disputeRow(model: ReadModel, trialId: number): DisputeRow {
+  const existing = model.disputes.get(trialId);
+  if (existing) return existing;
+  const created: DisputeRow = { trialId, committed: [], revealed: [] };
+  model.disputes.set(trialId, created);
+  return created;
 }
 
 function num(v: unknown): number {

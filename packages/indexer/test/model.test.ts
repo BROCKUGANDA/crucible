@@ -6,7 +6,9 @@ import {
   attachSignatures,
   breakWindowEndsAt,
   buildSnapshot,
+  committedSeatCount,
   deadlineEndsAt,
+  disputeState,
   emptyModel,
   hall,
   hydrateTimestamps,
@@ -14,6 +16,8 @@ import {
   MAX_SETTLEMENTS,
   modelCopies,
   replay,
+  seatCommitted,
+  seatRevealed,
   weiToEth,
   type EventLike,
   type ReadModel,
@@ -969,5 +973,99 @@ describe("a verdict for a trial this index never saw", () => {
     expect(trial?.status).toBe("settled");
     expect(trial?.verdict).toBe("paid");
     expect(trial?.incomplete).toBe(true);
+  });
+});
+
+/**
+ * The seat votes.
+ *
+ * ADR-0004 gates a reveal behind two seals, and the chain cannot answer that question:
+ * `mapping(uint256 => Dispute) private _disputes` has no public getter, `disputeOf(id)` returns
+ * tallies but no holders, and `disputeVote(id, judge)` only answers about an address you already
+ * name. So the count exists only as a projection of the logs, and a projection that double-counts
+ * a replay or drops a seat makes the gate lie to the one component that cannot check it.
+ */
+describe("the dispute projection", () => {
+  const SEAT_A = "0x70997970c51812dc3a010c7d01b50e0d17dc79c8";
+  const SEAT_B = "0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc";
+
+  it("counts the seats that sealed, in the order the logs arrived", () => {
+    const model = replay([
+      ev("VoteCommitted", { id: 1n, judge: SEAT_A }, 110n),
+      ev("VoteCommitted", { id: 1n, judge: SEAT_B }, 111n),
+    ]);
+
+    expect(committedSeatCount(model, 1)).toBe(2);
+    expect(seatCommitted(model, 1, SEAT_A)).toBe(true);
+    expect(seatRevealed(model, 1, SEAT_A)).toBe(false);
+  });
+
+  it("does not let a re-read commit count as a second seat", () => {
+    // The same log twice — an overlapping shard, or a reorg that re-mined the block under a new
+    // tx hash. `commitVote` reverts `AlreadyCommitted`, so a repeated `VoteCommitted` for one
+    // seat is never a second seal. If it were counted, one seat could satisfy the two-of-three
+    // reveal gate by itself, which is the collusion shape the gate exists to prevent.
+    const once = replay([ev("VoteCommitted", { id: 1n, judge: SEAT_A }, 110n)]);
+    const twice = applyEventInto(
+      applyEventInto(once, ev("VoteCommitted", { id: 1n, judge: SEAT_A }, 110n)),
+      ev("VoteCommitted", { id: 1n, judge: SEAT_A }, 110n),
+    );
+
+    expect(committedSeatCount(twice, 1)).toBe(1);
+    expect(twice.version).toBe(once.version);
+  });
+
+  it("treats a reveal as evidence of a seal it never saw", () => {
+    // `revealVote` reverts `CommitMismatch` unless the seat committed, so a reveal proves a
+    // seal. The seal may be below FROM_BLOCK or in a shard this index has not merged yet, and a
+    // list where a revealer is missing from the committers is a list nothing can reason about.
+    const model = replay([ev("VoteRevealed", { id: 1n, judge: SEAT_A, breakWins: true }, 112n)]);
+
+    const d = disputeState(model, 1);
+    expect(d.committed).toEqual([SEAT_A]);
+    expect(d.revealed).toEqual([SEAT_A]);
+  });
+
+  it("matches a checksummed caller against a lowercase projection", () => {
+    // A logged address is decoded through `getAddress` and a wallet address arrives checksummed
+    // from viem; storing both as-is would make `committed.includes(myAddress)` depend on how
+    // somebody spelled it, and a seat that cannot find itself would keep re-verifying a trial it
+    // has already voted on.
+    const checksummed = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8";
+    const model = replay([ev("VoteCommitted", { id: 1n, judge: checksummed }, 110n)]);
+
+    expect(disputeState(model, 1).committed).toEqual([SEAT_A]);
+    expect(seatCommitted(model, 1, checksummed)).toBe(true);
+    expect(seatCommitted(model, 1, SEAT_A)).toBe(true);
+  });
+
+  it("answers a dispute it has no votes for with empty sets, not an absence", () => {
+    const model = replay([
+      ev("TrialCreated", {
+        id: 3n,
+        sponsor: SPONSOR,
+        specCID: "0x" + "aa".repeat(32),
+        testsCID: "0x" + "bb".repeat(32),
+        reward: 10n ** 18n,
+        bond: 0n,
+        deadline: 1_800_000_000n,
+        breakWindow: 43_200n,
+      }),
+    ]);
+
+    expect(disputeState(model, 3)).toEqual({ trialId: 3, committed: [], revealed: [] });
+    expect(disputeState(model, 99).committed).toEqual([]);
+    expect(committedSeatCount(model, 99)).toBe(0);
+  });
+
+  it("gives a snapshot its own seat lists", () => {
+    // `applyEvent` returns a model the caller may hand on, and the vote lists are grown in
+    // place. Without a copy at clone time a snapshot and the live projection would share one
+    // array — the exact bug `cloneModel` already documents for settlements.
+    const base = replay([ev("VoteCommitted", { id: 1n, judge: SEAT_A }, 110n)]);
+    const snapshot = applyEvent(base, ev("VoteCommitted", { id: 1n, judge: SEAT_B }, 111n));
+
+    expect(disputeState(base, 1).committed).toEqual([SEAT_A]);
+    expect(disputeState(snapshot, 1).committed).toEqual([SEAT_A, SEAT_B]);
   });
 });
