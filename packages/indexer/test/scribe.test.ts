@@ -580,6 +580,69 @@ describe("bloom cross-check on a quiet window", () => {
   });
 
   /**
+   * A timestamp that could not be read is repaired later, on a tick with no events.
+   *
+   * This is the half the audit found missing in both directions. `recordBlockTimes` recorded the
+   * block as pending and `hydrateTimestamps(model, blockTimes, [])` was then called with an explicit
+   * empty list, which maps to an empty target set — the read succeeded, the seconds went into the
+   * map, and no row was touched. And the retry lived inside the events branch, so a caught-up chain
+   * — the only kind that has a pending block and nothing else happening — never ran it.
+   *
+   * The observable consequence is not cosmetic: `breakWindowEndsAt` is `runAt + breakWindow`, so a
+   * row left holding a block number publishes a deadline in 1970, and the first sync here is the
+   * shape that produces it.
+   */
+  it("repairs a row whose block was unreadable, on a later tick that carries no events", async () => {
+    const { data, topics, transactionHash } = liveLog("TrialCreated", {
+      id: 1n,
+      sponsor: "0x1111111111111111111111111111111111111111",
+      specCID: `0x${"11".repeat(32)}`,
+      testsCID: `0x${"22".repeat(32)}`,
+      reward: 1_000_000_000_000_000_000n,
+      bond: 0n,
+      deadline: 1_800_000_000,
+      breakWindow: 43_200,
+    });
+    // Mutable on purpose: the first tick refuses block 1, the second serves it.
+    const unreadable = new Set([1]);
+    const node = await lyingNode({
+      logs: [
+        {
+          address: "0x9fe46736679d2d9a65f0992f2272de9f3c7fa6e0",
+          blockNumber: "0x1",
+          transactionHash,
+          logIndex: "0x7",
+          removed: false,
+          data,
+          topics,
+        },
+      ],
+      quietBlocks: true,
+      head: 6,
+      failBlockRead: (n) => unreadable.has(n),
+    });
+    const scribe = new Scribe({
+      trialsAddress: node.address,
+      alloyAddress: node.address,
+      chain: foundry,
+      rpcUrl: node.url,
+      fromBlock: 0n,
+    });
+
+    await scribe.sync();
+    // The trial exists, but its `createdAt` is the block NUMBER: the node refused the block and
+    // there is nothing else it could honestly be.
+    expect(scribe.state.trials.get(1)?.createdAt).toBe(1);
+
+    // The node recovers, and the chain stays quiet: this tick sees no events at all, so only the
+    // pending-timestamp retry can be what repairs the row.
+    unreadable.clear();
+    await scribe.sync();
+    expect(scribe.state.trials.get(1)?.createdAt).toBe(0x67000000);
+    node.close();
+  });
+
+  /**
    * The other half: a response that was quietly cut off.
    *
    * `getLogs` cannot tell you that it gave you less than you asked for. The
