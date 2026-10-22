@@ -50,3 +50,7 @@ graphflow-out/
 
 # OpenChamber session screenshots
 .openchamber/
+
+# Content store for pinned demo trial content (scripts/seed-content.mjs). Bytes addressed
+# by a chain digest, regenerable from the fixtures; not a build artifact to commit.
+.crucible-content/

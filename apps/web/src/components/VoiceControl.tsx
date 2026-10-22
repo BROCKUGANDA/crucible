@@ -191,6 +191,9 @@ export function VoiceControl() {
 
   return (
     <span className="wallet-inline voice-control">
+      {/* "(AI)" is in the visible label, not only a tooltip: the person hearing a voice is
+          the audience that disclosure is for, and a synthetic host that never says it is
+          synthetic is the failure mode the provider's policy names. */}
       <button
         type="button"
         className="btn btn-ghost btn-sm"
@@ -198,13 +201,13 @@ export function VoiceControl() {
         onClick={toggle}
         title={
           muteReason
-            ? `Frenchy could not speak: ${muteReason}`
+            ? `Frenchy is an AI-generated voice, and he could not speak: ${muteReason}`
             : enabled
-              ? "Frenchy speaks only on a paid verdict, once a day. Turn him off."
-              : "Unmute Frenchy, the forge's voice host."
+              ? "Frenchy is an AI-generated voice. He speaks a fixed welcome and tour, once a day at most. Turn him off."
+              : "Unmute Frenchy, the forge's AI-generated voice host."
         }
       >
-        {enabled ? (muteReason ? "Frenchy mute" : "Frenchy on") : "Frenchy off"}
+        {enabled ? (muteReason ? "Frenchy (AI) mute" : "Frenchy (AI) on") : "Frenchy (AI) off"}
       </button>
       {/* The reason is for the person debugging; the label change is for the person clicking. */}
       <span className="voice-note" role="status" aria-live="polite">
@@ -215,7 +218,7 @@ export function VoiceControl() {
           type="button"
           className="btn btn-ghost btn-sm"
           onClick={() => void play("tour", true)}
-          title="Hear the thirty-second tour"
+          title="Hear the thirty-second tour, in the AI voice"
         >
           Tour
         </button>
