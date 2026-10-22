@@ -1,0 +1,172 @@
+# ---------------------------------------------------------------------------
+# CRUCIBLE — this project's own edge.
+#
+# Run as its own compose project (`deploy/edge/compose.yaml`), on this
+# project's own Docker network, publishing on the host's LOOPBACK only.
+#
+# ── Why this file exists at all ────────────────────────────────────────────────
+#
+# Until now, this site's hostname was served by ANOTHER project's Caddy
+# container — one on the same box, owned by a different repository. That edge
+# reached this stack's containers by SERVICE NAME, which only resolves from
+# inside this stack's compose network, so the shared edge had to be
+# hand-attached to a network this project does not own. `docker compose up`
+# rebuilds a container from its own compose definition, so every recreate of
+# that edge dropped the attachment.
+#
+# That was not theoretical. On 2026-10-21 a traffic flip in the other project
+# recreated the shared edge, the attachment was dropped, and this site
+# answered 502 for every request while every container in this stack reported
+# itself healthy. The symptom read as an outage in THIS project, and nothing
+# about this project happened at that moment.
+#
+# So the edge moves here. The three reasons, in the order they mattered:
+#
+#   1. BLAST RADIUS. One edge, one process, one config file, three products.
+#      A Caddyfile bug, a certificate expiry, a bad upgrade or a traffic flip
+#      in ANY project takes down ALL of them.
+#   2. TRUST BOUNDARY. A shared edge can reach another project's containers
+#      by name, so a compromise or a misconfiguration on that side is a
+#      capability against this side.
+#   3. THIS FILE IS REVIEWED. The old arrangement put this site's routing in
+#      an untracked, host-local file on someone else's box — invisible to
+#      review, invisible to `git diff`, and impossible to reason about from
+#      the repository. Everything below is in the repository instead.
+#
+# ── What did NOT change, and why that matters ────────────────────────────────
+#
+# The site block below is BEHAVIOURALLY IDENTICAL to the block the shared edge
+# served. Same upstreams, same paths, same headers, same log redaction. A
+# split that quietly changes a public site is a release, and this is meant to
+# be an invisible change of ownership.
+#
+# The alternatives that were considered and rejected:
+#
+#   · KEEP THE SHARED EDGE. It is the status quo, and its measured cost is the
+#     outage above. A mitigation that preserves the coupling (reattaching the
+#     network on a timer) was tried and is the wrong shape: it keeps the
+#     capability alive rather than removing it.
+#   · ONE FRONT DOOR THAT TERMINATES TLS. It would move the certificate out of
+#     this repository and put a request-inspecting component in front of
+#     everything. The front door that IS in front of this edge is an L4 SNI
+#     router: it forwards the connection, and this file is still what
+#     terminates TLS and answers the request.
+#
+# ── The certificate ───────────────────────────────────────────────────────────
+#
+# This edge issues and renews its OWN Let's Encrypt certificate. The ACME
+# HTTP-01 challenge is served by this Caddy, over this edge's own :80, and it
+# arrives here because the shared front door forwards the plaintext request
+# for this hostname to this edge. The front door does not answer the
+# challenge, and it holds no certificate.
+# ---------------------------------------------------------------------------
+
+{
+	# ACME contact address for expiry notices.
+	email {$ACME_EMAIL:admin@example.com}
+	# The admin API stays internal to the container; never exposed. It also
+	# means there is no reload endpoint, so a change to this file needs a
+	# container recreate — not a reload.
+	admin off
+}
+
+# ---- snippets: define before use ------------------------------------------------
+
+# The security headers the shared edge applied to this site. They are
+# repeated here rather than shared, because a snippet is global only within
+# one Caddy process: each edge carries its own copy, and each copy is
+# reviewed with the product it belongs to.
+#
+# `includeSubDomains; preload` is inherited from the shared edge's setting
+# and is kept EXACTLY as it was. Changing a site's HSTS scope during an
+# ownership change is a policy decision, not a refactor, and quietly widening
+# or narrowing it would be a change nobody asked for.
+(secure_defaults) {
+	header {
+		Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		# This process is a reverse proxy, never a browser-reachable document.
+		-Server
+	}
+	encode zstd gzip
+}
+
+# The real domain. DNS for this name is DNS-only (grey cloud), which is what
+# lets Caddy issue its own certificate over HTTP-01 — under a proxied record
+# the challenge never reaches the origin.
+#
+# `crucible.svalley.tech` and the legacy `*.sslip.io` name below are the two
+# names this edge serves. They are also the two names the shared front door
+# routes here, and the two names in `nginx/edge.d/crucible.sni.map` — a test
+# compares that file against this one, so the front door and this edge cannot
+# disagree about what this project serves.
+crucible.svalley.tech {
+	import secure_defaults
+
+	# The chain RPC, behind a path prefix. `/anvil` is stripped before the
+	# request is forwarded, because anvil serves the root path.
+	@anvil path /anvil /anvil/*
+	handle @anvil {
+		uri strip_prefix /anvil
+		reverse_proxy anvil:8545
+	}
+
+	# The API. `handle_path` strips the `/api` prefix, which is what the
+	# routes in apps/api expect.
+	handle_path /api/* {
+		reverse_proxy api:8787 {
+			# The client address, and NOT whatever the caller sent. The API
+			# reads the RIGHT-most X-Forwarded-For entry as the client, so a
+			# caller that prepends an entry gets a fresh rate-limit bucket
+			# per request — which is the exact bypass the limiter exists to
+			# prevent. Setting the header outright discards anything the
+			# client sent.
+			#
+			# `{remote_host}` is the real client address because the shared
+			# front door forwards the TCP stream without rewriting the
+			# source address, and this edge is the peer that the origin sees.
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Real-IP {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+			# The stream is a live feed; buffering it makes the index look
+			# dead.
+			flush_interval -1
+		}
+	}
+
+	# Everything else is the web app.
+	handle {
+		reverse_proxy web:3000 {
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Real-IP {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+			flush_interval -1
+		}
+	}
+
+	log {
+		format filter {
+			wrap console
+			fields {
+				# One line per field. The multi-line braced form is a parse
+				# error in Caddy 2.
+				request>headers>Cookie delete
+				request>headers>Authorization delete
+			}
+		}
+	}
+}
+
+# The legacy sslip.io hostname still resolves to this origin. It serves
+# nothing now; any request lands on the real hostname with its path intact.
+# Let's Encrypt renewals work because sslip.io is not proxied, so the
+# HTTP-01 challenge reaches this origin directly.
+#
+# `permanent` is a 301, and it was a 301 on the shared edge too — a client
+# that rewrites a POST into a GET on that redirect is a pre-existing
+# property of this hostname, not something this split introduces.
+crucible.57.130.80.158.sslip.io {
+	redir https://crucible.svalley.tech{uri} permanent
+}

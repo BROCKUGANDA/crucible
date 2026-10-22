@@ -3,10 +3,16 @@
 # `fixtures/trials/**` is pinned by `scripts/seed-content.mjs`, whose keccak digest is posted
 # on-chain as a trial's spec/tests hash. With `core.autocrlf=true` (the default on Windows
 # developer boxes, including this repository's) a checkout handed those files CRLF line endings
-# while the committed blob stayed LF — so the same commit produced two different digests
+# while the committed blob stayed LF - so the same commit produced two different digests
 # depending on the machine that read the file. A digest posted from one box would not resolve to
 # content on another, which is the one thing a commitment must never do.
 #
 # `text eol=lf` makes the working tree byte-identical to the blob. Scoped to the fixtures on
 # purpose: this is only where a file's bytes become a hash somebody else has to reproduce.
 fixtures/** text eol=lf
+
+# The edge runs on Linux. A CRLF in a shell script is a runtime error there
+# ("\r: command not found"), and a CRLF in a Caddyfile or an nginx map is a
+# parse error. Pin these to LF so the line ending cannot become a production
+# incident on the way to the box.
+deploy/edge/** text eol=lf
