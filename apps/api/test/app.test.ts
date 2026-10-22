@@ -691,6 +691,9 @@ describe("/health", () => {
           head: 6n,
           indexedTo: 0n,
           syncError: "getLogs returned nothing for blocks 0–6 but a logsBloom there may contain a Crucible event",
+          // A refused advance is a FAILED read, which is what /health is allowed to call stalled;
+          // a lagging cursor that is still ticking is not, and no longer reports 503.
+          syncStalled: true,
         }),
       },
       { rateLimit: false },

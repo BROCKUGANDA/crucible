@@ -347,7 +347,7 @@ describe("trial counts and the books", () => {
     // The money beside it does not depend on that read, so it still prints — and a paid-out of
     // zero from a payload that says so is a measured zero, printed as one.
     expect(view.paidOut).toBe("1 ETH");
-    expect(view.fees).toBe("0.000000 ETH");
+    expect(view.fees).toBe("0 ETH");
   });
 
   it("renders the whole of the economics as unknown when the snapshot has none", () => {

@@ -90,7 +90,12 @@ export function formatEth(eth: string | null | undefined): string {
   if (eth === null || eth === undefined) return "—";
   const n = Number(eth);
   if (!Number.isFinite(n)) return eth;
-  return n < 0.001 ? `${n.toFixed(6)} ETH` : `${n.toFixed(3).replace(/\.?0+$/, "")} ETH`;
+  // Truncate, never round. This prints amounts an operator actually signed for, and `toFixed`
+  // rounds half away from zero — a 0.0249999 stake rendered as "0.025", larger than the chain
+  // holds. `api.ts`'s `maxDecimals` states the same rule; this helper predated it and kept rounding.
+  const dp = n < 0.001 ? 6 : 3;
+  const truncated = Math.trunc(n * 10 ** dp) / 10 ** dp;
+  return `${truncated.toFixed(dp).replace(/\.?0+$/, "")} ETH`;
 }
 
 /** "2h 14m" / "48s" — a countdown that stays readable at a glance. */
