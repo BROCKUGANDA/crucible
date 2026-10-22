@@ -168,19 +168,6 @@ export const TRIALS_ABI = [
     inputs: [{ name: "", type: "address" }],
     outputs: [{ type: "uint256" }],
   },
-  /**
-   * `mapping(address => bool) public isArgus` (CrucibleTrials.sol:199) — the generated getter.
-   * A seat needs this before it loops: committing from an address the constructor never
-   * granted reverts `NotArgus` on every trial, forever, and an unbounded retry against a
-   * revert is a self-inflicted DoS on a shared node.
-   */
-  {
-    type: "function",
-    name: "isArgus",
-    stateMutability: "view",
-    inputs: [{ name: "", type: "address" }],
-    outputs: [{ type: "bool" }],
-  },
   {
     type: "function",
     name: "escrowed",
@@ -195,18 +182,93 @@ export const TRIALS_ABI = [
     inputs: [],
     outputs: [{ type: "address" }],
   },
-  /**
-   * The two dispute-timing rules, read rather than mirrored.
-   *
-   * Both are `public constant`, so a change is a recompile and a fresh deployment — and a
-   * service that hardcoded the old number would keep enforcing it against a chain that had
-   * moved. `commitVote` gates on `openedAt + COMMIT_WINDOW` and settlement on
-   * `votes >= ARGUS_THRESHOLD`; the seat's own eligibility check has to be the same pair of
-   * numbers the contract used, so it asks the contract once at boot.
-   */
+  {
+    type: "function",
+    name: "FEE_BPS",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "BPS",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "BOND_NUM",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "BOND_DEN",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "BREAK_STAKE_DEN",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "SLASH_SKEPTIC_NUM",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "MIN_BOND",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "MAX_REWARD",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "MIN_RUN_WINDOW",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "MIN_BREAK_WINDOW",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "MAX_BREAK_WINDOW",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ type: "uint256" }],
+  },
   {
     type: "function",
     name: "COMMIT_WINDOW",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "DISPUTE_TIMEOUT",
     stateMutability: "view",
     inputs: [],
     outputs: [{ type: "uint256" }],
@@ -373,28 +435,6 @@ export const TRIALS_ABI = [
     type: "event",
     name: "DisputeOpened",
     inputs: [{ indexed: true, name: "id", type: "uint256" }],
-  },
-  /**
-   * Both args are `indexed` in the contract (`CrucibleTrials.sol:230`), so both arrive on
-   * `args` after viem decodes the log — the seat address is a topic, not data. That is what
-   * lets a reader filter by seat without decoding anything.
-   */
-  {
-    type: "event",
-    name: "VoteCommitted",
-    inputs: [
-      { indexed: true, name: "id", type: "uint256" },
-      { indexed: true, name: "judge", type: "address" },
-    ],
-  },
-  {
-    type: "event",
-    name: "VoteRevealed",
-    inputs: [
-      { indexed: true, name: "id", type: "uint256" },
-      { indexed: true, name: "judge", type: "address" },
-      { indexed: false, name: "breakWins", type: "bool" },
-    ],
   },
   {
     type: "event",

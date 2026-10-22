@@ -53,7 +53,14 @@ function TrialRow({ trial, serverNowMs }: { trial: ApiTrial; serverNowMs: number
           <p className="trial-row__reward">
             {formatEth(trial.rewardEth)} <span className="trial-row__unit">reward</span>
           </p>
-          <p className="mono trial-row__suite">suite {shortCid(trial.testsCID)}</p>
+          {/* The suite line is the row's proof of *what was asked*, so an unknown here must say
+              what is unknown rather than print a bare em dash. The chain only ever holds a
+              fingerprint of the test suite; the readable address of the files is published
+              separately by the sponsor, and until they do this row has the fingerprint but not
+              the text — so it says so in plain words instead of "—". */}
+          <p className="mono trial-row__suite">
+            {trial.testsCID ? `suite ${shortCid(trial.testsCID)}` : "suite not disclosed yet"}
+          </p>
         </div>
 
         <div className="trial-row__side">

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { use, useEffect, useRef } from "react";
 import { Chrome, Quenching, SignalLost } from "@/components/Chrome";
 import { useSnapshot } from "@/lib/useSnapshot";
-import { formatEth, shortHash, tierMeta } from "@/lib/forge";
+import { formatEth, shortHash, statusMeta, tierMeta, verdictMeta } from "@/lib/forge";
 
 const NEXT_TIER = [1, 3, 10, 25] as const;
 
@@ -93,12 +93,22 @@ export default function AgentProfilePage({ params }: { params: Promise<{ id: str
         <p className="lede">No work presented yet.</p>
       ) : (
         <div className="run-list">
-          {trials.map((t) => (
-            <Link key={t.id} href={`/trials/${t.id}`} className="raised run-link">
-              <span className="mono">Trial {t.id}</span>
-              <span className="mono">{t.verdict}</span>
-            </Link>
-          ))}
+          {trials.map((t) => {
+            // A run that has not settled has no verdict to name — showing the raw enum string
+            // ("none") would print a word from the wire protocol. Show the verdict once there is
+            // one, and the trial's standing until then.
+            const verdict = t.verdict === "none" ? null : verdictMeta(t.verdict);
+            const status = statusMeta(t.status);
+            const meta = verdict ?? status;
+            return (
+              <Link key={t.id} href={`/trials/${t.id}`} className="raised run-link">
+                <span className="mono">Trial {t.id}</span>
+                <span className="mono" data-tone={meta.tone}>
+                  {meta.label}
+                </span>
+              </Link>
+            );
+          })}
         </div>
       )}
 
