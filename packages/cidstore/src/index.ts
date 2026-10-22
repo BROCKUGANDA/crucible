@@ -3,3 +3,4 @@ export * from "./cid.js";
 export * from "./json.js";
 export * from "./store.js";
 export * from "./disclosure.js";
+export * from "./bridge.js";

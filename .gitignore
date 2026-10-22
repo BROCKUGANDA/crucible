@@ -13,6 +13,14 @@ crucible-contracts/out/
 crucible-contracts/cache/
 crucible-contracts/broadcast/
 
+# a locally written trace spine
+trace/
+
+# gate artefacts, written by CI and by `npm run coverage:gate`
+coverage-summary.txt
+audit.json
+gas-report.txt
+
 # env
 .env
 .env.*

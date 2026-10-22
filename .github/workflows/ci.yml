@@ -66,9 +66,24 @@ jobs:
       # coverage reports, and the legacy codegen then hits "stack too deep" in this
       # codebase. `--ir-minimum` keeps viaIR on with minimum optimization, which is what
       # the contracts are built with anyway, so the coverage numbers describe the code
-      # that actually ships. It is slower, and it is a real gate, not a report.
+      # that actually ships. It is slower.
+      #
+      # `set -o pipefail` is load-bearing: without it the pipeline reports `tee`'s exit
+      # code, so a forge that crashed halfway through looked like a successful coverage
+      # run. forge has no threshold flag (verified against forge 1.8.5), which is why the
+      # floor lives in the next step rather than in a flag that does not exist.
       - name: coverage
-        run: forge coverage --ir-minimum --report summary | tee coverage-summary.txt
+        run: |
+          set -o pipefail
+          forge coverage --ir-minimum --report summary | tee coverage-summary.txt
+
+      # The floor gate is per production contract, not the `Total` row: the total is 66.5%
+      # because `script/*.sol` are 0% by design (they are exercised by the demo and the
+      # deployment assertion, not the unit suite). A single number on the total would have
+      # to be set low enough to pass regardless, which is another way of saying it could
+      # not fail. See scripts/coverage-gate.mjs for the floors and the targets behind them.
+      - name: coverage floor gate
+        run: node ../scripts/coverage-gate.mjs coverage-summary.txt
 
   # Static analysis. Findings are triaged by hand in docs/slither-triage.md -- this job
   # proves nothing NEW appeared, it does not decide what is acceptable.
@@ -158,15 +173,26 @@ jobs:
           forge --version
 
       # The README keeps these out of the default gate on purpose: a gate that
-      # depends on a third party's RPC is not a gate. The job therefore runs
-      # and skips — `secrets` is not a named-value in a job-level `if`, and
-      # reaching for one there fails the whole workflow at parse time.
+      # depends on a third party's RPC is not a gate. But exiting 0 while running
+      # nothing is how a skipped check reads as a passed one, and HARDENING.md's
+      # open list already admits the bridge "has never been exercised against the
+      # registry as actually deployed". So: say plainly, in the run's own output,
+      # that this proves nothing, and let fork-nightly.yml be the job that does
+      # run it on a schedule with the credential attached.
       - name: fork tests
         env:
           MAINNET_RPC_URL: ${{ secrets.MAINNET_RPC_URL }}
         run: |
           if [ -z "${MAINNET_RPC_URL}" ]; then
-            echo "MAINNET_RPC_URL is not configured — fork tests stay out of the default gate, as documented"
+            echo "::warning::FORK TESTS DID NOT RUN — no MAINNET_RPC_URL. This check is green because it was skipped, not because the ERC-8004 bridge works."
+            {
+              echo "## Fork tests: SKIPPED, not passed"
+              echo ""
+              echo "No \`MAINNET_RPC_URL\` is configured for this run, so the four ERC-8004 fork"
+              echo "tests did not execute. A green tick here is not evidence that the bridge works"
+              echo "against the registry as deployed. \`fork-nightly.yml\` runs them on a schedule"
+              echo "and treats a missing credential as a failure."
+            } >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
           forge test --fork-url "$MAINNET_RPC_URL" --match-contract ForkTests -vv
@@ -281,32 +307,16 @@ jobs:
       # Known-unfixable, and documented as such in the README's "Known limits":
       # the postcss advisory covers every released Next version through
       # 16.3.0-preview, and the wallet stack (RainbowKit 2.2.11 pins wagmi ^2.9)
-      # cannot be patched without dropping RainbowKit for wagmi 3. Fail only on
-      # anything outside that documented set — the list is kept in step with the
-      # README by hand, on purpose, so adding an advisory means editing a
-      # sentence a reviewer can read.
-      - name: audit (ignoring the documented wallet-stack set)
+      # cannot be patched without dropping RainbowKit for wagmi 3.
+      #
+      # `|| true` stays, because npm audit legitimately exits non-zero when anything is
+      # vulnerable — but the decision now belongs to scripts/audit-gate.mjs, which is a
+      # file rather than an inline blob so it can be run and mutation-tested locally.
+      # That gate refuses a payload it cannot reconcile (an absent schema, or an entry
+      # count that disagrees with npm's own summary) instead of reading it as "no new
+      # advisories", and it caps every documented name by severity, so a critical in a
+      # wallet package is no longer excused by its prefix.
+      - name: audit (documented set, with severity ceilings)
         run: |
           npm audit --json > audit.json || true
-          node -e "
-            const a = require('./audit.json');
-            const families = [
-              '@walletconnect/', '@metamask/', '@reown/', '@rainbow-me/',
-              '@wagmi/', '@base-org/', '@gemini-wallet/',
-            ];
-            const exact = new Set([
-              'postcss', 'next', 'decode-uri-component', 'query-string',
-              'uuid', 'viem', 'wagmi', 'ws',
-            ]);
-            const vulns = a.vulnerabilities || {};
-            const known = (name) =>
-              exact.has(name) || families.some((f) => name.startsWith(f));
-            const bad = Object.entries(vulns)
-              .filter(([name]) => !known(name))
-              .map(([name, v]) => name + '@' + v.severity);
-            if (bad.length) {
-              console.error('advisories outside the documented set: ' + bad.join(', '));
-              process.exit(1);
-            }
-            console.log('only advisories the README documents are present');
-          "
+          node scripts/audit-gate.mjs audit.json

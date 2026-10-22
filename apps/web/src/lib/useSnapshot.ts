@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { ApiSnapshot } from "@crucible/indexer";
+import type { HealthPayload, ReadyPayload } from "./ops";
 
 /**
  * Snapshot polling.
@@ -176,6 +177,122 @@ export function useSnapshot(pollMs = FALLBACK_POLL_MS): SnapshotState {
   }, [pollMs]);
 
   return state;
+}
+
+/**
+ * The operator surface — `/health` and `/ready` — on the same clock as the snapshot.
+ *
+ * These two endpoints answer the questions a reader of a transparency page actually asks:
+ * how far the index reaches, whether the last sync tick failed, what the dead-letter queue
+ * holds, which dependency breakers are tripped. Neither is inside `/snapshot`, so the page
+ * needs them as a second read — but *not* as a second loop.
+ *
+ * There is no `setInterval` here. The trigger is the snapshot's own server `now`, which the
+ * live stream advances: `useSnapshot` already decides when the site has fresh information, and
+ * a probe that ran on its own timer would either race that decision or double the request rate.
+ * The `now` is bucketed rather than used directly because the stream pushes on every change to
+ * the read model — a busy chain would otherwise re-read the operator endpoints several times a
+ * second, and `/health` and `/ready` share the same per-IP budget as `/snapshot`. Spending it
+ * would show a visitor "the forge is busy" on the page whose job is to report the truth.
+ *
+ * A manual retry re-reads both immediately; that is the only way this moves faster than the
+ * stream does, and it is always the reader's own click.
+ */
+const OPS_REFRESH_MS = FALLBACK_POLL_MS;
+
+export interface Probe<T> {
+  data: T | null;
+  /** the HTTP status the endpoint answered with, kept because a 503 still carries the truth */
+  status: number | null;
+  error: string | null;
+  loading: boolean;
+}
+
+const PROBING: Probe<never> = { data: null, status: null, error: null, loading: true };
+
+/**
+ * Read one operator endpoint.
+ *
+ * A non-2xx is parsed rather than discarded: `/health` answers 503 precisely when the indexer
+ * has a `syncError`, and `/ready` answers 503 precisely when the read model is incomplete. The
+ * body of those two responses is the most valuable thing either endpoint ever says, and a
+ * client that treats a red status as "no data" would blank the page at the exact moment the
+ * system is failing.
+ */
+async function readEndpoint<T>(path: string, signal: AbortSignal): Promise<Probe<T>> {
+  try {
+    const res = await fetch(`${API}${path}`, { signal });
+    if (res.status === 429) {
+      return {
+        data: null,
+        status: 429,
+        error: "The forge is busy — too many readers at once.",
+        loading: false,
+      };
+    }
+    let body: unknown = null;
+    try {
+      body = await res.json();
+    } catch {
+      body = null;
+    }
+    if (body === null || typeof body !== "object") {
+      return {
+        data: null,
+        status: res.status,
+        error: res.ok
+          ? "the API answered with no body to read"
+          : `the API answered ${res.status} with no body to read`,
+        loading: false,
+      };
+    }
+    return { data: body as T, status: res.status, error: null, loading: false };
+  } catch (err) {
+    if ((err as Error).name === "AbortError") {
+      // The page unmounted or a newer read replaced this one. Nothing to report.
+      return { data: null, status: null, error: null, loading: false };
+    }
+    return { data: null, status: null, error: "The API did not answer.", loading: false };
+  }
+}
+
+export interface OpsState {
+  health: Probe<HealthPayload>;
+  ready: Probe<ReadyPayload>;
+  /** re-read both endpoints now, on the reader's own request */
+  retry: () => void;
+}
+
+export function useOps(serverNowMs: number | null): OpsState {
+  const [health, setHealth] = useState<Probe<HealthPayload>>(PROBING);
+  const [ready, setReady] = useState<Probe<ReadyPayload>>(PROBING);
+  const [attempt, setAttempt] = useState(0);
+
+  // `"cold"` rather than `null` so the very first read happens on mount, before any snapshot
+  // has arrived to trigger it — a page about whether the API is answering must not wait on the
+  // API's most expensive endpoint to find out whether its cheapest ones are.
+  const bucket: string | number = serverNowMs === null ? "cold" : Math.floor(serverNowMs / OPS_REFRESH_MS);
+
+  useEffect(() => {
+    let alive = true;
+    const controller = new AbortController();
+    setHealth((s) => ({ ...s, loading: true }));
+    setReady((s) => ({ ...s, loading: true }));
+
+    void readEndpoint<HealthPayload>("/health", controller.signal).then((p) => {
+      if (alive) setHealth(p);
+    });
+    void readEndpoint<ReadyPayload>("/ready", controller.signal).then((p) => {
+      if (alive) setReady(p);
+    });
+
+    return () => {
+      alive = false;
+      controller.abort();
+    };
+  }, [bucket, attempt]);
+
+  return { health, ready, retry: () => setAttempt((a) => a + 1) };
 }
 
 /**
