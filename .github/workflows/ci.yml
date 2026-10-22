@@ -299,9 +299,24 @@ jobs:
     runs-on: [self-hosted, linux, X64, crucible]
     steps:
       - uses: actions/checkout@v7
+      # Node 22 here, and only here, because it is the audit client that broke, not the app.
+      #
+      # On 2026-10-22 every audit job began failing the same way, whatever the push contained:
+      #   npm notice This endpoint is being retired. Use the bulk advisory endpoint instead.
+      #   npm warn audit 400 Bad Request - POST .../-/npm/v1/security/audits/quick - Bad Request
+      #   dependency audit FAILED: audit.json has no auditReportVersion
+      # npm 10 (which node 20 ships) posts to the retired endpoint, so the file the gate read was
+      # an error object rather than an audit. The gate refused it instead of calling that clean —
+      # which is exactly the behaviour it was written to have — and the fix is a client that asks
+      # the registry's current question. npm 11 uses `/security/advisories/bulk`; verified against
+      # a live payload of 26 vulnerable packages, which the gate reconciled and passed.
+      #
+      # Deliberately NOT `npm i -g npm@11`: these are long-lived self-hosted runners, and a global
+      # upgrade silently changes the npm every later job on that machine inherits. setup-node puts
+      # this version on one job's PATH and leaves the runner as it found it.
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
       - run: npm ci
       # Known-unfixable, and documented as such in the README's "Known limits":
