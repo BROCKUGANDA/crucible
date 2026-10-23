@@ -27,6 +27,19 @@ describe("break economics", () => {
     expect(formatWei(minStakeWei, 18)).toBe("0.01");
   });
 
+  it("advertises a minimum that parses back to at least the contract's floor", () => {
+    // A reward of 1.23454 ETH has a 1% floor of 0.0123454 ETH. The Break board used to print
+    // that with `toFixed(6)`, which rounds *down* to "0.012345" — so a skeptic who staked the
+    // figure the page advertised was 400000000000 wei short and `fileBreak` reverted. The rule
+    // both the board and the filing panel now share is to print every decimal, so the
+    // advertised number never under-states what the chain demands.
+    const oddReward = parseEth("1.23454")!;
+    const floor = oddReward / MIN_STAKE_DIVISOR;
+    const advertised = formatWei(floor, 18);
+    expect(advertised).toBe("0.0123454");
+    expect(parseEth(advertised)!).toBeGreaterThanOrEqual(floor);
+  });
+
   it("pays the skeptic 30% of the bond, not 30% of the reward", () => {
     // 0.2 ETH bond -> 0.06 ETH. Confusing the two would overstate the payout 3x.
     expect(payoutWei).toBe(60_000_000_000_000_000n);

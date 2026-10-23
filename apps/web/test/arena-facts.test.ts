@@ -31,6 +31,15 @@ function hallEntry(tier: number | null, settlements: { trialId: number; verdict:
   } as unknown as ApiSnapshot["hall"][number];
 }
 
+/**
+ * An economics block carrying only the fields a case names. Deliberately partial: the difference
+ * between "the take is zero" and "nobody read the take" is one of the things asserted below, and
+ * a fixture that filled every field would erase it.
+ */
+function economics(over: Partial<NonNullable<ApiSnapshot["economics"]>>): ApiSnapshot["economics"] {
+  return over as ApiSnapshot["economics"];
+}
+
 describe("arena facts", () => {
   it("reports no facts at all before the index answers", () => {
     const facts = deriveFacts(null);
@@ -39,6 +48,7 @@ describe("arena facts", () => {
     expect(facts.settled).toBeNull();
     expect(facts.seal).toBeNull();
     expect(facts.markBlock).toBeNull();
+    expect(facts.take).toBeNull();
     expect(facts.mark).toBe("none");
     expect(facts.crowd).toBe(0);
   });
@@ -107,5 +117,32 @@ describe("arena facts", () => {
 
   it("reads zero smiths as zero only when the array is really there", () => {
     expect(deriveFacts(snapshot({ agents: [] })).smiths).toBe(0);
+  });
+
+  it("names the metal on the treasury's take, not a bare decimal among counts", () => {
+    // Every other HUD cell is a count. A take that prints as "0.05" is read as one more tally
+    // for something nobody can say the unit of.
+    const facts = deriveFacts(snapshot({ economics: economics({ feesEth: "0.05" }) }));
+    expect(facts.take).toBe("0.05 ETH");
+  });
+
+  it("truncates the take instead of rounding it up", () => {
+    // The same rule `api.ts` states for stakes: a figure the reader is shown must not exceed
+    // the figure the chain holds.
+    const facts = deriveFacts(
+      snapshot({ economics: economics({ feesEth: "0.999999999999999999" }) }),
+    );
+    expect(facts.take).toBe("0.999 ETH");
+  });
+
+  it("leaves the take unmeasured when no economics came back", () => {
+    // A HUD that renders "0 ETH" here is claiming the forge kept nothing, on the authority of a
+    // snapshot that never said so. Null reaches the em dash; zero does not.
+    expect(deriveFacts(snapshot({})).take).toBeNull();
+    expect(deriveFacts(snapshot({ economics: economics({}) })).take).toBeNull();
+  });
+
+  it("renders a measured zero take as zero, distinct from the unmeasured one", () => {
+    expect(deriveFacts(snapshot({ economics: economics({ feesEth: "0" }) })).take).toBe("0 ETH");
   });
 });
