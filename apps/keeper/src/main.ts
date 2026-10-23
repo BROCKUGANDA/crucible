@@ -9,6 +9,7 @@ import { CircuitBreaker, Crucible, Flags } from "@crucible/smith";
 import { TraceLog, type TraceSpan } from "@crucible/smith/trace";
 import { Warden } from "@crucible/warden";
 import { createSweepLoop, envKillSwitches } from "./sweep-loop.js";
+import { createGasLedger, parseBalanceFloor } from "./gas-ledger.js";
 
 /**
  * The Warden as a service.
@@ -152,6 +153,11 @@ async function boot(): Promise<void> {
   const trialsAddress = required("TRIALS_ADDRESS") as `0x${string}`;
   const alloyAddress = required("ALLOY_ADDRESS") as `0x${string}`;
   const sweepMs = Number(process.env.SWEEP_MS ?? 15_000);
+  /**
+   * The floor at which the operator wants to hear about the wallet. Unset means no alarm rather
+   * than a threshold invented in code — the balance is still published either way.
+   */
+  const minBalanceWei = parseBalanceFloor(process.env.KEEPER_MIN_BALANCE_WEI);
 
   const { account, mode } = await resolveKeeperAccount({
     privateKey: process.env.PRIVATE_KEY,
@@ -183,6 +189,20 @@ async function boot(): Promise<void> {
     account,
     chain: foundry,
     transport: http(rpcUrl),
+  });
+
+  /**
+   * What this account is paying to run the demo. Gas is the network's toll, not the forge's fee:
+   * nothing here touches `FEE_BPS` or the escrow's conservation invariant, which counts only ETH
+   * the contract holds. It exists because the keeper fired a transaction, kept the hash, and never
+   * read the receipt back — so the operating cost was unmeasured and a drained wallet arrived as a
+   * silent stall rather than a number on `/health`.
+   */
+  const gas = createGasLedger({
+    reader: crucible.publicClient,
+    signer: account.address,
+    minBalance: minBalanceWei,
+    log: (line) => console.log(`[keeper] ${line}`),
   });
 
   const warden = new Warden({
@@ -286,6 +306,12 @@ async function boot(): Promise<void> {
               },
         });
       }
+      // Accounting follows the sweep it describes, on the same cadence, and never in front of it.
+      // `observe` returns immediately and a receipt that will not arrive lands in `unresolvedTxes`,
+      // so an unreadable cost cannot stall a settlement — that is the property that keeps this
+      // separate from the await chain above.
+      for (const a of result.acted) if (a.txHash) gas.observe(a.txHash as `0x${string}`);
+      void gas.refreshBalance();
       return result;
     },
     onLog: (line) => console.log(`[keeper] ${line}`),
@@ -313,6 +339,7 @@ async function boot(): Promise<void> {
       const status = sweepLoop.status();
       const fresh = status.lastSweepAt !== null && Date.now() - status.lastSweepAt < sweepMs * 4;
       res.writeHead(fresh ? 200 : 503, { "content-type": "application/json" });
+      const ledger = gas.snapshot();
       res.end(
         JSON.stringify({
           ok: fresh,
@@ -324,6 +351,16 @@ async function boot(): Promise<void> {
           lastSweepActed: status.lastSweepActed,
           // The difference between "nothing needed doing" and "we were told not to do anything".
           killed: status.killed,
+          // Wei as decimal strings: a BigInt in a JSON body throws, and a Number would round the
+          // very figure this exists to state exactly. `null` means unread, never zero.
+          gas: {
+            txesAccounted: Number(ledger.settledTxes),
+            weiSpent: ledger.weiSpent.toString(),
+            txesUnresolved: Number(ledger.unresolvedTxes),
+            balanceWei: ledger.balanceWei === null ? null : ledger.balanceWei.toString(),
+            minBalanceWei: ledger.minBalanceWei === null ? null : ledger.minBalanceWei.toString(),
+            lowBalance: ledger.lowBalance,
+          },
           breakers: {
             [sweepBreaker.name]: status.breaker,
             [scribe.breaker.name]: scribe.breaker.status(),
