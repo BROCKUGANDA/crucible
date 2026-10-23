@@ -170,6 +170,41 @@ migration. See [`SECURITY.md`](SECURITY.md) before deploying value.
 
 ### Fixed
 
+- **The prompt-injection guard existed and did not run.** `@crucible/agent-security` classifies
+  hostile text, has its own suite, and is a declared dependency of `forge-runner` — and no
+  production path called it. `scripts/live-agent.mjs` builds the LLM agent without the
+  `wrapUntrusted` option, so `step()` took its documented fall-through and handed the sponsor's
+  spec to the model verbatim, while `agent.ts`'s own header claimed the spec "is wrapped by
+  `wrapUntrusted` before it ever reaches the model". The guard is now the **default**: supplying
+  the option overrides it, forgetting it no longer disables it. The second untrusted channel —
+  suite stdout from a sandbox running the sponsor's own code, which arrives mid-run whether or
+  not the agent asked for it — is classified with `scanRetrieved` and withheld when it carries an
+  instruction, and the withholding is named in the returned notes rather than passed over. Both
+  channels were proved by reverting them to their pre-fix shape and watching the new assertions
+  go red; the assertions are on the prompt a fake client actually received, never on the
+  classifier. `packages/argus/test/no-orphan.test.ts` now fails if the import or the default is
+  deleted again.
+- **A CI step named "pinned tarball" pinned only the version.** Four steps across `ci.yml` and
+  `fork-nightly.yml` piped `curl` of a release archive straight into `tar`, so the name
+  described a check that did not exist: a re-uploaded asset, a mirror swap, or a compromised
+  release would have been downloaded, extracted, and *run* by the jobs that decide whether this
+  escrow is safe. Versions and digests now live in one file, `scripts/install-tool.sh`, which
+  compares `sha256sum --check --status --strict` before it extracts anything. Foundry v1.8.5's
+  digest was measured here and corroborated against the digest GitHub publishes for that asset;
+  gitleaks 8.24.0's is a first-contact measurement, because its published digest is `null`, and
+  the file says which is which. Proven capable of failing: a wrong expected digest exits 1 and
+  leaves the destination empty, an unknown tool exits 2, and removing `--strict` — or moving the
+  extraction above the check — turns a test red.
+- **A gate that matched its own prose went green over the defect it was written to catch.** The
+  wiring assertion first written for the above read `includes("--strict")` on the whole file and
+  stayed green after the flag was deleted from the command, because the script's comments explain
+  the flag. It now scans executable lines with comments filtered out, and the lesson is recorded
+  in `AGENTS.md`.
+- **`dlq.all()` was a queue nobody could read.** It was annotated "for an operator endpoint",
+  and no endpoint, caller or test existed; `/health` publishes `summary()`, which is the reachable
+  surface. It is removed rather than kept as intent. It cannot simply be exposed here: this API
+  is read-only and public, and a stored viem error carries the RPC URL — which is why the same
+  reason already keeps `lastDetail` out of the payload.
 - **Two money displays that were wrong on the page, both found while auditing something else.**
   `formatEth` truncated *after* converting through `Number()`, and `0.999999999999999999` is exactly
   `1.0` in a double — so a balance one wei short of an ETH printed as `1 ETH`, overstating an amount

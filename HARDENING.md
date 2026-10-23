@@ -88,6 +88,38 @@ current tree actually verifies, what it deliberately does not, and what is still
   in `apps/web/src/lib/paging.ts`, so the number a visitor supplies cannot ask for all of
   them. Mutation-proved: replacing the clamp with the row count turns 3 of the 8 tests in
   `apps/web/test/paging.test.ts` red.
+- **The prompt-injection guard runs by default, not by memory.** `@crucible/agent-security`
+  was built, tested, and listed as a `forge-runner` dependency while nothing in production
+  called it: `scripts/live-agent.mjs` constructs the agent with `{ client, model, temperature }`
+  and no wrapper, so `step()` fell through to a raw pass-ahead and the sponsor's spec — the
+  input whose own docstring promised it "is never an instruction" — reached the model verbatim.
+  `createForgedAgent` now defaults to `wrapUntrusted`, and the second untrusted channel
+  (suite stdout from a sandbox running the sponsor's code) is classified with
+  `scanRetrieved` and withheld when it carries an instruction, with the withholding named in
+  `notes` rather than silent. Proved by reverting each channel to its pre-fix shape and
+  watching the new tests go red — and the assertions are on the prompt the fake client
+  actually received, never on the classifier itself.
+- **The CI tool downloads are digest-pinned, which is what their step name always claimed.**
+  Three steps in `ci.yml` and one in `fork-nightly.yml` were called "install foundry (pinned
+  tarball)" while the body piped `curl` straight into `tar`: the pin was a version tag, and a
+  re-uploaded asset would have run. Versions and digests now live in
+  `scripts/install-tool.sh`, which verifies with `sha256sum --check --status --strict`
+  *before* extracting. Foundry v1.8.5's digest was measured here and corroborated against the
+  one GitHub publishes for that asset; gitleaks 8.24.0's is a first-contact measurement,
+  because the API returns `digest: null` for it — recorded as such in the file. Proven able to
+  fail three ways: a wrong expected digest exits 1 and extracts nothing, an unknown tool name
+  exits 2, and deleting `--strict` or moving `tar xzf` above the check turns
+  `packages/argus/test/no-orphan.test.ts` red.
+- **A helper nobody calls is deleted rather than documented.** `dlq.all()` was annotated
+  "for an operator endpoint", had no endpoint, no caller and no test; the health payload's
+  `summary()` is the reachable surface, and the full queue cannot be exposed on this API
+  because a viem error carries the RPC URL. `apps/api/src/dlq.ts` now holds the part that runs.
+
+**One caution this pass produced about its own gates:** the wiring assertion first written for
+`install-tool.sh` used `includes("--strict")` and stayed green after the flag was deleted from
+the check, because the script's *comments* explain the flag and contain the string. The test now
+scans executable lines with comments filtered out. A gate that matches prose in the file it
+guards is the decoration it exists to detect.
 
 ## Still open from this pass, by severity
 
@@ -138,6 +170,12 @@ much of the product's promise each one costs.
    absent. The consequence worth remembering is the reverse: Hall's weaker coverage (72%
    branches, 75% functions) and its payout behaviour are not evidence about anything a
    visitor's money does, and must not be read as such.
+   Read off the file on 2026-10-23, so the carve-out is stated in both directions: the Hall's
+   only outbound path is `settleTrial`'s `call{value: reward}` (`CrucibleHall.sol:191`) — it has
+   no `withdraw`, rescue or transfer of anything it holds — and `Invariants.t.sol:170` measures
+   `address(trials).balance`, so ETH donated to the Hall is outside the conservation equality by
+   construction. Funding it and never settling is a way to park value with no exit; it is not a
+   way to reach a visitor's stake.
 6. **The demo is ETH on a local Anvil chain.** It is not a USDC/Base deployment and has
    not been exercised against a production asset.
 7. **The API read model and rate limiter are process-local.** Neither is a global

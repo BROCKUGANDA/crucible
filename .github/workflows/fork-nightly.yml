@@ -44,17 +44,15 @@ jobs:
         with:
           submodules: recursive
 
-      - name: install foundry (pinned tarball)
+      - name: install foundry (digest-pinned tarball)
         run: |
           set -euo pipefail
-          V="v1.8.5"
           # Per-job private directory, same reason as ci.yml: three jobs extracting
           # into /tmp raced on the same `forge` binary and failed with "Text file
-          # busy", a different job each time.
+          # busy", a different job each time. The digest is verified by
+          # scripts/install-tool.sh before anything is unpacked.
           FOUNDRY_DIR="$RUNNER_TEMP/foundry"
-          mkdir -p "$FOUNDRY_DIR"
-          curl -fsSL "https://github.com/foundry-rs/foundry/releases/download/$V/foundry_${V}_linux_amd64.tar.gz" \
-            | tar xz -C "$FOUNDRY_DIR"
+          bash "$GITHUB_WORKSPACE/scripts/install-tool.sh" foundry "$FOUNDRY_DIR"
           echo "$FOUNDRY_DIR" >> "$GITHUB_PATH"
           export PATH="$FOUNDRY_DIR:$PATH"
           forge --version

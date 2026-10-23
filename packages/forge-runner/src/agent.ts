@@ -6,6 +6,7 @@ import {
   type WorkResult,
 } from "@crucible/smith";
 import { withBackoff } from "@crucible/smith";
+import { scanRetrieved, wrapUntrusted } from "@crucible/agent-security";
 
 /**
  * An LLM-backed agent for ForgeRunner.
@@ -46,6 +47,14 @@ export interface ForgedAgentOptions {
    *
    * Accepts the shape returned by `@crucible/agent-security`'s `wrapUntrusted`, which
    * reports `{ text, scan }`; `scan.action === "reject"` is treated as blocked.
+   *
+   * Supplying this **overrides** the guard, it does not remove one: the default is the
+   * deterministic classifier in `@crucible/agent-security`, so a caller that forgets the
+   * option gets a fenced spec rather than a raw one. The alternative was measured, not
+   * imagined — `scripts/live-agent.mjs` builds this agent and passes no wrapper at all,
+   * which meant the sponsor's spec reached the model verbatim while this file's own header
+   * comment claimed it never does. A guard that only exists when someone remembers to wire
+   * it is a guard that fails open.
    */
   wrapUntrusted?: (args: { source: string; content: string }) => {
     text: string;
@@ -102,9 +111,12 @@ export function createForgedAgent(opts: ForgedAgentOptions): SmithAgent {
     capabilities,
     async step(ctx: WorkContext): Promise<WorkResult> {
       const spec = readSpecFromContext(ctx);
-      const wrapped = opts.wrapUntrusted
-        ? opts.wrapUntrusted({ source: "trial-spec", content: spec })
-        : { text: spec, blocked: false };
+      const fence: (a: {
+        source: string;
+        content: string;
+      }) => { text: string; blocked?: boolean; scan?: { action: "accept" | "accept-quarantined" | "reject" } } =
+        opts.wrapUntrusted ?? ((a: { source: string; content: string }) => wrapUntrusted(a));
+      const wrapped = fence({ source: "trial-spec", content: spec });
 
       const blocked = wrapped.blocked ?? wrapped.scan?.action === "reject";
       if (blocked) {
@@ -135,8 +147,26 @@ export function createForgedAgent(opts: ForgedAgentOptions): SmithAgent {
         }
       }
 
+      // Suite output is untrusted by a second route: it is stdout from a sandbox running
+      // the sponsor's own code, so a hostile test name or a printed line can arrive mid-run
+      // without the agent choosing to look at it. `scanRetrieved` is the classifier written
+      // for exactly that channel. Losing one hint costs a worse patch; believing it hands
+      // the model an instruction.
+      let withheldOutput = false;
       if (ctx.lastOutput) {
-        parts.push("", "--- SUITE OUTPUT FROM YOUR LAST ITERATION ---", ctx.lastOutput.slice(0, 20_000));
+        const output = ctx.lastOutput.slice(0, 20_000);
+        const scan = scanRetrieved({
+          source: "suite-output",
+          content: output,
+          expectedKind: "stdout",
+        });
+        const fenced = scan.action === "reject" ? null : fence({ source: "suite-output", content: output });
+        const blocked = scan.action === "reject" || (fenced?.blocked ?? fenced?.scan?.action === "reject");
+        if (blocked || !fenced) {
+          withheldOutput = true;
+        } else {
+          parts.push("", "--- SUITE OUTPUT FROM YOUR LAST ITERATION (untrusted data) ---", fenced.text);
+        }
       }
 
       // When a guard is present, the call itself is privileged and must pass through it
@@ -164,7 +194,13 @@ export function createForgedAgent(opts: ForgedAgentOptions): SmithAgent {
       const patch = extractDiff(raw);
       return {
         patch,
-        notes: summariseResponse(raw, patch),
+        notes: [
+          summariseResponse(raw, patch),
+          withheldOutput &&
+            "Suite output from the previous iteration was withheld: it matched a retrieved-content injection pattern. The patch above was written without it.",
+        ]
+          .filter(Boolean)
+          .join(" "),
         done: patch.trim().length === 0 || /^\s*(done|complete|finished)\s*$/im.test(raw),
       };
     },
