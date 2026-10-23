@@ -79,4 +79,74 @@ describe("the verifier has a production caller", () => {
       "seed:check is not run by ci.yml, so a fixture edit could post a digest that resolves to nothing",
     ).toBe(true);
   });
+
+  /**
+   * The injection guard was this file's own failure mode in its worst shape: the package was
+   * built, its own suite passed, `forge-runner` listed it as a dependency — and nothing that
+   * runs in production called it. `scripts/live-agent.mjs` constructs the LLM agent without the
+   * `wrapUntrusted` option, so the sponsor's spec fell through to a raw pass-ahead while this
+   * module's header comment claimed it "is wrapped by wrapUntrusted before it ever reaches the
+   * model".
+   *
+   * The assertion is on the import statement and the default, not on a substring:
+   * `productionImporters` above matches comments, and forge-runner named
+   * `@crucible/agent-security` in two doc comments for weeks while importing nothing. A wiring
+   * check that reads prose as a caller is the decoration it exists to detect.
+   */
+  it("the prompt-injection guard is imported by the agent that runs it", () => {
+    const agent = readFileSync(path.join(ROOT, "packages/forge-runner/src/agent.ts"), "utf8");
+    expect(
+      /import\s*\{[^}]*\bwrapUntrusted\b[^}]*\}\s*from\s*"@crucible\/agent-security"/.test(agent),
+      "forge-runner no longer imports wrapUntrusted, so an untrusted spec can reach a model",
+    ).toBe(true);
+    expect(
+      /import\s*\{[^}]*\bscanRetrieved\b/.test(agent),
+      "scanRetrieved is gone, so suite output from the sandbox is no longer classified",
+    ).toBe(true);
+    expect(
+      agent.includes("opts.wrapUntrusted ??"),
+      "the guard is no longer the default — a caller that forgets the option now sends raw spec text",
+    ).toBe(true);
+  });
+
+  /**
+   * A step named "install foundry (pinned tarball)" that piped the download straight into
+   * `tar` was a pin on the version tag and nothing else. The digests now live in one file, and
+   * this check is what keeps the next agent from pasting a bare curl back into a workflow.
+   *
+   * Order matters, not just presence: verifying after extraction would let the job run the
+   * unverified binary for the length of the check.
+   */
+  it("no workflow fetches a build tool without the digest gate, and the gate checks before it extracts", () => {
+    const dir = path.join(ROOT, ".github/workflows");
+    for (const file of readdirSync(dir)) {
+      if (!file.endsWith(".yml")) continue;
+      const text = readFileSync(path.join(dir, file), "utf8");
+      expect(
+        text,
+        `${file} downloads a release archive directly — route it through scripts/install-tool.sh, ` +
+          "which compares a pinned digest before anything is unpacked",
+      ).not.toContain("releases/download");
+    }
+
+    const gate = readFileSync(path.join(ROOT, "scripts/install-tool.sh"), "utf8");
+    // Assert on the command that runs, never on the file's prose. This file documents how to
+    // re-measure a digest, and those comments contain both `sha256sum` and `--strict`; an
+    // `includes("--strict")` assertion here stayed green after the flag was deleted from the
+    // check itself. Caught by mutating the check on 2026-10-23 and watching nothing go red.
+    const lines = gate
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter((l) => !l.startsWith("#"));
+    const check = lines.find((l) => l.includes("sha256sum --check"));
+    const extract = lines.find((l) => l.startsWith("tar xzf"));
+    expect(check, "install-tool.sh has no sha256sum --check line that actually runs").toBeDefined();
+    expect(check, "the digest comparison must be --strict: a malformed line has to be an error").toContain(
+      "--strict",
+    );
+    expect(extract, "install-tool.sh no longer extracts anything").toBeDefined();
+    // Verification before extraction, not merely both present: a check that runs after
+    // `tar xzf` lets the job execute the unverified binary for the length of the comparison.
+    expect(lines.indexOf(check!)).toBeLessThan(lines.indexOf(extract!));
+  });
 });
