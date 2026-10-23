@@ -143,6 +143,30 @@ migration. See [`SECURITY.md`](SECURITY.md) before deploying value.
   a missing key or voice id hides the control and changes nothing else. See
   [`README.md`](README.md#the-voice-host-optional) and
   [`apps/api/src/voice.ts`](apps/api/src/voice.ts).
+- **A pending state for every route, and a boundary above the providers.** Ten
+  `loading.tsx` files answer while the read is in flight, each naming what it is
+  fetching (`reading the board from the chain`), and `global-error.tsx` covers the
+  one failure `error.tsx` cannot — a fault in the tree that contains the providers,
+  where Next's fallback would otherwise be a blank document. The root `loading.tsx`
+  and the boundary import nothing that touches the wallet, because Next composes the
+  root fallback around `/_global-error`, above `WagmiProvider`; the first draft did
+  not know that and `next build` failed on it. Neither page prints the error it
+  caught — a fault that reaches the boundary can carry a module path or a bundled URL,
+  and a visitor has no use for it while the console keeps it anyway. Both paths were
+  forced deliberately in a browser and the shipped rendering measured.
+- **The trial board is bounded and says what it withholds.** `/trials` renders at most
+  50 rows per page and puts the count beside them — `showing 50 of 137, newest first —
+  87 more behind` — with a control that grows the window in whole pages. The bound sits
+  on the *render*, not the fetch: `/snapshot` still supplies the whole index, because the
+  same payload drives the live counters and the SSE re-sync, and paginating the read
+  would trade the live view for a cursor. Integrators were already served — `/trials?limit=&cursor=`
+  paginates server-side. `shown` is floored to a multiple of the page size rather than
+  trusted, so the number a visitor clicks cannot ask the page for all of it.
+- **`AGENTS.md`** — the repository's own rules in one place for the next agent or
+  contributor: what the product is and the external PRD it deliberately is not, the
+  money invariants that may not be re-derived (no push settlement, exact conservation,
+  gas outside the books), the verification commands CI actually runs, the display
+  contract a judge reads against, and the Windows/Next traps that each cost an hour.
 
 ### Fixed
 

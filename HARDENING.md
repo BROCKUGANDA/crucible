@@ -74,6 +74,20 @@ current tree actually verifies, what it deliberately does not, and what is still
   CR=17 in `SPEC.md` where the committed blob has none, so the *same commit* hashes to two
   different digests depending on the machine. `seed-content.mjs` refuses any CR byte in a file
   it is about to pin rather than posting a machine-specific digest.
+- **A fault cannot produce a blank page, and a slow read cannot produce a dead one.**
+  Every route has a `loading.tsx`, and `global-error.tsx` covers failures above the
+  providers. Both boundary paths were forced on purpose and the shipped rendering read
+  out of the browser: a server-side root-layout fault is answered by Next's own document
+  (this code is not in it, so it cannot leak a stack trace), and a client-side fault shows
+  the forge panel on the design tokens. The build is what proved the shape: the first
+  `app/loading.tsx` wrapped the page in `Chrome`, Next composes that fallback around
+  `/_global-error` — outside `WagmiProvider` — and `next build` went red with
+  `useConfig must be used within WagmiProvider`. Fix verified by the same gate going green.
+- **No page renders an unbounded list from a live read.** `/trials` draws at most 50 rows
+  and states the withheld count; the click that grows the window is floored to a whole page
+  in `apps/web/src/lib/paging.ts`, so the number a visitor supplies cannot ask for all of
+  them. Mutation-proved: replacing the clamp with the row count turns 3 of the 8 tests in
+  `apps/web/test/paging.test.ts` red.
 
 ## Still open from this pass, by severity
 

@@ -145,3 +145,23 @@
   gap: var(--s-3);
   padding: var(--s-3);
 }
+
+/*
+ * Under the board: how much of it you are looking at, and the way to see the rest.
+ * The count is the point of the row, so it stays legible at the same weight as the
+ * list it describes rather than fading into a caption a reader skips.
+ */
+.board-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  margin-top: var(--s-3);
+  flex-wrap: wrap;
+}
+
+.board-foot__count {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+}
