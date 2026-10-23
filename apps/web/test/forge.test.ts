@@ -72,6 +72,18 @@ describe("formatEth", () => {
     expect(formatEth("1")).toBe("1 ETH");
   });
 
+  it("truncates a value a float would have rounded up", () => {
+    // The reason this helper parses digits instead of calling Number(): 0.999999999999999999 is
+    // not representable and becomes exactly 1.0, so a float path printed "1 ETH" for a balance
+    // strictly below it — overstating money, which is the one thing this file exists to prevent.
+    expect(formatEth("0.999999999999999999")).toBe("0.999 ETH");
+    expect(formatEth("0.000999999999999999")).toBe("0.000999 ETH");
+  });
+
+  it("keeps precision above the safe-integer range", () => {
+    expect(formatEth("9007199254740993.25")).toBe("9007199254740993.25 ETH");
+  });
+
   it("never throws on bad input", () => {
     expect(formatEth(null)).toBe("—");
     expect(formatEth("abc")).toBe("abc");

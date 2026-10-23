@@ -1,5 +1,6 @@
 import type { ApiSnapshot } from "@crucible/indexer";
 import { tierNumeral } from "@/lib/theme/roman";
+import { formatEth } from "@/lib/forge";
 import type { SettlementMark } from "./palette";
 
 /**
@@ -29,8 +30,10 @@ export interface ArenaFacts {
   smiths: number | null;
   settled: number | null;
   /**
-   * The protocol's settlement fee, in ETH. The platform's revenue, shown because
-   * the reader is entitled to know whose it is. Null until the snapshot arrives.
+   * The protocol's settlement fee, display-ready: an ETH figure carrying its own unit, because
+   * a bare decimal in a HUD of counts reads as one more tally. The platform's revenue, shown
+   * because the reader is entitled to know whose it is. Null until the snapshot arrives, and
+   * null is not zero — see the file header.
    */
   take: string | null;
   /** Block number of the settlement `mark` came from, so the reading is checkable. */
@@ -77,7 +80,7 @@ export function deriveFacts(snapshot: ApiSnapshot | null | undefined): ArenaFact
     trials: snapshot.counts?.all ?? null,
     smiths,
     settled: snapshot.counts?.settled ?? null,
-    take: snapshot.economics?.feesEth ?? null,
+    take: snapshot.economics?.feesEth == null ? null : formatEth(snapshot.economics.feesEth),
     markBlock: newestBlock < 0 ? null : newestBlock,
   };
 }

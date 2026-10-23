@@ -88,14 +88,21 @@ export function shortCid(cid: string | null | undefined): string {
 
 export function formatEth(eth: string | null | undefined): string {
   if (eth === null || eth === undefined) return "—";
-  const n = Number(eth);
-  if (!Number.isFinite(n)) return eth;
-  // Truncate, never round. This prints amounts an operator actually signed for, and `toFixed`
-  // rounds half away from zero — a 0.0249999 stake rendered as "0.025", larger than the chain
-  // holds. `api.ts`'s `maxDecimals` states the same rule; this helper predated it and kept rounding.
-  const dp = n < 0.001 ? 6 : 3;
-  const truncated = Math.trunc(n * 10 ** dp) / 10 ** dp;
-  return `${truncated.toFixed(dp).replace(/\.?0+$/, "")} ETH`;
+  const match = /^(-?)(\d+)(?:\.(\d+))?$/.exec(eth.trim());
+  if (!match) return eth;
+  const sign = match[1] ?? "";
+  const intRaw = match[2] ?? "";
+  const fracRaw = match[3] ?? "";
+  const int = intRaw.replace(/^0+/, "") || "0";
+  // Truncate, never round: this prints amounts an operator actually signed for, and a figure
+  // rounded up claims the chain holds more than it does. The arithmetic is done on the digits
+  // rather than through `Number(eth)` because the float rounds first and truncates never —
+  // "0.999999999999999999" is exactly 1.0 in a double, so a float path printed "1 ETH" for a
+  // balance below it. `api.ts`'s `maxDecimals` states the same rule for wei.
+  const isDust = int === "0" && fracRaw.padEnd(6, "0").slice(0, 6) < "001000";
+  const dp = isDust ? 6 : 3;
+  const frac = fracRaw.padEnd(dp, "0").slice(0, dp).replace(/0+$/, "");
+  return `${sign}${int}${frac ? `.${frac}` : ""} ETH`;
 }
 
 /** "2h 14m" / "48s" — a countdown that stays readable at a glance. */

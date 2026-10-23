@@ -137,58 +137,57 @@ much of the product's promise each one costs.
 9. **The demo scripts are not covered.** Coverage is measured over the contracts; the
    `script/` files that deploy and replay the loop are exercised by the demo and the
    golden path instead, which is why they read 0%.
-10. **Open from the 2026-10-22 race-and-edge audit.** Four were fixed in `apps/juror` (the salt
+10. **The 2026-10-22 race-and-edge audit.** Four were fixed in `apps/juror` (the salt
     outliving the broadcast, one bench per pass, a fresh chain-clock read per candidate, and a
     `FileState` that shared its forfeit map with a module constant) and each has a mutation that
-    now fails. These were found and are **not** fixed; they are listed with their evidence so the
-    next reader does not have to rediscover them.
+    now fails. Everything else the audit found has since been **re-checked against the tree**, because
+    a register that lists closed findings as open trains the next reader to ignore it.
 
-    - **A repaired block timestamp is thrown away.** `packages/indexer/src/scribe.ts:680` calls
-      `hydrateTimestamps(model, blockTimes, [])` with an empty id list, which `model.ts:592` turns
-      into "hydrate nothing" — and `:388` then clears `blockTimes`. A block whose `getBlock` failed
-      once keeps a *block number* in `createdAt`/`runAt` forever, so `breakWindowEndsAt`
-      (`model.ts:706`) publishes a 1970 deadline on `/snapshot`, `/trials` and `/stream`, with
-      nothing saying so. The comment above the call claims the row is re-hydrated. It is not.
-    - **An unclaimed trial's reward has no watcher.** `CrucibleTrials.sol:425` lets
-      `reclaimExpired` fire on `Status.Open` precisely so orphaned escrow has an exit, but
-      `packages/warden/src/policy.ts:88` lumps `open` with `settled` as "nothing to do". The newest
-      guard on the contract has no consumer: dead trials hold `MAX_TOTAL_ESCROWED` forever.
-    - **`Warden.start()` still decides on the host clock.** `packages/warden/src/warden.ts:100`
-      passes `Math.floor(Date.now() / 1000)` and `WardenDeps` has no `chainNow` seam, so the fix in
-      `apps/keeper` is only there because the keeper refuses to call `start()` and drives `sweep`
-      itself. Any other embedder inherits the bug, and on a warped demo chain settlement silently
-      stalls while `/health` answers.
-    - **Nothing reaps sandbox containers by label.** `SANDBOX_LABEL` (`sandbox.ts:88`) is documented
-      as the handle "whoever is cleaning up after a crashed verifier" would use; the only readers
-      are the tests. After a death that is not a timeout — an OOM-killed node, a container restart —
-      workloads stay alive holding CPU and memory claims.
-    - **The cursor write is not atomic, and its temp name is fixed.** `scribe.ts:279-293` writes the
-      temp file, then writes the real file, then unlinks the temp; there is no `renameSync`, so the
-      documented "written atomically" is not true and a death mid-write leaves a truncated cursor
-      that `loadCursor` treats as absent — a silent full re-scan. All three services read the same
-      `CRUSIBLE_CURSOR_FILE` name, so the shared temp path is shared too.
-    - **Registry fan-out has no ceiling.** `apps/api/src/server.ts:221` runs `Promise.all` over every
-      agent, three `readContract` calls each, every 2s, on a path with no throttler — and one
-      `registerAgent` at `MIN_BOND` permanently adds three reads per sweep. 500 agents is about 750
-      concurrent reads against the node the indexer shares.
-    - **"Catching up" is reported as "failing".** `scribe.ts:429` assigns the same `syncError` field
-      for a tick that threw and for a cursor legitimately behind the head, and `MAX_PROOF_BLOCKS_PER_TICK`
-      (64) means a 40,000-block gap takes ~5 minutes of `/health` 503 — during which `web`, which
-      waits on `api: service_healthy`, does not come up. The message even says "re-reading it".
-    - **Front-end money and clocks.** `apps/web/src/lib/wizard.ts:75` computes the bond in floats and
-      rounds to 4 decimals, so the advertised bond can be short of the contract's floor-divided wei
-      and the claim reverts `StakeTooSmall`; `apps/web/src/lib/forge.ts:93` `formatEth` uses
-      `toFixed` (rounds *up*), printing a stake larger than the operator signed for, against the rule
-      written in `api.ts:119`; `apps/web/src/app/trials/new/page.tsx:112` derives the deadline from
-      `Date.now()` against a `block.timestamp` guard, so on a warped chain every new trial reverts
-      `BadDeadline` and the error names the method, not the clock; `trials/[id]/page.tsx:53` closes
-      the break UI one second before the contract does (`>=` vs the contract's `>`).
-    - **`FEE_BPS` is read once at boot.** `apps/api/src/server.ts:274` fills it inside a single `try`
-      and never retries; a boot-time blip leaves the published fee rate `null` for the life of the
-      process. It is a `public constant`, so there is no reason not to re-read it.
-    - **`notifications()` has no memory.** `packages/warden/src/policy.ts:114` re-emits every
-      settled trial's `verdict-landed` on every pass; latent only because the keeper does not
-      attach a notifier today.
+    **Closed since the audit was written — all of these are ancestors of `develop`, and the text
+    below them was not amended when they landed.**
+
+    - Open-status reclaim (`6c98a93`): `policy.ts` now emits `unclaimed-past-deadline-reclaim`, so
+      the `Status.Open` exit at `CrucibleTrials.sol:425` has a consumer.
+    - `Warden.start()` host clock (`6c98a93`): `chainNow` is a required `WardenDeps` member, not a
+      default, so the wall clock is unreachable from `start()`.
+    - Cursor write atomicity (`6c98a93`): temp file carries the pid and the write ends in
+      `renameSync`, so a death mid-write no longer reads as an absent cursor.
+    - Registry fan-out ceiling (`6c98a93`): `server.ts` sweeps in batches of `ALLOY_SWEEP_BATCH` (8)
+      instead of one unbounded `Promise.all`.
+    - "Catching up" reported as "failing" (`6c98a93`): `syncStalled` is its own fact, so a cold
+      backfill no longer holds `/health` at 503.
+    - `FEE_BPS` read once at boot (`6c98a93`): `server.ts:230-233` re-reads it until it succeeds,
+      and `HARDENING`'s own anchor (`server.ts:274`) has since become unrelated code.
+    - A repaired block timestamp thrown away (`012756e`): `hydrateTimestamps` is called with the id
+      list omitted — which means every row — and the retry runs at the top of every tick, above the
+      caught-up early return, so a chain with no events still heals.
+    - Front-end bond arithmetic (`wizard.ts:76-100`): the bond is computed in `bigint` and rounded
+      **up** at display precision, because a required minimum printed low is a `StakeTooSmall` revert.
+    - `formatEth` rounding up (`forge.ts:96-98`): it truncates via `Math.trunc` before printing.
+
+    **Still open, with the evidence.**
+
+    - **Nothing reaps sandbox containers by label.** `SANDBOX_LABEL` (`packages/forge-runner/src/sandbox.ts:88`)
+      is documented as the handle "whoever is cleaning up after a crashed verifier" would use; the only
+      readers are the tests (`test/sandbox-docker.test.ts:73`). After a death that is not a timeout — an
+      OOM-killed node, a container restart — workloads stay alive holding CPU and memory claims.
+    - **A trial's deadline is derived from the wall clock.** `apps/web/src/app/trials/new/page.tsx:112`
+      computes `Math.floor(Date.now() / 1000) + hours * 3600` against a `block.timestamp` guard, so on a
+      deliberately warped demo chain every new trial reverts `BadDeadline` and the error names the
+      method, not the clock.
+    - **A chain deadline is compared against a server clock.** The same class, different page:
+      `apps/web/src/app/trials/[id]/page.tsx:53` gates the quench button on
+      `(serverNowMs ?? Date.now()) / 1000 >= trial.breakWindowEndsAt`. The comparison operator itself is
+      correct — the contract reverts `WindowOpen` while `block.timestamp < _windowEnd(t)`
+      (`CrucibleTrials.sol:589`), so it finalizes at `>=`, and the UI agrees. What is wrong is the left
+      side: `breakWindowEndsAt` is chain time, and neither `Date.now()` nor an HTTP `Date` header is the
+      node's clock. An earlier revision of this item called it an off-by-one; that was measured wrong
+      and is corrected here.
+    - **`notifications()` has no memory.** `packages/warden/src/policy.ts:133-164` re-emits every
+      settled trial's `verdict-landed` on every pass. Latent, and verified latent: `Warden.sweep`
+      guards the whole path on `if (this.deps.notifier)` (`warden.ts:76`) and the keeper only records
+      the count (`apps/keeper/src/main.ts:267`) — it attaches no notifier. The first embedder that
+      passes one turns this into a webhook that repeats every sweep, forever, per trial.
 
 
 Report a vulnerability as described in [`SECURITY.md`](SECURITY.md), not in a public issue.

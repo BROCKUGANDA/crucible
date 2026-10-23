@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { Chrome, ColdForge, Quenching, SignalLost } from "@/components/Chrome";
 import { useSnapshot, useCountdown } from "@/lib/useSnapshot";
-import { formatDuration, formatEth, shortHash } from "@/lib/forge";
+import { formatDuration, shortHash } from "@/lib/forge";
+import { formatWei, parseEth } from "@/lib/eth";
 
 /**
  * The Break — the skeptic board.
@@ -56,10 +57,15 @@ function BreakRow({
   serverNowMs: number | null;
 }) {
   const left = useCountdown(trial.breakWindowEndsAt, serverNowMs);
-  const reward = Number(trial.rewardEth);
-  const bond = Number(trial.bondEth);
-  const minStake = reward / 100;
-  const payout = bond * 0.3;
+  // Same arithmetic as `BreakPanel`, in wei. This board advertises the figure a skeptic is about
+  // to sign for, and the float version it replaced divided a reward by 100 and printed
+  // `toFixed(6)` — which rounds, so a floor like 0.0000004 advertised a stake below the
+  // contract's and the filing reverted. Full 18 decimals is deliberate: at that precision
+  // nothing rounds, so board and panel cannot disagree.
+  const rewardWei = parseEth(trial.rewardEth) ?? 0n;
+  const bondWei = parseEth(trial.bondEth) ?? 0n;
+  const minStakeWei = rewardWei / 100n;
+  const payoutWei = (bondWei * 30n) / 100n;
 
   return (
     <div className="surface break-card">
@@ -69,10 +75,10 @@ function BreakRow({
             TRIAL {trial.id} · run {shortHash(trial.runHash)}
           </p>
           <p className="break-card__payout">
-            Earn {payout.toFixed(4)} ETH if it breaks (30% of the {bond} ETH bond)
+            Earn {formatWei(payoutWei, 18)} ETH if it breaks (30% of the {trial.bondEth} ETH bond)
           </p>
           <p className="mono break-card__meta">
-            stake ≥ {minStake.toFixed(6)} ETH · window {formatDuration(left)}
+            stake ≥ {formatWei(minStakeWei, 18)} ETH · window {formatDuration(left)}
           </p>
         </div>
         <div className="break-card__side">
