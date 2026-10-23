@@ -249,4 +249,30 @@ much of the product's promise each one costs.
       lines has to re-check them after touching the file it points at.
 
 
+11. **The deployed keeper is two weeks older than the keeper in this repository, and no gate says
+    so.** `deploy.yml:182` swaps exactly two services — `docker compose up -d --no-deps web api` —
+    and the comment above it explains why `anvil` and `seed` are left alone: the chain must keep its
+    state. The keeper is not in that list either, and unlike those two it holds nothing a restart
+    would lose — it reads the chain, acts with a nonce, and `finalize` is permissionless and reverts
+    when already settled, so a recreated keeper resumes where it left off. Measured on the box on
+    2026-10-23: `crucible-keeper-1` reported `Up 2 weeks` while `crucible-web-1` and
+    `crucible-api-1` reported `Up 4 minutes`, and inside that container `env | grep -ci trace`
+    returns **0** and `docker inspect -f '{{json .Mounts}}'` returns `[]` — so the
+    `CRUCIBLE_TRACE_FILE` and the `trace:` volume that `compose.yaml` declares for it are declared
+    and not running. Consequences, each stated about the deployed process rather than the code:
+    the trace spine records nothing on the live box (an earlier entry in this register said the
+    trace was "gated behind an env var" — in compose it *is* set, and the daemon that would honour
+    it predates the line); the gas ledger and its `lowBalance` floor are not reporting;
+    `keeper.sweep` is not behind the kill switch that exists in the image; and the self-scheduling
+    sweep loop and the breaker around the acting hop are the hackathon build.
+
+    **Deliberately not fixed in this pass.** Restarting the daemon that moves money, and editing the
+    job that would restart it, are deployment actions on a shared box, and the omission carries no
+    recorded reason — so it is logged with evidence rather than closed by an unasked-for reboot.
+    The change is small: add `keeper` to that `up -d`, keeping `--no-deps`, which is the part that
+    protects anvil. The check that would keep it from silently ageing again is a version stamp —
+    have the keeper publish the commit it was built from and assert in `/health` that it matches
+    what `web` and `api` report, because "the image in the repo is the one running" is exactly the
+    assumption this finding cost two weeks to disprove.
+
 Report a vulnerability as described in [`SECURITY.md`](SECURITY.md), not in a public issue.
