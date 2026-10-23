@@ -43,6 +43,27 @@ was open (2026-10-12). Nothing after it is presented as in-window work.
 | 2026-10-21 | The four ERC-8004 fork tests now report as **skipped** when there is no fork, not as four green tests that asserted nothing | `crucible-contracts/test/Fork.t.sol` |
 | 2026-10-21 | `forge coverage` runs and gates the build: 97.4% of lines in `CrucibleTrials.sol`, 95.8% of statements, 89.9% of branches | `crucible-contracts/package.json`, `.github/workflows/ci.yml` |
 
+<!-- Backfilled on 2026-10-23: this table had fallen two days behind the ladder, which is the one
+failure mode a document like this cannot have. Rows are grouped by what a reader would go and look
+at, not by commit. -->
+
+| 2026-10-22 | The contract's newest exit had no watcher: an unclaimed trial could hold the escrow cap forever. The warden reclaims past `deadline + grace`, and `Warden.start()` takes a required chain-clock seam so the host wall clock is unreachable from it | `packages/warden/src/policy.ts`, `packages/warden/src/warden.ts`, `apps/keeper/src/main.ts` |
+| 2026-10-22 | Four path-level repairs in the same pass: the cursor write is temp-with-pid then `renameSync`, the registry fan-out is batched at eight instead of one unbounded `Promise.all`, `syncStalled` became its own fact so a cold backfill stops reporting 503, and a block timestamp the node refused is re-applied on a tick with no events | `packages/indexer/src/scribe.ts`, `apps/api/src/app.ts`, `apps/api/src/server.ts` |
+| 2026-10-22 | A required bond is never printed short and an amount is never printed high: the wizard computes in `bigint` and rounds up at display precision, and `formatEth` truncates instead of rounding through `toFixed` | `apps/web/src/lib/wizard.ts`, `apps/web/src/lib/forge.ts` |
+| 2026-10-22 | `FEE_BPS` is declared before the sweep that reads it and retried until it lands — one boot-time blip had left the published fee `null` for the life of the process | `apps/api/src/server.ts` |
+| 2026-10-22 | The `isArgus` ABI entry a merge silently dropped is restored, and the ladder's unparseable and mis-scoped `permissions:` keys moved to where GitHub accepts them | `packages/smith-sdk/src/abi.ts`, `.github/workflows/promote.yml` |
+| 2026-10-22 | The project got its **own** edge instead of a block inside another site's config, and the repair that used to live in the shared edge was retired with it | `deploy/edge/`, `docs/setup.md`, `docs/security-headers.md` |
+| 2026-10-22 | The sandbox timeout test now asserts the container is gone rather than that the caller stopped waiting — it had been green while the workload ran to completion | `packages/forge-runner/src/sandbox.ts`, `packages/forge-runner/test/sandbox-docker.test.ts` |
+| 2026-10-22 | Dependencies: Next 15.5 → 16.4, TypeScript 5.9 → 7.0, and the patch-and-minor group | `package-lock.json` |
+| 2026-10-23 | The hardening register was reconciled against the tree: the ten findings it called open were checked one at a time, seven were closed by named commits, and one was measured wrong and is corrected rather than preserved | `HARDENING.md` |
+| 2026-10-23 | Two live money-display bugs: `formatEth` truncated *after* `Number()`, so one wei short of an ETH printed as `1 ETH`; and the Break board advertised its minimum stake through `toFixed(6)`, which can round below the contract's floor | `apps/web/src/lib/forge.ts`, `apps/web/src/app/bounties/page.tsx`, `apps/web/test/eth.test.ts` |
+| 2026-10-23 | The UI counts against the **chain's** clock: `/snapshot` publishes `headTimestamp` and every countdown and window test anchors on `max(headTimestamp + 1, serverNowMs)` — the rule the node uses to stamp its next block | `packages/indexer/src/scribe.ts`, `apps/web/src/lib/chainClock.ts`, `apps/web/src/lib/useSnapshot.ts` |
+| 2026-10-23 | The keeper now says what it has spent: gas taken from each receipt, its wallet balance, and an optional floor that raises `lowBalance`. A cost it cannot learn is reported as unresolved, not as zero, and none of it enters escrow accounting | `apps/keeper/src/gas-ledger.ts`, `apps/keeper/src/main.ts` |
+| 2026-10-23 | A red contract campaign now leaves evidence: a run-id seed echoed as a literal replay command, one worker, and `cache/invariant` uploaded on failure — because a printed seed has not yet been shown to reproduce a failure here | `.github/workflows/ci.yml` |
+| 2026-10-23 | The backoff test was asserting a `Math.random()` draw and failed about one run in sixty-five; it now pins the draw and checks the doubling schedule it never actually checked | `packages/smith-sdk/test/resilience.test.ts` |
+| 2026-10-23 | Reviewer-facing numbers measured rather than carried: **1166 tests** (1031 TypeScript + 135 Foundry), and coverage restated from the run CI gates — `CrucibleTrials` 97.5 / 95.9 / 90.2, `AlloyRegistry` 97.0 / 97.2 / 92.3, `ReputationBridge` 94.3 / 93.0 / 82.4, `CrucibleHall` 93.2 / 92.1 / 72.2 | `README.md` |
+| 2026-10-23 | `/assay` states the fee in the words a visitor reads — `5% · 500 bps` — keeping the chain's own unit beside it so the figure stays checkable | `apps/web/src/lib/ops.ts` |
+
 ## The shape of the outage
 
 The pipeline stopped for eight days without saying so. The site kept serving
