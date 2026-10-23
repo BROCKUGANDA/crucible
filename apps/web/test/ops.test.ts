@@ -3,6 +3,7 @@ import type { ApiSnapshot } from "@crucible/indexer";
 import {
   UNKNOWN,
   deriveOps,
+  formatFeeRate,
   num,
   text,
   type HealthPayload,
@@ -331,7 +332,28 @@ describe("trial counts and the books", () => {
     expect(view.fees).toBe("0.07 ETH");
     expect(view.paidOut).toBe("1.4 ETH");
     expect(view.paidSettlements).toBe("4");
-    expect(view.feeRate).toBe("500 bps");
+    // The plain rate leads and the stored read follows: every other label on this page is written
+    // for a reader ("Fees kept", not `feesEth`), so a bare basis-points figure was the one line
+    // that asked a judge to do the conversion.
+    expect(view.feeRate).toBe("5% · 500 bps");
+  });
+
+  describe("formatFeeRate", () => {
+    it("states the rate a visitor reads and keeps the chain's unit beside it", () => {
+      expect(formatFeeRate(500)).toBe("5% · 500 bps");
+      expect(formatFeeRate(5)).toBe("0.05% · 5 bps");
+      expect(formatFeeRate(50)).toBe("0.5% · 50 bps");
+      expect(formatFeeRate(555)).toBe("5.55% · 555 bps");
+      expect(formatFeeRate(10_000)).toBe("100% · 10000 bps");
+      expect(formatFeeRate(0)).toBe("0% · 0 bps");
+    });
+
+    it("never turns an unread or impossible rate into a number", () => {
+      expect(formatFeeRate(null)).toBe(UNKNOWN);
+      expect(formatFeeRate(undefined)).toBe(UNKNOWN);
+      expect(formatFeeRate(Number.NaN)).toBe(UNKNOWN);
+      expect(formatFeeRate(-1)).toBe(UNKNOWN);
+    });
   });
 
   it("refuses to render an unread fee rate as zero", () => {
