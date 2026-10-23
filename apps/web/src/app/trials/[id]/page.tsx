@@ -23,11 +23,11 @@ const TABS = ["The charge", "Struck work", "Break attempts", "The quench"] as co
 export default function TrialDetailPage() {
   const params = useParams<{ id: string }>();
   const id = Number(params?.id);
-  const { data, error, loading, serverNowMs } = useSnapshot();
+  const { data, error, loading, chainNowMs } = useSnapshot();
   const trial = data?.trials.find((t) => t.id === id);
 
-  const cools = useCountdown(trial?.deadlineAt ?? null, serverNowMs);
-  const breakLeft = useCountdown(trial?.breakWindowEndsAt ?? null, serverNowMs);
+  const cools = useCountdown(trial?.deadlineAt ?? null, chainNowMs);
+  const breakLeft = useCountdown(trial?.breakWindowEndsAt ?? null, chainNowMs);
 
   const [tab, setTab] = useState(0);
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
@@ -50,7 +50,11 @@ export default function TrialDetailPage() {
   const quenchable =
     trial?.status === "judging" &&
     trial.breakWindowEndsAt !== null &&
-    (serverNowMs ?? Date.now()) / 1000 >= trial.breakWindowEndsAt;
+    // `>=` is the contract's own boundary, not one second early: `finalize` reverts `WindowOpen`
+    // while `block.timestamp < _windowEnd`, so the window is closed at exactly `_windowEnd`.
+    // The anchor matters more than the operator here — a wall clock reads a warped chain as closed
+    // while the node still holds the window open, and the button then offers a revert.
+    (chainNowMs ?? Date.now()) / 1000 >= trial.breakWindowEndsAt;
 
   if (loading) {
     return (

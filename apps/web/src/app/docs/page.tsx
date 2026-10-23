@@ -73,8 +73,9 @@ designed answer to "no evidence" — not a verdict, and not a pass.`}</p>
       <section className="surface doc">
         <h2 className="doc__title">What it costs</h2>
         <p className="doc__body">{`Reading is free. Posting a trial is free. The protocol takes its cut only when work is
-actually paid out, and the number is fixed in the contract rather than copied onto this
-site — so the figure here and the figure on the chain cannot drift apart.`}</p>
+actually paid out. The figure below is typed into this page, and the contract's own constant is
+the source of it — so the two can disagree. If they ever do, the chain is right and this page is
+stale; /clock reads the number off the node instead of repeating it.`}</p>
         <pre className="mono doc__code">{`when work is paid   5% of the reward, to the treasury
 posting a trial     free
 reading the site    free

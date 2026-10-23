@@ -746,6 +746,47 @@ describe("bloom cross-check on a quiet window", () => {
     expect(scribe.status.syncError).toBeNull();
     node.close();
   });
+
+  /**
+   * The clock a browser anchors chain deadlines on.
+   *
+   * The contract enforces `block.timestamp`, and this deployment warps that away from wall time
+   * on purpose, so a client with only the API's `now` can show a window closing early or late.
+   * The indexer already reads block bodies to prove a quiet range holds nothing, and it must
+   * publish what it learned there rather than make every visitor ask the node.
+   */
+  it("publishes no chain clock before it has read a block", async () => {
+    const node = await lyingNode({ logs: [], quietBlocks: true, head: 3 });
+    const scribe = new Scribe({
+      trialsAddress: node.address,
+      alloyAddress: node.address,
+      chain: foundry,
+      rpcUrl: node.url,
+      fromBlock: 0n,
+    });
+
+    // Null, not zero. Zero is 1970, and a countdown handed 1970 reports every deadline as past.
+    expect(scribe.status.headTimestamp).toBeNull();
+    node.close();
+  });
+
+  it("publishes the timestamp of the block it read, taken while proving the range quiet", async () => {
+    const node = await lyingNode({ logs: [], quietBlocks: true, head: 3 });
+    const scribe = new Scribe({
+      trialsAddress: node.address,
+      alloyAddress: node.address,
+      chain: foundry,
+      rpcUrl: node.url,
+      fromBlock: 0n,
+    });
+
+    await scribe.sync();
+
+    // The fixture stamps every block 0x67000000. The point is that a chain with no events at all
+    // still yields a clock: a walk that discards the timestamps it already paid for is the bug.
+    expect(scribe.status.headTimestamp).toBe(Number(0x67000000n));
+    node.close();
+  });
 });
 
 /**

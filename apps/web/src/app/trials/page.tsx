@@ -32,7 +32,7 @@ const FILTERS: { key: TrialStatus | "all"; label: string }[] = [
 ];
 
 export default function TrialsPage() {
-  const { data, error, loading, serverNowMs } = useSnapshot();
+  const { data, error, loading, chainNowMs } = useSnapshot();
   const [active, setActive] = useState<TrialStatus | "all">("all");
 
   const rows = data ? data.trials.filter((t) => active === "all" || t.status === active) : [];
@@ -86,7 +86,7 @@ export default function TrialsPage() {
           </button>
         </div>
       ) : null}
-      {data && rows.length > 0 ? <TrialTable trials={rows} serverNowMs={serverNowMs} /> : null}
+      {data && rows.length > 0 ? <TrialTable trials={rows} chainNowMs={chainNowMs} /> : null}
     </Chrome>
   );
 }
