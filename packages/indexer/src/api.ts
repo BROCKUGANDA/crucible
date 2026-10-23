@@ -255,6 +255,14 @@ export function toApiHallEntry(e: HallEntry, tier: number | null = null): ApiHal
 
 export interface ApiSnapshot {
   now: number;
+  /**
+   * Chain seconds at the highest block the index has read, or `null` when nothing has been read
+   * yet. `now` is the API host's wall clock; every deadline this payload carries
+   * (`deadlineAt`, `breakWindowEndsAt`) is a claim about `block.timestamp`, and on a demo chain
+   * that is warped on purpose the two clocks are not the same clock. A client anchors on
+   * `max(headTimestamp + 1, now)` — the rule the node uses to stamp its next block.
+   */
+  headTimestamp: number | null;
   trials: ApiTrial[];
   agents: ApiAgent[];
   hall: ApiHallEntry[];
@@ -352,6 +360,8 @@ export function buildSnapshot(
      * different answer from zero.
      */
     feeBps?: number | null;
+    /** Chain seconds at the highest block read; see `ApiSnapshot.headTimestamp`. */
+    headTimestamp?: number | null;
   },
 ): ApiSnapshot {
   const trials = listTrials(model).map((t) => toApiTrial(t, model));
@@ -378,6 +388,7 @@ export function buildSnapshot(
 
   return {
     now: opts.now,
+    headTimestamp: opts.headTimestamp ?? null,
     trials,
     agents,
     hall: hall(model).map((e) => toApiHallEntry(e, alloyById.get(e.agentId)?.tier ?? null)),

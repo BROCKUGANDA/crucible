@@ -2,14 +2,18 @@
 
 import { useEffect, useState } from "react";
 import type { ApiSnapshot } from "@crucible/indexer";
+import { chainNowMs } from "./chainClock";
 import type { HealthPayload, ReadyPayload } from "./ops";
 
 /**
  * Snapshot polling.
  *
- * The API's `now` is the server's clock, so countdowns are measured against that
- * rather than the browser's: a client with a skewed clock would otherwise show a
- * window that closed hours ago as still open.
+ * Countdowns are never measured against the browser's clock: a client skewed by a few minutes
+ * would show a window that closed hours ago as still open. What they are measured against is the
+ * chain's clock — `max(headTimestamp + 1, the API's now)` — because the contract enforces
+ * `block.timestamp`, and this demo warps that away from wall time on purpose. The API's own clock
+ * is still exposed as `serverNowMs`, for the figures that clock wrote, such as a DLQ entry's age.
+ * See `lib/chainClock.ts` for why neither clock is enough on its own.
  */
 
 /** Where the browser reaches the API. Baked into the bundle at build time. */
@@ -42,8 +46,18 @@ export interface SnapshotState {
   data: ApiSnapshot | null;
   error: string | null;
   loading: boolean;
-  /** server clock, ms — the reference for every countdown */
+  /**
+   * The API host's wall clock, ms. Use it only against something that clock wrote — the DLQ's
+   * `lastAt`, a probe's age. It is not the reference for a chain deadline: the contract enforces
+   * `block.timestamp`, and this demo warps that on purpose.
+   */
   serverNowMs: number | null;
+  /**
+   * `max(headTimestamp + 1, serverNowMs)` — the timestamp the node will stamp its next block with,
+   * which is the only clock a `block.timestamp` guard can be counted against. Every countdown and
+   * every "is this window closed" test on the site belongs here. See `lib/chainClock.ts`.
+   */
+  chainNowMs: number | null;
 }
 
 export function useSnapshot(pollMs = FALLBACK_POLL_MS): SnapshotState {
@@ -52,6 +66,7 @@ export function useSnapshot(pollMs = FALLBACK_POLL_MS): SnapshotState {
     error: null,
     loading: true,
     serverNowMs: null,
+    chainNowMs: null,
   });
 
   useEffect(() => {
@@ -95,7 +110,14 @@ export function useSnapshot(pollMs = FALLBACK_POLL_MS): SnapshotState {
         }
         if (!res.ok) throw new Error(`api responded ${res.status}`);
         const data = (await res.json()) as ApiSnapshot;
-        if (alive) setState({ data, error: null, loading: false, serverNowMs: data.now });
+        if (alive)
+          setState({
+            data,
+            error: null,
+            loading: false,
+            serverNowMs: data.now,
+            chainNowMs: chainNowMs(data),
+          });
       } catch (err) {
         if (!alive || (err as Error).name === "AbortError") return;
         setState((s) => ({
@@ -137,7 +159,13 @@ export function useSnapshot(pollMs = FALLBACK_POLL_MS): SnapshotState {
           }
           // The stream is live, so the polling fallback has nothing left to do.
           stopPolling();
-          setState({ data, error: null, loading: false, serverNowMs: data.now });
+          setState({
+            data,
+            error: null,
+            loading: false,
+            serverNowMs: data.now,
+            chainNowMs: chainNowMs(data),
+          });
         } catch {
           // a malformed event is not a lost signal; wait for the next
         }
@@ -310,15 +338,15 @@ export function useOps(serverNowMs: number | null): OpsState {
  */
 export function useCountdown(
   targetSeconds: number | null,
-  serverNowMs: number | null,
+  nowMs: number | null,
 ): number | null {
   const [offsetSec, setOffsetSec] = useState(0);
 
   useEffect(() => {
-    if (serverNowMs === null) return;
+    if (nowMs === null) return;
     // Re-anchor whenever a fresh snapshot arrives.
     setOffsetSec(0);
-  }, [serverNowMs]);
+  }, [nowMs]);
 
   useEffect(() => {
     const t = setInterval(() => setOffsetSec((s) => s + 1), 1000);
@@ -326,6 +354,6 @@ export function useCountdown(
   }, []);
 
   if (targetSeconds === null) return null;
-  const base = serverNowMs === null ? Date.now() : serverNowMs;
+  const base = nowMs === null ? Date.now() : nowMs;
   return Math.max(0, Math.floor(targetSeconds - base / 1000 - offsetSec));
 }

@@ -13,7 +13,7 @@ import { formatWei, parseEth } from "@/lib/eth";
  * design rests on a skeptic knowing they are betting their own stake.
  */
 export default function BountiesPage() {
-  const { data, error, loading, serverNowMs } = useSnapshot();
+  const { data, error, loading, chainNowMs } = useSnapshot();
   const breakable = data?.trials.filter((t) => t.status === "judging") ?? [];
 
   return (
@@ -42,7 +42,7 @@ export default function BountiesPage() {
 
       <div className="board">
         {breakable.map((t) => (
-          <BreakRow key={t.id} trial={t} serverNowMs={serverNowMs} />
+          <BreakRow key={t.id} trial={t} chainNowMs={chainNowMs} />
         ))}
       </div>
     </Chrome>
@@ -51,12 +51,12 @@ export default function BountiesPage() {
 
 function BreakRow({
   trial,
-  serverNowMs,
+  chainNowMs,
 }: {
   trial: NonNullable<ReturnType<typeof useSnapshot>["data"]>["trials"][number];
-  serverNowMs: number | null;
+  chainNowMs: number | null;
 }) {
-  const left = useCountdown(trial.breakWindowEndsAt, serverNowMs);
+  const left = useCountdown(trial.breakWindowEndsAt, chainNowMs);
   // Same arithmetic as `BreakPanel`, in wei. This board advertises the figure a skeptic is about
   // to sign for, and the float version it replaced divided a reward by 100 and printed
   // `toFixed(6)` — which rounds, so a floor like 0.0000004 advertised a stake below the

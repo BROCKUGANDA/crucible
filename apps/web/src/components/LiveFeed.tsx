@@ -10,7 +10,7 @@ import { TrialTable } from "@/components/TrialTable";
  * rest of the page stays server-rendered and prerenders without the API.
  */
 export function LiveFeedInner() {
-  const { data, error, loading, serverNowMs } = useSnapshot();
+  const { data, error, loading, chainNowMs } = useSnapshot();
 
   if (loading) return <Quenching label="quenching trials…" />;
   if (error) return <SignalLost message={error} />;
@@ -38,5 +38,5 @@ export function LiveFeedInner() {
     );
   }
 
-  return <TrialTable trials={data.trials.slice(0, 5)} serverNowMs={serverNowMs} />;
+  return <TrialTable trials={data.trials.slice(0, 5)} chainNowMs={chainNowMs} />;
 }
