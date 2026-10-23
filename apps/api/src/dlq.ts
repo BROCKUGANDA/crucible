@@ -66,11 +66,6 @@ export const dlq = {
     };
   },
 
-  /** Newest last. For an operator endpoint, not for the health poll. */
-  all(): readonly DeadLetter[] {
-    return [...entries];
-  },
-
   /** Test seam. */
   clear(): void {
     entries.length = 0;

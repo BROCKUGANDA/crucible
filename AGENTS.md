@@ -65,6 +65,12 @@ node scripts/coverage-gate.mjs coverage-summary.txt           # per-contract flo
 - Same commit, green then red, is a measurement claim about your instrument. Name the quantity the
   test depends on before relabelling it "flaky" — one gate here asserted `Math.random()` output and
   failed 1 run in 65.
+- **A wiring check must read the command that runs, not the file's prose.** A
+  `includes("--strict")` assertion written over `scripts/install-tool.sh` stayed green after the
+  flag was deleted from the `sha256sum` line, because the script's comments explain the flag and
+  contain the string. Filter comment lines, or match the executed statement. The same trap is why
+  "the package is named in a `src` file" is not evidence it is imported — say which file imports
+  it, and assert the import.
 
 ## Display rules a judge reads against
 

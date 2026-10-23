@@ -27,10 +27,14 @@ jobs:
       # any foundry process is running. The tarball lands in this job's own
       # temporary directory and joins PATH, so it never touches the host's
       # ~/.foundry and never collides with the other jobs' copy.
-      - name: install foundry (pinned tarball)
+      #
+      # The digest lives in `scripts/install-tool.sh`, not here, and that file is what
+      # actually compares it. This step used to be named "pinned tarball" while the body
+      # piped the download straight into `tar` — the pin was the version tag, and a
+      # re-uploaded asset would have passed. One tool, one version, one digest, one file.
+      - name: install foundry (digest-pinned tarball)
         run: |
           set -euo pipefail
-          V="v1.8.5"
           # Each job gets its OWN foundry directory.
           #
           # The three jobs that need forge used to extract the tarball into
@@ -41,9 +45,7 @@ jobs:
           # kind of failure to chase. RUNNER_TEMP is per-job, so the same
           # tarball lands somewhere private to each one.
           FOUNDRY_DIR="$RUNNER_TEMP/foundry"
-          mkdir -p "$FOUNDRY_DIR"
-          curl -fsSL "https://github.com/foundry-rs/foundry/releases/download/$V/foundry_${V}_linux_amd64.tar.gz" \
-            | tar xz -C "$FOUNDRY_DIR"
+          bash "$GITHUB_WORKSPACE/scripts/install-tool.sh" foundry "$FOUNDRY_DIR"
           echo "$FOUNDRY_DIR" >> "$GITHUB_PATH"
           # $GITHUB_PATH only reaches *later* steps, so this step exports its own
           # or `forge --version` is the last thing it manages to do.
@@ -142,10 +144,9 @@ jobs:
 
       # See the contracts job: a pinned tarball, because foundryup cannot run
       # beside the production anvil.
-      - name: install foundry (pinned tarball)
+      - name: install foundry (digest-pinned tarball)
         run: |
           set -euo pipefail
-          V="v1.8.5"
           # Each job gets its OWN foundry directory.
           #
           # The three jobs that need forge used to extract the tarball into
@@ -156,9 +157,7 @@ jobs:
           # kind of failure to chase. RUNNER_TEMP is per-job, so the same
           # tarball lands somewhere private to each one.
           FOUNDRY_DIR="$RUNNER_TEMP/foundry"
-          mkdir -p "$FOUNDRY_DIR"
-          curl -fsSL "https://github.com/foundry-rs/foundry/releases/download/$V/foundry_${V}_linux_amd64.tar.gz" \
-            | tar xz -C "$FOUNDRY_DIR"
+          bash "$GITHUB_WORKSPACE/scripts/install-tool.sh" foundry "$FOUNDRY_DIR"
           echo "$FOUNDRY_DIR" >> "$GITHUB_PATH"
           # $GITHUB_PATH only reaches *later* steps, so this step exports its own
           # or `forge --version` is the last thing it manages to do.
@@ -191,10 +190,9 @@ jobs:
         with:
           submodules: recursive
 
-      - name: install foundry (pinned tarball)
+      - name: install foundry (digest-pinned tarball)
         run: |
           set -euo pipefail
-          V="v1.8.5"
           # Each job gets its OWN foundry directory.
           #
           # The three jobs that need forge used to extract the tarball into
@@ -205,9 +203,7 @@ jobs:
           # kind of failure to chase. RUNNER_TEMP is per-job, so the same
           # tarball lands somewhere private to each one.
           FOUNDRY_DIR="$RUNNER_TEMP/foundry"
-          mkdir -p "$FOUNDRY_DIR"
-          curl -fsSL "https://github.com/foundry-rs/foundry/releases/download/$V/foundry_${V}_linux_amd64.tar.gz" \
-            | tar xz -C "$FOUNDRY_DIR"
+          bash "$GITHUB_WORKSPACE/scripts/install-tool.sh" foundry "$FOUNDRY_DIR"
           echo "$FOUNDRY_DIR" >> "$GITHUB_PATH"
           # $GITHUB_PATH only reaches *later* steps, so this step exports its own
           # or `forge --version` is the last thing it manages to do.
@@ -251,13 +247,15 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: install gitleaks (pinned tarball)
+      - name: install gitleaks (digest-pinned tarball)
         run: |
           set -euo pipefail
-          V="8.24.0"
-          mkdir -p "$RUNNER_TEMP/gitleaks"
-          curl -fsSL "https://github.com/gitleaks/gitleaks/releases/download/v$V/gitleaks_${V}_linux_x64.tar.gz" \
-            | tar xz -C "$RUNNER_TEMP/gitleaks"
+          # The digest for this asset is the one thing here that GitHub does not publish:
+          # `gh api repos/gitleaks/gitleaks/releases/tags/v8.24.0` returns `digest: null`,
+          # so scripts/install-tool.sh carries a first-contact measurement taken on
+          # 2026-10-23. Foundry's, by contrast, was corroborated against the digest GitHub
+          # does publish. Both are compared before anything is extracted either way.
+          bash "$GITHUB_WORKSPACE/scripts/install-tool.sh" gitleaks "$RUNNER_TEMP/gitleaks"
           "$RUNNER_TEMP/gitleaks/gitleaks" version
 
       - name: scan history
