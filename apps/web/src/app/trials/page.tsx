@@ -6,6 +6,7 @@ import type { TrialStatus } from "@crucible/indexer";
 import { Chrome, ColdForge, Quenching, SignalLost } from "@/components/Chrome";
 import { TrialTable } from "@/components/TrialTable";
 import { useSnapshot } from "@/lib/useSnapshot";
+import { TRIALS_PAGE, windowed, windowLabel } from "@/lib/paging";
 
 /**
  * The board of trials.
@@ -34,8 +35,10 @@ const FILTERS: { key: TrialStatus | "all"; label: string }[] = [
 export default function TrialsPage() {
   const { data, error, loading, chainNowMs } = useSnapshot();
   const [active, setActive] = useState<TrialStatus | "all">("all");
+  const [shown, setShown] = useState(TRIALS_PAGE);
 
   const rows = data ? data.trials.filter((t) => active === "all" || t.status === active) : [];
+  const page = windowed(rows, shown);
 
   return (
     <Chrome>
@@ -57,7 +60,12 @@ export default function TrialsPage() {
               className="filter-chip"
               data-selected={selected || undefined}
               aria-pressed={selected}
-              onClick={() => setActive(f.key)}
+              onClick={() => {
+                // Switching filters is a new question, so it gets a fresh window rather than
+                // inheriting however far the reader had scrolled on the previous one.
+                setActive(f.key);
+                setShown(TRIALS_PAGE);
+              }}
             >
               {f.label}
               {count !== null ? <span className="filter-chip__count">{count}</span> : null}
@@ -81,12 +89,41 @@ export default function TrialsPage() {
         // never stranded on an empty tab with no way back to the whole board.
         <div className="surface cold-forge">
           <p className="cold-forge__line">{emptyFor(active)}</p>
-          <button type="button" className="btn btn-primary" onClick={() => setActive("all")}>
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => {
+              setActive("all");
+              setShown(TRIALS_PAGE);
+            }}
+          >
             Show every trial
           </button>
         </div>
       ) : null}
-      {data && rows.length > 0 ? <TrialTable trials={rows} chainNowMs={chainNowMs} /> : null}
+      {data && page.visible.length > 0 ? (
+        <TrialTable trials={page.visible} chainNowMs={chainNowMs} />
+      ) : null}
+
+      {data && page.total > 0 ? (
+        // The count is stated whether or not anything is being withheld. A board that shows 50
+        // rows and says nothing reads as the whole board, and the missing trials are the ones a
+        // reader would otherwise assume were never posted.
+        <div className="board-foot">
+          <p className="board-foot__count" aria-live="polite">
+            {windowLabel(page)}
+          </p>
+          {page.hasMore ? (
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={() => setShown((s) => s + TRIALS_PAGE)}
+            >
+              Show {Math.min(TRIALS_PAGE, page.withheld)} more
+            </button>
+          ) : null}
+        </div>
+      ) : null}
     </Chrome>
   );
 }
