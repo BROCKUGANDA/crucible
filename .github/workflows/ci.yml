@@ -57,7 +57,23 @@ jobs:
         run: forge build --sizes
 
       - name: test
-        run: forge test -vv
+        run: |
+          set -o pipefail
+          # A seed derived from the run id, echoed so the log states the replay command, with the
+          # campaign held to ONE worker so a replay has fewer moving parts than an auto-sized
+          # fan-out across however many cores the runner happens to have.
+          #
+          # Being straight about what this buys: when a conservation invariant failed once on
+          # `develop`, the seed forge printed did NOT bring the failure back locally - not at 1,
+          # 2, 4 or 8 workers, not under the same pinned forge v1.8.5 and the same
+          # `coverage --ir-minimum`. 40-plus attempts found nothing. So do not read a clean replay
+          # here as proof the original run was wrong; the honest position is that a printed seed has
+          # not yet been shown to be sufficient, which is exactly why the campaign state is
+          # uploaded below instead of trusted to a log line.
+          SEED=$(printf '0x%064x' "${{ github.run_id }}")
+          echo "fuzz seed: $SEED"
+          echo "replay with: forge test -vv --fuzz-seed $SEED --invariant-workers 1"
+          forge test -vv --fuzz-seed "$SEED" --invariant-workers 1
 
       - name: gas report
         run: forge test --gas-report | tee gas-report.txt
@@ -75,7 +91,13 @@ jobs:
       - name: coverage
         run: |
           set -o pipefail
-          forge coverage --ir-minimum --report summary | tee coverage-summary.txt
+          # Same seed and worker count as the test step, where the limits of that handle are
+          # stated honestly. This is the step that actually caught the invariant.
+          SEED=$(printf '0x%064x' "${{ github.run_id }}")
+          echo "fuzz seed: $SEED"
+          echo "replay with: forge coverage --ir-minimum --report summary --fuzz-seed $SEED --invariant-workers 1"
+          forge coverage --ir-minimum --report summary --fuzz-seed "$SEED" --invariant-workers 1 \
+            | tee coverage-summary.txt
 
       # The floor gate is per production contract, not the `Total` row: the total is 66.5%
       # because `script/*.sol` are 0% by design (they are exercised by the demo and the
@@ -84,6 +106,26 @@ jobs:
       # not fail. See scripts/coverage-gate.mjs for the floors and the targets behind them.
       - name: coverage floor gate
         run: node ../scripts/coverage-gate.mjs coverage-summary.txt
+
+      # What a shrunk invariant counterexample is worth was learned the hard way: forge reported
+      # `original: 4, shrunk: 1` for a conservation failure and printed that single call, and the
+      # call does not fail the invariant when replayed by hand (a self-funded `registerAgent`
+      # leaves balance and books equal, and a second one reverts `AlreadyRegistered`). Whatever the
+      # shrunk line was pointing at, it was not a reproducible cause. foundry.toml already persists
+      # campaigns to `failure_persist_dir` (`cache/invariant`, `cache/fuzz`); CI never collected
+      # them, so the only surviving evidence was the misleading shrunk line. Upload them on any red
+      # so the next failure can be read rather than reasoned about. `if-no-files-found: ignore`
+      # because most failures produce no campaign state at all (a compile error, a floor miss).
+      - name: upload campaign state
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: forge-campaign-state-run-${{ github.run_id }}
+          path: |
+            crucible-contracts/cache/invariant
+            crucible-contracts/cache/fuzz
+          if-no-files-found: ignore
+          retention-days: 30
 
   # Static analysis. Findings are triaged by hand in docs/slither-triage.md -- this job
   # proves nothing NEW appeared, it does not decide what is acceptable.
