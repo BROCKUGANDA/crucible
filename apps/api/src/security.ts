@@ -104,8 +104,13 @@ export const DEFAULT_SECURITY: SecurityConfig = {
   // is a decision to submit the hostname to a browser list, not something a header should
   // decide on someone's behalf.
   hstsMaxAge: 31_536_000,
-  // Anvil produces a block about a second apart and the indexer tails on a tick, so
-  // requiring an exact tie would flap a healthy instance every few seconds.
+  // Anvil runs here without `--block-time` (see `compose.yaml`), so it instant-mines: the head
+  // advances by however many transactions landed between two indexer ticks, not on a clock. A
+  // quiet chain holds `head == indexedTo` exactly, and a burst — the seed, `extend-demo`, two
+  // judges clicking at once — puts several blocks between them before the next tick reads. So
+  // the tolerance is in blocks, and it is a burst allowance, not a rate. An earlier comment here
+  // justified it as "a block about a second apart", which described a chain this deployment does
+  // not run; the value survived the correction because a burst of five is still the right ceiling.
   readyMaxLag: 5,
 };
 

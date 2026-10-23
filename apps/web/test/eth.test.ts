@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { formatEther } from "viem";
 import { weiToEth } from "@crucible/indexer";
 import { formatWei, isEthAddress, parseEth, WEI_PER_ETH } from "../src/lib/eth";
+import { formatEth } from "../src/lib/forge";
 
 describe("parseEth", () => {
   it("parses whole amounts exactly", () => {
@@ -151,5 +152,34 @@ describe("the shared wei -> ETH formatter", () => {
   it("treats a nonsense precision as full precision rather than as nothing", () => {
     expect(weiToEth(1_234_567_890_123_456_789n, 99)).toBe("1.234567890123456789");
     expect(weiToEth(1_234_567_890_123_456_789n, -3)).toBe("1");
+  });
+
+  /**
+   * The two-hop path `/assay` actually takes: the indexer publishes a wei-derived decimal string
+   * and the page prints it through `formatEth`. Each hop is exact on its own; nothing checked
+   * that the second hop accepts what the first one emits. It used to round through a float on the
+   * way, which is how `0.999999999999999999` — one wei short of an ETH — printed as `1 ETH`.
+   */
+  it("carries every published amount through the second hop without inventing wei", () => {
+    for (const wei of CORPUS) {
+      const published = weiToEth(wei);
+      const shown = formatEth(published);
+
+      // The unit is what proves the string was parsed rather than passed through untouched:
+      // `formatEth` returns its input verbatim when the shape is not a plain decimal.
+      expect(shown.endsWith(" ETH")).toBe(true);
+
+      // Displayed never exceeds held. Truncation is the whole point, and a corpus value that
+      // rounded up would mean a volume, a fee, or a payout was overstated to a reader.
+      const shownWei = parseEth(shown.replace(" ETH", ""));
+      expect(shownWei).not.toBeNull();
+      expect(shownWei!).toBeLessThanOrEqual(wei);
+    }
+  });
+
+  it("prints an amount beyond the safe-integer range without losing it", () => {
+    // 123,456.789 ETH is 1.23e23 wei, past 2^53: through a float this arrived at the page as a
+    // rounded approximation, which is the other half of why the second hop parses digits.
+    expect(formatEth(weiToEth(123_456_789_000_000_000_000_000n))).toBe("123456.789 ETH");
   });
 });

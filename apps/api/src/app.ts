@@ -318,16 +318,18 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
     // it does not move for a duplicate log — so a reorg that re-applies a settled verdict
     // invalidates nothing, exactly as it changes no counter.
     //
-    // `MAX_TICK_AGE_MS` is a safety valve, not a feature: the payload's only remaining
-    // clock-dependent field is `now`, and the client re-anchors and counts locally between
-    // snapshots, so a stale one is harmless today. It stops being harmless the moment
-    // somebody adds a second derived timestamp, and a periodic refresh is cheaper than
-    // discovering that.
+    // `MAX_TICK_AGE_MS` was a safety valve and is now load-bearing: the payload carries a second
+    // clock, `headTimestamp`, and a client anchors chain deadlines on `max(headTimestamp + 1,
+    // now)`. An idle read model therefore still has to be rebuilt periodically, because the chain
+    // can be mined without this index seeing a log — so the valve is what bounds how far behind
+    // the chain a browser's anchor may drift. Without it, a head timestamp frozen at the last
+    // model change would hold a window open past its own deadline.
     if (!tick || version !== tick.version || now - tick.builtAt >= MAX_TICK_AGE_MS) {
       const snap = buildSnapshot(model, {
         now,
         alloyState: deps.alloyState,
         feeBps: deps.protocolFeeBps?.() ?? null,
+        headTimestamp: deps.indexStatus?.().headTimestamp ?? null,
       });
       tick = {
         builtAt: now,

@@ -156,6 +156,10 @@ services:
       ALLOY_ADDRESS: ${ALLOY_ADDRESS:-}
       FROM_BLOCK: "0"
       PRIVATE_KEY: ${KEEPER_PRIVATE_KEY:-}
+      # The floor at which /health says this wallet is low. Passed through rather than defaulted:
+      # empty means "publish the balance, raise no alarm", and a threshold set here in the file
+      # would be this repository deciding what someone else's signer is worth.
+      KEEPER_MIN_BALANCE_WEI: ${KEEPER_MIN_BALANCE_WEI:-}
       # The trace spine. Only sweeps that actually acted are recorded, so an idle demo adds
       # nothing to the file — a line here means a trial was finalized or reclaimed, or an
       # action was skipped, with the reason. It is a projection of things the chain already
