@@ -209,6 +209,18 @@ export interface ScribeStatus {
    * omits trials that were paid out.
    */
   partialTrials: number;
+  /**
+   * The `timestamp` of the highest block this index has actually read, in chain seconds, or
+   * `null` when no block has been read yet.
+   *
+   * It is published because a deadline in this system is a claim about `block.timestamp`, and a
+   * browser cannot read the chain's clock without one. It is the highest block *read*, not the
+   * head: on an idle instant-mining chain the two differ, and that is fine — the consumer takes
+   * `max(headTimestamp + 1, wall clock)`, which is the rule the node itself uses to stamp the
+   * next block. Never zero: a zero here would say the chain began in 1970, and every window
+   * would read as long expired.
+   */
+  headTimestamp: number | null;
 }
 
 export class Scribe {
@@ -228,6 +240,14 @@ export class Scribe {
   private model: ReadModel = emptyModel();
   private cursor: bigint;
   private readonly blockTimes = new Map<bigint, number>();
+  /**
+   * Highest block number this index has read a timestamp for, and that timestamp.
+   *
+   * Two scalars rather than a scan of `blockTimes`, because `blockTimes` is keyed by the blocks
+   * that carried events and grows with the history; the newest reading is the only thing the
+   * published clock needs.
+   */
+  private headRead: { number: bigint; timestamp: number } | null = null;
   /** Blocks whose timestamp could not be read, retried on the next tick. */
   private readonly pendingBlockTimes = new Set<bigint>();
   private running = false;
@@ -322,6 +342,7 @@ export class Scribe {
       syncError: this.syncError,
       syncStalled: this.syncStalled,
       partialTrials: this.countPartialTrials(),
+      headTimestamp: this.headRead?.timestamp ?? null,
     };
   }
 
@@ -385,6 +406,11 @@ export class Scribe {
       this.cursor = this.cfg.fromBlock ?? 0n;
       this.model = emptyModel();
       this.blockTimes.clear();
+      // A rebuilt chain shares nothing with the old one's clock. Carrying the previous head's
+      // timestamp across the reset would publish a time the new chain has not reached — and on a
+      // demo node that had been warped forward, that is a clock in the future that makes every
+      // fresh window look already closed.
+      this.headRead = null;
       this.pendingBlockTimes.clear();
       this.syncError = "the chain was reset; the index is rebuilding from the start block";
       this.syncStalled = false;
@@ -508,6 +534,11 @@ export class Scribe {
         };
       }
       for (const b of blocks) {
+        // Every block already paid for is a clock reading obtained for free. Recorded BEFORE the
+        // bloom test, because a quiet head block is precisely the case in which nothing else in a
+        // tick learns what time the chain thinks it is.
+        this.noteHeadRead(b.number ?? block, Number(b.timestamp));
+
         const bloom = b.logsBloom;
         if (!bloom || bloom === "0x" || !TOPIC0S.some((t) => bloomMayContain(bloom, t))) {
           continue;
@@ -660,6 +691,17 @@ export class Scribe {
     return logs.map(toEventLike);
   }
 
+  /**
+   * Remember the newest block number we have read a timestamp for.
+   *
+   * Monotonic on purpose: ticks walk ranges in order and a retried read can name an older block,
+   * so taking the max keeps the published clock from stepping backwards mid-sentence.
+   */
+  private noteHeadRead(blockNumber: bigint, timestamp: number): void {
+    if (this.headRead !== null && blockNumber <= this.headRead.number) return;
+    this.headRead = { number: blockNumber, timestamp };
+  }
+
   private async recordBlockTimes(events: EventLike[]): Promise<void> {
     const blocks = [...new Set(events.map((e) => e.blockNumber))];
     await Promise.all(
@@ -670,7 +712,11 @@ export class Scribe {
             withBackoff(
               () => this.client.getBlock({ blockNumber: b }).then((blk) => blk.timestamp),
               { operation: "scribe.getBlock" },
-            ).then((ts) => this.blockTimes.set(b, Number(ts))),
+            ).then((ts) => {
+              const seconds = Number(ts);
+              this.blockTimes.set(b, seconds);
+              this.noteHeadRead(b, seconds);
+            }),
           );
           this.pendingBlockTimes.delete(b);
         } catch {
@@ -711,6 +757,7 @@ export class Scribe {
           }),
         );
         this.blockTimes.set(b, Number(ts));
+        this.noteHeadRead(b, Number(ts));
         this.pendingBlockTimes.delete(b);
         hydrateTimestamps(this.model, this.blockTimes);
         // Only this block's entry is dropped: `blockTimes` may also hold the current batch's

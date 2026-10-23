@@ -16,26 +16,27 @@ import { useCountdown } from "@/lib/useSnapshot";
 
 export function TrialTable({
   trials,
-  serverNowMs,
+  chainNowMs,
 }: {
   trials: ApiTrial[];
-  serverNowMs?: number | null;
+  /** Anchor for the row countdowns: `max(headTimestamp + 1, serverNow)`, not a browser clock. */
+  chainNowMs?: number | null;
 }) {
   if (trials.length === 0) return null;
   return (
     <div className="trial-list">
       {trials.map((t) => (
-        <TrialRow key={t.id} trial={t} serverNowMs={serverNowMs ?? null} />
+        <TrialRow key={t.id} trial={t} chainNowMs={chainNowMs ?? null} />
       ))}
     </div>
   );
 }
 
-function TrialRow({ trial, serverNowMs }: { trial: ApiTrial; serverNowMs: number | null }) {
+function TrialRow({ trial, chainNowMs }: { trial: ApiTrial; chainNowMs: number | null }) {
   const status = statusMeta(trial.status);
   const verdict = verdictMeta(trial.verdict);
-  const cools = useCountdown(trial.deadlineAt, serverNowMs);
-  const breakLeft = useCountdown(trial.breakWindowEndsAt, serverNowMs);
+  const cools = useCountdown(trial.deadlineAt, chainNowMs);
+  const breakLeft = useCountdown(trial.breakWindowEndsAt, chainNowMs);
 
   // A judging trial is already past its submission deadline: what is actually running out on
   // that row is the skeptic window, so that is the countdown the row reads its urgency from.

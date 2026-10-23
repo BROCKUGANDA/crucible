@@ -7,6 +7,7 @@ import { Chrome, TxStates } from "@/components/Chrome";
 import { WrongNetworkNotice } from "@/components/Wallet";
 import { EMPTY_WIZARD, validateWizard, type WizardValues } from "@/lib/wizard";
 import { buildCreateTrial, useTx } from "@/lib/useTx";
+import { useSnapshot } from "@/lib/useSnapshot";
 import { activeChain, deployment } from "@/lib/wagmi";
 import { parseEth } from "@/lib/eth";
 
@@ -25,6 +26,8 @@ export default function NewTrialPage() {
   const result = validateWizard(values);
 
   const { isConnected } = useAccount();
+  // Read only for the chain clock the deadline is anchored on; the page renders nothing from it.
+  const { chainNowMs } = useSnapshot();
   const dep = deployment();
   const tx = useTx();
 
@@ -109,7 +112,19 @@ export default function NewTrialPage() {
             // The reward travels as msg.value on createTrial — one transaction, not the
             // escrow-then-light two-step the copy deck first described. `buildCreateTrial`
             // returns { data, value } so forgetting the value is not representable.
-            const deadline = Math.floor(Date.now() / 1000) + Number(values.deadlineHours) * 3600;
+            // The deadline is a claim about `block.timestamp`, which the contract compares
+            // against when the trial is claimed — and this demo warps the chain's clock away
+            // from wall time on purpose. Anchoring on the snapshot's chain clock keeps the
+            // window honest; a deadline built from `Date.now()` on a chain warped two hours
+            // ahead would already be expired the moment it lands.
+            //
+            // The fallback is the browser's clock, and it is only reached before any snapshot
+            // has arrived: with no reading of the chain there is no evidence of a warp, and the
+            // node stamps its blocks from wall time by default. A trial created in that window
+            // is measured by the same clock the node will use to enforce it.
+            const anchorSec =
+              chainNowMs !== null ? Math.floor(chainNowMs / 1000) : Math.floor(Date.now() / 1000);
+            const deadline = anchorSec + Number(values.deadlineHours) * 3600;
             tx.send(
               buildCreateTrial({
                 specDigest: digestOf(values.spec),

@@ -845,3 +845,43 @@ describe("pagination", () => {
     expect(body.page.total).toBe(all.length);
   });
 });
+
+/**
+ * The chain clock.
+ *
+ * `now` is this process's wall clock, and every deadline in the payload is a claim about
+ * `block.timestamp`. On a demo chain that is warped deliberately the two disagree, and a browser
+ * holding only `now` cannot tell a window that closed from one the node still holds open. The
+ * index reads block bodies already, so it can say what time the chain thinks it is for no extra
+ * cost — and when it has not read one, that has to arrive as unknown rather than as 1970.
+ */
+describe("the chain clock in the payload", () => {
+  it("publishes the head timestamp the index actually read", async () => {
+    const withChain = createApp(
+      {
+        getModel: () => model,
+        indexStatus: () => ({
+          head: 42n,
+          indexedTo: 42n,
+          syncError: null,
+          syncStalled: false,
+          partialTrials: 0,
+          headTimestamp: 1_792_638_015,
+        }),
+      },
+      { rateLimit: false },
+    );
+    const body = await (await withChain.request("/snapshot")).json();
+    expect(body.headTimestamp).toBe(1_792_638_015);
+    // Both clocks travel: they answer different questions and must not be confused downstream.
+    expect(typeof body.now).toBe("number");
+  });
+
+  it("publishes an unread chain clock as unknown, never as the epoch", async () => {
+    const bare = createApp({ getModel: () => model }, { rateLimit: false });
+    const body = await (await bare.request("/snapshot")).json();
+    expect(body.headTimestamp).toBeNull();
+    // A zero here would be 1970, and a client anchoring on it would report every window closed.
+    expect(body.headTimestamp).not.toBe(0);
+  });
+});
