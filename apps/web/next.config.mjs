@@ -192,6 +192,24 @@ const nextConfig = {
         source: "/:path*",
         headers: securityHeaders,
       },
+      // Gate 478-482: X-Robots-Tag noindex on internal surfaces so crawlers never index
+      // SSE streams, API endpoints, or replay views even if a link leaks.
+      {
+        source: "/api/:path*",
+        headers: [{ key: "X-Robots-Tag", value: "noindex" }],
+      },
+      {
+        source: "/ticker/:path*",
+        headers: [{ key: "X-Robots-Tag", value: "noindex" }],
+      },
+      {
+        source: "/replay/:path*",
+        headers: [{ key: "X-Robots-Tag", value: "noindex" }],
+      },
+      {
+        source: "/zone/:path*",
+        headers: [{ key: "X-Robots-Tag", value: "noindex" }],
+      },
     ];
   },
 
