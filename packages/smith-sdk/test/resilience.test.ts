@@ -50,11 +50,24 @@ describe("withBackoff", () => {
       return Promise.resolve("recovered");
     });
 
-    const out = await withBackoff(fn, { sleep: sleep as any, baseMs: 100, retries: 4 });
+    // The delay is a full-jitter draw — `Math.floor(Math.random() * ceiling)` — and a draw of 0
+    // skips the sleep on purpose. Left uncontrolled, "sleep was called exactly twice" is a
+    // question about Math.random(): this case failed about one CI run in sixty-five because both
+    // draws happened to be small. Pinning the draw is what lets this assert the schedule instead
+    // of the luck.
+    const draw = vi.spyOn(Math, "random").mockReturnValue(0.5);
+    try {
+      const out = await withBackoff(fn, { sleep: sleep as any, baseMs: 100, retries: 4 });
 
-    expect(out).toBe("recovered");
-    expect(fn).toHaveBeenCalledTimes(3);
-    expect(sleep).toHaveBeenCalledTimes(2);
+      expect(out).toBe("recovered");
+      expect(fn).toHaveBeenCalledTimes(3);
+      // ceiling = min(maxMs, baseMs * factor ** attempt) = 100, then 200. Half of each: the
+      // wait doubles with the attempt, which is the entire promise of "backoff" and was never
+      // actually asserted while the count stood in for it.
+      expect(sleep.mock.calls.map(([ms]) => ms)).toEqual([50, 100]);
+    } finally {
+      draw.mockRestore();
+    }
   });
 
   it("does not retry a fatal error, not even once", async () => {
