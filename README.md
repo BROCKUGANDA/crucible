@@ -341,14 +341,17 @@ npm run demo                # anvil + deploy + the whole loop, settles a real ve
 npm run agent:live          # the real agent against a real model in a real sandbox
 ```
 
-**1023 tests total** (888 TypeScript + 135 Foundry). Contract coverage:
-`CrucibleTrials.sol` 97.4% of lines / 95.8% of statements / 89.9% of branches,
-`AlloyRegistry.sol` 97.0%, `ReputationBridge.sol` 95.5%, `CrucibleHall.sol` 93.2%.
+**1166 tests total** (1031 TypeScript + 135 Foundry). Contract coverage, from the same
+`forge coverage --ir-minimum` run CI gates: `CrucibleTrials.sol` 97.5% of lines / 95.9% of
+statements / 90.2% of branches, `AlloyRegistry.sol` 97.0% / 97.2% / 92.3%,
+`ReputationBridge.sol` 94.3% / 93.0% / 82.4%, `CrucibleHall.sol` 93.2% / 92.1% / 72.2%.
+The last two are the real gaps, not rounding: Hall's branches and ReputationBridge's are the
+lowest numbers in the suite and are explained in `HARDENING.md`.
 
 Four of the 135 are the ERC-8004 fork tests, and they are **skipped, not passed**, unless
 the suite runs against a mainnet fork: `isMainnetFork` calls `vm.skip` unless
 `block.chainid == 1`, so a run without `MAINNET_RPC_URL` reports
-`126 passed, 4 skipped` and claims nothing about the live registry. Run them for real with
+`131 passed, 4 skipped` and claims nothing about the live registry. Run them for real with
 `forge test --fork-url $MAINNET_RPC_URL` before believing the registry claims.
 
 On Windows, `npm test` resolves `forge` through `scripts/run-forge.mjs`: it checks
