@@ -171,23 +171,30 @@ much of the product's promise each one costs.
       is documented as the handle "whoever is cleaning up after a crashed verifier" would use; the only
       readers are the tests (`test/sandbox-docker.test.ts:73`). After a death that is not a timeout — an
       OOM-killed node, a container restart — workloads stay alive holding CPU and memory claims.
-    - **A trial's deadline is derived from the wall clock.** `apps/web/src/app/trials/new/page.tsx:112`
-      computes `Math.floor(Date.now() / 1000) + hours * 3600` against a `block.timestamp` guard, so on a
-      deliberately warped demo chain every new trial reverts `BadDeadline` and the error names the
-      method, not the clock.
-    - **A chain deadline is compared against a server clock.** The same class, different page:
-      `apps/web/src/app/trials/[id]/page.tsx:53` gates the quench button on
-      `(serverNowMs ?? Date.now()) / 1000 >= trial.breakWindowEndsAt`. The comparison operator itself is
-      correct — the contract reverts `WindowOpen` while `block.timestamp < _windowEnd(t)`
-      (`CrucibleTrials.sol:589`), so it finalizes at `>=`, and the UI agrees. What is wrong is the left
-      side: `breakWindowEndsAt` is chain time, and neither `Date.now()` nor an HTTP `Date` header is the
-      node's clock. An earlier revision of this item called it an off-by-one; that was measured wrong
-      and is corrected here.
-    - **`notifications()` has no memory.** `packages/warden/src/policy.ts:133-164` re-emits every
-      settled trial's `verdict-landed` on every pass. Latent, and verified latent: `Warden.sweep`
-      guards the whole path on `if (this.deps.notifier)` (`warden.ts:76`) and the keeper only records
-      the count (`apps/keeper/src/main.ts:267`) — it attaches no notifier. The first embedder that
-      passes one turns this into a webhook that repeats every sweep, forever, per trial.
+    - **`notifications()` has no memory.** `packages/warden/src/policy.ts:133` re-emits every settled
+      trial's `verdict-landed` on every pass. Latent, and verified latent: `Warden.sweep` guards the
+      whole path on `if (this.deps.notifier)` (`packages/warden/src/warden.ts:76`) and the keeper only
+      records the count (`apps/keeper/src/main.ts:287`) — it attaches no notifier. The first embedder
+      that passes one turns this into a webhook that repeats every sweep, forever, per trial.
+
+    **Closed since the audit, and the two that were this document's own error.**
+
+    - A trial's deadline derived from the wall clock, and a chain deadline compared against a server
+      clock — both closed by the chain-anchor work (PR #38). `/snapshot` now publishes
+      `headTimestamp`, and `apps/web/src/lib/chainClock.ts` anchors every countdown and window test on
+      `max(headTimestamp + 1, serverNowMs)`, which is the rule the node uses to stamp its next block.
+      The wizard builds its deadline at `apps/web/src/app/trials/new/page.tsx:125` and the quench gate
+      compares at `apps/web/src/app/trials/[id]/page.tsx:57`, both against that anchor. `Date.now()`
+      survives only as the documented fallback for a page that has not received a snapshot yet, where
+      there is no evidence of a warp to correct.
+    - The second half of that pair was reported here as an off-by-one (`>=` where the contract uses
+      `>`). It was measured wrong: the contract reverts `WindowOpen` while
+      `block.timestamp < _windowEnd(t)` (`CrucibleTrials.sol:589`), so it finalizes at `>=`, and the UI
+      agreed with it all along. The real fault was the clock on the left side, not the operator — and
+      a corrected record is worth more here than a preserved finding.
+    - Note on line numbers in this file: `apps/keeper/src/main.ts:267` was cited for the notifier
+      count before that file gained the gas ledger, which moved it to `:287`. A register that names
+      lines has to re-check them after touching the file it points at.
 
 
 Report a vulnerability as described in [`SECURITY.md`](SECURITY.md), not in a public issue.

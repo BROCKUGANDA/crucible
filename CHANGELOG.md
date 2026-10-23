@@ -12,6 +12,26 @@ migration. See [`SECURITY.md`](SECURITY.md) before deploying value.
 
 ### Added
 
+- **The UI now measures a chain deadline against the chain's clock.** `/snapshot` publishes
+  `headTimestamp` — the `timestamp` of the highest block the index has read, obtained from block
+  bodies the indexer already pays for — and `apps/web/src/lib/chainClock.ts` anchors every
+  countdown and window test on `max(headTimestamp + 1, serverNowMs)`, which is the rule a node
+  applies when stamping its next block. Before this the browser had only the API host's wall clock,
+  while the contract enforces `block.timestamp`: on a demo chain warped two hours ahead on purpose,
+  a page reading wall time reported an hour left on a window the chain had already closed, and
+  offered no way to act on it. The idle half is why it is a `max` and not a plain read — this
+  deployment runs `anvil` with no `--block-time`, so a quiet chain's head is the age of its last
+  transaction, measured here at 28 hours behind. `serverNowMs` remains, for the figures that clock
+  wrote (`/assay`'s dead-letter age). See
+  [`docs/since-submission.md`](./docs/since-submission.md) for the running list since the window.
+- **The keeper reports its own operating cost.** `apps/keeper/src/gas-ledger.ts` takes each
+  transaction's `gasUsed × effectiveGasPrice` from its receipt, publishes the running total and the
+  signer's balance on the keeper's `/health`, and raises `lowBalance` against an optional
+  `KEEPER_MIN_BALANCE_WEI`. Observation is fire-and-forget behind a bounded queue, so bookkeeping
+  can never stall settlement; a cost that cannot be learned is published as `txesUnresolved` rather
+  than added to the total as zero. This is the network's toll, not the protocol's fee — it touches
+  neither `FEE_BPS` nor the escrow's conservation invariant.
+
 - **A trial whose content is real, and a command that proves the verifier runs.**
   `fixtures/trials/counter` is a genuine spec plus a self-contained Foundry project that
   passes `forge test` (two named tests, no library outside itself, because a pinned suite is
@@ -125,6 +145,35 @@ migration. See [`SECURITY.md`](SECURITY.md) before deploying value.
   [`apps/api/src/voice.ts`](apps/api/src/voice.ts).
 
 ### Fixed
+
+- **Two money displays that were wrong on the page, both found while auditing something else.**
+  `formatEth` truncated *after* converting through `Number()`, and `0.999999999999999999` is exactly
+  `1.0` in a double — so a balance one wei short of an ETH printed as `1 ETH`, overstating an amount
+  on a site whose claim is that it reads the chain. It now works on the digits and keeps precision
+  past the safe-integer range. And the Break board computed its minimum stake as a float through
+  `toFixed(6)`, which can round **below** the contract's floor: for a 1.23454 ETH reward it advertised
+  400000000000 wei short, so a skeptic staking the advertised figure got `StakeTooSmall`. The board
+  and the filing panel now share one exact `bigint` path.
+- **`HARDENING.md` listed ten findings as open when seven were closed**, including one whose own
+  cited line number had since become unrelated code, and one (`>=` where the contract supposedly used
+  `>`) that was measured wrong in the first place. Each entry was re-checked against the tree; the
+  corrections name the commit that closed them, and the two findings still open were re-verified as
+  open. The register also now records that its line citations rot when the file they point at is
+  edited, which happened to `apps/keeper/src/main.ts` during this very change.
+- **The backoff test asserted a `Math.random()` draw.** `withBackoff` uses full jitter and skips the
+  sleep when the draw is zero, so "called exactly twice" failed about one run in sixty-five and turned
+  an unrelated pull request red. The draw is pinned and the assertion now checks the doubling schedule
+  (`[50, 100]`) that counting sleeps never verified.
+- **Reviewer-facing figures were stale, and one was optimistic.** The README claimed 1023 tests
+  (888 TypeScript); measured across every workspace it is **1166** (1031 + 135 Foundry), and
+  `ReputationBridge.sol` coverage was quoted at 95.5% where the gated run reports 94.3%. The counts,
+  the coverage table, and the fork-test skip line are now taken from a run, and `/assay` prints the
+  settlement fee as `5% · 500 bps` because a judge should not have to convert basis points.
+- **A red contract campaign used to leave no evidence.** CI now derives a fuzz seed from the run id,
+  echoes the exact replay command, pins the campaign to one invariant worker, and uploads
+  `cache/invariant` / `cache/fuzz` on failure. Deliberately overstated nowhere: the seed this
+  mechanism replaced did **not** reproduce the one failure we have, at any worker count, so the
+  artefact exists because the log line was not enough.
 
 - **`parseForgeTests` could not parse output from the forge version this repo pins.** Real
   `forge test --json` keys its suites at the top level (`path/File.sol:Contract`) with

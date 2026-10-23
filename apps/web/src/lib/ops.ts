@@ -358,6 +358,26 @@ export function deriveOps(input: {
     paidSettlements: num(economics?.paidSettlements ?? null),
     // The rate is a chain read, and the API publishes null when that read failed. Zero here
     // would say the protocol charges nothing, on the authority of a page that does not know.
-    feeRate: economics?.feeBps === null || economics?.feeBps === undefined ? UNKNOWN : `${economics.feeBps} bps`,
+    feeRate: formatFeeRate(economics?.feeBps),
   };
+}
+
+/**
+ * The chain's settlement fee, said plainly and with the raw read kept beside it.
+ *
+ * `FEE_BPS` is basis points, and "500 bps" is a true fact a judge or a passing customer has no
+ * reason to decode — the rest of this page goes out of its way to say "Fees kept" rather than
+ * `feesEth`, so a bare unit here is the one line that breaks its own rule. The percent therefore
+ * leads and the stored value follows, so the figure stays checkable against `FEE_BPS()` instead of
+ * turning into this page's arithmetic.
+ *
+ * Built from the integer rather than by dividing it: `500 / 100` through a float is how a rate
+ * ends up reading 5.000000000000001%, which is precision the contract does not have.
+ */
+export function formatFeeRate(bps: number | null | undefined): string {
+  if (typeof bps !== "number" || !Number.isFinite(bps) || bps < 0) return UNKNOWN;
+  const whole = Math.trunc(bps / 100);
+  const hundredths = bps % 100;
+  const frac = hundredths === 0 ? "" : `.${String(hundredths).padStart(2, "0").replace(/0+$/, "")}`;
+  return `${whole}${frac}% · ${bps} bps`;
 }
