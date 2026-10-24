@@ -10,6 +10,7 @@ import {
   type ModelCard,
 } from "../src/eval/frontier.js";
 import { DEFAULT_THRESHOLDS } from "../src/eval/arena.js";
+import { buildAdapter } from "../src/adapter.js";
 import type { Artifact, ModelAdapter } from "../src/eval/types.js";
 
 const SECRET = "0x59c6995e998f97a5a0044966f0945389dc98a1073772777215dc9d3f5d5d0b4f";
@@ -190,6 +191,26 @@ describe("spend governance caps before the money moves", () => {
       scope: "smoke",
     });
     await expect(guarded.grade(artifact("a"), "v1")).rejects.toThrow(/fall back to the stub tier/);
+  });
+});
+
+describe("the door is guarded, not merely guardable", () => {
+  it("buildAdapter returns an adapter that refuses when the card's budget is already spent", async () => {
+    // cost > day budget, so the FIRST call is refused before any socket opens — the assertion is
+    // that the factory's product carries the guard, and it needs no network to prove it.
+    const adapter = buildAdapter({
+      kind: "openai-compat",
+      modelId: "gpt-frontier",
+      promptVersion: "v1",
+      baseUrl: "http://127.0.0.1:1",
+      apiKey: "sk-test",
+      model: "gpt-frontier",
+      card: card({ costPerCallUsd: 2, budgetUsd: { stage: 1, day: 1 } }),
+      spend: new SpendLedger(),
+      scope: "smoke",
+    });
+
+    await expect(adapter.grade(artifact("anything"), "v1")).rejects.toThrow(/budget exhausted/);
   });
 });
 
