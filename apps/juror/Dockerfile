@@ -50,6 +50,12 @@ COPY --from=build /repo/apps/juror/dist ./apps/juror/dist
 # the compose service says so where it mounts the volume.
 COPY --from=build /repo/fixtures ./fixtures
 COPY --from=build /repo/scripts/seed-content.mjs ./scripts/seed-content.mjs
+# The other half of the pinning step: `seed-content.mjs --check`, which the entrypoint runs before
+# it polls, reads both digests back out of this source file to prove the image's fixtures still
+# match what the chain commits to. Without it the check answers "SeedContent.sol is missing or does
+# not carry both constants" and the seat dies at start — which is why the copy sits next to the
+# script it validates rather than in the app layer above.
+COPY --from=build /repo/crucible-contracts/script/SeedContent.sol ./crucible-contracts/script/SeedContent.sol
 COPY apps/juror/docker-entrypoint.sh /usr/local/bin/crucible-juror-entrypoint.sh
 
 # The seat's durable memory lives here: a sealed vote and the salt that opens it. It is a volume
