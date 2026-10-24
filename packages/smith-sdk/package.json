@@ -16,9 +16,6 @@
       "default": "./dist/trace.js"
     }
   },
-  "bin": {
-    "smith": "./dist/cli.js"
-  },
   "files": [
     "dist"
   ],
