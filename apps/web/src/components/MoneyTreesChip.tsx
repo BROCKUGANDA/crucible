@@ -24,9 +24,10 @@ export function MoneyTreesChip({
   settled,
   onCue,
 }: MoneyTreesChipProps): React.ReactElement | null {
-  if (!settled) return null;
-
   const config = resolveMoneyTrees(remote);
+  // Hooks run before the early return: `useCallback` after `if (!settled) return null`
+  // is a rules-of-hooks violation that happens to work only while `settled` never
+  // flips within a mount — exactly the kind of latent crash a lint pass exists to catch.
   const handleClick = useCallback(
     (e: React.MouseEvent) => {
       e.preventDefault();
@@ -40,6 +41,8 @@ export function MoneyTreesChip({
     },
     [config.url, onCue],
   );
+
+  if (!settled) return null;
 
   return (
     <a

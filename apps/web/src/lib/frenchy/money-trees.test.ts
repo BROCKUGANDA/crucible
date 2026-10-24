@@ -6,7 +6,7 @@ import { join } from "node:path";
  * Gate 438 — No audio assets, no player code, no bundle weight.
  *
  * Money Trees is deep-link only (gate 434), and Frenchy v2 quips are text-only
- * (gate 672). This test enforces that the frenchy v2 code adds:
+ * (gate 674). This test enforces that the frenchy v2 code adds:
  *  - zero audio files under apps/web/src/lib/frenchy/, and
  *  - no `<audio>` element or `new Audio(` in frenchy source.
  */

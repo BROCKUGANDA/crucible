@@ -1,6 +1,6 @@
 # CRUCIBLE Security White Paper
 
-**Status:** design specification, enforced by gates 439–667  
+**Status:** design specification, enforced by gates 434–677  
 **Chain:** local Anvil, chain id 31337  
 **Fee:** FEE_BPS = 500 (5%), not 15% — see ADR-0001  
 **Native ETH only; no ERC-20, no USDC, no Privy on the wallet surface**

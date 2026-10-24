@@ -293,6 +293,19 @@ jobs:
       - name: build workspace libraries
         run: npm run build:libs
 
+      # Gate 502 — the sandbox seal, enforced where a push cannot talk its way around it:
+      # the harness module graph (the code an agent runs inside) must not reach fs,
+      # child_process, net or any wallet library. The scanner is the built package itself,
+      # so the gate lints exactly the code that ships.
+      - name: import-lint — the harness module graph holds no effectors (gate 502)
+        run: npm run lint:imports --workspace @crucible/harness
+
+      # Gate 732 (ADR-0011): every v2 arena number comes from params/crucible.params.json
+      # through codegen. This proves the five derived invariants hold and that the
+      # committed generated files match the JSON — hand-typed constants cannot hide.
+      - name: params — invariants + drift check (gate 732)
+        run: node scripts/params-codegen.mjs --check
+
       # The chain commits to two digests per trial. `script/SeedContent.sol` carries them as
       # generated constants so a foundry-only container can post them, which makes a cached value
       # load-bearing — so CI recomputes it from the fixture bytes every run and fails if the two
@@ -321,6 +334,9 @@ jobs:
             --workspace @crucible/warden \
             --workspace @crucible/agent-security \
             --workspace @crucible/cidstore \
+            --workspace @crucible/crypto \
+            --workspace @crucible/harness \
+            --workspace @crucible/grader \
             --workspace @crucible/keeper \
             --workspace @crucible/juror \
             --workspace @crucible/api \
@@ -336,10 +352,22 @@ jobs:
             --workspace @crucible/warden \
             --workspace @crucible/agent-security \
             --workspace @crucible/cidstore \
+            --workspace @crucible/crypto \
+            --workspace @crucible/harness \
+            --workspace @crucible/grader \
             --workspace @crucible/keeper \
             --workspace @crucible/juror \
             --workspace @crucible/api \
             --workspace @crucible/web
+
+      # ESLint lives only where the rules it can actually run exist: the web app
+      # (react-hooks + core correctness). Type-level linting is `tsc --noEmit`
+      # strict with noUnusedLocals/Parameters, which the typecheck step above
+      # already runs for every workspace — that is the division of labor, and
+      # the workspace-coverage philosophy says a script nobody runs is a script
+      # that silently rots, so the lint script is wired here.
+      - name: lint (web)
+        run: npm run lint --workspace @crucible/web
 
   build:
     name: Build (next)

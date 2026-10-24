@@ -128,9 +128,9 @@ function fnv1a(input: string): number {
 }
 
 /**
- * Select a quip deterministically: quip = f(trigger, sessionSeed, quipCount).
+ * Select a quip deterministically (gate 675): quip = f(trigger, sessionSeed, quipCount).
  * Same session seed + same trigger + same history index => same quip.
- * Anti-repeat: never repeat within the last 10 quips (gate 675).
+ * Anti-repeat (gate 677): never repeat within the last 10 quips.
  */
 export function selectQuip(
   trigger: FrenchyTrigger,
@@ -168,8 +168,10 @@ export class FrenchySelector {
     private dismissals = 0,
   ) {}
 
-  /** Whether Frenchy may speak right now (gate 668-669, 671). */
-  canSpeak(trigger: FrenchyTrigger, inSilenceZone: boolean): boolean {
+  /** Whether Frenchy may speak right now (gate 668-669, 671). The trigger is
+   *  part of the signature so callers read naturally; the budget is per-clock,
+   *  not per-trigger, so the body does not branch on it. */
+  canSpeak(_trigger: FrenchyTrigger, inSilenceZone: boolean): boolean {
     if (this.muted) return false;
     if (inSilenceZone) return false;
 

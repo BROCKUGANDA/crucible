@@ -629,6 +629,74 @@ describe("/stream", () => {
     }
   }, 30_000);
 
+  /**
+   * The load shape a demo actually sees: everyone in the room on the stream at once.
+   *
+   * Forty real sockets through `@hono/node-server`, because the in-process
+   * `app.request()` stream only surfaces its first chunk and cannot answer the
+   * question this test exists for. Three properties, each one a way fan-out
+   * quietly broke before:
+   *
+   *   - every handshake completes — a connection accepted but never framed is a
+   *     spectator staring at a loading state;
+   *   - an idle audience costs nothing — rebuilds stay flat while all forty sit
+   *     there, because the tick is shared, not per-viewer;
+   *   - one chain move reaches all forty — counted per client, so a client that
+   *     silently lost its loop is caught instead of averaged away.
+   */
+  it("holds forty concurrent subscribers: one shared tick, every client served", async () => {
+    const { serve } = await import("@hono/node-server");
+    const { app, model, rebuilds } = appCountingRebuilds();
+    const port = 8898;
+    const server = await new Promise<ReturnType<typeof serve>>((res) => {
+      const s = serve({ fetch: app.fetch, port }, () => res(s));
+    });
+
+    try {
+      const CLIENTS = 40;
+      const controllers = Array.from({ length: CLIENTS }, () => new AbortController());
+      const dec = new TextDecoder();
+
+      // Handshake: every client must receive its first snapshot frame.
+      const handshakes = await Promise.all(
+        controllers.map(async (ac) => {
+          const res = await fetch(`http://127.0.0.1:${port}/stream`, { signal: ac.signal });
+          const reader = res.body!.getReader();
+          const first = dec.decode((await reader.read()).value);
+          return { reader, first };
+        }),
+      );
+      for (const h of handshakes) {
+        expect(h.first).toContain("event: snapshot");
+      }
+
+      // Idle audience: two full seconds with all forty connected must not add a
+      // single read-model rebuild.
+      const idleAt = rebuilds();
+      await new Promise((r) => setTimeout(r, 2_000));
+      expect(rebuilds()).toBe(idleAt);
+
+      // One chain move: every client gets the update, within a bound that is
+      // generous for CI timing but still proves liveness under load.
+      model.trials.set(2, { ...model.trials.get(1)!, id: 2 });
+      model.version += 1;
+      const updates = await Promise.all(
+        handshakes.map(async ({ reader }) =>
+          Promise.race([
+            reader.read().then((r) => dec.decode(r.value)),
+            new Promise<string>((res2) => setTimeout(() => res2("<timeout>"), 8_000)),
+          ]),
+        ),
+      );
+      const served = updates.filter((u) => u.includes('"id":2')).length;
+      expect(served, "every one of the forty received the move").toBe(CLIENTS);
+
+      controllers.forEach((ac) => ac.abort());
+    } finally {
+      server.close();
+    }
+  }, 30_000);
+
   it("stops working when the subscriber goes away", async () => {
     const { app, reads } = appCountingReads();
     const ac = new AbortController();

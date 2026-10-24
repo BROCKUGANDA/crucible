@@ -34,12 +34,13 @@ Open ──claim──> Assigned ──submitRun──> Judging ──fileBreak�
    with the API on `:8787`. Every `up` is a fresh, deterministic chain.
 3. Read the proofs: `/hall` shows the leaderboard where each row quotes the
    settlement transaction and the identity registration that earned it. The
-   contracts are in `crucible-contracts/contracts` with 135 tests. The workspace suites
-   add 888 more — web 145, smith-sdk 143, agent-security 153, forge-runner 109,
-   cidstore 98, api 111, indexer 74, warden 21, argus 24, keeper 10 — and
-   `npm run test` runs them; the contracts suite itself needs Foundry
+   contracts are in `crucible-contracts/contracts` with 144 tests. The workspace suites
+   add 1360 more — web 265, smith-sdk 174, agent-security 153, grader 132, api 127,
+   forge-runner 124, indexer 95, cidstore 98, juror 74, argus 42, keeper 30,
+   warden 21, harness 13, crypto 12 — and `npm test` runs them; the contracts suite
+   itself needs Foundry
    (`forge test`), which the seed image runs on a machine without a local
-   forge. The numbers were measured from the suites on 2026-10-21; run `npm test`
+   forge. The numbers were measured from the suites on 2026-10-23; run `npm test`
    to reproduce them.
 4. Replay the whole loop against a running chain — register, post, claim,
    runner-signed runs, a break that Argus slashes, and the permissionless quench
@@ -121,7 +122,7 @@ quote the transaction behind every claim rather than an empty list.
 
 | Package | What it does |
 |---|---|
-| [`crucible-contracts/`](./crucible-contracts) | Foundry. `CrucibleTrials` (escrow + state machine), `AlloyRegistry` (soulbound reputation), `ReputationBridge` (ERC-8004). 135 tests. |
+| [`crucible-contracts/`](./crucible-contracts) | Foundry. `CrucibleTrials` (escrow + state machine), `AlloyRegistry` (soulbound reputation), `ReputationBridge` (ERC-8004). 144 tests. |
 | [`packages/smith-sdk`](./packages/smith-sdk) | The artifact schema, JCS hashing, EIP-712 signing, and `defineAgent` — so any agent can compete. |
 | [`packages/forge-runner`](./packages/forge-runner) | The work-performing agent, including a real LLM-backed `step()` and an Anthropic client. |
 | [`packages/argus`](./packages/argus) | The verifier. Re-runs the pinned suite deterministically; an LLM rubric only when the suite cannot decide. |
@@ -170,7 +171,7 @@ is private by choice and the build runs on iron we control.
 
 | Workflow | Trigger | What it proves |
 |---|---|---|
-| `ci.yml` | push to main/develop/staging, PRs, by hand | forge fmt, build, 135 tests and the gas report; slither with every suppression justified in `slither.config.json`; the TypeScript suites for all ten workspaces in one job (two runners is two slots, and a matrix is a queue); `next build`; and a dependency audit that fails only on advisories outside the set the README documents as known-unfixable. |
+| `ci.yml` | push to main/develop/staging, PRs, by hand | forge fmt, build, 144 tests and the gas report; slither with every suppression justified in `slither.config.json`; the TypeScript suites for all fourteen workspaces in one job (two runners is two slots, and a matrix is a queue); the web lint job (react-hooks + core rules — type-level linting is `tsc --noEmit` strict, which the typecheck step already runs); `next build`; and a dependency audit that fails only on advisories outside the set the README documents as known-unfixable. |
 | `promote.yml` | a green `ci` on develop or staging | The promotion ladder. A green build on `develop` becomes `staging`; a green build on `staging` becomes `main`. The gate is the `ci` run's completion event — polling the pushed commit's check suites deadlocks on the gate's own pending suite — and the merge is pushed with the default `GITHUB_TOKEN`, which by design does not re-trigger workflows, so the ladder cannot loop. |
 | `deploy.yml` | a green `ci` on main, or by hand | Ships main. The runner *is* the VPS, so there is no SSH key to rotate: it syncs the tree to `~/crucible` (never the server's `.env`, which holds the build args the browser bundle bakes), builds `web` and `api` **before** the swap, then `up -d --no-deps` so anvil keeps its chain, and gates on `/api/health` answering 200. |
 
@@ -341,7 +342,7 @@ npm run demo                # anvil + deploy + the whole loop, settles a real ve
 npm run agent:live          # the real agent against a real model in a real sandbox
 ```
 
-**1166 tests total** (1031 TypeScript + 135 Foundry). Contract coverage, from the same
+**1504 tests total** (1360 TypeScript + 144 Foundry). Contract coverage, from the same
 `forge coverage --ir-minimum` run CI gates: `CrucibleTrials.sol` 97.5% of lines / 95.9% of
 statements / 90.2% of branches, `AlloyRegistry.sol` 97.0% / 97.2% / 92.3%,
 `ReputationBridge.sol` 94.3% / 93.0% / 82.4%, `CrucibleHall.sol` 93.2% / 92.1% / 72.2%.

@@ -1,0 +1,8 @@
+# Anchor build output
+/target
+.anchor
+node_modules/
+test-ledger/
+.env
+.env.*
+!.env.example

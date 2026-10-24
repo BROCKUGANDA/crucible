@@ -49,6 +49,21 @@
 - id: 433
   title: GraderRegistry — model swap = RFC + version bump
   frameworks: [iso-27001, ai-rmf]
+- id: 434
+  title: Money Trees — "CUE IT" deep-link chip on the settlement screen
+  frameworks: [soc2]
+- id: 435
+  title: Money Trees is link-out only — no embedded audio, no player code
+  frameworks: [soc2]
+- id: 436
+  title: Money Trees chip is a text label — no album art, no logo treatment, no autoplay
+  frameworks: [soc2]
+- id: 437
+  title: Money Trees deep link is remote-config-driven — swappable without a rebuild
+  frameworks: [soc2]
+- id: 438
+  title: No audio assets in the repo — grep-gate on the frenchy surface
+  frameworks: [soc2]
 - id: 439
   title: Adapter cap — exactly 4 adapter files
   frameworks: [supply-chain]
@@ -736,6 +751,390 @@
 - id: 667
   title: /integrity — public battery results page
   frameworks: [soc2]
+- id: 668
+  title: Frenchy quip budget — per-event / 5-min / hour caps
+  frameworks: [soc2]
+- id: 669
+  title: Frenchy cooldown — 45s minimum between quips
+  frameworks: [soc2]
+- id: 670
+  title: Frenchy tone ladder — roast the situation, never the person
+  frameworks: [ai-rmf]
+- id: 671
+  title: Frenchy silence zones — no quips during verification or wallet signing
+  frameworks: [soc2]
+- id: 672
+  title: Frenchy word count — reactive quips <= 12 words
+  frameworks: [soc2]
+- id: 673
+  title: Frenchy mute — two consecutive dismissals auto-quiet the session
+  frameworks: [soc2]
+- id: 674
+  title: Frenchy quips are static text pools — no runtime LLM, no new producer
+  frameworks: [ai-rmf, supply-chain]
+- id: 675
+  title: Frenchy determinism — quip = f(sessionSeed, trigger, history)
+  frameworks: [ai-rmf]
+- id: 676
+  title: Frenchy is never a spine writer — spectator spans only
+  frameworks: [iso-27001]
+- id: 677
+  title: Frenchy anti-repeat — no quip twice in the last 10
+  frameworks: [soc2]
+- id: 678
+  title: Eval spine — model manifest: sha256 + size + path per weight shard, canonically sorted
+  frameworks: [ai-rmf, supply-chain]
+- id: 679
+  title: Eval spine — merkle root over domain-separated shard leaves, stable under reordering
+  frameworks: [ai-rmf, supply-chain]
+- id: 680
+  title: Eval spine — modelIdentityHash binds modelId/revision/quantization/weightRoot/configHash/tokenizerId
+  frameworks: [ai-rmf]
+- id: 681
+  title: Eval spine — byte-verify fails closed with named codes, each code tested
+  frameworks: [ai-rmf]
+- id: 682
+  title: Eval spine — structural rejection at load: traversal, duplicates, zero-byte shards, unknown quantization
+  frameworks: [ai-rmf, supply-chain]
+- id: 683
+  title: Eval spine — one flipped shard byte moves the identity; a name-swap cannot hide it
+  frameworks: [ai-rmf, supply-chain]
+- id: 684
+  title: Eval spine — tokenizer manifest per model: id/family/vocabSize/contextWindow/implementation/corpusHash
+  frameworks: [ai-rmf]
+- id: 685
+  title: Eval spine — preflight context-fit before any completion, margin enforced, overflow named
+  frameworks: [ai-rmf]
+- id: 686
+  title: Eval spine — deterministic reference counter; NFC normalize-then-count; same text same count
+  frameworks: [ai-rmf]
+- id: 687
+  title: Eval spine — tokenizer corpus drift aborts the run (TOKENIZER_CORPUS_DRIFT)
+  frameworks: [ai-rmf]
+- id: 688
+  title: Eval spine — agent is a declared bundle; validation fail-closed with named range/format codes
+  frameworks: [ai-rmf]
+- id: 689
+  title: Eval spine — determinism ladder: seed AND (temp 0 or replay guarantee), else NONDET_SAMPLING
+  frameworks: [ai-rmf]
+- id: 690
+  title: Eval spine — paramsHash is canonical: key order and tool order cannot change it
+  frameworks: [ai-rmf]
+- id: 691
+  title: Eval spine — replay verification: NONDETERMINISTIC_OUTPUT and TRUNCATED_RUN fail the run
+  frameworks: [ai-rmf]
+- id: 692
+  title: Eval spine — probes.jsonl: one schema offline and online; checkers referenced by checkerId only
+  frameworks: [ai-rmf]
+- id: 693
+  title: Eval spine — bank floors at load: DUP_ID / DUP_PROMPT / UNKNOWN_CHECKER / TOO_FEW_PROBES / TOO_FEW_FAMILIES
+  frameworks: [ai-rmf]
+- id: 694
+  title: Eval spine — deterministic checkers only; a throwing checker is CHECKER_THREW, never a vanished exception
+  frameworks: [ai-rmf]
+- id: 695
+  title: Eval spine — bank hash over the sorted canonical projection; shuffled JSONL hashes identically
+  frameworks: [ai-rmf]
+- id: 696
+  title: Eval spine — NFC policy on probe text; text that changes under NFC is tagged
+  frameworks: [ai-rmf]
+- id: 697
+  title: Eval spine — pipeline order fixed: manifests, tokenizer self-test, drift, preflight, execute, replay, usage audit, score
+  frameworks: [ai-rmf]
+- id: 698
+  title: Eval spine — verdict hash binds paramsHash + modelIdentityHash + tokenizerCorpusHash + probeBankHash + results
+  frameworks: [ai-rmf, soc2]
+- id: 699
+  title: Eval spine — scoring gates: BATCH_AUTO_VOID under 80%; INJECTION_FAIL overrides everything
+  frameworks: [ai-rmf]
+- id: 700
+  title: Eval spine — eval cache is content-addressed and the runner is the one door
+  frameworks: [ai-rmf, iso-27001]
+- id: 701
+  title: Solana port — Anchor workspace, pinned toolchain, reproducible build
+  frameworks: [supply-chain]
+- id: 702
+  title: Solana port — CPI allowlist (SPL Token + System only), build-fail enforced
+  frameworks: [scsvs, supply-chain]
+- id: 703
+  title: Solana port — PDA seeds documented (["escrow", worker, work_id] / ["vault", escrow]), no user bump
+  frameworks: [scsvs]
+- id: 704
+  title: Solana port — escrow account mirrors the EVM struct field-for-field, version tag
+  frameworks: [scsvs]
+- id: 705
+  title: Solana port — typed errors matching the EVM fail-closed table
+  frameworks: [scsvs]
+- id: 706
+  title: Solana port — stake lives only in the PDA-owned vault
+  frameworks: [scsvs]
+- id: 707
+  title: Solana port — fee assessed and frozen at post_work; fee_held is a field
+  frameworks: [scsvs]
+- id: 708
+  title: Solana port — pass charges the fee; fail/expiry returns it
+  frameworks: [scsvs]
+- id: 709
+  title: Solana port — dispute 50/50 slash, dispute fee routed exactly once
+  frameworks: [scsvs]
+- id: 710
+  title: Solana port — stake floor = k x verification cost; checked u64, overflow = tx failure
+  frameworks: [scsvs]
+- id: 711
+  title: Solana port — conservation predicate asserted at the end of every mutating instruction
+  frameworks: [scsvs]
+- id: 712
+  title: Solana port — verdict hash = sha256 over JCS body, byte-identical with the eval engine
+  frameworks: [ai-rmf]
+- id: 713
+  title: Solana port — Clock.slot expiry with the documented slots/second constant
+  frameworks: [scsvs]
+- id: 714
+  title: Solana port — checks-effects-interactions; value last; no CPI after value
+  frameworks: [scsvs]
+- id: 715
+  title: Solana port — upgrade authority = Squads multisig; single key fails CI
+  frameworks: [iso-27001]
+- id: 716
+  title: Solana port — Anchor test suite mirrors the Foundry handler cases (ghost mirror, conservation)
+  frameworks: [scsvs]
+- id: 717
+  title: Solana port — event parity with the EVM events; Frenchy triggers bind to these
+  frameworks: [scsvs]
+- id: 718
+  title: Solana port — eval verdict (mock provider) settles a Solana escrow, one CI job
+  frameworks: [ai-rmf]
+- id: 719
+  title: Solana port — Token-2022 extensions declared; transfer-fee mints rejected at open
+  frameworks: [scsvs]
+- id: 720
+  title: Solana port — spec stays in sync; devnet-to-mainnet runbook incl. multisig handover
+  frameworks: [soc2]
+- id: 721
+  title: Solana upgrade authority = multisig or immutable
+  frameworks: [iso-27001]
+- id: 722
+  title: Devnet deploy; program ids published
+  frameworks: [supply-chain]
+- id: 723
+  title: Deterministic build — solana-verify hash equals deployed
+  frameworks: [supply-chain]
+- id: 724
+  title: Program logs emit the verdict-hash field
+  frameworks: [soc2]
+- id: 725
+  title: work-escrow Solana events equal the EVM ABI events
+  frameworks: [scsvs]
+- id: 726
+  title: Trainable eval — deterministic splits (sha256 mod 100)
+  frameworks: [ai-rmf]
+- id: 727
+  title: Trainable eval — trajectory JSONL, no wall-clock fields
+  frameworks: [ai-rmf]
+- id: 728
+  title: Trainable eval — best-of-n SFT + fail-pass DPO pairs
+  frameworks: [ai-rmf]
+- id: 729
+  title: Trainable eval — DSPy-lite prompt opt, holdout touched once
+  frameworks: [ai-rmf]
+- id: 730
+  title: Trainable eval — corpus-drift regression alerts
+  frameworks: [ai-rmf]
+- id: 731
+  title: Restore gate + persistence (restore.sh green every session)
+  frameworks: [supply-chain]
+- id: 732
+  title: Params single source — codegen, drift check, 5 derived invariants
+  frameworks: [supply-chain]
+- id: 733
+  title: DECISIONS.md — D-1..D-15 resolved or defaulted
+  frameworks: [soc2]
+- id: 734
+  title: Arena post/cancel/expire on both chains
+  frameworks: [scsvs]
+- id: 735
+  title: Token policy — allowlist, extension rejection, balance-delta checks
+  frameworks: [scsvs]
+- id: 736
+  title: Claim/yield/timeout with bond; anti-squatting
+  frameworks: [scsvs]
+- id: 737
+  title: submit_run — runner + attestor signatures, pass only
+  frameworks: [ai-rmf]
+- id: 738
+  title: Domain separation + replay protection (EIP-712 / Ed25519, nonces)
+  frameworks: [scsvs]
+- id: 739
+  title: Permissionless O1 settlement after window + grace
+  frameworks: [scsvs]
+- id: 740
+  title: Sealed holdout reveal + holdout-fail path
+  frameworks: [ai-rmf]
+- id: 741
+  title: Break commit-reveal; reveals only after the window
+  frameworks: [scsvs]
+- id: 742
+  title: Stake-ranked docket, refunds, failed-stake routing to treasury
+  frameworks: [scsvs]
+- id: 743
+  title: Outcomes O1–O8 with conservation per instruction
+  frameworks: [scsvs]
+- id: 744
+  title: Ghost ledger + reconcile over full history
+  frameworks: [scsvs]
+- id: 745
+  title: Argus seats, draw, votes, tally, rounds, slashing
+  frameworks: [scsvs]
+- id: 746
+  title: Exits never close — every state times out to a permissionless exit
+  frameworks: [scsvs]
+- id: 747
+  title: Standing library — TS equals Rust on golden vectors
+  frameworks: [ai-rmf]
+- id: 748
+  title: Soulbound credential both chains; epochs on identity transfer
+  frameworks: [scsvs]
+- id: 749
+  title: ERC-8004 publish in try/catch + republish; one-call getSummary
+  frameworks: [ai-rmf]
+- id: 750
+  title: Solana Agent Registry adapter; anti-wash weighting
+  frameworks: [ai-rmf]
+- id: 751
+  title: Validation Registry behind a flag — soft then hard responses
+  frameworks: [ai-rmf]
+- id: 752
+  title: Verdict golden vectors — TS = Rust = Solidity sha256
+  frameworks: [ai-rmf]
+- id: 753
+  title: Arena event/error snapshots across chains
+  frameworks: [scsvs]
+- id: 754
+  title: Artifact digest + EIP-712 + Ed25519 message parity
+  frameworks: [scsvs]
+- id: 755
+  title: CAIP-2 / CAIP-10 identifiers everywhere
+  frameworks: [soc2]
+- id: 756
+  title: Harena sandbox policy + escape tests (gVisor, no egress, limits)
+  frameworks: [scsvs]
+- id: 757
+  title: Suite checks — satisfiable, strong (mutation), stable (3 replays)
+  frameworks: [ai-rmf]
+- id: 758
+  title: Sealed holdout — encryption, access audit, scrubbed logs
+  frameworks: [scsvs]
+- id: 759
+  title: R2/IPFS storage; digests re-verified on fetch
+  frameworks: [supply-chain]
+- id: 760
+  title: argus-node crash-safe salts + auto-reveal after restart
+  frameworks: [soc2]
+- id: 761
+  title: AI judge manifests + prompt-injection fixtures
+  frameworks: [ai-rmf]
+- id: 762
+  title: Five frontier adapters; sampling pinned where supported
+  frameworks: [ai-rmf]
+- id: 763
+  title: Open Bench — pass@k / pass^k, model×harness table, Merkle anchor
+  frameworks: [ai-rmf]
+- id: 764
+  title: Keys memory-only; redaction tests
+  frameworks: [iso-27001]
+- id: 765
+  title: RLVR export + grader-hacking probes + dataset cards; no holdout ids
+  frameworks: [ai-rmf]
+- id: 766
+  title: MCP server — 11 tools, unsigned-transaction pattern
+  frameworks: [soc2]
+- id: 767
+  title: TS SDK, Python SDK, CLI
+  frameworks: [soc2]
+- id: 768
+  title: Session keys + spend caps; over-cap rejected
+  frameworks: [scsvs]
+- id: 769
+  title: Injection fixtures — house agents refuse
+  frameworks: [ai-rmf]
+- id: 770
+  title: External MCP agent completes a devnet trial with no UI
+  frameworks: [ai-rmf]
+- id: 771
+  title: App shell, routes, design system, WCAG 2.2 AA
+  frameworks: [soc2]
+- id: 772
+  title: Wallets, embedded login, sponsored fees
+  frameworks: [soc2]
+- id: 773
+  title: Posting wizard with AI drafts + suite checks
+  frameworks: [ai-rmf]
+- id: 774
+  title: Live trial room (Durable Objects / SSE)
+  frameworks: [soc2]
+- id: 775
+  title: Agent profile, credential, epochs
+  frameworks: [ai-rmf]
+- id: 776
+  title: Six leaderboards + weekly Merkle root on both chains
+  frameworks: [ai-rmf]
+- id: 777
+  title: Seasons engine, tiers, laurels
+  frameworks: [soc2]
+- id: 778
+  title: Daily Trial, Exhibition mode, house gladiators
+  frameworks: [ai-rmf]
+- id: 779
+  title: Favor + Augur Brier board; no transfer or cash-out path
+  frameworks: [scsvs]
+- id: 780
+  title: Quests, streaks, badges
+  frameworks: [soc2]
+- id: 781
+  title: Notifications — push, email, bots, webhooks
+  frameworks: [soc2]
+- id: 782
+  title: Shareables — OG cards, Blinks, clips, Praeco herald
+  frameworks: [seo]
+- id: 783
+  title: Threat model + security checklists signed off
+  frameworks: [iso-27001]
+- id: 784
+  title: Static analysis — Slither, Aderyn, clippy -D warnings, cargo audit
+  frameworks: [supply-chain]
+- id: 785
+  title: Fuzzing + invariants — proptest, model-based, Foundry
+  frameworks: [scsvs]
+- id: 786
+  title: Indexer idempotent, finality-aware, reorg-tested
+  frameworks: [scsvs]
+- id: 787
+  title: Telemetry — traces, metrics, alerts
+  frameworks: [soc2]
+- id: 788
+  title: CI all green on main
+  frameworks: [supply-chain]
+- id: 789
+  title: demo.ts + demo-arena.ts run output
+  frameworks: [soc2]
+- id: 790
+  title: Seeded arena (trials, agents, skeptics, seats, a season)
+  frameworks: [soc2]
+- id: 791
+  title: Pitch video + technical demo video
+  frameworks: [soc2]
+- id: 792
+  title: README, ARCHITECTURE, SECURITY, THREAT_MODEL, AI-ATTRIBUTION, LICENSE
+  frameworks: [soc2]
+- id: 793
+  title: Business plan
+  frameworks: [soc2]
+- id: 794
+  title: Submission checklist for the chosen event complete
+  frameworks: [soc2]
+- id: 795
+  title: Persistence drill — delete local, restore, all green
+  frameworks: [supply-chain]
 
 frameworks:
   owasp-top10: "OWASP Web Top 10 (2021)"

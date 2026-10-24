@@ -7,7 +7,7 @@
  */
 
 import { readdirSync, statSync, readFileSync } from "node:fs";
-import { join, extname } from "node:path";
+import { join, extname, relative } from "node:path";
 
 /** Modules banned from the agent/harness import graph (gate 493 no-key law). */
 export const BANNED_IMPORTS = [
@@ -24,7 +24,15 @@ export const BANNED_IMPORTS = [
 
 const SOURCE_EXTS = new Set([".ts", ".tsx", ".js", ".mjs"]);
 
-const importRegex = /from\s+["']([^"']+)["']|require\s*\(\s*["']([^"']+)["']\s*\)/g;
+// Static `from`/`require` and dynamic `import()` — a dynamic import of `fs` is the same
+// escape hatch with one more token in front of it.
+const importRegex =
+  /from\s+["']([^"']+)["']|require\s*\(\s*["']([^"']+)["']\s*\)|import\s*\(\s*["']([^"']+)["']\s*\)/g;
+
+/** `node:fs` is `fs`; the ban list names modules, not spellings. */
+function normalizeSpecifier(mod: string): string {
+  return mod.startsWith("node:") ? mod.slice("node:".length) : mod;
+}
 
 /** Scan a single source file for banned imports. */
 export function scanFile(filePath: string): { banned: string[]; clean: boolean } {
@@ -36,9 +44,8 @@ export function scanFile(filePath: string): { banned: string[]; clean: boolean }
   }
 
   const banned: string[] = [];
-  let match: RegExpExecArray | null;
-  while ((match = importRegex.exec(source)) !== null) {
-    const mod = match[1] ?? match[2];
+  for (const match of source.matchAll(importRegex)) {
+    const mod = normalizeSpecifier(match[1] ?? match[2] ?? match[3] ?? "");
     if (mod && BANNED_IMPORTS.some((b) => mod === b || mod.startsWith(b + "/"))) {
       banned.push(mod);
     }
@@ -47,11 +54,22 @@ export function scanFile(filePath: string): { banned: string[]; clean: boolean }
   return { banned, clean: banned.length === 0 };
 }
 
-/** Recursively scan a directory for banned imports in source files. */
-export function scanDirectory(dirPath: string): {
+/**
+ * Recursively scan a directory for banned imports in source files.
+ *
+ * Reported `path`s are relative to the scanned directory with `/` separators, and
+ * `options.exempt` names files the gate may not flag in that same form. The only
+ * legitimate entry is the enforcer itself, which must read the tree to police it;
+ * anything else on that list is a hole and should not pass review.
+ */
+export function scanDirectory(
+  dirPath: string,
+  options: { exempt?: readonly string[] } = {},
+): {
   files: Array<{ path: string; banned: string[] }>;
   allClean: boolean;
 } {
+  const exempt = new Set(options.exempt ?? []);
   const files: Array<{ path: string; banned: string[] }> = [];
   let allClean = true;
 
@@ -72,7 +90,10 @@ export function scanDirectory(dirPath: string): {
         } else if (SOURCE_EXTS.has(extname(full))) {
           const result = scanFile(full);
           if (!result.clean) {
-            files.push({ path: full, banned: result.banned });
+            files.push({
+              path: relative(dirPath, full).replaceAll("\\", "/"),
+              banned: result.banned,
+            });
             allClean = false;
           }
         }
@@ -83,5 +104,6 @@ export function scanDirectory(dirPath: string): {
   }
 
   walk(dirPath);
-  return { files, allClean };
+  const kept = files.filter((f) => !exempt.has(f.path));
+  return { files: kept, allClean: kept.length === 0 };
 }

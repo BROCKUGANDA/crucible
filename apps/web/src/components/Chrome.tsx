@@ -121,7 +121,10 @@ function CreditButton() {
   const { address } = useAccount();
   const dep = deployment();
   const { state, message, send, busy } = useTx();
-  const credit = useReadContract({
+  // Destructured so the dependency array names a binding, not a member
+  // expression — `credit.refetch` in deps is stable in TanStack v5 but reads
+  // as a lint finding; the bare `refetch` is the same stable function.
+  const { data: creditData, refetch: refetchCredit } = useReadContract({
     abi: TRIALS_ABI,
     address: dep.trials,
     functionName: "credit",
@@ -130,10 +133,10 @@ function CreditButton() {
   });
 
   useEffect(() => {
-    if (state === "poured") void credit.refetch();
-  }, [state, credit.refetch]);
+    if (state === "poured") void refetchCredit();
+  }, [state, refetchCredit]);
 
-  const amount = (credit.data as bigint | undefined) ?? 0n;
+  const amount = (creditData as bigint | undefined) ?? 0n;
   if (!address || amount === 0n) return null;
 
   return (
