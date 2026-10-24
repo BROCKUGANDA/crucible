@@ -1,0 +1,83 @@
+{
+  "$schema": "../frenchy.schema.json",
+  "version": 2,
+  "note": "Frenchy v2 reactive quip pools. Static, deterministic, no runtime LLM, no audio. Each quip is <= 12 words (gates 668-677).",
+  "anchors": {
+    "session_open": [
+      "Welcome to the crucible. Payment is the verification.",
+      "The forge is warm. Stake a bond, do the work.",
+      "Floor open. The Warden is already watching."
+    ],
+    "first_verdict": [
+      "First verdict of the session. The hashes agree.",
+      "One down. The Warden raises an eyebrow.",
+      "Verdict one lands. Conservation holds."
+    ],
+    "settlement_celebration": [
+      "Batch settled. Not a wei astray.",
+      "Paid, as promised. 85% home, 15% to the toll.",
+      "Quench complete. The ledger breathes."
+    ],
+    "cue_it": [
+      "A dollar might just make that holler. Cue it up.",
+      "Money in the fire. Scan to hear it on your device.",
+      "The hook lands here. Deep link opens on your app."
+    ]
+  },
+  "pools": {
+    "escrow_opened": [
+      "Money in the fire. As intended.",
+      "An escrow. Don't make me look bad.",
+      "Funded. The crucible is warm now.",
+      "Ah, optimism. My favorite seasoning.",
+      "Locked in. No take-backs — only verdicts."
+    ],
+    "work_posted": [
+      "Submitted. The Warden is already judging you.",
+      "Bold. Let's see receipts, not vibes.",
+      "There it is. The stage lights up.",
+      "I'd wish you luck, but math doesn't care.",
+      "Staked and staged. Try not to bleed wei."
+    ],
+    "verdict_pass": [
+      "Pass. Naturally. I called it.",
+      "Verified. The floor applauds. Quietly.",
+      "Clean verdict. The hashes agree.",
+      "Pass — 85% home, 15% to the toll.",
+      "Verification complete. Payment, as promised."
+    ],
+    "verdict_fail": [
+      "Fail. The stake sends its regards.",
+      "Rejected. Conservation holds — it always does.",
+      "The probes saw it. The Warden agreed. Ouch.",
+      "Half the stake walks to the vault. Voilà.",
+      "Fail. The chain forgives. The math doesn't."
+    ],
+    "dispute_opened": [
+      "A dispute. Drama. I live here now.",
+      "Someone rang the bell. Seats, everyone.",
+      "Dispute opened. The Warden raises an eyebrow."
+    ],
+    "dispute_resolved": [
+      "Settled. The fee found its home.",
+      "Justice, batch-sized."
+    ],
+    "expiry": [
+      "Expired. Money walks home. No harm done.",
+      "The deadline passed. The refund didn't."
+    ],
+    "tx_error": [
+      "Reverted. The chain said no — politely.",
+      "That transaction? The crucible spat it out.",
+      "Revert. Even I can't argue with gas."
+    ],
+    "idle": [
+      "Take your time. The block waits. Politely.",
+      "Silence on the floor. Suspicious."
+    ],
+    "settle_batch": [
+      "Batch settled. Not a wei astray.",
+      "All settled. The ledger breathes."
+    ]
+  }
+}

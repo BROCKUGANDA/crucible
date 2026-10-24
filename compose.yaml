@@ -12,7 +12,18 @@ services:
   anvil:
     image: ghcr.io/foundry-rs/foundry:latest
     entrypoint: ["anvil"]
-    command: ["--host", "0.0.0.0", "--port", "8545", "--silent"]
+    # The block cadence is one knob, and it is the args — not a mode name. anvil reads its
+    # command line and nothing else, so an ANVIL_MODE variable passed to the container would be
+    # a control that controls nothing while looking like the thing that selected it. Empty
+    # ANVIL_MODE_ARGS is what the live deployment runs today: no `--block-time`, so the chain
+    # instant-mines. Two files reason about that fact and would need re-reading if it changed:
+    # `apps/api/src/security.ts:107` and `apps/web/src/lib/chainClock.ts:16`.
+    # For 1s blocks: ANVIL_MODE_ARGS=--block-time 1 --base-fee 1000000000 --chain-id 31337
+    command: >
+      --host 0.0.0.0
+      --port 8545
+      --silent
+      ${ANVIL_MODE_ARGS:-}
     ports:
       - "${ANVIL_HOST_PORT:-8555}:8545"
     healthcheck:

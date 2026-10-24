@@ -6,6 +6,7 @@ import {console} from "forge-std/console.sol";
 import {CrucibleTrials} from "../contracts/CrucibleTrials.sol";
 import {AlloyRegistry} from "../contracts/AlloyRegistry.sol";
 import {MockIdentityRegistry} from "../contracts/mocks/ERC8004Mocks.sol";
+import {VerificationReceipt} from "../contracts/VerificationReceipt.sol";
 import {SeedContent} from "./SeedContent.sol";
 
 /// Replays the full Crucible loop locally and LEAVES IT ON THE CHAIN — stage insurance.
@@ -75,10 +76,10 @@ contract Demo is Script {
         // submission, and a real one comes from the runner signing real bytes — see
         // scripts/verify-roundtrip.mjs. A demo hall therefore has resolvable demands and
         // synthetic answers, which is the honest state until a run is published per trial.
-        _paidWithstand(agentA, pkOperatorA, SeedContent.SPEC_HASH, SeedContent.TESTS_HASH);
-        _paidWithstand(agentB, pkOperatorB, SeedContent.SPEC_HASH, SeedContent.TESTS_HASH);
-        _slashed(agentB, pkOperatorB, SeedContent.SPEC_HASH, SeedContent.TESTS_HASH);
-        _paidWithstand(agentA, pkOperatorA, SeedContent.SPEC_HASH, SeedContent.TESTS_HASH);
+        _paidWithstand(agentA, pkOperatorA, SeedContent.SPEC_HASH, SeedContent.TESTS_HASH, 1 ether);
+        _paidWithstand(agentB, pkOperatorB, SeedContent.SPEC_HASH, SeedContent.TESTS_HASH, 1 ether);
+        _slashed(agentB, pkOperatorB, SeedContent.SPEC_HASH, SeedContent.TESTS_HASH, 1 ether);
+        _paidWithstand(agentA, pkOperatorA, SeedContent.SPEC_HASH, SeedContent.TESTS_HASH, 1 ether);
 
         console.log("2. identity links");
         _linkIdentity(agentA, pkOperatorA, "ipfs://identityA");
@@ -127,6 +128,13 @@ contract Demo is Script {
         alloyRegistry = new AlloyRegistry();
         trials = new CrucibleTrials(treasury, address(alloyRegistry), seats);
         alloyRegistry.setForge(address(trials));
+
+        // VerificationReceipt (gates 415-418): deploy, wire into CrucibleTrials, enable.
+        VerificationReceipt receipt = new VerificationReceipt();
+        receipt.setMinter(address(trials));
+        trials.setVerificationReceipt(address(receipt));
+        trials.setReceiptsEnabled(true);
+        console.log("VerificationReceipt", address(receipt));
     }
 
     function _forgeAgent(uint256 pk, string memory metadataURI) internal returns (uint256 agentId) {
@@ -135,12 +143,12 @@ contract Demo is Script {
     }
 
     /// Lights a trial and has `agentId` claim and submit a signed run for it.
-    function _claimAndSubmit(uint256 agentId, uint256 operatorPk, bytes32 spec, bytes32 tests, bytes32 runHash)
+    function _claimAndSubmit(uint256 agentId, uint256 operatorPk, bytes32 spec, bytes32 tests, bytes32 runHash, uint256 reward)
         internal
         returns (uint256 id)
     {
         vm.broadcast(pkSponsor);
-        id = trials.createTrial{value: 1 ether}(spec, tests, uint64(block.timestamp + 30 days), 12 hours);
+        id = trials.createTrial{value: reward}(reward, spec, tests, uint64(block.timestamp + 30 days), 12 hours);
 
         vm.broadcast(operatorPk);
         trials.claimTrial(id);
@@ -161,9 +169,9 @@ contract Demo is Script {
     }
 
     /// A skeptic attacks and loses: this is what turns a win into a *survived* win.
-    function _paidWithstand(uint256 agentId, uint256 operatorPk, bytes32 spec, bytes32 tests) internal {
-        uint256 id = _claimAndSubmit(agentId, operatorPk, spec, tests, keccak256("RunArtifact{all-pass}"));
-        _fileBreak(id, keccak256("no-proof"));
+    function _paidWithstand(uint256 agentId, uint256 operatorPk, bytes32 spec, bytes32 tests, uint256 reward) internal {
+        uint256 id = _claimAndSubmit(agentId, operatorPk, spec, tests, keccak256("RunArtifact{all-pass}"), reward);
+        _fileBreak(id, keccak256("no-proof"), reward);
         _vote(id, false);
     }
 
@@ -176,8 +184,8 @@ contract Demo is Script {
     /// left running for hours and reverted on a fresh one. The path is covered by
     /// `test_Finalize_*` in the contract suite; a demo that only works on a stale chain is
     /// worse than one that skips it.
-    function _paidUncontested(uint256 agentId, uint256 operatorPk, bytes32 spec, bytes32 tests) internal {
-        uint256 id = _claimAndSubmit(agentId, operatorPk, spec, tests, keccak256("RunArtifact{quiet}"));
+    function _paidUncontested(uint256 agentId, uint256 operatorPk, bytes32 spec, bytes32 tests, uint256 reward) internal {
+        uint256 id = _claimAndSubmit(agentId, operatorPk, spec, tests, keccak256("RunArtifact{quiet}"), reward);
         vm.warp(block.timestamp + 2 days);
         vm.broadcast(pkRelayer); // finalize is permissionless; the relayer is the bystander
         trials.finalize(id);
@@ -185,15 +193,15 @@ contract Demo is Script {
 
     /// The break lands. The hall has to prove a loss with the same rigour as a win, so
     /// this settles slashed rather than being quietly left out of the seed.
-    function _slashed(uint256 agentId, uint256 operatorPk, bytes32 spec, bytes32 tests) internal {
-        uint256 id = _claimAndSubmit(agentId, operatorPk, spec, tests, keccak256("RunArtifact{fails-suite}"));
-        _fileBreak(id, keccak256("reproduced-the-failure"));
+    function _slashed(uint256 agentId, uint256 operatorPk, bytes32 spec, bytes32 tests, uint256 reward) internal {
+        uint256 id = _claimAndSubmit(agentId, operatorPk, spec, tests, keccak256("RunArtifact{fails-suite}"), reward);
+        _fileBreak(id, keccak256("reproduced-the-failure"), reward);
         _vote(id, true);
     }
 
-    function _fileBreak(uint256 id, bytes32 proofCID) internal {
+    function _fileBreak(uint256 id, bytes32 proofCID, uint256 reward) internal {
         vm.broadcast(pkSkeptic);
-        trials.fileBreak{value: 0.01 ether}(id, proofCID);
+        trials.fileBreak{value: reward / 100}(id, proofCID);
     }
 
     function _vote(uint256 id, bool breakWins) internal {

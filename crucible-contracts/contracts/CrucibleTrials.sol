@@ -16,6 +16,15 @@ interface IAlloyRegistry {
     function recordSlash(uint256 agentId, address operator) external;
 }
 
+/// @notice Optional soulbound VerificationReceipt. `settleBatch` mints one receipt per trial
+/// it settles: tokenURI -> verdictHash, with graderVersion, promptHash and the trial id
+/// on-chain. Zero means "not wired"; settlement proceeds without minting.
+interface IVerificationReceipt {
+    function mintReceipt(address to, uint256 trialId, bytes32 verdictHash, bytes32 promptHash, uint256 graderVersion) external returns (uint256 tokenId);
+    function tokenURI(uint256 tokenId) external view returns (string memory);
+    function isMinter(address account) external view returns (bool);
+}
+
 /// @title CrucibleTrials
 /// @notice Escrow + state machine for bountied, adversarially-verified agent trials.
 /// State machine: Open -> Assigned -> Judging -> Challenged -> Settled
@@ -70,6 +79,8 @@ contract CrucibleTrials {
     error BadArgusSeatCount();
     error DuplicateArgusSeat();
     error ZeroArgusSeat();
+    error RewardMismatch();
+    error VerificationReceiptNotSet();
 
     // ───────────────────────── types ──────────────────────────
     enum Status {
@@ -199,6 +210,13 @@ contract CrucibleTrials {
     mapping(address => bool) public isArgus;
     mapping(uint256 => Dispute) private _disputes;
 
+    /// @notice Optional ERC-721 VerificationReceipt contract. Zero means minting is off.
+    address public verificationReceipt;
+
+    /// @notice Feature flag: when false, settleBatch does not mint receipts (default-off,
+    /// gate 418). Can be flipped per deployment, never silently.
+    bool public receiptsEnabled;
+
     uint256 private _guard;
 
     modifier nonReentrant() {
@@ -235,6 +253,9 @@ contract CrucibleTrials {
     event ReputationBridgeSet(address indexed bridge);
     event IdentityRegistrySet(address indexed registry);
     event IdentityLinked(uint256 indexed agentId, uint256 indexed identityAgentId);
+    event VerificationReceiptSet(address indexed receipt);
+    event ReceiptsToggled(bool enabled);
+    event VerificationReceiptMinted(uint256 indexed tokenId, uint256 indexed trialId, bytes32 verdictHash);
 
     /// @param treasury_ fee + burned-slash recipient
     /// @param alloy_ reputation registry (setForge called right after deploy)
@@ -361,16 +382,19 @@ contract CrucibleTrials {
     }
 
     // ───────────────────────── sponsor ────────────────────────
-    function createTrial(bytes32 specCID, bytes32 testsCID, uint64 deadline, uint64 breakWindow)
+    /// @notice Sponsor creates a trial. `reward` is explicit and `msg.value` must match it
+    /// exactly — overpayment reverts, no refund path (gate 405).
+    function createTrial(uint256 reward, bytes32 specCID, bytes32 testsCID, uint64 deadline, uint64 breakWindow)
         external
         payable
         returns (uint256 id)
     {
         if (specCID == bytes32(0)) revert ZeroSpec();
         if (testsCID == bytes32(0)) revert ZeroTests();
-        if (msg.value < MIN_BOND) revert RewardTooSmall();
-        if (msg.value > MAX_REWARD) revert RewardTooLarge();
-        if (escrowed + msg.value > MAX_TOTAL_ESCROWED) revert EscrowCapExceeded();
+        if (msg.value != reward) revert RewardMismatch();
+        if (reward < MIN_BOND) revert RewardTooSmall();
+        if (reward > MAX_REWARD) revert RewardTooLarge();
+        if (escrowed + reward > MAX_TOTAL_ESCROWED) revert EscrowCapExceeded();
         if (deadline < block.timestamp + MIN_RUN_WINDOW) revert BadDeadline();
         if (breakWindow < MIN_BREAK_WINDOW || breakWindow > MAX_BREAK_WINDOW) revert BadWindow();
         id = ++trialCount;
@@ -378,12 +402,12 @@ contract CrucibleTrials {
         t.sponsor = msg.sender;
         t.specCID = specCID;
         t.testsCID = testsCID;
-        t.reward = uint128(msg.value);
-        t.bond = uint128(bondFor(msg.value));
+        t.reward = uint128(reward);
+        t.bond = uint128(bondFor(reward));
         // createdAt | deadline<<64 | breakWindow<<128  (runAt stays 0 until submitRun)
         t.timestamps = uint256(block.timestamp) | (uint256(deadline) << 64) | (uint256(breakWindow) << 128);
-        escrowed += msg.value;
-        emit TrialCreated(id, msg.sender, specCID, testsCID, msg.value, t.bond, deadline, uint64(breakWindow));
+        escrowed += reward;
+        emit TrialCreated(id, msg.sender, specCID, testsCID, reward, t.bond, deadline, uint64(breakWindow));
     }
 
     // ── timestamp accessors (the packing is internal) ──
@@ -595,6 +619,49 @@ contract CrucibleTrials {
         } else {
             revert NotFinalizable();
         }
+    }
+
+    /// @notice Keeper settles N verified escrows in ONE tx (gate 402). Serial keeper stays
+    /// serial — one tx in flight, just bigger. An entry the chain already settled is skipped:
+    /// that is the harmless retry. An entry that is NOT settleable is NOT skipped — its revert
+    /// aborts the batch. `finalize` reverting when a trial is not finalizable is the
+    /// idempotency guarantee this escrow is built on (AGENTS.md "Money rules that do not bend";
+    /// contract-spec.md), and per-trial error isolation belongs to the warden, which retries
+    /// what the batch refused. Swallowing it here would let one tx report success for trials it
+    /// never settled.
+    ///
+    /// When receipts are enabled and a VerificationReceipt is wired, one receipt is minted per
+    /// trial this batch settled.
+    ///
+    /// @param trialIds the trials to settle, in the keeper's FIFO job order
+    function settleBatch(uint256[] calldata trialIds) external {
+        for (uint256 i; i < trialIds.length; ++i) {
+            uint256 id = trialIds[i];
+            if (trials[id].status == Status.Settled) continue;
+            this.finalize(id);
+            if (receiptsEnabled && verificationReceipt != address(0)) {
+                Trial storage t = trials[id];
+                bytes32 verdictHash = keccak256(abi.encode(t.verdict, t.runHash, t.breakProofCID));
+                uint256 tokenId = IVerificationReceipt(verificationReceipt).mintReceipt(
+                    agents[uint256(t.agentId)].operator, id, verdictHash, t.specCID, 1
+                );
+                emit VerificationReceiptMinted(tokenId, id, verdictHash);
+            }
+        }
+    }
+
+    /// @notice Wire (or unwire) the VerificationReceipt contract. Owner-only.
+    function setVerificationReceipt(address receipt) external {
+        if (msg.sender != owner) revert NotOwner();
+        verificationReceipt = receipt;
+        emit VerificationReceiptSet(receipt);
+    }
+
+    /// @notice Flip the receipt-minting feature flag. Owner-only (gate 418).
+    function setReceiptsEnabled(bool enabled) external {
+        if (msg.sender != owner) revert NotOwner();
+        receiptsEnabled = enabled;
+        emit ReceiptsToggled(enabled);
     }
 
     /// Split across three frames rather than one: a single frame holding the trial pointer,

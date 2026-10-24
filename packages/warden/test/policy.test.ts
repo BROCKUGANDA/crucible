@@ -173,7 +173,7 @@ describe("notifyAll", () => {
 describe("Warden.sweep", () => {
   const crucible = {
     address: TRIALS,
-    finalize: vi.fn(async () => `0x${"ff".repeat(32)}` as `0x${string}`),
+    settleBatch: vi.fn(async () => `0x${"ff".repeat(32)}` as `0x${string}`),
   } as unknown as Crucible;
 
   const wallet = {
@@ -182,9 +182,9 @@ describe("Warden.sweep", () => {
   } as unknown as WalletClient;
 
   it("finalizes an expired break window and reports the tx", async () => {
-    const finalize = vi.fn(async () => `0x${"ff".repeat(32)}` as `0x${string}`);
+    const settleBatch = vi.fn(async () => `0x${"ff".repeat(32)}` as `0x${string}`);
     const w = new Warden({ now: async () => 2_000_000_000,
-      crucible: { ...crucible, finalize } as unknown as Crucible,
+      crucible: { ...crucible, settleBatch } as unknown as Crucible,
       wallet,
     });
     const model = {
@@ -192,17 +192,22 @@ describe("Warden.sweep", () => {
       trials: new Map([[1, row({ status: "judging", runAt: NOW - 100_000 })]]),
     };
     const out = await w.sweep(model, NOW);
-    expect(finalize).toHaveBeenCalledTimes(1);
+    expect(settleBatch).toHaveBeenCalledTimes(1);
     expect(out.acted[0]!.txHash).toBeTruthy();
     expect(out.acted[0]!.error).toBeNull();
   });
 
   it("collects the error instead of aborting when a trial reverts", async () => {
+    // The batch is refused because the chain says this trial is not finalizable, and the
+    // per-trial retry meets the same answer. Neither is allowed to abort the sweep.
+    const settleBatch = vi.fn(async () => {
+      throw new Error("execution reverted: NotFinalizable");
+    });
     const finalize = vi.fn(async () => {
       throw new Error("execution reverted: NotFinalizable");
     });
     const w = new Warden({ now: async () => 2_000_000_000,
-      crucible: { ...crucible, finalize } as unknown as Crucible,
+      crucible: { ...crucible, settleBatch, finalize } as unknown as Crucible,
       wallet,
     });
     const model = {

@@ -42,6 +42,9 @@ export interface UseTxResult {
   message: string | null;
   /** true between `send` and a terminal state; every call site must disable on this */
   busy: boolean;
+  /** Receipt gas line (gate 406): "Gas used: 84,213 · 0.000084 ETH" */
+  gasUsed: bigint | null;
+  gasWei: bigint | null;
   send: (request: TxRequest, to?: Address) => void;
   reset: () => void;
 }
@@ -50,12 +53,49 @@ export function useTx(): UseTxResult {
   const [state, setState] = useState<TxState>("idle");
   const [hash, setHash] = useState<Hex | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [gasUsed, setGasUsed] = useState<bigint | null>(null);
+  const [gasWei, setGasWei] = useState<bigint | null>(null);
 
+  const { address } = useAccount();
   const { sendTransactionAsync } = useSendTransaction();
-  const { isSuccess, isError, error: receiptError } = useWaitForTransactionReceipt({
+
+  // A transaction belongs to the account that sent it. On a shared browser, an
+  // account switch mid- or post-flight would otherwise leave the next user
+  // staring at the previous user's "Poured." receipt and gas line as if it were
+  // theirs — the receipt itself cannot cross-wire (a hash has one sender), but
+  // the *presentation* would attribute it to whoever is connected now. The
+  // address is captured in a ref because the reset effect must compare the
+  // account this transaction was sent from against the one connected now, not
+  // re-reset on every render of the same account.
+  const sentFrom = useRef<Address | null>(null);
+  useEffect(() => {
+    const previous = sentFrom.current;
+    sentFrom.current = address ?? null;
+    if (previous !== null && address !== previous) {
+      inFlight.current = false;
+      setState("idle");
+      setError(null);
+      setHash(null);
+      setGasUsed(null);
+      setGasWei(null);
+    }
+  }, [address]);
+
+  const { isSuccess, isError, error: receiptError, data: receipt } = useWaitForTransactionReceipt({
     hash: hash ?? undefined,
     query: { enabled: Boolean(hash) },
   });
+
+  // Capture the receipt's gas line (gate 406): gasUsed × effectiveGasPrice.
+  useEffect(() => {
+    if (!receipt) return;
+    const used = receipt.gasUsed;
+    const price = receipt.effectiveGasPrice;
+    setGasUsed(used);
+    if (price !== undefined && price !== null) {
+      setGasWei(used * price);
+    }
+  }, [receipt]);
 
   // None of Crucible's write functions are idempotent: `createTrial` twice is two trials
   // and two escrows, `claimTrial` twice is a revert at best and a second bond at worst.
@@ -85,11 +125,24 @@ export function useTx(): UseTxResult {
     setState("idle");
     setError(null);
     setHash(null);
+    setGasUsed(null);
+    setGasWei(null);
   }, []);
 
   const send = useCallback(
     (request: TxRequest, to?: Address) => {
       if (inFlight.current) return;
+
+      // An unconnected click is not a network failure. Finalize is
+      // permissionless and the button stays enabled for spectators, so the
+      // error must name the actual next action — connect — rather than the
+      // generic "the network refused" sentence that a wallet-less send would
+      // otherwise decode into.
+      if (!address) {
+        setState("doused");
+        setError("Connect a wallet to send this.");
+        return;
+      }
 
       // Refuse here, not at import time — see wagmi.ts. If there is no deployment
       // behind this app, saying so at the moment of signing is far more useful than
@@ -126,10 +179,20 @@ export function useTx(): UseTxResult {
           setState("doused");
         });
     },
-    [sendTransactionAsync],
+    [sendTransactionAsync, address],
   );
 
-  return { state, hash, error, message: error, busy: state === "heating", send, reset };
+  return {
+    state,
+    hash,
+    error,
+    message: error,
+    busy: state === "heating",
+    gasUsed,
+    gasWei,
+    send,
+    reset,
+  };
 }
 
 /**
@@ -187,7 +250,7 @@ export function buildCreateTrial(args: {
     data: encodeFunctionData({
       abi: TRIALS_ABI,
       functionName: "createTrial",
-      args: [args.specDigest, args.testsDigest, BigInt(args.deadline), BigInt(args.breakWindow)],
+      args: [args.rewardWei, args.specDigest, args.testsDigest, BigInt(args.deadline), BigInt(args.breakWindow)],
     }),
     value: args.rewardWei,
   };

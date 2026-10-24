@@ -1,4 +1,5 @@
 import { afterAll, describe, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
 import { keccak256, stringToHex, decodeFunctionData } from "viem";
 import { TRIALS_ABI } from "@crucible/smith";
 import { foundry, sepolia } from "wagmi/chains";
@@ -38,15 +39,17 @@ describe("transaction builders", () => {
     });
     expect(decodeFunctionData({ abi: TRIALS_ABI, data }).functionName).toBe("createTrial");
     const args = decodeFunctionData({ abi: TRIALS_ABI, data }).args! as unknown as [
+      bigint,
       `0x${string}`,
       `0x${string}`,
       bigint,
       bigint,
     ];
-    expect(args[0]).toBe(HASH);
+    expect(args[0]).toBe(10n ** 17n);
     expect(args[1]).toBe(HASH);
-    expect(args[2]).toBe(1_800_000_000n);
-    expect(args[3]).toBe(43_200n);
+    expect(args[2]).toBe(HASH);
+    expect(args[3]).toBe(1_800_000_000n);
+    expect(args[4]).toBe(43_200n);
   });
 
   /**
@@ -329,5 +332,66 @@ describe("client env access", () => {
     walk(new URL("../src", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1"));
 
     expect(offenders).toEqual([]);
+  });
+});
+
+/**
+ * Multi-user guards in `useTx` (the shared-browser account-switch hole).
+ *
+ * A transaction belongs to the account that sent it. The receipt cannot cross-wire —
+ * a hash has exactly one sender — but the *presentation* could: without a reset on
+ * account change, user B connecting after user A's "Poured." inherits A's terminal
+ * result and gas line as if it were theirs. And an unconnected spectator clicking a
+ * permissionless button deserves "connect a wallet", not "the network refused".
+ *
+ * There is no React renderer in this suite, so these are wiring checks over the
+ * executed statements (comments filtered — the lesson from the `includes("--strict")`
+ * gate that stayed green matching a script's prose).
+ */
+describe("useTx multi-user guards", () => {
+  const source = readFileSync(new URL("../src/lib/useTx.ts", import.meta.url), "utf8");
+  // Executable lines only: strip whole-line comments and trailing // comments.
+  const code = source
+    .split("\n")
+    .map((l) => l.replace(/\/\/.*$/, "").trim())
+    .filter((l) => l.length > 0 && !l.startsWith("*") && !l.startsWith("/*"))
+    .join("\n");
+
+  it("resets every terminal surface when the connected account changes", () => {
+    // The effect must watch `address` and wipe all five surfaces — state, error,
+    // hash, and both gas numbers — plus release the double-submit lock.
+    const effectMatch = code.match(/useEffect\(\(\) => \{[\s\S]*?\}, \[address\]\);/);
+    expect(effectMatch, "an effect keyed on [address] exists").not.toBeNull();
+    const effect = effectMatch![0];
+    for (const reset of [
+      "inFlight.current = false",
+      'setState("idle")',
+      "setError(null)",
+      "setHash(null)",
+      "setGasUsed(null)",
+      "setGasWei(null)",
+    ]) {
+      expect(effect, `the reset must include ${reset}`).toContain(reset);
+    }
+    // And it must only fire on an actual change, not every render of the same
+    // account. The condition is pinned as executed code, not prose: prepending
+    // `false &&` to it (a mutation that survived an earlier, looser shape of
+    // this check) turns this red.
+    expect(effect).toContain("if (previous !== null && address !== previous) {");
+  });
+
+  it("refuses a send with no wallet connected, before deployment checks", () => {
+    const guardAt = code.indexOf("if (!address)");
+    const configAt = code.indexOf("assertConfigured()");
+    expect(guardAt, "the !address guard exists").toBeGreaterThan(-1);
+    expect(configAt, "assertConfigured is still called").toBeGreaterThan(-1);
+    expect(guardAt, "wallet check precedes the deployment check").toBeLessThan(configAt);
+    const guardBlock = code.slice(guardAt, guardAt + 260);
+    expect(guardBlock).toContain("Connect a wallet to send this.");
+    expect(guardBlock).toContain('setState("doused")');
+  });
+
+  it("keeps `address` in the send callback deps so the guard never goes stale", () => {
+    expect(code).toMatch(/\[sendTransactionAsync, address\]/);
   });
 });

@@ -58,7 +58,7 @@ describe("Warden.start", () => {
 
     const crucible = {
       address: TRIALS,
-      finalize: async () => {
+      settleBatch: async () => {
         starts.push(Date.now() - t0);
         live += 1;
         peak = Math.max(peak, live);
@@ -84,24 +84,91 @@ describe("Warden.start", () => {
 
   it("stop() leaves nothing scheduled, and start() twice is one loop", async () => {
     vi.useFakeTimers();
-    const finalize = vi.fn(async () => HASH);
-    const crucible = { address: TRIALS, finalize } as unknown as Crucible;
+    const settleBatch = vi.fn(async () => HASH);
+    const crucible = { address: TRIALS, settleBatch } as unknown as Crucible;
     const wallet = { account: null } as unknown as WalletClient;
     const warden = new Warden({ now: async () => 2_000_000_000, crucible, wallet });
 
     warden.start(model, 1);
     warden.start(model, 1);
     await vi.advanceTimersByTimeAsync(3_500);
-    expect(finalize).toHaveBeenCalledTimes(3);
+    expect(settleBatch).toHaveBeenCalledTimes(3);
 
     warden.stop();
     await vi.advanceTimersByTimeAsync(60_000);
-    expect(finalize).toHaveBeenCalledTimes(3);
+    expect(settleBatch).toHaveBeenCalledTimes(3);
 
     // Restartable, which the cleared timer it replaced was too.
     warden.start(model, 1);
     await vi.advanceTimersByTimeAsync(1_500);
-    expect(finalize).toHaveBeenCalledTimes(4);
+    expect(settleBatch).toHaveBeenCalledTimes(4);
     warden.stop();
+  });
+});
+
+/**
+ * The batch is a throughput choice, not a correctness one. `settleBatch` aborts when the
+ * chain says an entry is not settleable, because that revert is the escrow's idempotency
+ * guarantee — so the warden, which is the layer that owns error isolation, has to retry the
+ * trials individually rather than report the batch's failure as every trial's outcome.
+ */
+describe("Warden.sweep batch policy", () => {
+  function twoTrialModel(): ReadModel {
+    return { ...replay([]), trials: new Map([[1, row()], [2, row({ id: 2 })]]) };
+  }
+
+  it("settles the whole batch in one tx when the chain accepts it", async () => {
+    const settleBatch = vi.fn(async () => HASH);
+    const finalize = vi.fn(async () => HASH);
+    const crucible = { address: TRIALS, settleBatch, finalize } as unknown as Crucible;
+    const warden = new Warden({ now: async () => 2_000_000_000, crucible, wallet: {} as WalletClient });
+
+    const result = await warden.sweep(twoTrialModel(), 2_000_000_000);
+
+    expect(settleBatch).toHaveBeenCalledTimes(1);
+    expect(settleBatch.mock.calls[0]?.[1]).toEqual([1n, 2n]);
+    expect(finalize).not.toHaveBeenCalled();
+    expect(result.acted).toHaveLength(2);
+    expect(result.acted.every((a) => a.txHash === HASH && a.error === null)).toBe(true);
+  });
+
+  it("retries each trial alone when the batch is refused, and reports them separately", async () => {
+    const settleBatch = vi.fn(async () => {
+      throw new Error("WindowOpen");
+    });
+    const finalize = vi.fn(async (_wallet: unknown, id: bigint) => {
+      if (id === 2n) throw new Error("AlreadySettled");
+      return HASH;
+    });
+    const crucible = { address: TRIALS, settleBatch, finalize } as unknown as Crucible;
+    const warden = new Warden({ now: async () => 2_000_000_000, crucible, wallet: {} as WalletClient });
+
+    const result = await warden.sweep(twoTrialModel(), 2_000_000_000);
+
+    // One trial paid for the refused batch and still settled; the other is recorded as skipped
+    // with its own reason. Neither inherits the other's outcome.
+    expect(settleBatch).toHaveBeenCalledTimes(1);
+    expect(finalize).toHaveBeenCalledTimes(2);
+    const byTrial = new Map(result.acted.map((a) => [a.decision.trialId, a]));
+    expect(byTrial.get(1)?.txHash).toBe(HASH);
+    expect(byTrial.get(1)?.error).toBeNull();
+    expect(byTrial.get(2)?.txHash).toBeNull();
+    expect(byTrial.get(2)?.error).toBe("AlreadySettled");
+  });
+
+  it("never reports a tx hash for a trial the chain did not settle", async () => {
+    const settleBatch = vi.fn(async () => {
+      throw new Error("WindowOpen");
+    });
+    const finalize = vi.fn(async () => {
+      throw new Error("WindowOpen");
+    });
+    const crucible = { address: TRIALS, settleBatch, finalize } as unknown as Crucible;
+    const warden = new Warden({ now: async () => 2_000_000_000, crucible, wallet: {} as WalletClient });
+
+    const result = await warden.sweep(twoTrialModel(), 2_000_000_000);
+
+    expect(result.acted.every((a) => a.txHash === null)).toBe(true);
+    expect(result.acted.every((a) => a.error === "WindowOpen")).toBe(true);
   });
 });

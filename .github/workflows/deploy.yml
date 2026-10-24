@@ -166,20 +166,35 @@ jobs:
           echo "=== the sign-in and proxy keys, values redacted ==="
           sed -E 's/=.*/=<redacted>/' .env | grep -E "^(AUTH_ORIGIN|AUTH_SECRET|AUTH_ALLOW_DEV_SECRET|CHAIN_ID|TRUST_PROXY)=" || true
 
-      - name: build web and api
+      - name: build web, api and keeper
         working-directory: /home/ubuntu/crucible
         # The seed image is built too — and only BUILT, never run. The deploy
-        # swaps `web` and `api` with `--no-deps` so anvil keeps its chain, and
+        # swaps `web`, `api` and `keeper` with `--no-deps` so anvil keeps its chain, and
         # the seed service is left alone for the same reason. But the
         # post-deploy assertions run inside the seed image, and an image built
         # before the assertion script existed does not contain it — so the
         # deploy failed on a file that was in the repository and not in the
         # image. Building is not running.
-        run: docker compose -f compose.yaml -f compose.vps.yaml build web api seed
+        #
+        # The keeper joins the build because it joined the swap. Measured on
+        # 2026-10-23: `crucible-keeper-1` was Up 2 weeks while web and api were Up 4
+        # minutes, and inside it `env | grep -ci trace` was 0 with no mounts — the
+        # daemon moving money on the demo box was the hackathon build, two weeks of
+        # its own hardening short (trace spine, gas ledger, sweep kill switch,
+        # acting-hop breaker). A service the deploy never recreates ages silently.
+        run: docker compose -f compose.yaml -f compose.vps.yaml build web api keeper seed
 
-      - name: swap web and api (anvil keeps its chain)
+      - name: swap web, api and keeper (anvil keeps its chain)
         working-directory: /home/ubuntu/crucible
-        run: docker compose -f compose.yaml -f compose.vps.yaml up -d --no-deps web api
+        # `--no-deps` is the part that protects anvil, and it stays. The keeper is
+        # different from anvil and seed: it holds no state a restart loses. It reads
+        # the head, derives what is due, and calls `finalize`/`reclaimExpired` —
+        # both permissionless, both reverting when the trial is already settled
+        # (CrucibleTrials.sol:671), which is the idempotency guarantee. A recreated
+        # keeper re-derives the same due-set and skips what it already finished, so
+        # nothing credits twice; settlement credits the pull ledger before any ETH
+        # moves (ADR-0003), so a mid-swap death leaves a credit, not a loss.
+        run: docker compose -f compose.yaml -f compose.vps.yaml up -d --no-deps web api keeper
 
       - name: prove it serves
         run: |

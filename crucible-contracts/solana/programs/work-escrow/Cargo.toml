@@ -1,0 +1,26 @@
+[package]
+name = "work-escrow"
+version = "0.1.0"
+edition = "2021"
+description = "CRUCIBLE work escrow — the EVM reward flow table as a Solana Anchor program (gates 701-720)"
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "work_escrow"
+
+[features]
+default = []
+cpi = ["no-entrypoint"]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+# idl-build must propagate to anchor-spl as well: without it, anchor-spl's
+# Mint/TokenAccount lack the IDL traits and `anchor idl build` fails with
+# "Discriminator is not implemented" — the .so builds fine, only IDL
+# generation breaks, which is exactly the confusing shape this note prevents.
+idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
+
+[dependencies]
+anchor-lang = { workspace = true }
+anchor-spl = { workspace = true }

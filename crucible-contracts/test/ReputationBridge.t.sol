@@ -114,7 +114,7 @@ contract ReputationBridgeTest is Test {
     function _liveTrial() internal returns (uint256 id) {
         vm.deal(sponsor, REWARD);
         vm.prank(sponsor);
-        id = trials.createTrial{value: REWARD}(SPEC, TESTS, uint64(block.timestamp + 2 days), WINDOW);
+        id = trials.createTrial{value: REWARD}(REWARD, SPEC, TESTS, uint64(block.timestamp + 2 days), WINDOW);
         vm.prank(operator);
         trials.claimTrial(id);
     }
@@ -123,7 +123,7 @@ contract ReputationBridgeTest is Test {
     function _liveTrialUnlinked() internal returns (uint256 id) {
         vm.deal(sponsor, REWARD);
         vm.prank(sponsor);
-        id = trials.createTrial{value: REWARD}(SPEC, TESTS, uint64(block.timestamp + 2 days), WINDOW);
+        id = trials.createTrial{value: REWARD}(REWARD, SPEC, TESTS, uint64(block.timestamp + 2 days), WINDOW);
         vm.prank(innocentOp);
         trials.claimTrial(id);
     }
@@ -468,7 +468,7 @@ contract ReputationBridgeTest is Test {
     function test_BackfillRejectsARefundedTrial() public {
         vm.deal(sponsor, REWARD);
         vm.prank(sponsor);
-        uint256 id = trials.createTrial{value: REWARD}(SPEC, TESTS, uint64(block.timestamp + 2 days), WINDOW);
+        uint256 id = trials.createTrial{value: REWARD}(REWARD, SPEC, TESTS, uint64(block.timestamp + 2 days), WINDOW);
         vm.warp(block.timestamp + 2 days + 1);
         trials.reclaimExpired(id);
 

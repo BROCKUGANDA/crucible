@@ -4,7 +4,15 @@ import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { canonicalize } from "json-canonicalize";
 import { keccak256, stringToHex } from "viem";
-import { GENESIS, TraceError, TraceLog, verifyEntries, type SealedSpan } from "../src/trace.js";
+import {
+  GENESIS,
+  SPAN_ACTORS,
+  SPAN_INVENTORY,
+  TraceError,
+  TraceLog,
+  verifyEntries,
+  type SealedSpan,
+} from "../src/trace.js";
 
 /**
  * The trace spine's only real guarantee is that a reader can detect a lie.
@@ -209,3 +217,30 @@ describe("what a span may carry", () => {
     expect(b.prevHash).toBe(a.hash);
   });
 });
+
+describe("span inventory", () => {
+  // The showcase renders spans it did not witness. An entry here that misdescribes its
+  // span is a page that asserts something the chain did not say, so the table itself is
+  // gated: every name dotted and namespaced, every actor a known writer, every detail
+  // key list present and non-empty.
+  it("is well-formed — dotted names, known actors, non-empty detail lists", () => {
+    expect(Object.keys(SPAN_INVENTORY).length).toBeGreaterThan(0);
+    for (const [name, spec] of Object.entries(SPAN_INVENTORY)) {
+      expect(name, "span names are dotted namespaces").toMatch(/^[a-z]+(\.[a-z-]+)+$/);
+      expect(SPAN_ACTORS, `${name} actor`).toContain(spec.actor);
+      expect(spec.meaning.length, `${name} says when it is written`).toBeGreaterThan(0);
+      expect(spec.detail.length, `${name} declares its detail keys`).toBeGreaterThan(0);
+      for (const key of spec.detail) {
+        expect(key, `${name} detail key`).toMatch(/^[a-z][a-zA-Z0-9]*$/);
+      }
+    }
+  });
+
+  it("carries the spans the keeper actually emits", () => {
+    for (const name of ["keeper.start", "keeper.sweep", "keeper.act"]) {
+      expect(SPAN_INVENTORY[name], `${name} is inventoried`).toBeDefined();
+      expect(SPAN_INVENTORY[name]!.actor).toBe("keeper");
+    }
+  });
+});
+

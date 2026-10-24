@@ -12,6 +12,7 @@ export const TRIALS_ABI = [
     name: "createTrial",
     stateMutability: "payable",
     inputs: [
+      { name: "reward", type: "uint256" },
       { name: "specCID", type: "bytes32" },
       { name: "testsCID", type: "bytes32" },
       { name: "deadline", type: "uint64" },
@@ -130,6 +131,13 @@ export const TRIALS_ABI = [
     name: "finalize",
     stateMutability: "nonpayable",
     inputs: [{ name: "id", type: "uint256" }],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "settleBatch",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "trialIds", type: "uint256[]" }],
     outputs: [],
   },
   {
@@ -505,6 +513,16 @@ export const TRIALS_ABI = [
       { indexed: true, name: "agentId", type: "uint256" },
       { indexed: true, name: "identityAgentId", type: "uint256" },
     ],
+  },
+  {
+    type: "event",
+    name: "VerificationReceiptSet",
+    inputs: [{ indexed: true, name: "receipt", type: "address" }],
+  },
+  {
+    type: "event",
+    name: "ReceiptsToggled",
+    inputs: [{ indexed: false, name: "enabled", type: "bool" }],
   },
 ] as const;
 
