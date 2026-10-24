@@ -156,9 +156,8 @@ contract AlloyRegistry {
     }
 
     function _uriStats(Record memory r) internal pure returns (string memory) {
-        return string.concat(
-            ',"wins":', _itoa(r.wins), ',"survived":', _itoa(r.survived), ',"slashes":', _itoa(r.slashes)
-        );
+        return
+            string.concat(',"wins":', _itoa(r.wins), ',"survived":', _itoa(r.survived), ',"slashes":', _itoa(r.slashes));
     }
 
     /// @dev The epoch fields close the object. They are in the credential itself, and not only

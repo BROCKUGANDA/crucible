@@ -4,8 +4,11 @@ pragma solidity 0.8.26;
 import {Base} from "./Base.t.sol";
 import {Vm} from "forge-std/Vm.sol";
 import {CrucibleTrials} from "../contracts/CrucibleTrials.sol";
-import {MockIdentityRegistry, RevertingIdentityRegistry, NullIdentityRegistry} from
-    "../contracts/mocks/ERC8004Mocks.sol";
+import {
+    MockIdentityRegistry,
+    RevertingIdentityRegistry,
+    NullIdentityRegistry
+} from "../contracts/mocks/ERC8004Mocks.sol";
 
 /// ADR-0012, end to end through the escrow.
 ///
