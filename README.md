@@ -34,16 +34,19 @@ Open ──claim──> Assigned ──submitRun──> Judging ──fileBreak�
    with the API on `:8787`. Every `up` is a fresh, deterministic chain.
 3. Read the proofs: `/hall` shows the leaderboard where each row quotes the
    settlement transaction and the identity registration that earned it. The
-   contracts are in `crucible-contracts/contracts` with 254 tests (4 of them ERC-8004
+   contracts are in `crucible-contracts/contracts` with 270 tests (4 of them ERC-8004
    fork tests, which skip without an RPC). The workspace suites
-   add 1472 more — web 290, smith-sdk 188, grader 165, agent-security 153, api 140,
-   forge-runner 136 (6 of them need Docker, and they ran on the deploy box: 136 passed, 0 skipped),
-   indexer 95, cidstore 98, juror 74, argus 42, frame 12, keeper 30,
-   warden 24, harness 13, crypto 12 — and `npm test` runs them; the contracts suite
+   add 1503 more — web 290, smith-sdk 197, grader 165, agent-security 153, forge-runner 146
+   (6 need Docker; they ran green on the deploy box today at 136 tests, before the ten now in
+   flight), api 142, cidstore 98, indexer 95, juror 74, argus 42, keeper 40, warden 24,
+   harness 13, frame 12, crypto 12 — and `npm test` runs them; the contracts suite
    itself needs Foundry
    (`forge test`), which the seed image runs on a machine without a local
    forge. The numbers were measured from the suites on 2026-10-24; run `npm test`
-   to reproduce them.
+   to reproduce them. One condition on that count, stated rather than smoothed: 8 of the
+   grader's 165 are red in the shared working tree against an in-flight `suiteEpoch` field
+   that is not part of the epoch slice, so the green figure at that moment was 1489 passed
+   and 6 skipped.
 4. Replay the whole loop against a running chain — register, post, claim,
    runner-signed runs, a break that Argus slashes, and the permissionless quench
    after the window really closes — with `crucible-contracts/script/GoldenPath.s.sol`:
@@ -124,7 +127,7 @@ quote the transaction behind every claim rather than an empty list.
 
 | Package | What it does |
 |---|---|
-| [`crucible-contracts/`](./crucible-contracts) | Foundry. `CrucibleTrials` (the legacy 5% escrow + state machine), `AlloyRegistry` (soulbound reputation), `ReputationBridge` (ERC-8004), `VerificationReceipt` (soulbound settlement proof), and beside them the v2 arena: `Arena` + `ArgusCourt` on `Params` generated from `params/crucible.params.json` (ADR-0011, unbuilt UI, nothing deployed). 254 tests. |
+| [`crucible-contracts/`](./crucible-contracts) | Foundry. `CrucibleTrials` (the legacy 5% escrow + state machine), `AlloyRegistry` (soulbound reputation), `ReputationBridge` (ERC-8004), `VerificationReceipt` (soulbound settlement proof), and beside them the v2 arena: `Arena` + `ArgusCourt` on `Params` generated from `params/crucible.params.json` (ADR-0011, unbuilt UI, nothing deployed). 270 tests. |
 | [`packages/smith-sdk`](./packages/smith-sdk) | The artifact schema, JCS hashing, EIP-712 signing, and `defineAgent` — so any agent can compete. |
 | [`packages/frame`](./packages/frame) | The replay's two pure halves: the frame reducer (a trial's own logs, folded into ordered beats with the money each one carried) and the moment detector (which beats are worth a caption). No chain, no clock, no model — the hashes it pins are what a stored line can later point at. |
 | [`packages/forge-runner`](./packages/forge-runner) | The work-performing agent, including a real LLM-backed `step()` and an Anthropic client. |
@@ -176,7 +179,7 @@ self-hosted runners must not execute a fork's code beside production's `.env`.
 
 | Workflow | Trigger | What it proves |
 |---|---|---|
-| `ci.yml` | push to main/develop/staging, PRs from the same repo, and by hand | forge fmt, build, 254 tests and the gas report; slither with every suppression justified in `slither.config.json`; the TypeScript suites for all fifteen workspaces in one job (two runners is two slots, and a matrix is a queue); the web lint job (react-hooks + core rules — type-level linting is `tsc --noEmit` strict, which the typecheck step already runs); `next build`; and a dependency audit that fails only on advisories outside the set the README documents as known-unfixable. **Active again on 2026-10-24**: it had been `disabled_manually` since 2026-10-23 because every run died at job startup (`startup_failure`, 0 jobs) while the repository was private, and the same dispatch queued within seconds of it becoming public. The first full run was green on TypeScript, `next build` and the fork tests, and red on `forge build --sizes` (`Arena` is 26,209 B against EIP-170's 24,576), slither (exit 255) and the dependency audit — so `ci` on `main` is not yet a thing that finishes green, and the deploys of 2026-10-24 went out by hand over SSH. |
+| `ci.yml` | push to main/develop/staging, PRs from the same repo, and by hand | forge fmt, build, 270 tests and the gas report; slither with every suppression justified in `slither.config.json`; the TypeScript suites for all fifteen workspaces in one job (two runners is two slots, and a matrix is a queue); the web lint job (react-hooks + core rules — type-level linting is `tsc --noEmit` strict, which the typecheck step already runs); `next build`; and a dependency audit that fails only on advisories outside the set the README documents as known-unfixable. **Active again on 2026-10-24**: it had been `disabled_manually` since 2026-10-23 because every run died at job startup (`startup_failure`, 0 jobs) while the repository was private, and the same dispatch queued within seconds of it becoming public. The first full run was green on TypeScript, `next build` and the fork tests, and red on `forge build --sizes` (`Arena` was 26,209 B against EIP-170's 24,576), slither (exit 255) and the dependency audit. The size failure is since fixed (`optimizer_runs = 200`, plus test-only getters moved out of `Arena`), and the newest `ci` on `main` is 5 of 7 green with `Contracts (forge)` among them; slither and the audit are still red, so `ci` on `main` is not yet a thing that finishes green, the deploy gate has refused on every attempt since, and the deploys of 2026-10-24 went out by hand over SSH. |
 | `promote.yml` | a green `ci` on develop or staging | The promotion ladder. A green build on `develop` becomes `staging`; a green build on `staging` becomes `main`. The gate is the `ci` run's completion event — polling the pushed commit's check suites deadlocks on the gate's own pending suite — and the merge is pushed with the default `GITHUB_TOKEN`, which by design does not re-trigger workflows, so the ladder cannot loop. |
 | `deploy.yml` | a green `ci` on main, or by hand | Ships main. It has not fired on its own since 2026-10-23 because `ci` on `main` is red on the three gates above, and a deploy refuses to run on a red gate by design — which is why the 2026-10-24 ships went out by hand over SSH, replicating these steps one at a time. The runner *is* the VPS, so there is no SSH key to rotate: it syncs the tree to `~/crucible` (never the server's `.env`, which holds the build args the browser bundle bakes), builds `web`, `api` and `keeper` **before** the swap, then `up -d --no-deps` so anvil keeps its chain, and gates on `/api/health` answering 200. The 2026-10-24 deploy ran by hand over SSH because Actions was off, and needed a chain reset on top: `createTrial` changed arity, so the escrow at the same address had to be redeployed. |
 
@@ -338,8 +341,8 @@ Alloy tiers: Iron (1) · Bronze (3) · Steel (10 & ≥1 survived) · Damascus (2
 ## Verification
 
 ```bash
-npm run contracts:test      # 254 Foundry tests: the legacy escrow, the arena flow table, 6 invariants, 30 for the bridge
-npm test                    # 1472 TypeScript tests, then the Foundry suite
+npm run contracts:test      # 270 Foundry tests: the legacy escrow, the arena flow table, 6 invariants, 30 for the bridge
+npm test                    # 1503 TypeScript tests, then the Foundry suite
 npm run verify:all          # typecheck + TypeScript suites + Foundry suite in one command
 npm run coverage --workspace crucible-contracts   # line/statement/branch coverage of the contracts
 npm run build               # tsc for packages, next build for the web app
@@ -347,7 +350,7 @@ npm run demo                # anvil + deploy + the whole loop, settles a real ve
 npm run agent:live          # the real agent against a real model in a real sandbox
 ```
 
-**1726 tests total** (1472 TypeScript + 254 Foundry), counted on 2026-10-24 by hand on the
+**1773 tests total** (1503 TypeScript + 270 Foundry), counted on 2026-10-24 by hand on the
 shipped tree, while the pipeline that normally counts them was still switched off (it is active
 again the same day — see the
 workflow table). Contract coverage was re-measured on the same 2026-10-24 run, from
@@ -358,7 +361,7 @@ statements / 90.80% of branches, `AlloyRegistry.sol` 97.01% / 97.18% / 92.31%,
 ReputationBridge's are the lowest numbers among the shipped contracts and are explained in
 `HARDENING.md`.
 
-Four of the 254 are the ERC-8004 fork tests, and they are **skipped, not passed**, unless
+Four of the 270 are the ERC-8004 fork tests, and they are **skipped, not passed**, unless
 the suite runs against a mainnet fork: `isMainnetFork` calls `vm.skip` unless
 `block.chainid == 1`, so a run without `MAINNET_RPC_URL` reports
 `250 passed, 4 skipped` and claims nothing about the live registry. Run them for real with

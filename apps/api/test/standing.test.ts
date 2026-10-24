@@ -44,12 +44,24 @@ function modelWith(settledAtBlock: number | null, breakFiled = false): ReadModel
   return m;
 }
 
-function app(model: ReadModel) {
+const NO_EPOCH = {
+  tier: 2,
+  locked: true,
+  tokenUri: "data:application/json,{}",
+  epoch: 1,
+  epochStartedAt: null,
+  lifetimeWins: null,
+  lifetimeSlashes: null,
+  holder: OPERATOR,
+};
+
+function app(model: ReadModel, alloy: Partial<typeof NO_EPOCH> = {}) {
+  const state = { ...NO_EPOCH, ...alloy };
   return createApp(
     {
       getModel: () => model,
       proofSource: { chain: "Foundry", chainId: 31337, trialsAddress: TRIALS },
-      alloyState: () => ({ tier: 2, locked: true, tokenUri: "data:application/json,{}" }),
+      alloyState: () => state,
     },
     { rateLimit: false },
   );
@@ -112,5 +124,36 @@ describe("GET /standing/:id", () => {
     const keys = old.meta.assumptions.map((a: { key: string }) => a.key);
     expect(keys).toEqual(["difficulty", "sponsorIndependence", "exitPenalties"]);
     expect(old.meta.recordsSource).toContain("logs");
+  });
+
+  it("keeps a previous holder's record out of the standing, and says it did", async () => {
+    // ADR-0012 end to end on the read side: the outcome settled at block time T, the current epoch
+    // opened after T, so the score belongs to nobody yet and the payload says so in three places.
+    const settled = 1_700_000_000;
+    const res = await app(modelWith(settled), { epoch: 2, epochStartedAt: settled + 600, lifetimeWins: 3 }).request(
+      "/standing/3",
+    );
+    const body = (await res.json()) as { data: any; meta: any };
+
+    expect(body.data.outcomes).toHaveLength(1); // the outcome is still published, unhidden
+    expect(body.data.standing.counted).toBe(0);
+    expect(body.data.standing.excludedPreEpoch).toBe(1);
+    expect(body.data.standing.display).toBe(500);
+    expect(body.meta.excludedPreEpoch).toBe(1);
+    expect(body.meta.epoch).toBe(2);
+    expect(body.meta.epochStartedAt).toBe(settled + 600);
+    expect(body.data.registry).toMatchObject({ epoch: 2, holder: OPERATOR, lifetime: { wins: 3 } });
+  });
+
+  it("counts everything when the registry reports no epoch boundary", async () => {
+    // `epochStartedAt: null` is "the host could not read it", and must not be read as a boundary at
+    // the epoch of the chain — that would silently exclude every outcome and publish 500.
+    const body = (await (await app(modelWith(1_700_000_000), { epoch: null, epochStartedAt: null }).request(
+      "/standing/3",
+    ))
+      .json()) as { data: any; meta: any };
+    expect(body.data.standing.counted).toBe(1);
+    expect(body.data.standing.excludedPreEpoch).toBe(0);
+    expect(body.meta.epochStartedAt).toBeNull();
   });
 });

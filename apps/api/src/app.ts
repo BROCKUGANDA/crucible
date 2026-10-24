@@ -717,8 +717,18 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
       });
     }
 
-    const standing = computeStanding({ outcomes, floorWei: REWARD_FLOOR_ETH_WEI, now: Math.floor(Date.now() / 1000) });
     const alloy = deps.alloyState ? deps.alloyState(id) : null;
+    // ADR-0012: the standing a hiring app reads belongs to the identity epoch it was computed in.
+    // The boundary comes from the registry's own `epochOf`, not from a log this process guessed at,
+    // and an unread epoch (null) counts nothing out — "we could not read it" must not silently
+    // become "the agent has no history before now".
+    const epochStartedAt = alloy?.epochStartedAt ?? null;
+    const standing = computeStanding({
+      outcomes,
+      floorWei: REWARD_FLOOR_ETH_WEI,
+      now: Math.floor(Date.now() / 1000),
+      epochStartedAt,
+    });
 
     return c.json({
       data: {
@@ -732,6 +742,10 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
               tierName: alloy.tier === null ? null : (TIER_NAMES[alloy.tier] ?? null),
               locked: alloy.locked,
               tokenUri: alloy.tokenUri,
+              epoch: alloy.epoch,
+              epochStartedAt: alloy.epochStartedAt,
+              holder: alloy.holder,
+              lifetime: { wins: alloy.lifetimeWins, slashes: alloy.lifetimeSlashes },
             }
           : null,
         book: { wins: agent.wins, survived: agent.survived, slashes: agent.slashes },
@@ -748,6 +762,9 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
         settledTrials,
         counted: standing.counted,
         excludedNoSettlementTime: unaged,
+        excludedPreEpoch: standing.excludedPreEpoch,
+        epoch: alloy?.epoch ?? null,
+        epochStartedAt: standing.epochStartedAt,
         halfLifeDays: standing.halfLifeDays,
         floorWei: REWARD_FLOOR_ETH_WEI.toString(),
         assumptions: standing.assumptions,

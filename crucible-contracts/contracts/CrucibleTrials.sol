@@ -11,9 +11,12 @@ interface IIdentityOwnership {
 }
 
 /// @notice Reputation sink implemented by AlloyRegistry. Only CrucibleTrials may write.
+/// @dev `holder` is the identity owner observed at settlement (ADR-0012), or zero when nothing could
+/// be observed — an unwired registry, an unlinked agent, or a failed read. The registry decides what
+/// that means for the epoch; the escrow only reports what it saw.
 interface IAlloyRegistry {
-    function recordWin(uint256 agentId, address operator, bool survivedBreak) external;
-    function recordSlash(uint256 agentId, address operator) external;
+    function recordWin(uint256 agentId, address operator, bool survivedBreak, address holder) external;
+    function recordSlash(uint256 agentId, address operator, address holder) external;
 }
 
 /// @notice Optional soulbound VerificationReceipt. `settleBatch` mints one receipt per trial
@@ -723,7 +726,7 @@ contract CrucibleTrials {
         // change to AlloyRegistry cannot quietly reopen it. `_settle` has already set
         // `t.status = Settled`, so there is a second, independent guard.
         t.verdict = Verdict.Paid;
-        alloy.recordWin(t.agentId, operator, hadBreak);
+        alloy.recordWin(t.agentId, operator, hadBreak, _identityHolder(t.agentId));
         // ERC-8004: a third-party registry must never be able to block a verdict.
         _publishWin(id, t.agentId, hadBreak);
         emit VerdictFinalized(id, Verdict.Paid, reward - fee);
@@ -746,9 +749,30 @@ contract CrucibleTrials {
         // Same ordering rationale as _settleWin: the verdict is written before the external
         // call, so the state a reentrant frame would observe is already final.
         t.verdict = Verdict.Slashed;
-        alloy.recordSlash(t.agentId, operator);
+        alloy.recordSlash(t.agentId, operator, _identityHolder(t.agentId));
         _publishSlash(id, t.agentId);
         emit VerdictFinalized(id, Verdict.Slashed, 0);
+    }
+
+    /// @dev ADR-0012: who holds this agent's linked identity right now, or zero when that cannot be
+    /// observed.
+    ///
+    /// The link was proved once, in `linkIdentity`, and an ERC-8004 identity can change hands on the
+    /// registry without either of our contracts noticing. Asking here — at the one moment the escrow
+    /// is already touching the reputation book — is what makes a handover visible.
+    ///
+    /// Every failure path answers zero rather than reverting, on the same policy `_publishWin`
+    /// states below: a third-party registry must never be able to block a verdict. Zero is not a
+    /// handover, it is "nothing was seen", and `AlloyRegistry._bind` leaves the current holder alone
+    /// when it is passed zero — so a broken registry stalls epoch transitions, and nothing else.
+    function _identityHolder(uint256 agentId) internal view returns (address) {
+        address registry = identityRegistry;
+        uint256 identityAgentId = identityOf[agentId];
+        if (registry == address(0) || identityAgentId == 0) return address(0);
+        (bool ok, bytes memory data) =
+            registry.staticcall(abi.encodeCall(IIdentityOwnership.ownerOf, (identityAgentId)));
+        if (!ok || data.length < 32) return address(0);
+        return abi.decode(data, (address));
     }
 
     /// @dev A low-level call whose result is deliberately ignored is the only way to

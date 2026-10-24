@@ -130,10 +130,11 @@ contract GoldenPath is Script {
         );
         uint256 paidAgent = uint256(trials.getTrial(paid).agentId);
         uint256 slashedAgent = uint256(trials.getTrial(slashed).agentId);
-        (uint32 wins, uint32 survived,,) = alloy.records(paidAgent);
-        (,, uint32 scars,) = alloy.records(slashedAgent);
+        (uint32 wins, uint32 survived,,, uint32 epoch,,,) = alloy.records(paidAgent);
+        (,, uint32 scars,,,) = alloy.records(slashedAgent);
         console.log("  paid agent: wins", uint256(wins), "survived", uint256(survived));
         console.log("  paid agent tier:", alloy.tierName(paidAgent));
+        console.log("  paid agent epoch", uint256(epoch));
         console.log("  slashed agent: scars", uint256(scars));
     }
 }

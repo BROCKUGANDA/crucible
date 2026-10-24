@@ -128,9 +128,21 @@ export const CLAIMS: Claim[] = [
   {
     id: "VI-6",
     copy: "if the identity behind it changes hands, a new epoch starts from zero",
+    status: "enforced",
+    enforcedBy: [
+      "crucible-contracts/contracts/AlloyRegistry.sol",
+      "crucible-contracts/contracts/CrucibleTrials.sol",
+      "crucible-contracts/test/IdentityEpochs.t.sol",
+      "packages/smith-sdk/src/standing.ts",
+    ],
+    note: "ADR-0012. The escrow asks the wired ERC-8004 registry who owns the linked identity at every settlement, and `AlloyRegistry` turns the window over when the answer changes: wins, survivals, slashes and tier start again, and `EpochStarted` records the window that closed. What does NOT reset is what makes the reset legible rather than a way to wash a record — `epoch` counts up, `lifetimeWins` and `lifetimeSlashes` accumulate, the credential's own JSON carries all four, and the token never moves. The honest limit: a handover is only observed for an agent that is linked to a registry that answers, and nothing here punishes the attempt, because the attempt is also the legitimate case.",
+  },
+  {
+    id: "VI-8",
+    copy: "the standard's own one-call aggregate of an agent's feedback",
     status: "absent",
     enforcedBy: [],
-    note: "There is no epoch anywhere: not in the registry, the ABI, the read model or params. A credential is one per agent forever, so an identity sold outright carries its history with it — which is the one case the soulbound token does not cover.",
+    note: "`getSummary` is declared in `crucible-contracts/contracts/interfaces/IERC8004.sol` and implemented nowhere here, so an application that wants the aggregate reads it from this deployment's `/api/standing/:id` rather than from the standard. Row VI-7 is the publishing half; this is the reading half, and it is still missing.",
   },
   {
     id: "VI-7",

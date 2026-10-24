@@ -150,3 +150,24 @@ ADR/AGENTS.md law → params → existing code+tests → the bible's new specifi
     on-chain `getSummary` would be a contract change, and a contract change here is a chain reset on
     the box that serves the public site — a redeploy of eight settled trials' history to buy a getter
     the same page can compose from two existing reads.
+17. **Identity epochs built the observed way, and the reset was made legible rather than
+    impossible.** §18's epoch promise (gate 748, `/claims` row `VI-6`) was refused by an earlier
+    reading of this ledger as "genuinely absent, worth building"; it is built now, and the shape it
+    took is the decision worth recording. A handover is **observed, not declared**: the escrow asks
+    the wired ERC-8004 registry who owns the linked identity at every settlement, and
+    `AlloyRegistry` turns the window over when the answer changes. The alternative — a
+    `startEpoch` the operator calls — is a reset button, because the same transaction that sells an
+    identity legitimately is indistinguishable from one seller sending it to themselves to clear a
+    landed break. What resets is the window (`wins`, `survived`, `slashes`, so the buyer starts at
+    `Unforged` and re-earns); what never resets is `epoch`, `lifetimeWins`, `lifetimeSlashes`, the
+    `EpochStarted` trail and the soulbound `ownerOf`, and the credential's own `tokenURI` carries all
+    of it, so a reader with the NFT and no trust in this API can tell a short record from a washed
+    one. Stated as a limit rather than discovered later: **an epoch makes washing visible; it does
+    not make it impossible, and nothing here punishes the attempt**, because the attempt is also the
+    legitimate case — punishing it would be the buyer inheriting the seller's history, which is the
+    thing the promise exists to stop. The identity read fails open on every path (unwired registry,
+    unlinked agent, revert, empty return, a zero answer) on the policy `ReputationBridge` already
+    states: a verdict cannot be undone, a missed transition is seen at the next settlement. Row
+    `VI-8` was added in the same commit — the standard's own `getSummary` aggregate is still
+    unimplemented — so the matrix keeps three `absent` rows without inventing a promise to replace
+    the one this fixed.

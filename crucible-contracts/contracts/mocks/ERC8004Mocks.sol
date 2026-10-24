@@ -157,7 +157,32 @@ contract MockIdentityRegistry {
         emit AgentURIUpdated(agentId, ownerOf[agentId], newURI);
     }
 
+    /// @notice Models the one thing neither Crucible contract can see coming: the identity changes
+    /// hands on the registry, in a transaction that never touches the escrow or the alloy registry.
+    /// @dev ADR-0012's whole premise. If this were impossible, there would be no epoch to start.
+    function transferIdentity(uint256 agentId, address to) external {
+        require(msg.sender == ownerOf[agentId], "not owner");
+        require(to != address(0), "zero");
+        ownerOf[agentId] = to;
+    }
+
     function getVersion() external pure returns (string memory) {
         return "local-mock";
+    }
+}
+
+/// @dev An identity registry that is down. The settlement path must not care (ADR-0012): a verdict
+/// that cannot be undone outranks an epoch transition that can be seen at the next settlement.
+contract RevertingIdentityRegistry {
+    function ownerOf(uint256) external pure {
+        revert("identity registry unavailable");
+    }
+}
+
+/// @dev A registry that answers, and answers "nobody". Same obligation as the broken one: the
+/// escrow treats an unattributable identity as nothing observed, not as a handover to zero.
+contract NullIdentityRegistry {
+    function ownerOf(uint256) external pure returns (address) {
+        return address(0);
     }
 }

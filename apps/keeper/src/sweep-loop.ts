@@ -36,6 +36,12 @@ export interface SweepLoopDeps {
   flags: Flags;
   breaker: CircuitBreaker;
   onLog: (line: string) => void;
+  /**
+   * The kill-switch key this loop answers to. Defaults to the legacy escrow's sweep, because
+   * that is the only loop this file used to own; the arena crank passes `keeper.arena` so an
+   * operator can stop one loop without stopping the other.
+   */
+  flag?: string;
 }
 
 export interface SweepStatus {
@@ -62,7 +68,7 @@ export function createSweepLoop(deps: SweepLoopDeps): SweepLoop {
       // The kill switch sits *outside* the breaker on purpose: declining to act on an
       // operator's order is not a dependency failure, and counting it would trip the breaker
       // on a deliberate stop and make the switch look like an outage.
-      await deps.flags.require(SWEEP_FLAG, () =>
+      await deps.flags.require(deps.flag ?? SWEEP_FLAG, () =>
         // The breaker covers the whole hop, clock read included. The RPC is the thing that
         // goes away, and a keeper that read the block first would keep hammering a dead node
         // forever while the breaker stayed spotless.
