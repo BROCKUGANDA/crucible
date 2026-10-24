@@ -37,3 +37,27 @@ ADR/AGENTS.md law → params → existing code+tests → the bible's new specifi
 4. **Layout.** Bible paths (`download/crucible`, Bun) map to this repo (npm workspaces,
    `crucible-contracts/solana`). Reading: this repo's structure wins; the bible's
    *contents* are adopted, not its directory names.
+5. **Arena mints.** Bible §7.4 and D-4 want an allowlist of wrapped SOL, devnet USDC, Base Sepolia
+   USDC and native ETH. Reading: **native ETH only**, in the arena too. ADR-0002 and
+   contract-spec.md:20-21 are the repo's law, and the balance-delta token policy the bible asks
+   for exists to defeat fee-on-transfer tokens — a hazard this chain does not have. `reward_floor`
+   keeps its usdc/sol entries as data with no consumer, and `REWARD_FLOOR_WEI` is the Eth one.
+6. **Partial quorum at the round cap.** §6.4.5 says "still unresolved after MAX_ARGUS_ROUNDS: O8,
+   everyone is refunded", and a trial can reach the cap with some breaks decided and one hung.
+   Reading: **O8 for the whole trial**. A verdict nobody could finish is not a verdict, and paying
+   out a bond against a partial ballot is where an agent loses money to a jury that gave up.
+7. **A retry needs a bigger pool than the first round.** §6.4.1 excludes round-1 seats from
+   round 2, so a three-seat pool cannot retry a hung jury at all. Reading: the draw **fails
+   closed** (`NotEnoughSeats`) and the docket waits for O8's exit rather than reusing a jury.
+   Recorded because it is a real operating constraint on whoever runs seats.
+8. **Seat bond floor.** `SEAT_BOND_MIN` is "5 × the fees a seat can earn on the trial", and one
+   trial can put a seat on MAX_DOCKET breaks. Reading: `share × MAX_DOCKET × 5` — the worst case,
+   so invariant 1 (seats always payable from the bond) holds on-chain and not only in the
+   codegen test. `_settleLanded` reverts `BondShortfall` rather than pay a bond it does not have.
+9. **Filing is unlimited, judging is bounded, and both need a number.** §6.3.2 wants unlimited
+   filing; `freezeDocket` ranks with a bounded selection pass, so an unbounded filing list is an
+   unbounded gas bill for whoever cranks it. Reading: **`MAX_FILING = 64`** breaks may be filed
+   per trial; past that the deposit is refused. 8 of those 64 are judged.
+10. **Ghost-ledger convention.** `paidOut` counts every wei the trial routed out, including the
+    bond's three exits (prize, seat pools, treasury remainder) as one whole, so
+    `paidOut == deposited` at settlement is a check and not an approximation.

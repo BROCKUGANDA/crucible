@@ -255,6 +255,25 @@ current tree actually verifies, what it deliberately does not, and what is still
   `test_FeeBpsIsFiveHundredNotFifteenHundred` reads 500 from the contract itself (flip the
   constant and it goes red, mirroring the Rust `fee_is_five_percent_not_fifteen`).
   `scripts/params-codegen.mjs:98-101`, `crucible-contracts/test/CrucibleTrials.t.sol:463`
+- **The v2 arena exists as tested code beside the legacy escrow (2026-10-24, gates 734–746).**
+  `contracts/Arena.sol` and `contracts/ArgusCourt.sol`, both reading their numbers from a
+  generated `contracts/Params.sol` — which is what made `params/` a source instead of a note:
+  the drift check in CI now stands between an edited JSON and a money contract. The legacy 5%
+  contract, its 50/50 failed-stake split and its three fixed seats are untouched; the arena's
+  15%, ranked docket, sealed breaks, holdout and bonded drawn panel are a different escrow with
+  a different law, exactly as ADR-0011 framed it. 87 arena tests, 251 Foundry in all, five
+  mutation proofs (rank-by-lowest-stake, prize-to-every-landed, ledger that skips the bond,
+  ballots from strangers, cancel that forgets a claim was ever held) each turned its own gate
+  red. Two things the suite caught while it was being written are fixed in the contracts, not
+  papered over: a seat-selection walk that returned the *same seat three times* whenever the
+  stride shared a factor with the pool, and a `DocketAlreadyFrozen` guard that sat behind a
+  state check and so could never fire.
+- **Two rejections this register did not have before (2026-10-24).** `commitVote`/`revealVote`
+  accepted a ballot from any address, which let a stranger grow a panel's storage; the panel
+  membership is now checked (`NotSeat`). And a no-show seat could be slashed again on every
+  crank of `tally` — `_slashed` makes it once per seat per panel. Neither had a money effect
+  (the roster, not the ballot store, decides who is paid), and both are the shape of defect
+  that a flow-table-only suite does not find.
 - **The 2026-10-24 Mimosa deep scan's 16 findings triage to zero code changes, with the
   evidence named per finding.** Scan `scan-2026-10-23T21-56-23.604Z-87faa63b4be5` (deep, sealed
   `sha256:c4309e86890e…`): 11 high, 5 medium; the dependency pass scanned 684 packages and
@@ -519,5 +538,28 @@ much of the product's promise each one costs.
     **10/10** localnet does match the 10 `it()` blocks in `tests/work-escrow.ts`. Either wire the
     host tests and the CPI lint into CI (both run in seconds, no validator needed) or mark gates
     701–720 as session-proved rather than green.
+
+14. **The court's branches are the thinnest coverage in the tree, and the floor says so.**
+    `ArgusCourt.sol` measures 88.14% lines / 80.79% statements / **52.78% branches** / 85.00%
+    functions against `Arena.sol`'s 96.18 / 93.21 / 73.86 / 90.28. The unexercised branches are
+    the draw's eligibility and exclusion combinations — a seat that is bonded, unbonding, drawn
+    and conflicted at once, strides near the pool boundary, a pool at exactly `MAX_SEATS`. The
+    floor was set where the measurement is (50) and the target where the work is (75), because
+    a floor set at an ambition nobody has met is how a gate gets deleted. Coverage is the map,
+    not the territory: the money paths that could pay the wrong person are the ones with
+    assertions and mutation proofs.
+15. **`LICENSE` is missing from the working tree, and this session did not remove it.** Found at
+    the commit step: the file existed at HEAD (47 lines, MIT), had been deleted from disk, and
+    its deletion was *staged* by something outside this session's work. It was unstaged before
+    the arena commit so that commit cannot carry it, and it is still absent on disk. A repository
+    whose README says "this repository is the submission" has no business shipping without a
+    licence file; whoever removed it should say whether it is being replaced (Apache-2.0 was the
+    alternative named in the v2 bible §26.3) or whether this is an accident to `git checkout`.
+16. **The arena is chain-only: nothing in it is wired to the app, the keeper or the indexer.**
+    `Arena.sol` and `ArgusCourt.sol` are deployed and tested by `forge test`, and by no other
+    name: no `TRIALS_ABI` entry, no read-model projector, no route, no keeper job, no
+    `Deploy.s.sol` step. A reviewer arriving from the v2 bible will find gates 734–746 green at
+    the contract layer and 747–795 unbuilt, which is the honest state rather than a partial one
+    presented as a whole.
 
 Report a vulnerability as described in [`SECURITY.md`](SECURITY.md), not in a public issue.

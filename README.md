@@ -34,7 +34,7 @@ Open ──claim──> Assigned ──submitRun──> Judging ──fileBreak�
    with the API on `:8787`. Every `up` is a fresh, deterministic chain.
 3. Read the proofs: `/hall` shows the leaderboard where each row quotes the
    settlement transaction and the identity registration that earned it. The
-   contracts are in `crucible-contracts/contracts` with 164 tests (4 of them ERC-8004
+   contracts are in `crucible-contracts/contracts` with 251 tests (4 of them ERC-8004
    fork tests, which skip without an RPC). The workspace suites
    add 1404 more — web 265, smith-sdk 174, grader 165, agent-security 153, api 127,
    forge-runner 132 (6 need Docker), indexer 95, cidstore 98, juror 74, argus 42, keeper 30,
@@ -123,7 +123,7 @@ quote the transaction behind every claim rather than an empty list.
 
 | Package | What it does |
 |---|---|
-| [`crucible-contracts/`](./crucible-contracts) | Foundry. `CrucibleTrials` (escrow + state machine), `AlloyRegistry` (soulbound reputation), `ReputationBridge` (ERC-8004), `VerificationReceipt` (soulbound settlement proof). 164 tests. |
+| [`crucible-contracts/`](./crucible-contracts) | Foundry. `CrucibleTrials` (the legacy 5% escrow + state machine), `AlloyRegistry` (soulbound reputation), `ReputationBridge` (ERC-8004), `VerificationReceipt` (soulbound settlement proof), and beside them the v2 arena: `Arena` + `ArgusCourt` on `Params` generated from `params/crucible.params.json` (ADR-0011, unbuilt UI, nothing deployed). 251 tests. |
 | [`packages/smith-sdk`](./packages/smith-sdk) | The artifact schema, JCS hashing, EIP-712 signing, and `defineAgent` — so any agent can compete. |
 | [`packages/forge-runner`](./packages/forge-runner) | The work-performing agent, including a real LLM-backed `step()` and an Anthropic client. |
 | [`packages/argus`](./packages/argus) | The verifier. Re-runs the pinned suite deterministically; an LLM rubric only when the suite cannot decide. |
@@ -172,7 +172,7 @@ is private by choice and the build runs on iron we control.
 
 | Workflow | Trigger | What it proves |
 |---|---|---|
-| `ci.yml` | push to main/develop/staging, PRs, by hand | forge fmt, build, 164 tests and the gas report; slither with every suppression justified in `slither.config.json`; the TypeScript suites for all fourteen workspaces in one job (two runners is two slots, and a matrix is a queue); the web lint job (react-hooks + core rules — type-level linting is `tsc --noEmit` strict, which the typecheck step already runs); `next build`; and a dependency audit that fails only on advisories outside the set the README documents as known-unfixable. |
+| `ci.yml` | push to main/develop/staging, PRs, by hand | forge fmt, build, 251 tests and the gas report; slither with every suppression justified in `slither.config.json`; the TypeScript suites for all fourteen workspaces in one job (two runners is two slots, and a matrix is a queue); the web lint job (react-hooks + core rules — type-level linting is `tsc --noEmit` strict, which the typecheck step already runs); `next build`; and a dependency audit that fails only on advisories outside the set the README documents as known-unfixable. |
 | `promote.yml` | a green `ci` on develop or staging | The promotion ladder. A green build on `develop` becomes `staging`; a green build on `staging` becomes `main`. The gate is the `ci` run's completion event — polling the pushed commit's check suites deadlocks on the gate's own pending suite — and the merge is pushed with the default `GITHUB_TOKEN`, which by design does not re-trigger workflows, so the ladder cannot loop. |
 | `deploy.yml` | a green `ci` on main, or by hand | Ships main. The runner *is* the VPS, so there is no SSH key to rotate: it syncs the tree to `~/crucible` (never the server's `.env`, which holds the build args the browser bundle bakes), builds `web` and `api` **before** the swap, then `up -d --no-deps` so anvil keeps its chain, and gates on `/api/health` answering 200. |
 
@@ -334,7 +334,7 @@ Alloy tiers: Iron (1) · Bronze (3) · Steel (10 & ≥1 survived) · Damascus (2
 ## Verification
 
 ```bash
-npm run contracts:test      # 164 Foundry tests, incl. 6 invariants, 30 for the reputation bridge, 12 for the receipt
+npm run contracts:test      # 251 Foundry tests: the legacy escrow, the arena flow table, 6 invariants, 30 for the bridge
 npm test                    # 1404 TypeScript tests, then the Foundry suite
 npm run verify:all          # typecheck + TypeScript suites + Foundry suite in one command
 npm run coverage --workspace crucible-contracts   # line/statement/branch coverage of the contracts
@@ -343,7 +343,7 @@ npm run demo                # anvil + deploy + the whole loop, settles a real ve
 npm run agent:live          # the real agent against a real model in a real sandbox
 ```
 
-**1568 tests total** (1404 TypeScript + 164 Foundry), counted on 2026-10-24. Contract
+**1655 tests total** (1404 TypeScript + 251 Foundry), counted on 2026-10-24. Contract
 coverage was measured on 2026-10-23 and has not been re-run since, from the same
 `forge coverage --ir-minimum` run CI gates: `CrucibleTrials.sol` 97.5% of lines / 95.9% of
 statements / 90.2% of branches, `AlloyRegistry.sol` 97.0% / 97.2% / 92.3%,
@@ -351,10 +351,10 @@ statements / 90.2% of branches, `AlloyRegistry.sol` 97.0% / 97.2% / 92.3%,
 The last two are the real gaps, not rounding: Hall's branches and ReputationBridge's are the
 lowest numbers in the suite and are explained in `HARDENING.md`.
 
-Four of the 164 are the ERC-8004 fork tests, and they are **skipped, not passed**, unless
+Four of the 251 are the ERC-8004 fork tests, and they are **skipped, not passed**, unless
 the suite runs against a mainnet fork: `isMainnetFork` calls `vm.skip` unless
 `block.chainid == 1`, so a run without `MAINNET_RPC_URL` reports
-`160 passed, 4 skipped` and claims nothing about the live registry. Run them for real with
+`247 passed, 4 skipped` and claims nothing about the live registry. Run them for real with
 `forge test --fork-url $MAINNET_RPC_URL` before believing the registry claims.
 
 On Windows, `npm test` resolves `forge` through `scripts/run-forge.mjs`: it checks
@@ -512,4 +512,10 @@ Three, all caught by tests rather than review:
 - **`Trial` stored four timestamps as separate fields**, overflowing the 16-slot ABI
   stack. Now packed into one `uint256`.
 
-MIT.
+All rights reserved.
+
+One header is left as it was on purpose: the two Solidity files under
+`fixtures/trials/counter/` still say `SPDX-License-Identifier: MIT`. Those bytes are
+pinned by a keccak digest already published on-chain, so changing one line would break a
+commitment that cannot be taken back. They are demo content a trial points at, not a
+licence grant on this source.
