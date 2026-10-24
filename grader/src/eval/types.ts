@@ -59,6 +59,12 @@ export interface ScorecardRow {
   kappa: number;
   killRate: number;
   consistency: number; // test-retest agreement, 0..1
+  /**
+   * Draws actually taken per artifact. `consistency` without this number is unreadable: 1.0
+   * from one draw and 1.0 from twenty are different claims, and only one of them measured
+   * anything. Derived from the verdict lists themselves, never from the requested count.
+   */
+  draws?: number;
   avgLatencyMs: number;
   p95LatencyMs: number;
   avgCostUsd: number;
@@ -70,6 +76,15 @@ export interface ScorecardRow {
 export interface SmokeThresholds {
   maxFalsePassRate: number; // hard disqualifier: <= 1%
   maxP95LatencyMs: number; // hard disqualifier: <= 20s
+  /**
+   * Gate 424, active only when supplied. A stage that does not set it publishes `consistency`
+   * as a measurement and disqualifies on nothing; a stage that sets it fails a model whose
+   * repeated draws disagree **or** whose draws were never taken — a single draw is not a
+   * pass, it is an absence of evidence, and treating it as a pass is how the 98% gate became
+   * decoration.
+   */
+  minAgreementRate?: number;
+  minRetests?: number;
 }
 
 /** Full scorecard output. */

@@ -12,6 +12,7 @@ export * from "./eval/registry.js";
 export * from "./eval/identity.js";
 export * from "./eval/tokenizer.js";
 export * from "./eval/agent.js";
+export * from "./eval/frontier.js";
 export * from "./eval/probes.js";
 export * from "./eval/runner.js";
 export * from "./adapter.js";

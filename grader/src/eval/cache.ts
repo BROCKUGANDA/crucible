@@ -64,6 +64,45 @@ export class MemoryEvalCache implements EvalCache {
   }
 }
 
+/**
+ * Grade one more time, whether or not the cache already answers.
+ *
+ * This is what a retest has to be. `gradeCached` is keyed by
+ * `(claimHash, modelId, promptVersion)` and deliberately returns the stored verdict, so a loop
+ * that re-grades through it gets the same object back twenty times without a single call to the
+ * model — a test-retest agreement of exactly 1.0, computed from nothing. Gate 424 measures
+ * whether a frontier model wobbles at temperature 0; wobbling is a property of the call, so the
+ * draw has to be a call. The result still lands in the cache, because a re-run of a tournament
+ * should replay the verdicts it paid for rather than spend again.
+ */
+export async function gradeFresh(
+  cache: EvalCache,
+  adapter: { id: string },
+  artifact: Artifact,
+  promptVersion: string,
+  grade: () => Promise<ModelVerdict>,
+): Promise<ModelVerdict & { cached: boolean }> {
+  const verdict = await grade();
+  cache.set(
+    cacheKey(artifact.claimHash, adapter.id, promptVersion),
+    {
+      claimHash: artifact.claimHash,
+      modelId: adapter.id,
+      promptVersion,
+      suite: artifact.suite,
+      expected: artifact.expectedVerdict,
+      actual: verdict.verdict,
+      confidence: verdict.confidence,
+      correct: verdict.verdict === artifact.expectedVerdict,
+      falsePass: verdict.verdict === "PASS" && artifact.expectedVerdict !== "PASS",
+      falseFail: verdict.verdict !== "PASS" && artifact.expectedVerdict === "PASS",
+      latencyMs: verdict.latencyMs,
+      killed: false,
+    },
+  );
+  return { ...verdict, cached: false };
+}
+
 /** Grade an artifact through a model adapter, honoring the eval cache. */
 export async function gradeCached(
   cache: EvalCache,

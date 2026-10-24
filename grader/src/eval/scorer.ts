@@ -97,8 +97,36 @@ export function scorecardRow(
   const k = kappa(results);
   const kr = killRate(results);
   const con = consistency(perArtifactConsistency);
+  const draws = maxDraws(perArtifactConsistency);
   const latencies = results.map((r) => r.latencyMs);
-  const disqualified = fpRate > thresholds.maxFalsePassRate || p95(latencies) > thresholds.maxP95LatencyMs;
+
+  /**
+   * Gate 424 activates only when the stage asks for it. `minRetests` is the load-bearing half:
+   * a single draw produces agreement 1.0 for free, so a threshold on agreement alone can be met
+   * by measuring nothing. A row that was gated but drawn once is disqualified as unmeasured
+   * rather than passed as stable.
+   */
+  const gated = thresholds.minRetests !== undefined || thresholds.minAgreementRate !== undefined;
+  const agreementMin = thresholds.minAgreementRate ?? 0.98;
+  const drawsMin = thresholds.minRetests ?? 20;
+  const notMeasured = gated && draws < drawsMin;
+  const unsteady = gated && !notMeasured && con < agreementMin;
+
+  const disqualified =
+    fpRate > thresholds.maxFalsePassRate ||
+    p95(latencies) > thresholds.maxP95LatencyMs ||
+    notMeasured ||
+    unsteady;
+
+  const reason = !disqualified
+    ? undefined
+    : fpRate > thresholds.maxFalsePassRate
+      ? `false-pass rate ${(fpRate * 100).toFixed(2)}% > ${(thresholds.maxFalsePassRate * 100).toFixed(2)}%`
+      : p95(latencies) > thresholds.maxP95LatencyMs
+        ? `p95 latency ${p95(latencies).toFixed(0)}ms > ${thresholds.maxP95LatencyMs}ms`
+        : notMeasured
+          ? `consistency not measured: ${draws} draw${draws === 1 ? "" : "s"} of ${drawsMin} required`
+          : `test-retest agreement ${(con * 100).toFixed(1)}% < ${(agreementMin * 100).toFixed(0)}%`;
 
   return {
     modelId,
@@ -111,16 +139,27 @@ export function scorecardRow(
     kappa: k,
     killRate: kr,
     consistency: con,
+    draws,
     avgLatencyMs: mean(latencies),
     p95LatencyMs: p95(latencies),
     avgCostUsd: avgCostUsd,
     disqualified,
-    disqualifyReason: disqualified
-      ? fpRate > thresholds.maxFalsePassRate
-        ? `false-pass rate ${(fpRate * 100).toFixed(2)}% > ${(thresholds.maxFalsePassRate * 100).toFixed(2)}%`
-        : `p95 latency ${p95(latencies).toFixed(0)}ms > ${thresholds.maxP95LatencyMs}ms`
-      : undefined,
+    disqualifyReason: reason,
   };
+}
+
+/**
+ * The largest number of draws recorded for any artifact in the set. Derived from the verdict
+ * lists rather than from the count the caller requested, because the gate has to survive a
+ * caller that asked for twenty and got one — which is precisely what a cache-backed retest loop
+ * does.
+ */
+export function maxDraws(perArtifact: Map<ClaimHash, Verdict[]>): number {
+  let max = 0;
+  for (const verdicts of perArtifact.values()) {
+    if (verdicts.length > max) max = verdicts.length;
+  }
+  return max;
 }
 
 /** Build the full scorecard across all model/suite results. */

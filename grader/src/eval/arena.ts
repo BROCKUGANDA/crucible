@@ -8,11 +8,28 @@ import type {
   SuiteName,
 } from "./types.js";
 import { buildScorecard, scorecardLine } from "./scorer.js";
-import { MemoryEvalCache, gradeCached } from "./cache.js";
+import { MemoryEvalCache, gradeCached, gradeFresh } from "./cache.js";
+import type { SpendLedger } from "./frontier.js";
 
 const DEFAULT_THRESHOLDS: SmokeThresholds = {
   maxFalsePassRate: 0.01, // <= 1% hard disqualifier
   maxP95LatencyMs: 20_000, // <= 20s p95 hard disqualifier
+};
+
+/**
+ * Gate 424, enforced. Twenty draws per artifact at the adversarial stage, and a row is
+ * disqualified if the draws disagree more than 2% of the time **or** if fewer than twenty draws
+ * were taken at all — the second clause is the one that matters, because a single draw reports
+ * perfect agreement and would otherwise sail through a gate it never faced.
+ *
+ * Twenty draws is twenty model calls, so this is deliberately attached to the stage that already
+ * has only two candidates left, not to smoke where every candidate runs.
+ */
+const CONSISTENCY_RETESTS = 20;
+const CONSISTENCY_THRESHOLDS: SmokeThresholds = {
+  ...DEFAULT_THRESHOLDS,
+  minAgreementRate: 0.98,
+  minRetests: CONSISTENCY_RETESTS,
 };
 
 /**
@@ -30,7 +47,16 @@ const DEFAULT_THRESHOLDS: SmokeThresholds = {
 export class Arena {
   private readonly cache: MemoryEvalCache;
 
-  constructor(cache?: MemoryEvalCache) {
+  /**
+   * When supplied, the scorecard's cost column is measured instead of declared. The ledger is fed
+   * by `withFrontierGuard` at the adapter boundary, so the arena reads back what the calls
+   * actually cost rather than a number it invented — `avgCostUsd` used to be a literal `0`, which
+   * is the same shape as a metric no code path can increment.
+   */
+  constructor(
+    cache?: MemoryEvalCache,
+    private readonly spend?: SpendLedger,
+  ) {
     this.cache = cache ?? new MemoryEvalCache();
   }
 
@@ -89,7 +115,12 @@ export class Arena {
     const top3Unique = Array.from(new Map(top3.map((a) => [a.id, a])).values());
     let adversarial: Scorecard | undefined;
     if (top3Unique.length > 0) {
-      adversarial = await this.runSmoke(top3Unique, suiteFns, 1, thresholds);
+      adversarial = await this.runSmoke(
+        top3Unique,
+        suiteFns,
+        CONSISTENCY_RETESTS,
+        CONSISTENCY_THRESHOLDS,
+      );
     }
 
     return { smoke, survivors: unique, full, adversarial };
@@ -119,7 +150,12 @@ export class Arena {
         for (const artifact of artifacts) {
           const verdicts: Array<"PASS" | "VOID" | "FAIL"> = [];
           for (let r = 0; r < retests; r++) {
-            const verdict = await gradeCached(
+            // Draw 0 may be answered from the cache — it is the same fact a previous run paid
+            // for. Every draw after it must reach the model, because agreement is a property of
+            // the calls: re-reading a stored verdict twenty times reports 100% stability about
+            // the cache, which is a real fact about the cache and a false one about the model.
+            const gradeFn = r === 0 ? gradeCached : gradeFresh;
+            const verdict = await gradeFn(
               this.cache,
               adapter,
               artifact,
@@ -160,7 +196,7 @@ export class Arena {
           suite: suiteName as SuiteName,
           results,
           perArtifactConsistency: perArtifact,
-          avgCostUsd: 0,
+          avgCostUsd: this.spend?.averageUsd(adapter.id) ?? 0,
         });
       }
     }
@@ -178,4 +214,4 @@ export class Arena {
   }
 }
 
-export { DEFAULT_THRESHOLDS };
+export { CONSISTENCY_RETESTS, CONSISTENCY_THRESHOLDS, DEFAULT_THRESHOLDS };
