@@ -266,6 +266,17 @@ contract Demo is Script {
             require(bond >= floor, "seat bond below the posted trial's floor");
         }
 
+        // The claim process. Claiming is what moves a posted trial out of `Open`, and it posts the
+        // bond the Arena demands — `AGENT_BOND_MIN_BPS` of the reward, a different number from the
+        // seat floor above. Naming the runner is the second half: `submitRun` refuses with
+        // `NoRunner` until the agent has done it, so a trial that is claimed and runnerless is a
+        // dead end rather than a claim waiting on work.
+        uint256 agentBond = (ARENA_TRIAL_REWARD * Params.AGENT_BOND_MIN_BPS) / Params.BPS;
+        vm.startBroadcast(pkOperatorA);
+        arena.claimTrial{value: agentBond}(arenaTrial);
+        arena.setRunner(arenaTrial, vm.addr(RUNNER_KEY));
+        vm.stopBroadcast();
+
         // Both rounds must survive their real exclusion lists. `seatCount() >= 3` does not test
         // that: the pool is only large enough if three seats remain after round 2 excludes the
         // three trial parties AND all three round-1 seats.
