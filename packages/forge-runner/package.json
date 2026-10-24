@@ -2,7 +2,7 @@
   "name": "@crucible/forge-runner",
   "version": "0.1.0",
   "description": "ForgeRunner \u00e2\u20ac\u201d the work-performing agent. Fetches a pinned spec, iterates against the pinned suite in a sealed sandbox, emits a signed RunArtifact.",
-  "license": "MIT",
+  "license": "UNLICENSED",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

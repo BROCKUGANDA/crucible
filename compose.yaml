@@ -179,6 +179,10 @@ services:
       CRUCIBLE_TRACE_FILE: /trace/keeper.jsonl
     volumes:
       - trace:/trace
+      # The same file the API's entrypoint sources. Without it the keeper reads
+      # TRIALS_ADDRESS/ALLOY_ADDRESS from this template, so a restart after a re-seed
+      # would sweep an address the chain no longer holds while the API reads the new one.
+      - deployed:/run/crucible:ro
     depends_on:
       anvil:
         condition: service_healthy

@@ -139,5 +139,6 @@ versioned protocol change rather than an implicit assumption.
 - `forge-std` is a git submodule pinned to a specific tag rather than a moving branch, so
   a build is reproducible and a change to it is a visible commit. Clone with
   `--recurse-submodules`; the contracts cannot compile without it.
-- Fonts are vendored with their OFL licence texts (see [`LICENSE`](LICENSE)) rather than
+- Fonts are vendored with their OFL licence texts (`OFL-bricolage.txt`, `OFL-jetbrains.txt`
+  and `Cinzel-OFL.txt` in `apps/web/scripts/fonts/`) rather than
   fetched from a CDN at build or run time.

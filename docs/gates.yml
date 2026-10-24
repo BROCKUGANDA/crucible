@@ -1124,7 +1124,7 @@
   title: Pitch video + technical demo video
   frameworks: [soc2]
 - id: 792
-  title: README, ARCHITECTURE, SECURITY, THREAT_MODEL, AI-ATTRIBUTION, LICENSE
+  title: README, ARCHITECTURE, SECURITY, THREAT_MODEL, AI-ATTRIBUTION
   frameworks: [soc2]
 - id: 793
   title: Business plan

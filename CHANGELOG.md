@@ -191,8 +191,9 @@ migration. See [`SECURITY.md`](SECURITY.md) before deploying value.
   escrow is safe. Versions and digests now live in one file, `scripts/install-tool.sh`, which
   compares `sha256sum --check --status --strict` before it extracts anything. Foundry v1.8.5's
   digest was measured here and corroborated against the digest GitHub publishes for that asset;
-  gitleaks 8.24.0's is a first-contact measurement, because its published digest is `null`, and
-  the file says which is which. Proven capable of failing: a wrong expected digest exits 1 and
+  gitleaks 8.24.0's matches the `linux_x64` line of `gitleaks_8.24.0_checksums.txt`, published
+  in the same release — GitHub's asset API returns `null` for it, so the vendor's own file is
+  the corroborating artefact, and the file says which is which. Proven capable of failing: a wrong expected digest exits 1 and
   leaves the destination empty, an unknown tool exits 2, and removing `--strict` — or moving the
   extraction above the check — turns a test red.
 - **A gate that matched its own prose went green over the defect it was written to catch.** The

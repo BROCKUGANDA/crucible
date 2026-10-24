@@ -18,10 +18,12 @@
 #                   GitHub's own published asset digest:
 #                   `gh api repos/foundry-rs/foundry/releases/tags/v1.8.5`
 #                   -> "sha256:6c66ffcc…ffb226", equal to the measured value.
-#   gitleaks 8.24.0 measured on this machine only. GitHub's API returns `digest: null` for
-#                   that asset, so there is nothing to corroborate it against; the value is
-#                   first-contact trust, recorded here so the *next* download is compared to
-#                   it. Re-derive with:
+#   gitleaks 8.24.0 measured on this machine from the download, and corroborated by the
+#                   checksums file that release publishes. GitHub's *asset* digest is null
+#                   for it, which is why the vendor's own file is the artefact to check:
+#                   curl -fsSL <release>/gitleaks_8.24.0_checksums.txt
+#                   -> the linux_x64 line equals the measured value, and this constant.
+#                   Re-derive with:
 #                   curl -fsSL <url> -o f && sha256sum f
 #
 # To update either tool: download the new tarball, hash it, put the hash here, and let CI

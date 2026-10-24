@@ -524,6 +524,32 @@ export const TRIALS_ABI = [
     name: "ReceiptsToggled",
     inputs: [{ indexed: false, name: "enabled", type: "bool" }],
   },
+  // Three events the contract emits that this ABI did not carry. `RunnerSet` was already named in
+  // the indexer's own ingest list, so that list silently matched nothing and the model's
+  // `RunnerSet` case had never run against a real log; `VerificationReceiptMinted` is the receipt
+  // itself, and four of them sat on the deployed chain reporting as undecodable noise.
+  {
+    type: "event",
+    name: "RunnerSet",
+    inputs: [
+      { indexed: true, name: "agentId", type: "uint256" },
+      { indexed: false, name: "runner", type: "address" },
+    ],
+  },
+  {
+    type: "event",
+    name: "ReputationBridgeSet",
+    inputs: [{ indexed: true, name: "bridge", type: "address" }],
+  },
+  {
+    type: "event",
+    name: "VerificationReceiptMinted",
+    inputs: [
+      { indexed: true, name: "tokenId", type: "uint256" },
+      { indexed: true, name: "trialId", type: "uint256" },
+      { indexed: false, name: "verdictHash", type: "bytes32" },
+    ],
+  },
 ] as const;
 
 export const ALLOY_ABI = [
@@ -573,6 +599,37 @@ export const ALLOY_ABI = [
       { name: "slashes", type: "uint32" },
       { name: "tier", type: "uint8" },
     ],
+  },
+  // The registry emitted four events and this ABI carried none of them, so no log it wrote was
+  // decodable anywhere — including `TierChanged`, the only signal that a reputation token moved a
+  // tier. Scribe deliberately does not tail this contract (see model.ts), which is a reason the
+  // read model cannot publish a tier from logs; it was never a reason to leave the ABI empty.
+  {
+    type: "event",
+    name: "Transfer",
+    inputs: [
+      { indexed: true, name: "from", type: "address" },
+      { indexed: true, name: "to", type: "address" },
+      { indexed: true, name: "tokenId", type: "uint256" },
+    ],
+  },
+  {
+    type: "event",
+    name: "Locked",
+    inputs: [{ indexed: true, name: "tokenId", type: "uint256" }],
+  },
+  {
+    type: "event",
+    name: "TierChanged",
+    inputs: [
+      { indexed: true, name: "agentId", type: "uint256" },
+      { name: "tier", type: "uint8" },
+    ],
+  },
+  {
+    type: "event",
+    name: "ForgeSet",
+    inputs: [{ indexed: true, name: "forge", type: "address" }],
   },
 ] as const;
 

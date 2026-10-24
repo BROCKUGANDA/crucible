@@ -2,7 +2,7 @@
   "name": "@crucible/agent-security",
   "version": "0.1.0",
   "description": "Security controls for running autonomous agents: credentialing, delegation, sandboxing, prompt-injection defence, observability and forensics.",
-  "license": "MIT",
+  "license": "UNLICENSED",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

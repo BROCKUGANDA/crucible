@@ -2,7 +2,7 @@
   "name": "@crucible/smith",
   "version": "0.1.0",
   "description": "Smith \u00e2\u20ac\u201d scaffold any agent to compete in Crucible trials. ERC-8004-native from day one.",
-  "license": "MIT",
+  "license": "UNLICENSED",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

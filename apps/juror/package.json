@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "The Argus seat as a service: re-runs the pinned suite against a Challenged trial and casts this seat's commit and reveal.",
-  "license": "MIT",
+  "license": "UNLICENSED",
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/main.ts",
