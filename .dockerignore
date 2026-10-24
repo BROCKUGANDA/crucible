@@ -17,8 +17,16 @@ crucible-contracts/out
 crucible-contracts/cache
 crucible-contracts/broadcast
 
-# repo tooling and prose no image reads
+# repo tooling and prose no image reads — except the one script an image runs at start, so the
+# exclusion is `scripts/*` with that file re-included. It cannot be written as `scripts` plus a
+# negation: dockerignore, like gitignore, cannot re-include a file whose parent directory is
+# excluded. `apps/juror/docker-entrypoint.sh:19` runs `node scripts/seed-content.mjs --check`, and
+# `apps/juror/Dockerfile` copies exactly that path out of the build stage, so with `scripts` listed
+# whole the juror image failed at `COPY --from=build /repo/scripts/seed-content.mjs` — a service
+# that has never been buildable from a clean tree, which nothing in the deploy pipeline noticed
+# because deploy.yml builds `web api keeper seed` and never names juror.
 docs
 .github
-scripts
+scripts/*
+!scripts/seed-content.mjs
 *.md
