@@ -1,0 +1,10 @@
+name: probe
+
+on:
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: [self-hosted, linux, X64, crucible]
+    steps:
+      - run: echo probe-ok
