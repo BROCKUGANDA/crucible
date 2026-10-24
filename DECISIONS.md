@@ -83,7 +83,28 @@ ADR/AGENTS.md law → params → existing code+tests → the bible's new specifi
     arena's own generated constants only just acquired a consumer (`Params.sol`); adding a second
     profile with no deployment to compile into would be the same title-only artefact the gate
     register is already full of, so it is deferred with the deployment it belongs to.
-14. **The replay reads the chain back instead of storing lines, and that is a divergence from
+14. **v2.2's §30.3 was audited claim by claim, and three of its nine "fixes" would have made the
+    live site lie.** Accepted, because the code already does the thing the sentence denies: the
+    Stage V slash split (`_settleSlash` credits the sponsor the full reward, the skeptic
+    `bond * 3_000 / 10_000` plus their stake, treasury the remainder) and the hung-panel exit
+    (`DISPUTE_TIMEOUT = 3 days`, after which `finalize` settles for the agent — not "everyone is
+    refunded", which is the arena's O8 and belongs to a contract nothing here uses). Rejected:
+    **"the rest, after the panel is paid, goes to the treasury"** — there is no seat fee anywhere in
+    the legacy escrow, so that sentence would describe the unwired arena; **"Floor 10 USDC /
+    0.1 SOL"** and **"Ed25519 on Solana"** — the product escrows native ETH (ADR-0001), and `work-escrow`
+    has six instructions with no credential, panel or holdout to sign for; and the Stage VI promise
+    that any hiring app can **"read the record in one call"**, which was already on the site while
+    `getSummary` exists only as an interface declaration (`IERC8004.sol:44`), never implemented.
+    The machinery verdicts: `bun run copy:check` is dead on arrival (npm-11 workspaces), so the
+    binding lives as `apps/web/test/landing-claims.test.ts`, which reads the constants out of
+    `CrucibleTrials.sol` and fails if the words and the numbers disagree (proved: moving
+    `SLASH_SKEPTIC_NUM` to 4000 reddens it); `/claims`, `tests/claims/`, `stages.ts`, identity
+    epochs and time decay remain genuinely absent; and the two CTAs the ledger called unrouted
+    (`/bounties`, `/hall`) already answer 200, while nothing in the repo links `/skeptics`, so that
+    redirect would be a route to nowhere. `/.well-known/crucible.json` was added to give "no one can
+    fake it" something to check against, and it publishes `null` for an unbaked address rather than
+    a zero one, because a reader filtering on `0x0000…` would drop every real record.
+15. **The replay reads the chain back instead of storing lines, and that is a divergence from
     §16.13.3 made on purpose.** The bible says "every line is stored with its frame hash, moment id
     and prompt version in Postgres; audio goes to R2. Replays read lines back instead of
     regenerating them." ADR-0008 admits no database to this repository, so the replay regenerates —

@@ -379,6 +379,30 @@ guards is the decoration it exists to detect.
   undecodable noise (`meta.logsUndecoded: 4`). All seven events added, both directions asserted.
   Caveat the fix does not remove: the index holds a cursor, so `RunnerSet` logs already behind it are
   not re-read; the case runs from here forward, and a rebuilt index is what makes history agree.
+- **The landing page's money sentences are now bound to the escrow, and three of them were wrong.**
+  v2.2's §30.3 claimed the live copy contradicts the code; measured against the deployed site, that
+  was true and the fix was not the one the document proposed. Stage V said "the skeptic takes the
+  bond" while `_settleSlash` pays `bond * 3_000 / 10_000` to the skeptic, refunds the sponsor the
+  full reward and sends the remainder to the treasury, and the same page already said it correctly
+  two lines away. Stage V said nothing about a panel that never forms, though `DISPUTE_TIMEOUT` =
+  3 days is a real exit that settles for the agent. Stage VI promised any hiring application could
+  "read the record in one call" while `getSummary` exists only as an interface declaration
+  (`IERC8004.sol:44`) with no implementation anywhere. All three corrected; `/.well-known/crucible.json`
+  added so "no one can fake it" has an allowlist to check against, publishing `null` for an unbaked
+  address rather than `0x0000…` (a reader filtering on the zero address drops every real record).
+  The gate is `apps/web/test/landing-claims.test.ts`: it reads the constants out of
+  `CrucibleTrials.sol` and compares them to the words, and it is proven to bite — setting
+  `SLASH_SKEPTIC_NUM` to `4_000` reddens it, and restoring `3_000` greens it again. Its absence
+  assertions are deliberately two-sided: it forbids "after the panel is paid" only while no seat fee
+  exists, and forbids the one-call promise only while no implementation does, so shipping either
+  mechanism lifts the ban instead of breaking the build.
+- **`packages/smith-sdk` shipped a CLI that does not exist.** `package.json` declared
+  `bin.smith → ./dist/cli.js` with no `cli.ts` in `src` and nothing referencing the command; anyone
+  installing the workspace got a `smith` on PATH that cannot run. The declaration is gone (v2.2's
+  H-7 asks for a `crucible verify` command, which is the honest way to bring a CLI back). Related
+  and still open: `STANDING_HALF_LIFE_DAYS` is codegen'd into `params.ts` and `params.rs` and read
+  by nothing, and there is no identity epoch in any layer, so the 45-day fade the ledger describes
+  is a parameter without a consumer rather than a behaviour.
 - **`getLogs({ abi })` does not decode on this node, and the node ignores the topics filter.**
   Both measured inside `crucible-api` against the live anvil on 2026-10-24: 56 logs came back with
   `eventName: undefined` and `args: undefined`, and a one-topic query still answered all 56. The
