@@ -4,7 +4,7 @@
  * Source: `crucible-contracts/out/Arena.sol/Arena.json` (solc 0.8.26+commit.8a97fa7a).
  * Regenerate with `node scripts/arena-abi.mjs` after any change to `contracts/Arena.sol`.
  *
- * Generated rather than hand-written because there are 51 functions, 23 events and
+ * Generated rather than hand-written because there are 52 functions, 23 events and
  * 54 errors; a hand-typed copy of that is a transcription bug waiting for a chain to decode it
  * wrongly. `packages/smith-sdk/test/abi-drift.test.ts` still compares the EVENTS to the Solidity
  * source, which is the part whose parameter order changes topic0.
@@ -770,6 +770,25 @@ export const ARENA_ABI = [
     ],
     "outputs": [],
     "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "seatBondFloor",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
   },
   {
     "type": "function",

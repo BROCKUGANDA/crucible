@@ -6,6 +6,7 @@ import {console} from "forge-std/console.sol";
 import {CrucibleTrials} from "../contracts/CrucibleTrials.sol";
 import {Arena} from "../contracts/Arena.sol";
 import {ArgusCourt} from "../contracts/ArgusCourt.sol";
+import {Params} from "../contracts/Params.sol";
 import {AlloyRegistry} from "../contracts/AlloyRegistry.sol";
 import {MockIdentityRegistry, MockReputationRegistry} from "../contracts/mocks/ERC8004Mocks.sol";
 import {ReputationBridge} from "../contracts/ReputationBridge.sol";
@@ -40,6 +41,10 @@ contract Demo is Script {
     /// parameter set — and that contract number still decides every draw. This is only what the
     /// demo chooses to post; 1 ether clears the floor for any demo trial up to 5 ether.
     uint256 constant SEAT_BOND = 1 ether;
+
+    /// The reward on the one Arena trial the demo posts. It exists so the seat-bond floor is
+    /// measured against a real trial rather than against a number in a comment.
+    uint256 constant ARENA_TRIAL_REWARD = 0.5 ether;
 
     CrucibleTrials internal trials;
     AlloyRegistry internal alloy;
@@ -237,6 +242,28 @@ contract Demo is Script {
         for (uint256 i; i < 6; ++i) {
             (uint256 bond,,) = court.bondedOf(seats[i]);
             require(bond >= SEAT_BOND, "seat bond below the demo bond");
+        }
+
+        // One posted trial, so the per-trial floor is a measurement rather than a hypothesis.
+        // The fee is read from `Params` rather than restated: a hardcoded 15% here would be a
+        // second source of truth for a number the contract refuses a wrong payment against.
+        uint256 fee = (ARENA_TRIAL_REWARD * Params.ARENA_FEE_BPS) / Params.BPS;
+        vm.startBroadcast(pkSponsor);
+        uint256 arenaTrial = arena.postTrial{value: ARENA_TRIAL_REWARD + fee}(
+            ARENA_TRIAL_REWARD,
+            SeedContent.SPEC_HASH,
+            SeedContent.TESTS_HASH,
+            keccak256("crucible-demo-holdout"),
+            1 hours,
+            1 days
+        );
+        vm.stopBroadcast();
+
+        uint256 floor = arena.seatBondFloor(arenaTrial);
+        require(floor > 0, "seat bond floor is zero, so the assert below would be vacuous");
+        for (uint256 i; i < 6; ++i) {
+            (uint256 bond,,) = court.bondedOf(seats[i]);
+            require(bond >= floor, "seat bond below the posted trial's floor");
         }
 
         // Both rounds must survive their real exclusion lists. `seatCount() >= 3` does not test

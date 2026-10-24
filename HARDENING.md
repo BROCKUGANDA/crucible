@@ -892,7 +892,7 @@ much of the product's promise each one costs.
 16. **HALF-CLOSED — the arena deploys with six bonded seats and a transport that can read it,
     but has no trial, no projection and no route.**
     `Arena.sol` and `ArgusCourt.sol` are tested by `forge test` and by no other name until now.
-    Landed: `ARENA_ABI`, generated from the artifact (51 functions, 23 events, 54 errors) and
+    Landed: `ARENA_ABI`, generated from the artifact (52 functions, 23 events, 54 errors) and
     drift-checked against the source; `trialCount()`, the one enumeration both a keeper and a
     reader need; the keeper's crank loop for `expireTrial`, `claimTimeout`, `freezeDocket`,
     `drawPanel` and `tally`, behind its own `keeper.arena` switch and breaker, reported in
@@ -908,11 +908,16 @@ much of the product's promise each one costs.
     `poolLength` 6, six distinct seats at 1 ETH each, `randomnessMode` 0 (D-17 — a deterministic
     seed, not a VRF). Two facts keep that from being more than it is. The **reducer** is
     still the v1 escrow's, so an Arena `Scribe` would project Arena logs into a Trials read model;
-    the projection is the next slice, not this one. And the six-seat proof is a **capacity** proof:
-    no Arena trial is posted yet, so the per-trial bond floor has never been exercised against a
-    real `_seatBondFloor`. Still absent, and named rather than implied: **no indexer projection**;
-    **no route**; **no posted Arena trial**. `revealHoldout` is not a crank and stays the agent's
-    own act. A reviewer arriving from the v2
+    the projection is the next slice, not this one. And **the demo now posts one Arena trial**
+    (`postTrial`, reward 0.5 ETH, fee read from `Params` rather than restated), so the per-trial
+    bond floor is measured instead of assumed: `seatBondFloor(1)` returns 0.1 ETH — reward ×
+    `SEAT_FEE_BPS/BPS × MAX_DOCKET × SEAT_BOND_MIN_MULTIPLE` — and all six seats are asserted
+    against it. That getter is new (`Arena.seatBondFloor`), because `court.isEligible(seat,
+    minBond)` takes the minimum as an argument and a seat operator otherwise had no way to ask
+    how much it must post. Still absent, and named rather than implied: **no indexer projection**;
+    **no route**; the posted trial is never claimed, so no panel has been drawn against it and
+    outcomes O1–O8 are still proven only in `forge test`. `revealHoldout` is not a crank and stays
+    the agent's own act. A reviewer arriving from the v2
     bible still finds gates 734–746 green at the contract layer and the off-chain half missing.
 
 17. **v2.1's showcase layer is now half-built, and the first audit's verdict on it was wrong in

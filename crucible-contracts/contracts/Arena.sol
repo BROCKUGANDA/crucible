@@ -1174,6 +1174,15 @@ contract Arena {
         return (uint256(_trials[id].reward) * Params.SKEPTIC_STAKE_MIN_BPS) / BPS;
     }
 
+    /// @notice The free bond a seat needs before this trial's panel can draw it.
+    /// @dev `court.isEligible(seat, minBond)` takes the number as an argument, so without this a
+    /// seat operator has no way to ask the arena how much it must post before bonding — it could
+    /// only discover the answer by failing a draw someone else paid for. Same expression the draw
+    /// screens with, so the two cannot drift.
+    function seatBondFloor(uint256 id) external view returns (uint256) {
+        return _seatBondFloor(_trials[id]);
+    }
+
     /// @notice Ghost-ledger identity (gate 744), the bible's own form: what every vault ever
     /// took in equals what has left it plus what it still holds.
     function conservationHolds() external view returns (bool) {
