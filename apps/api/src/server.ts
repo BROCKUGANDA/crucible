@@ -4,6 +4,7 @@ import { createPublicClient, http, keccak256, toHex } from "viem";
 import { Scribe, UNKNOWN_ALLOY, type AlloyState } from "@crucible/indexer";
 import { ALLOY_ABI, selfSchedulingLoop } from "@crucible/smith";
 import { createApp } from "./app.js";
+import { makeReplaySource } from "./replay.js";
 import { dlq } from "./dlq.js";
 import { resolveSecurity } from "./security.js";
 
@@ -94,6 +95,20 @@ const alloyAddress = requiredAddress("ALLOY_ADDRESS");
 const ALLOY_TTL_MS = (() => {
   const v = Number(process.env.ALLOY_TTL_MS ?? 2000);
   return Number.isFinite(v) && v > 0 ? v : 2000;
+})();
+
+/**
+ * How far back `/replay/:id` asks the node to look, in blocks. A floor and a default, not a
+ * guess: `BigInt("abc")` throws at module load and takes the API down with it, so the value is
+ * read as digits first and falls back rather than crashing a deployment over a typo.
+ */
+const replayWindowBlocks = (() => {
+  const raw = (process.env.REPLAY_WINDOW_BLOCKS ?? "").trim();
+  if (/^\d+$/.test(raw)) {
+    const v = BigInt(raw);
+    if (v > 0n) return v;
+  }
+  return 200_000n;
 })();
 
 /**
@@ -378,6 +393,9 @@ const app = createApp({
   // turns "the hall stopped moving" into "the node is tripped, with 12s of cooldown left".
   breakers: () => ({ [scribe.breaker.name]: scribe.breaker.status() }),
 }, {
+  // The replay projector reads a trial's own logs back from the node the index already talks
+  // to. Same hop, same breaker, no new authority: the API still holds no chain key (ADR-0006).
+  replay: makeReplaySource({ reader: publicClient, address: trialsAddress, windowBlocks: replayWindowBlocks }),
   // Off by default: forwarded headers are caller-writable, so trusting them lets a loop
   // mint a new bucket per request. Set TRUST_PROXY=1 only behind something that overwrites
   // them (Cloudflare, an ALB) — which is what `cf-connecting-ip` is, and also what makes
@@ -400,6 +418,9 @@ serve({ fetch: app.fetch, port }, (info) => {
       ? `[crucible] voice: Frenchy on (${voice.modelId})`
       : "[crucible] voice: off (set ELEVENLABS_API_KEY and ELEVENLABS_VOICE_ID to enable)",
   );
+  // A replay reads the trial's own logs back from the node, so the window it searches is a
+  // fact an operator needs when a replay comes back missing its first beats.
+  console.log(`[crucible] replay: last ${replayWindowBlocks} blocks per trial`);
   // The transport policy, stated as what it is rather than as a checkbox. `*` here means
   // "reads are public by design, credentialed reads are impossible" — see security.ts.
   console.log(

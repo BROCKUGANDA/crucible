@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import type { ApiSnapshot } from "@crucible/indexer";
 import { chainNowMs } from "./chainClock";
 import type { HealthPayload, ReadyPayload } from "./ops";
+import { API_BASE } from "./apiBase";
 
 /**
  * Snapshot polling.
@@ -15,9 +16,6 @@ import type { HealthPayload, ReadyPayload } from "./ops";
  * is still exposed as `serverNowMs`, for the figures that clock wrote, such as a DLQ entry's age.
  * See `lib/chainClock.ts` for why neither clock is enough on its own.
  */
-
-/** Where the browser reaches the API. Baked into the bundle at build time. */
-const API = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8787";
 
 /**
  * How long the live stream gets to deliver its first frame before the page
@@ -90,7 +88,7 @@ export function useSnapshot(pollMs = FALLBACK_POLL_MS): SnapshotState {
 
     async function poll() {
       try {
-        const res = await fetch(`${API}/snapshot`, { signal: controller.signal });
+        const res = await fetch(`${API_BASE}/snapshot`, { signal: controller.signal });
         if (res.status === 429) {
           // The API is rate limiting this client. It says how long to wait, and
           // the answer is worth believing: a client that ignores it and keeps
@@ -147,7 +145,7 @@ export function useSnapshot(pollMs = FALLBACK_POLL_MS): SnapshotState {
     void poll();
 
     try {
-      source = new EventSource(`${API}/stream`);
+      source = new EventSource(`${API_BASE}/stream`);
       source.addEventListener("snapshot", (e) => {
         if (!alive) return;
         try {
@@ -249,7 +247,7 @@ const PROBING: Probe<never> = { data: null, status: null, error: null, loading: 
  */
 async function readEndpoint<T>(path: string, signal: AbortSignal): Promise<Probe<T>> {
   try {
-    const res = await fetch(`${API}${path}`, { signal });
+    const res = await fetch(`${API_BASE}${path}`, { signal });
     if (res.status === 429) {
       return {
         data: null,
