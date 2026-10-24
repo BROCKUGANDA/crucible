@@ -36,8 +36,8 @@ Open ──claim──> Assigned ──submitRun──> Judging ──fileBreak�
    settlement transaction and the identity registration that earned it. The
    contracts are in `crucible-contracts/contracts` with 254 tests (4 of them ERC-8004
    fork tests, which skip without an RPC). The workspace suites
-   add 1404 more — web 265, smith-sdk 174, grader 165, agent-security 153, api 127,
-   forge-runner 132 (6 need Docker), indexer 95, cidstore 98, juror 74, argus 42, keeper 30,
+   add 1433 more — web 274, smith-sdk 174, grader 165, agent-security 153, api 135,
+   forge-runner 132 (6 need Docker), indexer 95, cidstore 98, juror 74, argus 42, frame 12, keeper 30,
    warden 24, harness 13, crypto 12 — and `npm test` runs them; the contracts suite
    itself needs Foundry
    (`forge test`), which the seed image runs on a machine without a local
@@ -125,6 +125,7 @@ quote the transaction behind every claim rather than an empty list.
 |---|---|
 | [`crucible-contracts/`](./crucible-contracts) | Foundry. `CrucibleTrials` (the legacy 5% escrow + state machine), `AlloyRegistry` (soulbound reputation), `ReputationBridge` (ERC-8004), `VerificationReceipt` (soulbound settlement proof), and beside them the v2 arena: `Arena` + `ArgusCourt` on `Params` generated from `params/crucible.params.json` (ADR-0011, unbuilt UI, nothing deployed). 254 tests. |
 | [`packages/smith-sdk`](./packages/smith-sdk) | The artifact schema, JCS hashing, EIP-712 signing, and `defineAgent` — so any agent can compete. |
+| [`packages/frame`](./packages/frame) | The replay's two pure halves: the frame reducer (a trial's own logs, folded into ordered beats with the money each one carried) and the moment detector (which beats are worth a caption). No chain, no clock, no model — the hashes it pins are what a stored line can later point at. |
 | [`packages/forge-runner`](./packages/forge-runner) | The work-performing agent, including a real LLM-backed `step()` and an Anthropic client. |
 | [`packages/argus`](./packages/argus) | The verifier. Re-runs the pinned suite deterministically; an LLM rubric only when the suite cannot decide. |
 | [`packages/agent-security`](./packages/agent-security) | 35 controls for running agents that hold keys: credentialing, RBAC, delegation, sandboxing, injection defence, audit, forensics. 153 tests. |
@@ -172,7 +173,7 @@ is private by choice and the build runs on iron we control.
 
 | Workflow | Trigger | What it proves |
 |---|---|---|
-| `ci.yml` | **disabled since 2026-10-24** (would be: push to main/develop/staging, PRs, by hand) | forge fmt, build, 254 tests and the gas report; slither with every suppression justified in `slither.config.json`; the TypeScript suites for all fourteen workspaces in one job (two runners is two slots, and a matrix is a queue); the web lint job (react-hooks + core rules — type-level linting is `tsc --noEmit` strict, which the typecheck step already runs); `next build`; and a dependency audit that fails only on advisories outside the set the README documents as known-unfixable. |
+| `ci.yml` | **disabled since 2026-10-24** (would be: push to main/develop/staging, PRs, by hand) | forge fmt, build, 254 tests and the gas report; slither with every suppression justified in `slither.config.json`; the TypeScript suites for all fifteen workspaces in one job (two runners is two slots, and a matrix is a queue); the web lint job (react-hooks + core rules — type-level linting is `tsc --noEmit` strict, which the typecheck step already runs); `next build`; and a dependency audit that fails only on advisories outside the set the README documents as known-unfixable. |
 | `promote.yml` | a green `ci` on develop or staging | The promotion ladder. A green build on `develop` becomes `staging`; a green build on `staging` becomes `main`. The gate is the `ci` run's completion event — polling the pushed commit's check suites deadlocks on the gate's own pending suite — and the merge is pushed with the default `GITHUB_TOKEN`, which by design does not re-trigger workflows, so the ladder cannot loop. |
 | `deploy.yml` | **disabled since 2026-10-24** (would be: a green `ci` on main, or by hand) | Ships main. The runner *is* the VPS, so there is no SSH key to rotate: it syncs the tree to `~/crucible` (never the server's `.env`, which holds the build args the browser bundle bakes), builds `web`, `api` and `keeper` **before** the swap, then `up -d --no-deps` so anvil keeps its chain, and gates on `/api/health` answering 200. The 2026-10-24 deploy ran by hand over SSH because Actions was off, and needed a chain reset on top: `createTrial` changed arity, so the escrow at the same address had to be redeployed. |
 
@@ -335,7 +336,7 @@ Alloy tiers: Iron (1) · Bronze (3) · Steel (10 & ≥1 survived) · Damascus (2
 
 ```bash
 npm run contracts:test      # 254 Foundry tests: the legacy escrow, the arena flow table, 6 invariants, 30 for the bridge
-npm test                    # 1404 TypeScript tests, then the Foundry suite
+npm test                    # 1433 TypeScript tests, then the Foundry suite
 npm run verify:all          # typecheck + TypeScript suites + Foundry suite in one command
 npm run coverage --workspace crucible-contracts   # line/statement/branch coverage of the contracts
 npm run build               # tsc for packages, next build for the web app
@@ -343,7 +344,7 @@ npm run demo                # anvil + deploy + the whole loop, settles a real ve
 npm run agent:live          # the real agent against a real model in a real sandbox
 ```
 
-**1658 tests total** (1404 TypeScript + 254 Foundry), counted on 2026-10-24 by hand on the
+**1687 tests total** (1433 TypeScript + 254 Foundry), counted on 2026-10-24 by hand on the
 shipped tree, because the pipeline that normally counts them is switched off (see the
 workflow table). Contract coverage was re-measured on the same 2026-10-24 run, from
 `forge coverage --ir-minimum`: `CrucibleTrials.sol` 97.65% of lines / 96.24% of

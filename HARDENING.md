@@ -105,8 +105,9 @@ current tree actually verifies, what it deliberately does not, and what is still
   re-uploaded asset would have run. Versions and digests now live in
   `scripts/install-tool.sh`, which verifies with `sha256sum --check --status --strict`
   *before* extracting. Foundry v1.8.5's digest was measured here and corroborated against the
-  one GitHub publishes for that asset; gitleaks 8.24.0's is a first-contact measurement,
-  because the API returns `digest: null` for it — recorded as such in the file. Proven able to
+  one GitHub publishes for that asset; gitleaks 8.24.0's matches the `linux_x64` line of the
+  `gitleaks_8.24.0_checksums.txt` in its release (the asset API returns `digest: null`, so the
+  vendor's file is the corroboration) — recorded as such in the file. Proven able to
   fail three ways: a wrong expected digest exits 1 and extracts nothing, an unknown tool name
   exits 2, and deleting `--strict` or moving `tar xzf` above the check turns
   `packages/argus/test/no-orphan.test.ts` red.
@@ -350,6 +351,23 @@ the check, because the script's *comments* explain the flag and contain the stri
 scans executable lines with comments filtered out. A gate that matches prose in the file it
 guards is the decoration it exists to detect.
 
+- **`getLogs({ abi })` does not decode on this node, and the node ignores the topics filter.**
+  Both measured inside `crucible-api` against the live anvil on 2026-10-24: 56 logs came back with
+  `eventName: undefined` and `args: undefined`, and a one-topic query still answered all 56. The
+  first version of the replay route trusted the transport to decode, so it would have answered
+  `200` with zero frames and let a visitor read "this trial has no history" off a chain that had
+  eight trials. The projector now decodes locally with `decodeEventLog`, filters by the trial id in
+  code, and reports `logsUndecoded` / `logsOtherEvents` so the leftovers are counted instead of
+  vanished. The test fixture builds `topics` and `data` with `encodeEventTopics` /
+  `encodeAbiParameters` — the shape a node returns — because the previous fixture handed the route
+  pre-decoded logs and could not have failed.
+- **The replay reads a trial's own logs back, and only the chain's numbers appear.**
+  `packages/frame` folds the beats into frames; `GET /replay/:id` and `/trials/[id]/replay` render
+  them. No escrow total is printed anywhere: `VerdictFinalized` emits only the agent's payout, so
+  where a slash sent the reward and the break stake is not a number this projection has, and summing
+  the rows would publish arithmetic nobody sourced. Frenchy's captions come from the existing static
+  pools through `FrenchySelector` (gate 674 bans a runtime model), and the page renders nothing when
+  the selector declines — a visitor has no use for "over budget".
 - **The verify page was printing a proof hash that was not the proof.** `VerificationReceipt`
   stores the real digests — the live chain showed `verdictHash = 0xd601ff4e…ec95` — while
   `tokenURI` rendered `0x000…0000d6`: `bytes1(b >> (248 - i * 8))` truncates to the **high** byte,
@@ -593,16 +611,25 @@ much of the product's promise each one costs.
     the contract layer and 747–795 unbuilt, which is the honest state rather than a partial one
     presented as a whole.
 
-17. **v2.1's Showcase Arena and Frenchy (gates 796–805) are unbuilt, by dependency, not by
-    oversight.** The bible's §16.13.6 puts each mode behind work that does not exist here: Ghost
-    Runs behind Harena (P5) and the arena programs, Frenchy's director behind gate 801 and the P7
-    indexer, House Bouts behind a second deployment on Base Sepolia with play-money USDC and SOL
-    — which is ADR-0002's territory and a new ADR, not a config change. They were read and judged
-    (DECISIONS.md 11–13) rather than transcribed into `docs/gates.yml`, because the register
-    already carries 51 rows with nothing behind them and adding ten more makes the public count
-    less true, not more. What *is* already true of the showcase's premises: cross-deployment
-    artifact rejection is the EIP-712 domain binding the arena already enforces, and
-    simulate-before-sign already runs on every SDK write.
+17. **v2.1's showcase layer is now half-built, and the first audit's verdict on it was wrong in
+    both directions.** Corrected position, measured against the tree rather than the bible's prose:
+    Frenchy already existed (`apps/web/src/lib/frenchy/selector.ts` — triggers, tones, budget,
+    cooldown, anti-repeat, mute, static `pools.json`), the TTS host already existed and is real
+    ElevenLabs (`apps/api/src/voice.ts`), and the arena canvas already existed
+    (`apps/web/src/lib/scrub/`, 1,629 lines) — but that canvas is a **scroll-driven marketing reel**
+    whose six "acts" are the walk into the arena, not a trial. What was genuinely absent was anything
+    that turned a settled trial's own logs into beats: built now, as `packages/frame` +
+    `GET /replay/:id` + `/trials/[id]/replay`. Still absent, by dependency:
+    **Ghost Runs** (any trial replayed end to end on a private fork with play money — needs a fork
+    host; `anvil --fork-url` is the nearest real thing this repo has, and it is not wired to a
+    scheduler), **House Bouts** (our own agents fighting on a showcase deployment — needs the second
+    deployment, which is ADR-0002's territory and a new ADR, not a config change), the **bout
+    scheduler and fork pool**, and the **R2/Postgres line store** — the last deliberately not built,
+    because ADR-0008 says no database, so this replay re-derives frames from the chain and pins them
+    with `frameHash`/`replayHash` instead of storing lines. That is a stated divergence from
+    §16.13.3, not an oversight of it. The bible's gates 796–805 are still not in `docs/gates.yml`,
+    for the reason in item 12: the register already has 51 rows with nothing behind them, and a row
+    here would bind to no checker.
 
 18. **The pipeline is switched off, so four of the contract gates have not run on the shipped
     code at all.** All seven workflows are `disabled_manually` (`gh workflow list --all`) after
@@ -625,5 +652,15 @@ much of the product's promise each one costs.
     mint fix (`7f47ed8`), named in its message. Either the row's changes get committed or the row
     gets corrected; HEAD should not describe a licence posture the repository does not have, and
     which of those two is intended is an owner call.
+
+20. **Gate 732's drift check was guarding line endings, and three committed artifacts still carry
+    CRLF inside their blobs.** `params-codegen.mjs --check` compared `readFileSync(...) !== template`
+    while the template is a literal inside a CRLF source file, so a clean Windows checkout of a
+    commit with no value drift reported drift on `params.rs`, `params.ts` and `Params.sol`. Fixed by
+    folding CRLF on both sides of the compare (proved still able to fail: `ARENA_FEE_BPS 1500 → 1501`
+    reddens it, restoring greens it) and by pinning those paths `text eol=lf`. What is NOT fixed: the
+    blobs already committed contain CR, so a checkout still writes CRLF — a `git add --renormalize`
+    commit that actually rewrites them is outstanding, and until then any tool that byte-compares
+    these three files on Windows will disagree with itself.
 
 Report a vulnerability as described in [`SECURITY.md`](SECURITY.md), not in a public issue.

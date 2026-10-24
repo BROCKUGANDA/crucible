@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "Crucible web app — Next.js, the Industrial Forge design system.",
-  "license": "MIT",
+  "license": "UNLICENSED",
   "scripts": {
     "dev": "next dev --webpack --port 3000",
     "build": "next build --webpack",
@@ -14,6 +14,7 @@
     "icons": "node scripts/build-icons.mjs"
   },
   "dependencies": {
+    "@crucible/frame": "*",
     "@crucible/indexer": "*",
     "@crucible/smith": "*",
     "@rainbow-me/rainbowkit": "^2.2.11",

@@ -13,6 +13,7 @@ import { dlq } from "./dlq.js";
 import { TickPump } from "./tick-pump.js";
 import { authRoutes } from "./auth.js";
 import { createVoiceRoutes, type VoiceConfig } from "./voice.js";
+import { createReplayRoutes, type ReplaySourceResult } from "./replay.js";
 import {
   bodyLimit,
   corsPolicy,
@@ -260,6 +261,11 @@ export interface ApiOptions {
    * rather than sharing the 60/min read allowance. `false` disables it for tests.
    */
   voiceRateLimit?: { limit: number; windowMs: number; burst?: number } | false;
+  /**
+   * The replay projector. Absent means `/replay/:id` answers 501: a deployment that cannot
+   * read logs must not render an empty stage and let it look like a trial with no history.
+   */
+  replay?: (trialId: number) => Promise<ReplaySourceResult>;
 }
 
 /**
@@ -488,6 +494,24 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
     app.use("/voice/*", voiceLimiter);
   }
   app.route("/voice", createVoiceRoutes(opts.voice ?? null));
+
+  /**
+   * The replay projector. One request makes the node answer a `getLogs` over the whole look-back
+   * window, so it gets a tighter bucket than the 60/min read allowance: this is not a provider
+   * bill, it is the shape of request a single visitor can make the RPC pay for.
+   */
+  if (opts.rateLimit !== false) {
+    app.use(
+      "/replay/*",
+      rateLimit({
+        limit: 12,
+        windowMs: 60_000,
+        burst: 3,
+        trustProxy: opts.trustProxy ?? false,
+      }),
+    );
+  }
+  app.route("/replay", createReplayRoutes(opts.replay, deps.proofSource, (id) => deps.getModel().trials.has(id)));
 
   /**
    * Liveness, plus the reach of the index. `/ready` is the gate a balancer acts on; this is
