@@ -147,6 +147,13 @@ function parseStructFields(source: string, structName: string): { name: string; 
   const body = new RegExp(`struct\\s+${structName}\\s*\\{([^}]*)\\}`, "s").exec(source);
   if (!body?.[1]) throw new Error(`struct ${structName} is not declared in the source`);
   return body[1]
+    // `// …` is stripped before splitting, because a packed struct is exactly the kind of
+    // declaration that carries a comment per field — AlloyRegistry's Record says which figures are
+    // the epoch window and which are the lifetime book, and the first version of this parser read
+    // "// current epoch\n uint32 survived" as one field and threw. Stripping the comment keeps the
+    // documentation and the gate; the fields themselves are still matched strictly, so a real
+    // syntax surprise fails rather than parses.
+    .replace(/\/\/[^\n]*/g, "")
     .split(";")
     .map((line) => line.trim())
     .filter(Boolean)
@@ -173,10 +180,33 @@ describe("ALLOY_ABI's struct getters against the Solidity source", () => {
   });
 
   it("puts the tier where the readers expect it", () => {
-    // The three counters, then the tier. A test that names the index makes a reorder a
-    // deliberate change rather than an accident.
+    // The three counters, then the tier, then ADR-0012's epoch book. A test that names every index
+    // makes a reorder a deliberate change rather than an accident, and it is the reason the five
+    // appended fields are safe to read positionally anywhere else.
     const records = ALLOY_ABI.find((i) => i.type === "function" && i.name === "records");
     if (!records || records.type !== "function") throw new Error("ALLOY_ABI has no records() function");
-    expect(records.outputs.map((o) => o.name)).toEqual(["wins", "survived", "slashes", "tier"]);
+    expect(records.outputs.map((o) => o.name)).toEqual([
+      "wins",
+      "survived",
+      "slashes",
+      "tier",
+      "epoch",
+      "lifetimeWins",
+      "lifetimeSlashes",
+      "holder",
+      "epochStartedAt",
+    ]);
+  });
+
+  it("reads a struct field that carries a trailing comment", () => {
+    // The parser used to throw on `uint32 wins; // current epoch`, which is how a packed struct gets
+    // documented here. Proved against a fixture rather than asserted in prose: if the comment strip
+    // is removed, this fails and the real `Record` check goes with it.
+    const fields = parseStructFields("struct S {\n  uint32 a; // one\n  // two\n  uint8 b;\n}", "S");
+    expect(fields).toEqual([
+      { type: "uint32", name: "a" },
+      { type: "uint8", name: "b" },
+    ]);
+    expect(() => parseStructFields("struct S {\n  uint32 a = 1;\n}", "S")).toThrow(/could not read/);
   });
 });

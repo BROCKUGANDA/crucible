@@ -45,14 +45,15 @@ export function GET() {
     },
     /** How to tell a real record from a lookalike, in the order the checks have to run. */
     verify: {
-      credential: `records whose emitter is ${alloy ?? "(unset)"} — read tierOf(agentId), records(agentId) and locked(tokenId)`,
+      credential: `records whose emitter is ${alloy ?? "(unset)"} — read tierOf(agentId), records(agentId), epochOf(agentId), holderOf(agentId) and locked(tokenId)`,
       settlement: `VerdictFinalized logs emitted by ${trials ?? "(unset)"}`,
       receipt: `VerificationReceiptMinted from the trials contract above; the receipt contract is trials.verificationReceipt()`,
     },
     caveats: [
       "This is a demonstration deployment on a local Anvil chain (id 31337). Nothing here is a financial or regulatory control.",
       "The addresses are baked at build time, so a redeploy to a new chain changes them; this file is regenerated with the deployment.",
-      "A credential is one per agent. There is no identity epoch and no time-based decay in this deployment, so a record never starts over and never fades on its own — only a slashed outcome lowers it.",
+      "A credential is one per agent and never moves. Its tier, wins, survivals and slashes are the CURRENT identity epoch's: when the ERC-8004 identity behind an agent is observed in new hands the window starts again (ADR-0012), while epoch, lifetimeWins and lifetimeSlashes do not — all four are in the credential's own tokenURI, so a reset reads as a reset without trusting this API.",
+      "Standing also fades on the chain's clock: a 45-day half-life from params/crucible.params.json, with the two operands this deployment does not measure (suite difficulty, sponsor independence) reported as assumptions rather than folded in.",
     ],
   };
 

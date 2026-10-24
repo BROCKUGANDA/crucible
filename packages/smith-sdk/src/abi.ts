@@ -598,7 +598,33 @@ export const ALLOY_ABI = [
       { name: "survived", type: "uint32" },
       { name: "slashes", type: "uint32" },
       { name: "tier", type: "uint8" },
+      // ADR-0012 appended these; `abi-drift.test.ts` parses `struct Record` out of the Solidity and
+      // fails if this list and that one ever disagree in field, type or order.
+      { name: "epoch", type: "uint32" },
+      { name: "lifetimeWins", type: "uint32" },
+      { name: "lifetimeSlashes", type: "uint32" },
+      { name: "holder", type: "address" },
+      { name: "epochStartedAt", type: "uint64" },
     ],
+  },
+  {
+    type: "function",
+    name: "epochOf",
+    stateMutability: "view",
+    inputs: [{ name: "agentId", type: "uint256" }],
+    outputs: [
+      { name: "epoch", type: "uint32" },
+      { name: "startedAt", type: "uint64" },
+      { name: "lifetimeWins", type: "uint32" },
+      { name: "lifetimeSlashes", type: "uint32" },
+    ],
+  },
+  {
+    type: "function",
+    name: "holderOf",
+    stateMutability: "view",
+    inputs: [{ name: "agentId", type: "uint256" }],
+    outputs: [{ type: "address" }],
   },
   // The registry emitted four events and this ABI carried none of them, so no log it wrote was
   // decodable anywhere — including `TierChanged`, the only signal that a reputation token moved a
@@ -630,6 +656,22 @@ export const ALLOY_ABI = [
     type: "event",
     name: "ForgeSet",
     inputs: [{ indexed: true, name: "forge", type: "address" }],
+  },
+  // ADR-0012. The window this log closes is gone from the chain by the time anyone reads it, so the
+  // prior figures are in the data rather than left to a read that can no longer answer.
+  {
+    type: "event",
+    name: "EpochStarted",
+    inputs: [
+      { indexed: true, name: "agentId", type: "uint256" },
+      { name: "epoch", type: "uint32" },
+      { indexed: true, name: "previousHolder", type: "address" },
+      { name: "newHolder", type: "address" },
+      { name: "priorWins", type: "uint32" },
+      { name: "priorSurvived", type: "uint32" },
+      { name: "priorSlashes", type: "uint32" },
+      { name: "startedAt", type: "uint64" },
+    ],
   },
 ] as const;
 

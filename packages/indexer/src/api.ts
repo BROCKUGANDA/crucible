@@ -61,10 +61,31 @@ export interface AlloyState {
   locked: boolean | null;
   /** `tokenURI(agentId)`, null when unminted or unread */
   tokenUri: string | null;
+  /**
+   * ADR-0012 — `epochOf(agentId)`. `epoch` counts identity handovers (1 = never handed over),
+   * `epochStartedAt` is the chain's own timestamp for the transition, and the lifetime pair is the
+   * book a handover cannot erase. All null when the registry was not read, which is not the same
+   * answer as epoch 0.
+   */
+  epoch: number | null;
+  epochStartedAt: number | null;
+  lifetimeWins: number | null;
+  lifetimeSlashes: number | null;
+  /** `holderOf(agentId)` — who the current window belongs to. Never `ownerOf`, which does not move. */
+  holder: string | null;
 }
 
 /** The answer for a host that has no registry read — every field unknown. */
-export const UNKNOWN_ALLOY: AlloyState = { tier: null, locked: null, tokenUri: null };
+export const UNKNOWN_ALLOY: AlloyState = {
+  tier: null,
+  locked: null,
+  tokenUri: null,
+  epoch: null,
+  epochStartedAt: null,
+  lifetimeWins: null,
+  lifetimeSlashes: null,
+  holder: null,
+};
 
 /**
  * The tier's name, from the tier *number the registry returned*. Kept here rather than
@@ -91,6 +112,12 @@ export interface ApiAgent {
   tierName: string | null;
   alloyLocked: boolean | null;
   tokenUri: string | null;
+  /** ADR-0012: the identity epoch the figures beside these belong to. */
+  epoch: number | null;
+  epochStartedAt: number | null;
+  lifetimeWins: number | null;
+  lifetimeSlashes: number | null;
+  holder: string | null;
 }
 
 /** Wei in one ETH. */
@@ -177,6 +204,15 @@ export function toApiAgent(row: AgentRow, alloy: AlloyState): ApiAgent {
     tierName: tierNameFor(alloy.tier),
     alloyLocked: alloy.locked,
     tokenUri: alloy.tokenUri,
+    // ADR-0012. Published beside the projection's own counts on purpose: `wins` above is this
+    // process's tally of settled logs across every epoch, while the registry's window may have
+    // turned over. A reader who is not told which epoch the row is in cannot tell a short record
+    // from a washed one.
+    epoch: alloy.epoch,
+    epochStartedAt: alloy.epochStartedAt,
+    lifetimeWins: alloy.lifetimeWins,
+    lifetimeSlashes: alloy.lifetimeSlashes,
+    holder: alloy.holder,
   };
 }
 
