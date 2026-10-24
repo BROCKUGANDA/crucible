@@ -590,7 +590,9 @@ function shields(
   ctx.restore();
 }
 
-function vignette(ctx: SceneCtx, size: SceneSize, pal: ScenePalette): void {
+// `pal` is accepted to keep the painter signature uniform (every painter takes
+// the palette) even though the vignette shades by geometry alone.
+function vignette(ctx: SceneCtx, size: SceneSize, _pal: ScenePalette): void {
   const { w, h } = size;
   const g = ctx.createRadialGradient(
     w / 2,

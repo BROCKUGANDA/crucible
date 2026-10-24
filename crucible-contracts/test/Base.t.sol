@@ -46,7 +46,7 @@ abstract contract Base is Test {
     function _liveTrial() internal returns (uint256 id, uint256 aid) {
         vm.deal(sponsor, REWARD);
         vm.prank(sponsor);
-        id = trials.createTrial{value: REWARD}(SPEC, TESTS, uint64(block.timestamp + 2 days), WINDOW);
+        id = trials.createTrial{value: REWARD}(REWARD, SPEC, TESTS, uint64(block.timestamp + 2 days), WINDOW);
         aid = _register(1 ether);
         vm.prank(operator);
         trials.claimTrial(id);
@@ -89,7 +89,7 @@ abstract contract Base is Test {
         address op2 = makeAddr("operator2");
         vm.deal(sponsor, REWARD);
         vm.prank(sponsor);
-        id = trials.createTrial{value: REWARD}(SPEC, TESTS, uint64(block.timestamp + 2 days), WINDOW);
+        id = trials.createTrial{value: REWARD}(REWARD, SPEC, TESTS, uint64(block.timestamp + 2 days), WINDOW);
         vm.deal(op2, 1 ether);
         vm.prank(op2);
         aid = trials.registerAgent{value: 1 ether}("ipfs://manifest2", vm.addr(RUNNER_KEY));

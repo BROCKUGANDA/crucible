@@ -58,3 +58,10 @@ graphflow-out/
 # forge writes this on any build in the contracts directory; it pins resolved lib commits,
 # which are already pinned by lib/.gitmodules — so it is a build artifact here, not a lockfile.
 crucible-contracts/foundry.lock
+
+# Mimosa security-scan runtime state: hook baselines, source snapshots, finding ledgers.
+# Nothing under .mimosa/ is source; 23 hook-state files were once staged by accident.
+# A project security policy (.mimosa/security-policy.json), if ever declared, should be
+# un-ignored explicitly so it ships deliberately.
+.mimosa/
+

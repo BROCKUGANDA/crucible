@@ -1,0 +1,25 @@
+{
+  "name": "@crucible/harness",
+  "version": "0.1.0",
+  "description": "Agent sandbox harness — proposal envelope, sealed execution context, import-lint CI enforcement. Agents propose; only the keeper does.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "lint:imports": "node scripts/import-lint.mjs"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.5"
+  }
+}

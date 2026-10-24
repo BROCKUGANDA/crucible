@@ -82,7 +82,7 @@ contract Extend is Script {
                 // fetch, so the deterministic phase could not run and every challenge on a demo
                 // trial went to the committee by default.
                 uint256 id = trials.createTrial{value: REWARD}(
-                    SeedContent.SPEC_HASH, SeedContent.TESTS_HASH, uint64(block.timestamp + RUN_WINDOW), BREAK_WINDOW
+                    REWARD, SeedContent.SPEC_HASH, SeedContent.TESTS_HASH, uint64(block.timestamp + RUN_WINDOW), BREAK_WINDOW
                 );
                 console.log("  open trial   #", id, "- sponsored, awaiting a claim");
             }
@@ -97,7 +97,7 @@ contract Extend is Script {
             if (freeStake >= bond) {
                 vm.broadcast(pkSponsor);
                 uint256 id = trials.createTrial{value: REWARD}(
-                    SeedContent.SPEC_HASH, SeedContent.TESTS_HASH, uint64(block.timestamp + RUN_WINDOW), BREAK_WINDOW
+                    REWARD, SeedContent.SPEC_HASH, SeedContent.TESTS_HASH, uint64(block.timestamp + RUN_WINDOW), BREAK_WINDOW
                 );
                 vm.broadcast(pkOperatorA);
                 trials.claimTrial(id);

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { Chrome, Quenching, SignalLost, TxLink, TxStates } from "@/components/Chrome";
+import { TxSheetStatus } from "@/components/TxSheetStatus";
 import { BreakPanel } from "@/components/BreakPanel";
 import { useSnapshot } from "@/lib/useSnapshot";
 import {
@@ -267,6 +268,7 @@ export default function TrialDetailPage() {
                 {tx.busy ? "Quenching…" : "Quench the trial"}
               </button>
               <TxStates state={tx.state} hash={tx.hash} message={tx.error} />
+              <TxSheetStatus gasUsed={tx.gasUsed} gasWei={tx.gasWei} />
               {tx.state === "poured" && tx.hash ? (
                 <p className="hint">
                   Quenched on-chain. The ledger catches up in a moment —{" "}

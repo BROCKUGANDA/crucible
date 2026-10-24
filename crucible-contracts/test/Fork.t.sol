@@ -77,6 +77,7 @@ contract ForkTests is Test {
         if (block.chainid != 1) {
             return;
         }
+        vm.rollFork(PINNED_BLOCK);
         assertGt(REPUTATION_REGISTRY.code.length, 0, "reputation registry not deployed at PINNED_BLOCK");
 
         seats = new address[](3);
@@ -144,7 +145,7 @@ contract ForkTests is Test {
         uint256 reward = 1 ether;
 
         vm.prank(sponsor);
-        uint256 id = trials.createTrial{value: reward}(spec, tests, uint64(block.timestamp + 2 days), 1 days);
+        uint256 id = trials.createTrial{value: reward}(reward, spec, tests, uint64(block.timestamp + 2 days), 1 days);
 
         vm.prank(operator);
         trials.claimTrial(id);
@@ -191,7 +192,7 @@ contract ForkTests is Test {
         uint256 reward = 1 ether;
 
         vm.prank(sponsor);
-        uint256 id = trials.createTrial{value: reward}(spec, tests, uint64(block.timestamp + 2 days), 1 days);
+        uint256 id = trials.createTrial{value: reward}(reward, spec, tests, uint64(block.timestamp + 2 days), 1 days);
 
         vm.prank(operator);
         trials.claimTrial(id);

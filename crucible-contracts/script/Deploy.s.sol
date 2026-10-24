@@ -6,6 +6,7 @@ import {console} from "forge-std/console.sol";
 import {CrucibleTrials} from "../contracts/CrucibleTrials.sol";
 import {AlloyRegistry} from "../contracts/AlloyRegistry.sol";
 import {ReputationBridge} from "../contracts/ReputationBridge.sol";
+import {VerificationReceipt} from "../contracts/VerificationReceipt.sol";
 
 /// Deploys AlloyRegistry first (its constructor sets `owner` = the deployer), then
 /// CrucibleTrials, then closes the circular reference with setForge.
@@ -16,16 +17,25 @@ import {ReputationBridge} from "../contracts/ReputationBridge.sol";
 contract Deploy is Script {
     uint256 internal constant DEFAULT_PK = 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80;
 
-    function run() external returns (CrucibleTrials trials, AlloyRegistry alloy) {
+    function run() external returns (CrucibleTrials trials, AlloyRegistry alloy, VerificationReceipt receipt) {
         uint256 pk = vm.envOr("PRIVATE_KEY", uint256(DEFAULT_PK));
 
         vm.startBroadcast(pk);
         alloy = new AlloyRegistry();
         trials = new CrucibleTrials(vm.addr(pk), address(alloy), _argusSeats());
         alloy.setForge(address(trials));
+
+        // VerificationReceipt (gates 415-418): deploy, wire into CrucibleTrials, enable.
+        // CrucibleTrials is the minter (it calls mintReceipt inside settleBatch), so the
+        // receipt's minter is set to the trials address after both are deployed.
+        receipt = new VerificationReceipt();
+        receipt.setMinter(address(trials));
+        trials.setVerificationReceipt(address(receipt));
+        trials.setReceiptsEnabled(true);
         vm.stopBroadcast();
 
         _report(address(alloy), address(trials));
+        console.log("VerificationReceipt", address(receipt));
     }
 
     /// v1 fixes exactly three Argus seats; 2-of-3 commit-reveal resolves a dispute.

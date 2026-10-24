@@ -1,0 +1,10 @@
+[package]
+name = "verdict-vectors"
+version = "0.1.0"
+edition = "2021"
+description = "Gate 752 Rust side — JCS subset for pure verdict.v2 bodies, proven against the committed golden vectors"
+license = "MIT"
+
+[dependencies]
+serde_json = "1"
+sha2 = "0.10"

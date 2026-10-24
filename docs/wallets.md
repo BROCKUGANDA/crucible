@@ -29,6 +29,26 @@ build time.
 Do not add Privy or another embedded-wallet provider unless you decide to pivot
 away from wallet-only identity (see below).
 
+## CLI-only top-up (gate 413)
+
+Native ETH cannot be `mint()`ed from a contract, so on Anvil there is no runtime faucet
+endpoint on the read-only API (gate 412: seed-time funding covers every demo wallet).
+If a judge needs ETH mid-demo, the UI shows a copyable cast command and the operator
+runs it against the local node:
+
+```bash
+cast rpc anvil_setBalance $ADDR 0x21E19E0C9BAB2400000 --rpc-url http://localhost:8545
+```
+
+`0x21E19E0C9BAB2400000` is 10 ETH. Time-travel to a deadline sweep on demand:
+
+```bash
+cast rpc anvil_mine 100 --rpc-url http://localhost:8545
+```
+
+The faucet stays quarantined to the ops plane — no POST /faucet, no chain key in the API
+(ADR-0006).
+
 ## Option A — WalletConnect (recommended now)
 
 **What it buys:** a modal with hundreds of mobile and desktop wallets, QR

@@ -3,13 +3,57 @@ pragma solidity 0.8.26;
 
 import {Base} from "./Base.t.sol";
 import {CrucibleTrials} from "../contracts/CrucibleTrials.sol";
+import {VerificationReceipt} from "../contracts/VerificationReceipt.sol";
 
 contract CrucibleTrialsTest is Base {
     // ── creation ──
+    function test_EIP1559_SettlementIndependentOfGasPrice() public {
+        // Gate 410: verdict sigs settle identically at base-fee 0 and at base-fee 30 gwei.
+        // Fee math (FEE_BPS) must be independent of gas prices.
+        uint256 reward = 1 ether;
+
+        // Trial at base fee 0
+        vm.txGasPrice(0);
+        vm.deal(sponsor, reward);
+        vm.prank(sponsor);
+        uint256 id0 = trials.createTrial{value: reward}(reward, SPEC, TESTS, uint64(block.timestamp + 2 days), WINDOW);
+        _register(10 ether);
+        vm.prank(operator);
+        trials.claimTrial(id0);
+        _submitRun(id0);
+        vm.warp(block.timestamp + WINDOW + 1);
+        trials.finalize(id0);
+        uint256 credit0 = trials.credit(operator);
+
+        // Trial at base fee 30 gwei (fresh agent, fresh trial)
+        vm.txGasPrice(30 gwei);
+        vm.deal(sponsor, reward);
+        vm.prank(sponsor);
+        uint256 id30 = trials.createTrial{value: reward}(reward, SPEC, TESTS, uint64(block.timestamp + 2 days), WINDOW);
+        address op30 = makeAddr("op30");
+        vm.deal(op30, 1 ether);
+        vm.prank(op30);
+        uint256 aid30 = trials.registerAgent{value: 1 ether}("ipfs://m30", runner);
+        vm.prank(op30);
+        trials.claimTrial(id30);
+        uint64 sd = uint64(block.timestamp + 10 minutes);
+        bytes32 digest = _digest(id30, aid30, RUN, sd);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(RUNNER_KEY, digest);
+        vm.prank(relayer);
+        trials.submitRun(id30, RUN, abi.encodePacked(r, s, v), sd);
+        vm.warp(block.timestamp + WINDOW + 1);
+        trials.finalize(id30);
+        uint256 credit30 = trials.credit(op30);
+
+        // Both should yield the same worker payout (bond returns to stake, not credit).
+        assertEq(credit0, reward - (reward * 500) / 10_000);
+        assertEq(credit30, reward - (reward * 500) / 10_000);
+    }
+
     function test_CreateTrial_EscrowsReward() public {
         vm.deal(sponsor, REWARD);
         vm.prank(sponsor);
-        uint256 id = trials.createTrial{value: REWARD}(SPEC, TESTS, uint64(block.timestamp + 2 days), WINDOW);
+        uint256 id = trials.createTrial{value: REWARD}(REWARD, SPEC, TESTS, uint64(block.timestamp + 2 days), WINDOW);
         CrucibleTrials.Trial memory t = trials.getTrial(id);
         assertEq(t.sponsor, sponsor);
         assertEq(t.reward, REWARD);
@@ -22,35 +66,35 @@ contract CrucibleTrialsTest is Base {
         vm.deal(sponsor, 0.001 ether);
         vm.prank(sponsor);
         vm.expectRevert(CrucibleTrials.RewardTooSmall.selector);
-        trials.createTrial{value: 0.001 ether}(SPEC, TESTS, uint64(block.timestamp + 2 days), WINDOW);
+        trials.createTrial{value: 0.001 ether}(0.001 ether, SPEC, TESTS, uint64(block.timestamp + 2 days), WINDOW);
     }
 
     function test_CreateTrial_RevertBadWindow() public {
         vm.deal(sponsor, REWARD);
         vm.prank(sponsor);
         vm.expectRevert(CrucibleTrials.BadWindow.selector);
-        trials.createTrial{value: REWARD}(SPEC, TESTS, uint64(block.timestamp + 2 days), 30 minutes);
+        trials.createTrial{value: REWARD}(REWARD, SPEC, TESTS, uint64(block.timestamp + 2 days), 30 minutes);
     }
 
     function test_CreateTrial_RevertBadDeadline() public {
         vm.deal(sponsor, REWARD);
         vm.prank(sponsor);
         vm.expectRevert(CrucibleTrials.BadDeadline.selector);
-        trials.createTrial{value: REWARD}(SPEC, TESTS, uint64(block.timestamp + 1 minutes), WINDOW);
+        trials.createTrial{value: REWARD}(REWARD, SPEC, TESTS, uint64(block.timestamp + 1 minutes), WINDOW);
     }
 
     function test_CreateTrial_RevertZeroSpec() public {
         vm.deal(sponsor, REWARD);
         vm.prank(sponsor);
         vm.expectRevert(CrucibleTrials.ZeroSpec.selector);
-        trials.createTrial{value: REWARD}(bytes32(0), TESTS, uint64(block.timestamp + 2 days), WINDOW);
+        trials.createTrial{value: REWARD}(REWARD, bytes32(0), TESTS, uint64(block.timestamp + 2 days), WINDOW);
     }
 
     function test_CreateTrial_RevertZeroTests() public {
         vm.deal(sponsor, REWARD);
         vm.prank(sponsor);
         vm.expectRevert(CrucibleTrials.ZeroTests.selector);
-        trials.createTrial{value: REWARD}(SPEC, bytes32(0), uint64(block.timestamp + 2 days), WINDOW);
+        trials.createTrial{value: REWARD}(REWARD, SPEC, bytes32(0), uint64(block.timestamp + 2 days), WINDOW);
     }
 
     function test_CreateTrial_RevertRewardTooLarge() public {
@@ -58,7 +102,7 @@ contract CrucibleTrialsTest is Base {
         vm.deal(sponsor, tooMuch);
         vm.prank(sponsor);
         vm.expectRevert(CrucibleTrials.RewardTooLarge.selector);
-        trials.createTrial{value: tooMuch}(SPEC, TESTS, uint64(block.timestamp + 2 days), WINDOW);
+        trials.createTrial{value: tooMuch}(tooMuch, SPEC, TESTS, uint64(block.timestamp + 2 days), WINDOW);
     }
 
     function test_CreateTrial_RevertEscrowCapExceeded() public {
@@ -67,11 +111,11 @@ contract CrucibleTrialsTest is Base {
         uint64 deadline = uint64(block.timestamp + 2 days);
         vm.startPrank(sponsor);
         for (uint256 i; i < 10; ++i) {
-            trials.createTrial{value: each}(SPEC, TESTS, deadline, WINDOW);
+            trials.createTrial{value: each}(each, SPEC, TESTS, deadline, WINDOW);
         }
         assertEq(trials.escrowed(), trials.MAX_TOTAL_ESCROWED());
         vm.expectRevert(CrucibleTrials.EscrowCapExceeded.selector);
-        trials.createTrial{value: each}(SPEC, TESTS, deadline, WINDOW);
+        trials.createTrial{value: each}(each, SPEC, TESTS, deadline, WINDOW);
         vm.stopPrank();
     }
 
@@ -79,7 +123,7 @@ contract CrucibleTrialsTest is Base {
     function test_RegisterAgent_AndClaim() public {
         vm.deal(sponsor, REWARD);
         vm.prank(sponsor);
-        uint256 id = trials.createTrial{value: REWARD}(SPEC, TESTS, uint64(block.timestamp + 2 days), WINDOW);
+        uint256 id = trials.createTrial{value: REWARD}(REWARD, SPEC, TESTS, uint64(block.timestamp + 2 days), WINDOW);
         uint256 aid = _register(1 ether);
         vm.prank(operator);
         trials.claimTrial(id);
@@ -92,7 +136,7 @@ contract CrucibleTrialsTest is Base {
     function test_ClaimTrial_RevertSponsorClaimsOwnTrial() public {
         vm.deal(sponsor, REWARD + 1 ether);
         vm.prank(sponsor);
-        uint256 id = trials.createTrial{value: REWARD}(SPEC, TESTS, uint64(block.timestamp + 2 days), WINDOW);
+        uint256 id = trials.createTrial{value: REWARD}(REWARD, SPEC, TESTS, uint64(block.timestamp + 2 days), WINDOW);
 
         // The sponsor is also an agent operator. Claiming its own trial would return the
         // reward minus the fee and mint a win — reputation farming at a 5% discount.
@@ -110,7 +154,7 @@ contract CrucibleTrialsTest is Base {
         uint64 deadline = uint64(block.timestamp + 2 days);
         vm.startPrank(sponsor);
         for (uint256 i; i < 10; ++i) {
-            trials.createTrial{value: each}(SPEC, TESTS, deadline, WINDOW);
+            trials.createTrial{value: each}(each, SPEC, TESTS, deadline, WINDOW);
         }
         vm.stopPrank();
         assertEq(trials.escrowed(), trials.MAX_TOTAL_ESCROWED());
@@ -147,7 +191,7 @@ contract CrucibleTrialsTest is Base {
     function test_Claim_RevertInsufficientStake() public {
         vm.deal(sponsor, REWARD);
         vm.prank(sponsor);
-        uint256 id = trials.createTrial{value: REWARD}(SPEC, TESTS, uint64(block.timestamp + 2 days), WINDOW);
+        uint256 id = trials.createTrial{value: REWARD}(REWARD, SPEC, TESTS, uint64(block.timestamp + 2 days), WINDOW);
         _register(0.05 ether); // stake < 0.2 bond
         vm.prank(operator);
         vm.expectRevert(CrucibleTrials.StakeTooSmall.selector);
@@ -189,7 +233,7 @@ contract CrucibleTrialsTest is Base {
     function test_Claim_RevertAfterDeadline() public {
         vm.deal(sponsor, REWARD);
         vm.prank(sponsor);
-        uint256 id = trials.createTrial{value: REWARD}(SPEC, TESTS, uint64(block.timestamp + 2 days), WINDOW);
+        uint256 id = trials.createTrial{value: REWARD}(REWARD, SPEC, TESTS, uint64(block.timestamp + 2 days), WINDOW);
         _register(1 ether);
         vm.warp(block.timestamp + 2 days + 1);
         vm.prank(operator);
@@ -200,7 +244,7 @@ contract CrucibleTrialsTest is Base {
     function test_Claim_RevertNotAnAgent() public {
         vm.deal(sponsor, REWARD);
         vm.prank(sponsor);
-        uint256 id = trials.createTrial{value: REWARD}(SPEC, TESTS, uint64(block.timestamp + 2 days), WINDOW);
+        uint256 id = trials.createTrial{value: REWARD}(REWARD, SPEC, TESTS, uint64(block.timestamp + 2 days), WINDOW);
         vm.prank(skeptic);
         vm.expectRevert(CrucibleTrials.NotAnAgent.selector);
         trials.claimTrial(id);
@@ -328,6 +372,144 @@ contract CrucibleTrialsTest is Base {
         trials.finalize(id);
         vm.expectRevert(CrucibleTrials.NotFinalizable.selector);
         trials.finalize(id);
+    }
+
+    // ── settleBatch (gate 402): N verified escrows in one tx ──
+    function test_SettleBatch_SettlesMultipleInOneTx() public {
+        // Three independent trials, each claimed + submitted + past its break window.
+        _register(3 ether); // enough stake for 3 bonds (3 × 0.2 = 0.6)
+        uint256[] memory ids = new uint256[](3);
+        for (uint256 i; i < 3; ++i) {
+            vm.deal(sponsor, REWARD);
+            vm.prank(sponsor);
+            uint256 id = trials.createTrial{value: REWARD}(REWARD, SPEC, TESTS, uint64(block.timestamp + 2 days), WINDOW);
+            vm.prank(operator);
+            trials.claimTrial(id);
+            _submitRun(id);
+            ids[i] = id;
+        }
+        vm.warp(block.timestamp + WINDOW + 1);
+
+        // One batch settles all three.
+        trials.settleBatch(ids);
+
+        for (uint256 i; i < 3; ++i) {
+            assertEq(uint8(trials.getTrial(ids[i]).status), uint8(CrucibleTrials.Status.Settled));
+            assertEq(uint8(trials.getTrial(ids[i]).verdict), uint8(CrucibleTrials.Verdict.Paid));
+        }
+        // Credits accumulated across all three.
+        assertEq(trials.credit(operator), 3 * 0.95 ether);
+        assertEq(trials.credit(trials.treasury()), 3 * 0.05 ether);
+        assertEq(trials.escrowed(), 0);
+    }
+
+    function test_SettleBatch_SkipsAlreadySettled() public {
+        (uint256 id,) = _liveTrial();
+        _submitRun(id);
+        vm.warp(block.timestamp + WINDOW + 1);
+        trials.finalize(id); // settle one first
+
+        uint256[] memory ids = new uint256[](2);
+        ids[0] = id; // already settled
+        ids[1] = id; // duplicate, also settled
+
+        // Must not revert: already-settled entries are skipped.
+        trials.settleBatch(ids);
+        assertEq(uint8(trials.getTrial(id).status), uint8(CrucibleTrials.Status.Settled));
+    }
+
+    /// Mutation proof for the batch's error policy. The wrong shape of this test — "the batch
+    /// does not throw" — was green while the contract silently skipped a not-ready trial and
+    /// the warden stamped that trial with the batch's tx hash. A skipped settlement is not a
+    /// settlement, so the batch must abort and the warden must retry per trial.
+    function test_SettleBatch_RevertsOnNotSettleable() public {
+        _register(3 ether);
+
+        // One trial ready: submitted, break window closed.
+        vm.deal(sponsor, 2 * REWARD);
+        vm.prank(sponsor);
+        uint256 ready =
+            trials.createTrial{value: REWARD}(REWARD, SPEC, TESTS, uint64(block.timestamp + 2 days), WINDOW);
+        vm.prank(operator);
+        trials.claimTrial(ready);
+        _submitRun(ready);
+        vm.warp(block.timestamp + WINDOW + 1);
+
+        // One trial not ready: submitted, window still open.
+        vm.prank(sponsor);
+        uint256 notReady =
+            trials.createTrial{value: REWARD}(REWARD, SPEC, TESTS, uint64(block.timestamp + 4 days), WINDOW);
+        vm.prank(operator);
+        trials.claimTrial(notReady);
+        _submitRun(notReady);
+
+        uint256[] memory ids = new uint256[](2);
+        ids[0] = ready;
+        ids[1] = notReady;
+
+        vm.expectRevert(CrucibleTrials.WindowOpen.selector);
+        trials.settleBatch(ids);
+
+        // End state: the whole batch is unwritten, including the entry that was ready. The
+        // warden's per-trial retry settles it; the escrow never reports a partial success.
+        assertEq(uint8(trials.getTrial(ready).status), uint8(CrucibleTrials.Status.Judging));
+        assertEq(uint8(trials.getTrial(notReady).status), uint8(CrucibleTrials.Status.Judging));
+        assertEq(trials.credit(operator), 0);
+    }
+
+    /// The settlement fee is 5% of the reward, deducted from the agent's payout. 1500 bps is
+    /// the v2 arena's number and lives in `params/crucible.params.json`; it must never reach
+    /// this contract. Mirrors the Rust `fee_is_five_percent_not_fifteen` test.
+    function test_FeeBpsIsFiveHundredNotFifteenHundred() public {
+        assertEq(trials.FEE_BPS(), 500);
+        assertEq(trials.BPS(), 10_000);
+        assertLt(trials.FEE_BPS(), 1_000, "the legacy escrow charges 5%, not the arena's 15%");
+    }
+
+    /// Receipts are minted by the settlement path only, and one per trial.
+    function test_SettleBatch_MintsReceiptPerSettledTrial() public {
+        VerificationReceipt receipt = new VerificationReceipt();
+        receipt.setMinter(address(trials));
+        trials.setVerificationReceipt(address(receipt));
+        trials.setReceiptsEnabled(true);
+
+        _register(3 ether);
+        uint256[] memory ids = new uint256[](2);
+        for (uint256 i; i < 2; ++i) {
+            vm.deal(sponsor, REWARD);
+            vm.prank(sponsor);
+            uint256 id =
+                trials.createTrial{value: REWARD}(REWARD, SPEC, TESTS, uint64(block.timestamp + 2 days), WINDOW);
+            vm.prank(operator);
+            trials.claimTrial(id);
+            _submitRun(id);
+            ids[i] = id;
+        }
+        vm.warp(block.timestamp + WINDOW + 1);
+
+        vm.expectEmit(true, true, false, false);
+        emit CrucibleTrials.VerificationReceiptMinted(2, ids[1], bytes32(0));
+        trials.settleBatch(ids);
+
+        assertEq(receipt.tokenCounter(), 2);
+        assertEq(receipt.receiptIdOfTrial(ids[0]), 1);
+        assertEq(receipt.receiptIdOfTrial(ids[1]), 2);
+        assertEq(receipt.ownerOf(1), operator);
+        assertEq(receipt.balanceOf(operator), 2);
+
+        // The receipt carries the verdict commitment the settlement actually produced, keyed to
+        // the trial it attests to — not the mint counter.
+        CrucibleTrials.Trial memory settled = trials.getTrial(ids[0]);
+        bytes32 expectedHash = keccak256(abi.encode(settled.verdict, settled.runHash, settled.breakProofCID));
+        (uint256 receiptTrialId, bytes32 receiptVerdictHash,, uint256 graderVersion,) = receipt.receipts(1);
+        assertEq(receiptTrialId, ids[0]);
+        assertEq(receiptVerdictHash, expectedHash);
+        assertEq(graderVersion, 1);
+
+        // Re-running the batch settles nothing and mints nothing: the trials are already
+        // settled, so the skip path leaves the receipt count alone.
+        trials.settleBatch(ids);
+        assertEq(receipt.tokenCounter(), 2);
     }
 
     // ── skeptics ──
@@ -554,7 +736,7 @@ contract CrucibleTrialsTest is Base {
     function test_Reclaim_RevertBeforeDeadlineAndAfterSettlement() public {
         vm.deal(sponsor, REWARD);
         vm.prank(sponsor);
-        uint256 id = trials.createTrial{value: REWARD}(SPEC, TESTS, uint64(block.timestamp + 2 days), WINDOW);
+        uint256 id = trials.createTrial{value: REWARD}(REWARD, SPEC, TESTS, uint64(block.timestamp + 2 days), WINDOW);
 
         vm.expectRevert(CrucibleTrials.DeadlineNotPassed.selector);
         trials.reclaimExpired(id);
@@ -696,7 +878,7 @@ contract CrucibleTrialsTest is Base {
         reward = uint128(bound(reward, 0.01 ether, 100 ether));
         vm.deal(sponsor, reward);
         vm.prank(sponsor);
-        uint256 id = trials.createTrial{value: reward}(SPEC, TESTS, uint64(block.timestamp + 2 days), WINDOW);
+        uint256 id = trials.createTrial{value: reward}(reward, SPEC, TESTS, uint64(block.timestamp + 2 days), WINDOW);
         _register(1000 ether);
         vm.prank(operator);
         trials.claimTrial(id);
@@ -712,7 +894,7 @@ contract CrucibleTrialsTest is Base {
         wins = uint8(bound(wins, 1, 25));
         vm.deal(sponsor, reward);
         vm.prank(sponsor);
-        uint256 id = trials.createTrial{value: reward}(SPEC, TESTS, uint64(block.timestamp + 2 days), WINDOW);
+        uint256 id = trials.createTrial{value: reward}(reward, SPEC, TESTS, uint64(block.timestamp + 2 days), WINDOW);
         uint256 aid = _register(1000 ether);
         vm.prank(operator);
         trials.claimTrial(id);
@@ -738,7 +920,7 @@ contract CrucibleTrialsTest is Base {
     function test_Reclaim_UnclaimedTrialReturnsTheReward() public {
         vm.deal(sponsor, REWARD);
         vm.prank(sponsor);
-        uint256 id = trials.createTrial{value: REWARD}(SPEC, TESTS, uint64(block.timestamp + 2 days), WINDOW);
+        uint256 id = trials.createTrial{value: REWARD}(REWARD, SPEC, TESTS, uint64(block.timestamp + 2 days), WINDOW);
         assertEq(trials.escrowed(), REWARD, "reward should be the only thing escrowed");
 
         vm.warp(block.timestamp + 3 days);
@@ -758,7 +940,7 @@ contract CrucibleTrialsTest is Base {
     function test_Reclaim_UnclaimedTrialTouchesNoAgent() public {
         vm.deal(sponsor, REWARD);
         vm.prank(sponsor);
-        uint256 id = trials.createTrial{value: REWARD}(SPEC, TESTS, uint64(block.timestamp + 2 days), WINDOW);
+        uint256 id = trials.createTrial{value: REWARD}(REWARD, SPEC, TESTS, uint64(block.timestamp + 2 days), WINDOW);
         uint256 aid = _register(1 ether);
         uint256 stakeBefore = trials.getAgent(aid).stake;
 
@@ -815,9 +997,9 @@ contract CrucibleTrialsTest is Base {
         vm.startPrank(sponsor);
         // 9 × 1000 = 9000, then a 500-reward trial that will be the live one.
         for (uint256 i; i < 9; ++i) {
-            trials.createTrial{value: each}(SPEC, TESTS, deadline, WINDOW);
+            trials.createTrial{value: each}(each, SPEC, TESTS, deadline, WINDOW);
         }
-        uint256 id = trials.createTrial{value: 500 ether}(SPEC, TESTS, deadline, WINDOW);
+        uint256 id = trials.createTrial{value: 500 ether}(500 ether, SPEC, TESTS, deadline, WINDOW);
         vm.stopPrank();
 
         _register(200 ether); // enough free stake for the 100 ether bond
@@ -828,7 +1010,7 @@ contract CrucibleTrialsTest is Base {
         // Fill the remaining 400 ether of the ceiling; the break stake is now the only
         // thing that would cross it.
         vm.prank(sponsor);
-        trials.createTrial{value: 400 ether}(SPEC, TESTS, deadline, WINDOW);
+        trials.createTrial{value: 400 ether}(400 ether, SPEC, TESTS, deadline, WINDOW);
         assertEq(trials.escrowed(), trials.MAX_TOTAL_ESCROWED());
 
         vm.deal(skeptic, 5 ether);

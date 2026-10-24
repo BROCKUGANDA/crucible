@@ -107,6 +107,27 @@ export const metadata: Metadata = {
   },
 };
 
+/** Gate 454 — JSON-LD structured data for search and answer engines. */
+const JSON_LD = {
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  name: SITE_NAME,
+  applicationCategory: "FinanceApplication",
+  applicationSubCategory: "Escrow",
+  description: TAGLINE,
+  url: SITE_URL,
+  creator: {
+    "@type": "Organization",
+    name: SITE_NAME,
+    url: SITE_URL,
+  },
+  offers: {
+    "@type": "Offer",
+    priceCurrency: "ETH",
+    description: "Native ETH escrow with 5% (500 bps) settlement fee",
+  },
+};
+
 export const viewport: Viewport = {
   themeColor: "#e2612f",
   colorScheme: "dark",
@@ -119,6 +140,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" className={`${display.variable} ${roman.variable} ${mono.variable}`}>
       <body>
         <Providers>{children}</Providers>
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(JSON_LD) }}
+        />
       </body>
     </html>
   );

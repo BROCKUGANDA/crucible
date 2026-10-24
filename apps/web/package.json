@@ -9,6 +9,7 @@
     "build": "next build --webpack",
     "start": "next start",
     "typecheck": "tsc --noEmit",
+    "lint": "eslint src test",
     "test": "vitest run",
     "icons": "node scripts/build-icons.mjs"
   },
@@ -24,10 +25,17 @@
     "wagmi": "^2.14.12"
   },
   "devDependencies": {
+    "@babel/core": "^8.0.9",
+    "@babel/eslint-parser": "^8.0.7",
+    "@babel/plugin-syntax-jsx": "^8.0.1",
+    "@babel/plugin-syntax-typescript": "^8.0.3",
     "@resvg/resvg-js": "2.6.2",
     "@types/node": "^26.6.5",
     "@types/react": "^19.0.7",
     "@types/react-dom": "^19.0.3",
+    "eslint": "^9.39.5",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "globals": "^14.0.0",
     "typescript": "^7.0.2",
     "vitest": "^5.0.5"
   }

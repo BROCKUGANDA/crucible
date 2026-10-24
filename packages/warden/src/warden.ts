@@ -18,6 +18,13 @@ import {
  * revert if the trial already settled, so a retried tick is harmless rather than
  * double-paying. Errors are collected per trial instead of aborting the sweep —
  * one bad trial must not stop the others from settling.
+ *
+ * The keeper's batch surface: `finalize`-decided trials are settled through
+ * `CrucibleTrials.settleBatch` (gate 402) so N verified escrows move in ONE tx rather
+ * than N txs. The contract skips entries it already settled, but a trial that is not
+ * settleable aborts the batch — its revert is the escrow's idempotency guarantee and is not
+ * the warden's to swallow. When that happens the sweep retries each trial on its own, which
+ * is where per-trial error isolation belongs.
  */
 
 export interface WardenDeps {
@@ -54,12 +61,53 @@ export class Warden {
     const decisions = decideAll(model, nowSeconds, this.deps.constants ?? DEFAULT_CONSTANTS);
     const acted: SweepResult["acted"] = [];
 
+    // Group the decided actions into batches: consecutive finalize decisions share one
+    // settleBatch tx; reclaims stay one-per-trial (reclaimExpired is not on the batch path).
+    const finalizeDecisions: FinalizeDecision[] = [];
+    const reclaimDecisions: FinalizeDecision[] = [];
     for (const decision of decisions) {
+      if (decision.action === "finalize") finalizeDecisions.push(decision);
+      else if (decision.action === "reclaim") reclaimDecisions.push(decision);
+    }
+
+    if (finalizeDecisions.length > 0) {
+      const trialIds = finalizeDecisions.map((d) => BigInt(d.trialId));
+      let batchTxHash: `0x${string}` | null = null;
       try {
-        const txHash =
-          decision.action === "finalize"
-            ? await this.deps.crucible.finalize(this.deps.wallet, BigInt(decision.trialId))
-            : await this.reclaim(BigInt(decision.trialId));
+        batchTxHash = await this.deps.crucible.settleBatch(this.deps.wallet, trialIds);
+      } catch (err) {
+        // The batch aborts when the chain says an entry is not settleable. That is the
+        // idempotency revert, not an outage — and isolation is the warden's job, so the sweep
+        // falls back to one finalize per trial: a stale decision costs one tx, not the batch.
+        const reason = (err as Error).message;
+        this.log(`settleBatch of ${trialIds.length} refused (${reason}); settling per trial`);
+        for (const decision of finalizeDecisions) {
+          try {
+            const txHash = await this.deps.crucible.finalize(this.deps.wallet, BigInt(decision.trialId));
+            acted.push({ decision, txHash, error: null });
+            this.log(`${decision.action} trial ${decision.trialId} (${decision.reason}) → ${txHash}`);
+          } catch (perTrial) {
+            acted.push({ decision, txHash: null, error: (perTrial as Error).message });
+            this.log(`skip trial ${decision.trialId}: ${(perTrial as Error).message}`);
+          }
+        }
+      }
+
+      if (batchTxHash) {
+        // One tx settled the whole batch. The contract skipped entries it had already settled,
+        // so a decision that was stale cost nothing and paid nothing.
+        for (const decision of finalizeDecisions) {
+          acted.push({ decision, txHash: batchTxHash, error: null });
+          this.log(
+            `${decision.action} trial ${decision.trialId} (${decision.reason}) → ${batchTxHash}`,
+          );
+        }
+      }
+    }
+
+    for (const decision of reclaimDecisions) {
+      try {
+        const txHash = await this.reclaim(BigInt(decision.trialId));
         acted.push({ decision, txHash, error: null });
         this.log(
           `${decision.action} trial ${decision.trialId} (${decision.reason}) → ${txHash}`,
