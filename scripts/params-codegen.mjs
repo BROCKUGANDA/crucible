@@ -230,16 +230,26 @@ library Params {
 `;
 
 if (check) {
+  // Compared with line endings folded away, deliberately. The generated text is a template
+  // literal in this file, so its newlines are *this file's* line endings — and a Windows
+  // checkout with `core.autocrlf=true` smudges them to CRLF while the committed blob may be
+  // either. Measured 2026-10-24: a clean checkout of a commit whose values matched the JSON
+  // exactly reported drift on all three artifacts. A byte compare here would guard the line
+  // ending, not the numbers, and would teach everyone to distrust the gate that exists to catch
+  // a parameter hand-edited into a generated file. `.gitattributes` pins these paths to LF so
+  // the blobs stop carrying the question at all; this line keeps the answer from depending on
+  // the machine that asked.
+  const fold = (s) => s.replace(/\r\n/g, "\n");
   const drift = [];
   for (const [file, body] of [
     ["params.rs", rust],
     ["params.ts", ts],
   ]) {
     const onDisk = readFileSync(join(outDir, file), "utf8");
-    if (onDisk !== body) drift.push(`params/generated/${file} differs from params/crucible.params.json — regenerate with: node scripts/params-codegen.mjs`);
+    if (fold(onDisk) !== fold(body)) drift.push(`params/generated/${file} differs from params/crucible.params.json — regenerate with: node scripts/params-codegen.mjs`);
   }
   const solPath = join(root, "crucible-contracts", "contracts", "Params.sol");
-  if (existsSync(solPath) && readFileSync(solPath, "utf8") !== sol) {
+  if (existsSync(solPath) && fold(readFileSync(solPath, "utf8")) !== fold(sol)) {
     drift.push("crucible-contracts/contracts/Params.sol differs from params/crucible.params.json — regenerate with: node scripts/params-codegen.mjs");
   }
   if (drift.length > 0) {

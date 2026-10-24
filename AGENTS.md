@@ -39,7 +39,7 @@ request — it is a product pivot requiring a new ADR and a new contract review.
 
 ```bash
 npm run verify:all          # typecheck + every workspace suite
-npm test                    # all workspaces + Foundry; currently 1658 tests (1404 TS + 254 Foundry)
+npm test                    # all workspaces + Foundry; currently 1687 tests (1433 TS + 254 Foundry)
 cd crucible-contracts && node ../scripts/run-forge.mjs test   # forge is not on PATH; run-forge resolves it
 node scripts/run-forge.mjs coverage --ir-minimum --report summary | tee coverage-summary.txt
 node scripts/coverage-gate.mjs coverage-summary.txt           # per-contract floors, not the Total row
