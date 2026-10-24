@@ -1,6 +1,7 @@
 export * from "./eval/types.js";
 export * from "./eval/scorer.js";
 export * from "./eval/cache.js";
+export * from "./eval/cache-file.js";
 export * from "./eval/suites.js";
 export * from "./eval/arena.js";
 export * from "./eval/break-mutant.js";
