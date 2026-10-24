@@ -889,8 +889,8 @@ much of the product's promise each one costs.
     carried survive in the OFL texts beside the fonts and in `forge-std`'s own licence files.
     The two demo fixtures keep their MIT headers on purpose — their bytes are pinned by a keccak
     digest already published on-chain, and `npm run seed:check` re-proves both still resolve.
-16. **HALF-CLOSED — the arena deploys with six bonded seats and a transport that can read it,
-    but has no trial, no projection and no route.**
+16. **HALF-CLOSED — the arena deploys, bonds, is claimed and is readable over HTTP; no panel has
+    been drawn.**
     `Arena.sol` and `ArgusCourt.sol` are tested by `forge test` and by no other name until now.
     Landed: `ARENA_ABI`, generated from the artifact (52 functions, 23 events, 54 errors) and
     drift-checked against the source; `trialCount()`, the one enumeration both a keeper and a
@@ -914,10 +914,20 @@ much of the product's promise each one costs.
     `SEAT_FEE_BPS/BPS × MAX_DOCKET × SEAT_BOND_MIN_MULTIPLE` — and all six seats are asserted
     against it. That getter is new (`Arena.seatBondFloor`), because `court.isEligible(seat,
     minBond)` takes the minimum as an argument and a seat operator otherwise had no way to ask
-    how much it must post. Still absent, and named rather than implied: **no indexer projection**;
-    **no route**; the posted trial is never claimed, so no panel has been drawn against it and
-    outcomes O1–O8 are still proven only in `forge test`. `revealHoldout` is not a crank and stays
-    the agent's own act. A reviewer arriving from the v2
+    how much it must post. **The claim process runs end to end**: the demo's agent posts the
+    `AGENT_BOND_MIN_BPS` bond and names a runner, and `GET /arena` projects `TrialPosted` →
+    `TrialClaimed` → `RunnerSet` through a second reducer (`packages/indexer/src/arena.ts`) over the
+    same transport, reached by an `onEvents` hook rather than a forked reader — the Scribe still
+    owns the trials model it always owned. Measured against a live demo chain: `/arena` returns
+    trial 1 at `status: "claimed"` with the sponsor, the agent, the runner, reward 0.5, fee 0.075
+    and bond 0.1 ETH. The route's `projected` flag is load-bearing and its first version was wrong:
+    passing the model unconditionally made a host with no arena report `projected: true` over an
+    empty Map, which reads as "an arena with no trials"; it now reports
+    `projected: false, reason: "no arena address on this host"`. Still absent, and named rather
+    than implied: **no submission, freeze or panel**, so O1–O8 remain proven only in `forge test`;
+    the projection tracks seven of 23 events and names the sixteen it does not (`ARENA_UNTRACKED`),
+    so a settled trial would show its status and none of its breaks or votes; there is **no web
+    page** for `/arena`. `revealHoldout` is not a crank and stays the agent's own act. A reviewer arriving from the v2
     bible still finds gates 734–746 green at the contract layer and the off-chain half missing.
 
 17. **v2.1's showcase layer is now half-built, and the first audit's verdict on it was wrong in

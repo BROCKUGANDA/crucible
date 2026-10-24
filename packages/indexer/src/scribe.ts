@@ -105,6 +105,14 @@ export interface IndexerConfig {
    */
   onError?: (kind: string, detail: string) => void;
   /**
+   * Called with every batch of logs this transport reads, before the trials reducer sees them.
+   *
+   * The Scribe projects into `ReadModel`, which is the v1 escrow's shape. A caller that wants the
+   * same transport for a different contract supplies a `source` and a reducer here. Optional: a
+   * caller that only wants the trials model says nothing.
+   */
+  onEvents?: (events: EventLike[]) => void;
+  /**
    * Blocks per shard for the backfill. 0 disables sharding (one big
    * `getLogs` over the whole range), which is only safe on a node that
    * answers a wide range without truncating it.
@@ -459,6 +467,14 @@ export class Scribe {
     }
 
     const events = await this.fetchLogs(this.cursor, head);
+
+    /**
+     * A second reducer over the same transport. The Scribe still owns the trials model it has
+     * always owned; this is how a caller projects the same logs into a different shape (the v2
+     * arena) without forking the reader. Called with whatever the batch returned, including an
+     * empty batch, so a caller can keep its own version counter honest.
+     */
+    this.cfg.onEvents?.(events);
 
     if (events.length > 0) {
       await this.recordBlockTimes(events);

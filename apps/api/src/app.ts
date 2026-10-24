@@ -12,6 +12,7 @@ import {
   buildSnapshot,
   type AlloyState,
   type ApiSnapshot,
+  type ArenaModel,
   type ReadModel,
   type ScribeStatus,
   type TrialStatus,
@@ -46,6 +47,14 @@ import { streamSSE } from "hono/streaming";
 
 export interface ApiDeps {
   getModel: () => ReadModel;
+  /**
+   * The v2 arena's projection, or nothing when this host has no arena address.
+   *
+   * A second model over the same transport rather than a second reader. `undefined` is a
+   * measurement — "nobody is indexing an arena here" — and the route says so instead of
+   * rendering an empty list that reads as "an arena with no trials".
+   */
+  arena?: () => ArenaModel;
   /**
    * Alloy facts for one agent — tier, soulbound lock, token URI — sourced from
    * `AlloyRegistry`. Kept synchronous so a snapshot build cannot await the chain: the
@@ -825,6 +834,43 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
         count: snap.hall.length,
         asOf: snap.now,
       },
+    });
+  });
+
+  /**
+   * The v2 arena, projected from `Arena.sol` logs by the same transport that reads the v1 escrow.
+   *
+   * `projected: false` is a different answer from an empty list: the first means no one is reading
+   * an arena on this host, the second would mean an arena with nothing in it. Wei crosses as a
+   * decimal string because JSON has no bigint, and a float would lose the low digits.
+   */
+  app.get("/arena", (c) => {
+    const model = deps.arena?.();
+    if (!model) {
+      return c.json({
+        data: { trials: [] },
+        meta: { readModel: "arena", projected: false, reason: "no arena address on this host" },
+      });
+    }
+    const trials = [...model.trials.values()]
+      .sort((a, b) => a.id - b.id)
+      .map((t) => ({
+        id: t.id,
+        sponsor: t.sponsor,
+        agent: t.agent,
+        runner: t.runner,
+        status: t.status,
+        rewardWei: t.rewardWei.toString(),
+        feeWei: t.feeWei.toString(),
+        bondWei: t.bondWei.toString(),
+        claimDeadline: t.claimDeadline,
+        skepticWindow: t.skepticWindow,
+        specDigest: t.specDigest,
+        postedAtBlock: t.postedAtBlock.toString(),
+      }));
+    return c.json({
+      data: { trials },
+      meta: { readModel: "arena", projected: true, count: trials.length, version: model.version },
     });
   });
 
