@@ -547,6 +547,27 @@ guards is the decoration it exists to detect.
   artifact, the owner `0xf39f…` and the registry `0xe7f1…` on chain. That closes the compiler-version
   gap without spending a live transaction. The live handover itself is still proven only in
   `test/IdentityEpochs.t.sol`, and is named as such rather than claimed from the box.
+- **I recorded `getSummary` as unimplemented twice, and it was implemented: what was missing was the
+  wiring, and the deployment had none.** `MockReputationRegistry` answers the standard's
+  `getSummary(agentId, clientAddresses, tag1, tag2)` and `test/ReputationBridge.t.sol:515` has read
+  it since the bridge landed. But the live chain reported `reputationBridge() == address(0)` — the
+  seed never deployed a reputation registry or a bridge — so every settled demo trial published
+  nothing, and the aggregate read correctly answered zero. My claim was the *kinder* error: an
+  absent feature is a to-do, while an unwired one is a mechanism that looks built and is not, which
+  is the category this file exists to catch. The check that misled me is named so it is not repeated:
+  `landing-claims.test.ts` grepped `AlloyRegistry.sol` and `CrucibleTrials.sol` for
+  `function getSummary` — a function that lives in neither.
+  Fixed in `Demo.s.sol`, with one ordering constraint that decided the shape: the identity links had
+  to move *before* the trial loop, because `_publish` resolves `identityOf[agentId]` at settlement
+  and an unlinked agent emits `FeedbackSkipped` instead of feedback — wiring the bridge and leaving
+  the order alone would have produced a clean chain that still read zero. Measured on a freshly
+  seeded local anvil: identity 1 → 2 writes / 1500, identity 2 → 2 writes / 350 (a survived win plus
+  a landed break), and the seed prints them so the next re-seed states it in its own output.
+  `/claims` `VI-8` moves to `enforced`; the `absent` floor is held by `III-2`, three agreeing replays
+  before a verdict, which is genuinely not run (one execution, one hash) rather than a row relabelled
+  to keep a count. The landing gate now requires both halves — the registry answering *and* the seed
+  wiring — and was proved in both directions: promising the one-call read against an unwired seed
+  reddens it, promising it against the wired seed does not.
 - **`getLogs({ abi })` does not decode on this node, and the node ignores the topics filter.**
   Both measured inside `crucible-api` against the live anvil on 2026-10-24: 56 logs came back with
   `eventName: undefined` and `args: undefined`, and a one-topic query still answered all 56. The

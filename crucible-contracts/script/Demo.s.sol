@@ -5,7 +5,8 @@ import {Script} from "forge-std/Script.sol";
 import {console} from "forge-std/console.sol";
 import {CrucibleTrials} from "../contracts/CrucibleTrials.sol";
 import {AlloyRegistry} from "../contracts/AlloyRegistry.sol";
-import {MockIdentityRegistry} from "../contracts/mocks/ERC8004Mocks.sol";
+import {MockIdentityRegistry, MockReputationRegistry} from "../contracts/mocks/ERC8004Mocks.sol";
+import {ReputationBridge} from "../contracts/ReputationBridge.sol";
 import {VerificationReceipt} from "../contracts/VerificationReceipt.sol";
 import {SeedContent} from "./SeedContent.sol";
 
@@ -35,6 +36,8 @@ contract Demo is Script {
     CrucibleTrials internal trials;
     AlloyRegistry internal alloy;
     MockIdentityRegistry internal identity;
+    MockReputationRegistry internal reputation;
+    ReputationBridge internal bridge;
 
     uint256 internal pkDeployer;
     uint256 internal pkArgus1;
@@ -53,6 +56,7 @@ contract Demo is Script {
         identity = new MockIdentityRegistry();
         alloy = _deployTrials(payable(vm.addr(pkDeployer)));
         trials.setIdentityRegistry(address(identity));
+        _wireReputation();
         vm.stopBroadcast();
 
         console.log("CrucibleTrials", address(trials));
@@ -62,6 +66,24 @@ contract Demo is Script {
         console.log("1. two operators, four trials");
         uint256 agentA = _forgeAgent(pkOperatorA, "ipfs://manifestA");
         uint256 agentB = _forgeAgent(pkOperatorB, "ipfs://manifestB");
+
+        // The identity links come BEFORE the trials, not after them. The bridge resolves the
+        // ERC-8004 subject at settlement, so an agent that is unlinked when its verdict lands
+        // publishes nothing but a `FeedbackSkipped` — and the one-call aggregate below would
+        // then read zero across four settled trials: a getter that works, over a deployment
+        // that never filled it. Ordering is the whole difference between those two states.
+        console.log("2. identity links");
+        uint256 identityA = _linkIdentity(agentA, pkOperatorA, "ipfs://identityA");
+        uint256 identityB = _linkIdentity(agentB, pkOperatorB, "ipfs://identityB");
+        // The mock's own registration step. A real ERC-8004 registry learns about an agent from
+        // the Identity Registry it is paired with; this double keeps a separate `agentRegistered`
+        // map, so the seed has to say it here or `giveFeedback` refuses every write as
+        // `AgentNotRegistered`. This is the seam where the double differs from the standard, and
+        // it is named rather than hidden.
+        vm.broadcast(pkDeployer);
+        reputation.setAgent(identityA, vm.addr(pkOperatorA), false);
+        vm.broadcast(pkDeployer);
+        reputation.setAgent(identityB, vm.addr(pkOperatorB), false);
 
         // Every trial here settles through an Argus vote, which needs no clock travel and
         // therefore produces the same chain on a fresh Anvil and a week-old one.
@@ -76,16 +98,13 @@ contract Demo is Script {
         // submission, and a real one comes from the runner signing real bytes — see
         // scripts/verify-roundtrip.mjs. A demo hall therefore has resolvable demands and
         // synthetic answers, which is the honest state until a run is published per trial.
+        console.log("3. four trials, settled");
         _paidWithstand(agentA, pkOperatorA, SeedContent.SPEC_HASH, SeedContent.TESTS_HASH, 1 ether);
         _paidWithstand(agentB, pkOperatorB, SeedContent.SPEC_HASH, SeedContent.TESTS_HASH, 1 ether);
         _slashed(agentB, pkOperatorB, SeedContent.SPEC_HASH, SeedContent.TESTS_HASH, 1 ether);
         _paidWithstand(agentA, pkOperatorA, SeedContent.SPEC_HASH, SeedContent.TESTS_HASH, 1 ether);
 
-        console.log("2. identity links");
-        _linkIdentity(agentA, pkOperatorA, "ipfs://identityA");
-        _linkIdentity(agentB, pkOperatorB, "ipfs://identityB");
-
-        _report(agentA, agentB);
+        _report(agentA, agentB, identityA, identityB);
     }
 
     /// Derives every actor from the dev mnemonic and refuses to continue if any of them
@@ -226,21 +245,42 @@ contract Demo is Script {
 
     /// The operator registers their own ERC-8004 identity — Crucible cannot, because the
     /// registry mints to the caller — then records the tokenId against the agent.
-    function _linkIdentity(uint256 agentId, uint256 operatorPk, string memory uri) internal {
+    function _linkIdentity(uint256 agentId, uint256 operatorPk, string memory uri)
+        internal
+        returns (uint256 identityAgentId)
+    {
         vm.broadcast(operatorPk);
-        uint256 identityAgentId = identity.register(uri);
+        identityAgentId = identity.register(uri);
 
         vm.broadcast(operatorPk);
         trials.linkIdentity(agentId, identityAgentId);
         console.log("  agent", agentId, "-> identity", identityAgentId);
     }
 
+    /// The ERC-8004 plumbing, in its own frame like the rest of the deployment.
+    ///
+    /// Before this the demo chain had `reputationBridge() == address(0)`: the bridge, its tests
+    /// and the registry's `getSummary` all existed, and nothing on the box that serves the public
+    /// site connected them. So the honest reading of "publish to the reputation registry, and let
+    /// an application read the record in one call" was that the *code* did it and the
+    /// *deployment* did not — which is the difference this function closes, and the reason the
+    /// summary is printed below rather than asserted in prose.
+    function _wireReputation() internal {
+        reputation = new MockReputationRegistry();
+        reputation.initialize(address(identity));
+        bridge = new ReputationBridge(address(trials));
+        bridge.setReputationRegistry(address(reputation));
+        trials.setReputationBridge(address(bridge));
+        console.log("ReputationRegistry(mock)", address(reputation));
+        console.log("ReputationBridge", address(bridge));
+    }
+
     /// Kept out of `run` for the same reason as the deployment: two live agent records
     /// plus four alloy reads exceed the stack ceiling in one frame.
-    function _report(uint256 agentA, uint256 agentB) internal {
+    function _report(uint256 agentA, uint256 agentB, uint256 identityA, uint256 identityB) internal {
         (uint32 winsA, uint32 survivedA, uint32 slashesA,, uint32 epochA,,,,) = alloy.records(agentA);
         (uint32 winsB, uint32 survivedB, uint32 slashesB,, uint32 epochB,,,,) = alloy.records(agentB);
-        console.log("3. hall state on chain");
+        console.log("4. hall state on chain");
         console.log("  agent 1 wins", uint256(winsA), "survived", uint256(survivedA));
         console.log("  agent 1 scars", uint256(slashesA), "tier", alloy.tierName(agentA));
         console.log("  agent 1 epoch", uint256(epochA));
@@ -249,5 +289,23 @@ contract Demo is Script {
         console.log("  agent 2 epoch", uint256(epochB));
         console.log("  identity 1", trials.identityOf(agentA));
         console.log("  identity 2", trials.identityOf(agentB));
+        _reportSummary(identityA, identityB);
+    }
+
+    /// @dev The standard's own read, against the standard's own registry shape, on the chain the
+    /// site narrates: one call, every write this deployment made about that agent. A hiring
+    /// application needs no Crucible endpoint to answer "is this record good" — it needs this
+    /// signature and the two addresses `deployed.env` publishes.
+    function _reportSummary(uint256 identityA, uint256 identityB) internal view {
+        address[] memory clients = new address[](1);
+        clients[0] = address(bridge);
+
+        (uint64 countA, int128 valueA,) = reputation.getSummary(identityA, clients, "crucible", "");
+        (uint64 countB, int128 valueB,) = reputation.getSummary(identityB, clients, "crucible", "");
+        console.log("5. one-call ERC-8004 summary (getSummary, via the bridge as client)");
+        console.log("  identity", identityA, "writes", uint256(countA));
+        console.log("    aggregate value", int256(valueA));
+        console.log("  identity", identityB, "writes", uint256(countB));
+        console.log("    aggregate value", int256(valueB));
     }
 }
