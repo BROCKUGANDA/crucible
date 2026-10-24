@@ -306,6 +306,12 @@ jobs:
       - name: params — invariants + drift check (gate 732)
         run: node scripts/params-codegen.mjs --check
 
+      # Gate 752 (TS side): the committed golden vectors must be reproducible by the
+      # live JCS implementation and pure per §2.7. Rust and Solidity answer the same
+      # file in their own suites — this is the reference side of the parity triangle.
+      - name: vectors — TS parity reference (gate 752)
+        run: node scripts/vectors-check.mjs
+
       # The chain commits to two digests per trial. `script/SeedContent.sol` carries them as
       # generated constants so a foundry-only container can post them, which makes a cached value
       # load-bearing — so CI recomputes it from the fixture bytes every run and fails if the two
