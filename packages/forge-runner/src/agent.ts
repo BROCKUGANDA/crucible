@@ -6,7 +6,7 @@ import {
   type WorkResult,
 } from "@crucible/smith";
 import { withBackoff } from "@crucible/smith";
-import { scanRetrieved, wrapUntrusted } from "@crucible/agent-security";
+import { hasInstructionFinding, scanRetrieved, wrapUntrusted } from "@crucible/agent-security";
 
 /**
  * An LLM-backed agent for ForgeRunner.
@@ -111,11 +111,17 @@ export function createForgedAgent(opts: ForgedAgentOptions): SmithAgent {
     capabilities,
     async step(ctx: WorkContext): Promise<WorkResult> {
       const spec = readSpecFromContext(ctx);
+      // The default guard refuses only an instruction. The classifier's patterns are broad on
+      // purpose ("send … token", "owner access"), and refusing the whole spec on those made a
+      // legitimate trial unable to progress at all — the model was never asked. Those matches
+      // still travel, inside the untrusted region, as data the model is told not to obey.
       const fence: (a: {
         source: string;
         content: string;
       }) => { text: string; blocked?: boolean; scan?: { action: "accept" | "accept-quarantined" | "reject" } } =
-        opts.wrapUntrusted ?? ((a: { source: string; content: string }) => wrapUntrusted(a));
+        opts.wrapUntrusted ??
+        ((a: { source: string; content: string }) =>
+          wrapUntrusted({ ...a, blockOn: hasInstructionFinding }));
       const wrapped = fence({ source: "trial-spec", content: spec });
 
       const blocked = wrapped.blocked ?? wrapped.scan?.action === "reject";
@@ -160,8 +166,13 @@ export function createForgedAgent(opts: ForgedAgentOptions): SmithAgent {
           content: output,
           expectedKind: "stdout",
         });
-        const fenced = scan.action === "reject" ? null : fence({ source: "suite-output", content: output });
-        const blocked = scan.action === "reject" || (fenced?.blocked ?? fenced?.scan?.action === "reject");
+        // The same policy as the spec: an instruction in the output is refused, a noun the
+        // broad pattern merely noticed is quarantined. `indirect` is the HTML hidden-carrier
+        // escalation — never benign even when it carries no verb.
+        const refused =
+          hasInstructionFinding(scan) || scan.findings.some((f) => f.kind === "indirect");
+        const fenced = refused ? null : fence({ source: "suite-output", content: output });
+        const blocked = refused || (fenced?.blocked ?? fenced?.scan?.action === "reject");
         if (blocked || !fenced) {
           withheldOutput = true;
         } else {
@@ -202,6 +213,9 @@ export function createForgedAgent(opts: ForgedAgentOptions): SmithAgent {
           .filter(Boolean)
           .join(" "),
         done: patch.trim().length === 0 || /^\s*(done|complete|finished)\s*$/im.test(raw),
+        // Structured and text-free: `notes` is prose for whoever reads the artifact later,
+        // and a runner that has to parse prose to find this is not being told anything.
+        ...(withheldOutput ? { withheld: { suiteOutput: true } } : {}),
       };
     },
   });

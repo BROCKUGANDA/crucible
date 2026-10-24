@@ -72,7 +72,7 @@ jobs:
           # entrypoints, and a 0644 ENTRYPOINT is a container that refuses to
           # start. Git carries the +x bit; this makes the sync honour it even
           # when the checkout did not.
-          chmod +x apps/api/docker-entrypoint.sh crucible-contracts/docker-seed.sh
+          chmod +x apps/api/docker-entrypoint.sh apps/keeper/docker-entrypoint.sh crucible-contracts/docker-seed.sh
 
       # Build hygiene: this box once filled to 100% and the runner's checkout
       # failed with ENOSPC. Reclaim the builder cache before asking Docker for
@@ -176,6 +176,52 @@ jobs:
         # deploy failed on a file that was in the repository and not in the
         # image. Building is not running.
         run: docker compose -f compose.yaml -f compose.vps.yaml build web api seed
+
+      # Validate the addresses BEFORE the swap, not after it.
+      #
+      # The seed publishes what actually landed to `/run/crucible/deployed.env` on the
+      # `deployed` volume, and the API's entrypoint sources it. `.env` carries the same pair
+      # for the web bundle and the keeper. A deploy that swapped first and asserted second
+      # would take a working site down to learn that `.env` named a contract the chain does
+      # not have — the old containers are gone by then, and the failure surfaces minutes later
+      # in the health probe. A missing or stale address is a refusal here, while the running
+      # stack is still intact.
+      #
+      # Reading the file needs no running service: a one-off seed container mounts the volume,
+      # so this also works on a box whose api has already fallen over.
+      - name: refuse to swap onto addresses the seed did not publish
+        working-directory: /home/ubuntu/crucible
+        run: |
+          set -euo pipefail
+          # `|| true` so a missing key produces the message below rather than an exit under
+          # pipefail with no explanation.
+          from_env() {
+            { grep -E "^$1=" .env || true; } | tail -n 1 | cut -d= -f2- | tr -d '[:space:]' | tr 'A-Z' 'a-z'
+          }
+          trials="$(from_env TRIALS_ADDRESS)"
+          alloy="$(from_env ALLOY_ADDRESS)"
+          if [ -z "$trials" ] || [ -z "$alloy" ]; then
+            echo "::error::.env names no contract addresses; refusing to swap"
+            exit 1
+          fi
+
+          published="$(docker compose -f compose.yaml -f compose.vps.yaml run --rm --no-deps -T \
+            --entrypoint cat seed /run/crucible/deployed.env)"
+          from_published() {
+            { printf '%s\n' "$published" | grep -E "^$1=" || true; } | tail -n 1 | cut -d= -f2- \
+              | tr -d '[:space:]' | tr 'A-Z' 'a-z'
+          }
+          published_trials="$(from_published TRIALS_ADDRESS)"
+          published_alloy="$(from_published ALLOY_ADDRESS)"
+          if [ -z "$published_trials" ] || [ -z "$published_alloy" ]; then
+            echo "::error::the seed volume carries no published addresses; bring the stack up once"
+            exit 1
+          fi
+          if [ "$trials" != "$published_trials" ] || [ "$alloy" != "$published_alloy" ]; then
+            echo "::error::.env names $trials / $alloy; the seed published $published_trials / $published_alloy"
+            exit 1
+          fi
+          echo "the host configuration names the contracts the seed published"
 
       - name: swap web and api (anvil keeps its chain)
         working-directory: /home/ubuntu/crucible

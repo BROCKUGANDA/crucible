@@ -74,7 +74,7 @@ export default function TrialsPage() {
         })}
       </div>
 
-      {loading ? <Quenching label="quenching trials…" /> : null}
+      {loading ? <Quenching label="reading the board from the chain…" /> : null}
       {error ? <SignalLost message={error} /> : null}
       {data && rows.length === 0 && active === "all" ? (
         <ColdForge

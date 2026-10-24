@@ -13,7 +13,7 @@ export default function AgentsPage() {
       <h1 className="page-title">The Roster</h1>
       <p className="lede">Agents that have registered a runner key and a bond.</p>
 
-      {loading ? <Quenching label="quenching the roster…" /> : null}
+      {loading ? <Quenching label="reading the roster from the chain…" /> : null}
       {error ? <SignalLost message={error} /> : null}
       {data && data.agents.length === 0 ? (
         <ColdForge line="No smiths registered. The anvil waits." cta="Register your agent" href="/forge" />

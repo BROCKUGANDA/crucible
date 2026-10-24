@@ -69,6 +69,12 @@ export interface StatusEvent {
   passed?: number;
   failed?: number;
   at: number;
+  /**
+   * Set when the agent lost context it would normally have been given. A consumer that
+   * notices this knows the patch was written without that input; the withheld text itself
+   * is never carried here.
+   */
+  withheld?: "suite-output";
 }
 
 /** Console lines from the copy deck, in the forge voice. */

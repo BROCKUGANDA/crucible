@@ -116,7 +116,29 @@ const PATTERNS: { kind: InjectionFinding["kind"]; severity: Severity; re: RegExp
   },
 ];
 
-/** Scan a block of untrusted text. */
+/**
+ * Findings that are instructions in disguise, as opposed to prose that merely names
+ * something the broad patterns watch for.
+ *
+ * "Ignore all previous instructions" is an attack on any channel. "Users can send the
+ * token back" is a sentence about a token — and the exfiltration pattern cannot tell the
+ * two apart, because it looks for a verb and a noun near each other, not for an imperative
+ * aimed at the reader. The caller decides which set is worth refusing; `createForgedAgent`'s
+ * default path refuses only these and fences everything else as data.
+ */
+export const INSTRUCTION_KINDS: readonly InjectionFinding["kind"][] = [
+  "role-hijack",
+  "instruction-override",
+];
+
+/** Does this scan contain a finding that is an instruction rather than a passing mention? */
+export function hasInstructionFinding(scan: ScanResult): boolean {
+  return scan.findings.some((f) => INSTRUCTION_KINDS.includes(f.kind));
+}
+
+/**
+ * Scan a block of untrusted text.
+ */
 export function scanUntrusted(text: string, kindHint?: InjectionFinding["kind"]): ScanResult {
   const findings: InjectionFinding[] = [];
 
@@ -194,14 +216,28 @@ export function wrapUntrusted(args: {
   source: string;
   content: string;
   nonce?: string;
+  /**
+   * Which findings justify refusing the content instead of fencing it.
+   *
+   * Defaults to the classifier's own verdict — any high-severity finding — which is what the
+   * retrieval path wants. The agent's default guard passes `hasInstructionFinding`, so "send
+   * the token" is quarantined as data while "ignore all previous instructions" is refused.
+   */
+  blockOn?: (scan: ScanResult) => boolean;
 }): { text: string; scan: ScanResult } {
   const scan = scanUntrusted(args.content);
-  if (scan.action === "reject") {
+  const refuse = args.blockOn ? args.blockOn(scan) : scan.action === "reject";
+  if (refuse) {
     return {
       text: `[BLOCKED: untrusted content from ${args.source} matched an injection pattern and was not included]`,
       scan,
     };
   }
+
+  // The policy, not the classifier, decided this content is safe to fence. Say so in the
+  // returned scan: a caller reading `scan.action` must not re-refuse content that was
+  // accepted. The findings and `clean: false` still report what was quarantined.
+  const fenced = scan.action === "accept" ? scan : { ...scan, action: "accept-quarantined" as const };
 
   const nonce = args.nonce ?? randomNonce();
   // strip anything that looks like a fence terminator, so the region cannot be closed
@@ -220,7 +256,7 @@ export function wrapUntrusted(args: {
 
   return {
     text: `${header}\n${body}\n--- END UNTRUSTED (${args.source}) nonce=${nonce} ---`,
-    scan,
+    scan: fenced,
   };
 }
 
