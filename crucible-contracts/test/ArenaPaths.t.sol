@@ -5,6 +5,7 @@ import {Test} from "forge-std/Test.sol";
 import {Arena} from "../contracts/Arena.sol";
 import {ArgusCourt} from "../contracts/ArgusCourt.sol";
 import {Params} from "../contracts/Params.sol";
+import {ArenaReads} from "./ArenaReads.sol";
 
 /// @notice A wallet runner, so the ERC-1271 branch of submitRun is actually walked rather than
 /// asserted from the side. It answers the magic value for one digest and nothing else.
@@ -28,6 +29,8 @@ contract WalletRunner {
 /// boundary case reaches. `Arena.t.sol` proves the flows pay correctly; this proves the doors
 /// are locked, which is the half a money contract usually leaves untested.
 contract ArenaPathsTest is Test {
+    // The per-field getters live in the test library now: see test/ArenaReads.sol for why.
+    using ArenaReads for Arena;
     Arena arena;
     ArgusCourt court;
 

@@ -5,11 +5,14 @@ import {Test} from "forge-std/Test.sol";
 import {Arena} from "../contracts/Arena.sol";
 import {ArgusCourt} from "../contracts/ArgusCourt.sol";
 import {Params} from "../contracts/Params.sol";
+import {ArenaReads} from "./ArenaReads.sol";
 
 /// @notice The arena's flow table, gate by gate (734–746). Money is asserted to the wei, and
 /// the ghost-ledger identity is re-checked after every step, because "it settled" and "it
 /// settled without inventing or losing ETH" are two different claims.
 contract ArenaTest is Test {
+    // The per-field getters live in the test library now: see test/ArenaReads.sol for why.
+    using ArenaReads for Arena;
     Arena arena;
     ArgusCourt court;
 
