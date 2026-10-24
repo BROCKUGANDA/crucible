@@ -238,8 +238,8 @@ contract Demo is Script {
     /// Kept out of `run` for the same reason as the deployment: two live agent records
     /// plus four alloy reads exceed the stack ceiling in one frame.
     function _report(uint256 agentA, uint256 agentB) internal {
-        (uint32 winsA, uint32 survivedA, uint32 slashesA,, uint32 epochA,,,) = alloy.records(agentA);
-        (uint32 winsB, uint32 survivedB, uint32 slashesB,, uint32 epochB,,,) = alloy.records(agentB);
+        (uint32 winsA, uint32 survivedA, uint32 slashesA,, uint32 epochA,,,,) = alloy.records(agentA);
+        (uint32 winsB, uint32 survivedB, uint32 slashesB,, uint32 epochB,,,,) = alloy.records(agentB);
         console.log("3. hall state on chain");
         console.log("  agent 1 wins", uint256(winsA), "survived", uint256(survivedA));
         console.log("  agent 1 scars", uint256(slashesA), "tier", alloy.tierName(agentA));

@@ -41,6 +41,10 @@ request — it is a product pivot requiring a new ADR and a new contract review.
 npm run verify:all          # typecheck + every workspace suite
 npm test                    # all workspaces + Foundry; currently 1773 tests (1503 TS + 270 Foundry)
 cd crucible-contracts && node ../scripts/run-forge.mjs test   # forge is not on PATH; run-forge resolves it
+node ../scripts/run-forge.mjs build --sizes                   # forge test does NOT compile script/ —
+#   a broken deploy script is green under `forge test` and only `forge build` catches it. Measured
+#   the hard way on 2026-10-24: `script/GoldenPath.s.sol` stopped compiling, 266 tests stayed green,
+#   and the seed image build on the deploy box was the first thing to say so.
 node scripts/run-forge.mjs coverage --ir-minimum --report summary | tee coverage-summary.txt
 node scripts/coverage-gate.mjs coverage-summary.txt           # per-contract floors, not the Total row
 ```
