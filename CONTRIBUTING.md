@@ -150,6 +150,8 @@ scripts/              demo.mjs (one-command local chain), live-agent.mjs
 
 ## Licence
 
-By contributing you agree that your contributions are licensed under the project's MIT
-licence. Third-party components — including the vendored OFL fonts in
-`apps/web/scripts/fonts/` — keep their own licences; see [`LICENSE`](LICENSE).
+The project is closed source — all rights reserved, with no licence grant. Contributions
+are not licensed to the public by being sent here. Third-party components keep their own
+licences, which travel with them: the vendored OFL fonts in `apps/web/scripts/fonts/`
+carry `OFL-bricolage.txt`, `OFL-jetbrains.txt` and `Cinzel-OFL.txt`; `forge-std` carries
+`LICENSE-MIT` and `LICENSE-APACHE`; every npm dependency ships its own.

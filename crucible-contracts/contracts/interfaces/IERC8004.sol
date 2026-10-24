@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.26;
 
 /// @notice Minimal subset of the ERC-8004 Identity Registry that Crucible consumes.
