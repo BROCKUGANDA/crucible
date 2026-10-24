@@ -231,6 +231,7 @@ async function main() {
 
   const {
     createForgedAgent,
+    createModelGuard,
     anthropicClient,
     groqClient,
     nimClient,
@@ -247,6 +248,8 @@ async function main() {
       : provider.kind === "nvidia"
         ? nimClient({ apiKey: provider.apiKey, model: provider.model })
         : anthropicClient({ apiKey: provider.apiKey, model: provider.model });
+
+  const ceiling = DRY ? 1 : BUDGET;
 
   console.log(`\n  provider  ${provider.kind}`);
   console.log(`  model     ${provider.model}`);
@@ -280,10 +283,46 @@ async function main() {
     }
   }
 
-  const agent = createForgedAgent({
+  // ── the tool policy, before the work loop ───────────────────────────────
+  //
+  // The model call is the only privileged action this script performs, and it goes through
+  // the allow-list engine rather than beside it: the principal's scopes are derived from its
+  // role by `leastPrivilegeScopes`, not asserted here, and the ceiling below is enforced by
+  // the same object that holds the only route to the model. A budget the loop merely counts
+  // to is a promise; a budget the guard refuses at is a control.
+  const sessionId = `live-agent:${scenario}:${Date.now().toString(36)}`;
+  const principal = { id: "live-agent", kind: "service", role: "operator", createdAt: Date.now() };
+  const temperature = 0.2;
+  const guardBox = createModelGuard({
     client,
+    temperature,
+    maxCallsPerSession: ceiling,
+    sessionId,
+    principal,
+  });
+
+  // What the agent is handed is a counting wrapper, not the client itself. A guard that
+  // performs the call returns the completion as `output` and the agent never touches this;
+  // if the counter ever moves, the policy was bypassed and the run says so instead of
+  // reporting a ceiling it did not enforce.
+  let directCalls = 0;
+  const countedClient = {
+    complete: async (args) => {
+      directCalls += 1;
+      return client.complete(args);
+    },
+  };
+
+  console.log(
+    `  policy    ${guardBox.scopes.join(", ") || "(none — every call will be refused)"} ` +
+      `for role ${principal.role}, ceiling ${ceiling} model call(s)`,
+  );
+
+  const agent = createForgedAgent({
+    client: countedClient,
     model: provider.model,
-    temperature: 0.2,
+    temperature,
+    guard: guardBox.guard,
   });
 
   // Seed a real Foundry project so `forge test` means something.
@@ -310,6 +349,12 @@ async function main() {
     );
   }
 
+  /** Every exit path owes the operator the same two things: what the policy saw, and the sandbox. */
+  async function closeOut() {
+    reportPolicy(sessionId, guardBox, directCalls);
+    await finish(sandbox);
+  }
+
   await sandbox.writeFile("foundry.toml", "[profile.default]\nsrc = 'src'\ntest = 'test'\n");
   await sandbox.writeSpec(spec);
   await sandbox.writeFile("src/Forge.sol", FIXTURE_SOURCE);
@@ -318,7 +363,7 @@ async function main() {
   if (DRY) {
     const result = await agent.step({ iteration: 1, brief: { trialId: 0, iterBudget: 1 }, spec });
     report("dry run — nothing applied", result);
-    await finish(sandbox);
+    await closeOut();
     return;
   }
 
@@ -355,7 +400,7 @@ async function main() {
       console.log("REJECTED — the model tried to edit the pinned tests");
       console.log(`  it reached for: ${touched.join(", ") || "(unidentified files)"}`);
       report(`iteration ${iteration}`, result);
-      await finish(sandbox);
+      await closeOut();
       process.exitCode = 1;
       return;
     }
@@ -364,7 +409,7 @@ async function main() {
     if (!applied.ok) {
       console.log(`patch did not apply: ${applied.message}`);
       report(`iteration ${iteration}`, result);
-      await finish(sandbox);
+      await closeOut();
       process.exitCode = 1;
       return;
     }
@@ -384,7 +429,7 @@ async function main() {
       console.log(`GREEN — ${touched.length} file(s): ${touched.join(", ")}`);
       console.log(`\n  ✓ the agent turned the suite green in ${iteration} iteration(s)`);
       await showPatch(sandbox);
-      await finish(sandbox);
+      await closeOut();
       return;
     }
 
@@ -404,8 +449,34 @@ async function main() {
     );
   }
   await showPatch(sandbox);
-  await finish(sandbox);
+  await closeOut();
   process.exitCode = 1;
+}
+
+/**
+ * What the tool policy saw, and what it decided.
+ *
+ * `ToolTraceEntry` carries no input by construction — the toolbox was built that way because
+ * the arguments of a privileged call are exactly what does not belong in a log — so this can
+ * be printed verbatim. `directCalls` is the part the trace cannot see: a completion the agent
+ * took around the guard rather than through it.
+ */
+function reportPolicy(sessionId, guardBox, directCalls) {
+  const trace = guardBox.trace();
+  const refused = trace.filter((t) => !t.ok).length;
+  console.log(`\n  ── tool policy ──`);
+  console.log(`  session   ${sessionId}`);
+  console.log(
+    `  calls     ${trace.length - refused} allowed, ${refused} refused, ${directCalls} around the guard`,
+  );
+  if (directCalls > 0) {
+    console.log(
+      "            ^ the agent reached the model without the toolbox — the ceiling above was not enforced",
+    );
+  }
+  for (const t of trace) {
+    console.log(`    ${t.tool} ${t.ok ? "allowed" : `REFUSED — ${t.reason}`} in ${t.ms}ms`);
+  }
 }
 
 function report(label, result) {

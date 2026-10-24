@@ -527,6 +527,41 @@ guards is the decoration it exists to detect.
   the exact shipped commit instead: typecheck plus 1398 Vitest (6 Docker-sandbox skips), 249
   Foundry (4 fork skips), `coverage-gate` at all eight floors. What that leaves unproven is named
   in `Still open` item 18 rather than glossed.
+- **The artifact's two content pins were taken before the work happened** (`9f605a4`). `runner.ts`
+  pinned `repoCID` and `logsCID` above the iteration loop, so every artifact named a pristine
+  repository and an empty log. `repoCID` is not decoration: a skeptic's re-run overlays its files
+  onto a fresh bench holding the sponsor's suite (`packages/argus/src/live.ts:184`), so the pin made
+  the one path that verifies a claim verify a repository with no answer in it and report success.
+  Both pins moved after the loop (`runner.ts:232`), `runLog` accumulates every iteration's suite
+  output rather than the last (`:196`) because `state.lastOutput` is overwritten each pass and feeds
+  the next prompt, and a run that never goes green pins nothing. Proven able to fail three ways:
+  restoring the pre-loop repo pin, dropping the per-iteration append, and pinning on the red path
+  each turn a dedicated test in `packages/forge-runner/test/runner.test.ts` red.
+- **The tool-policy engine has a caller, and the model call goes through it.**
+  `@crucible/agent-security` carried a complete allow-list engine — deny-by-default registration,
+  per-principal grants, scope requirements, a per-session ceiling, a trace that records denials
+  hardest — and nothing on a runtime path ever asked it anything. `defaultToolPolicies()`
+  (`orchestrator.ts:503`) even registers `read_file`, `write_file` and `run_suite`: the same three
+  names `AgentCapabilities.tools` defaults to (`forge-runner/src/agent.ts:131`). `createModelGuard`
+  (`packages/forge-runner/src/tool-guard.ts`) is the missing wire rather than a new control: it
+  derives the principal's scopes from the role matrix with `leastPrivilegeScopes` instead of
+  accepting a list the caller chose, registers the model call as one tool with a ceiling, and
+  *performs* the completion inside the toolbox — so the ceiling is enforced by the object holding
+  the only route to the model, and a budget the loop merely counts to is no longer the thing being
+  reported. `scripts/live-agent.mjs`, the sole production driver, passed no guard at all; it now
+  builds one with `maxCallsPerSession` equal to the run budget, hands the agent a counting wrapper
+  rather than the client, and prints the trace: tool, outcome, reason, duration — never the input,
+  which `ToolTraceEntry` omits by construction. Nothing above sits behind a flag: `--no-guard`
+  skips the injection *scan* and only that, because a control the thing it controls can switch off
+  is not a control. Proved against a real model on NIM: one dry run
+  reported `1 allowed, 0 refused, 0 around the guard` with the completion returned by the toolbox,
+  and the same run with the principal's role set to `observer` was refused in 1ms with `credential
+  lacks required scope(s): trial:run` and made no model call at all. Five further mutations reddened
+  `tool-guard.test.ts` and `agent-live.test.ts` before being reverted. **Not proven, and named as
+  such:** the third live mutation — deleting the guard from the agent, which should report
+  `1 around the guard` — never completed, because NIM stopped answering inside a 900s timeout after
+  the first two runs. The equivalent assertion is carried deterministically by
+  `packages/forge-runner/test/agent-live.test.ts`, not by that run.
 
 ## Still open from this pass, by severity
 

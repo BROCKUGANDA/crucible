@@ -4,6 +4,8 @@ import {
   anthropicClient,
   createForgedAgent,
   extractDiff,
+  MODEL_ACTION,
+  MODEL_PERMISSION,
   SYSTEM_PROMPT,
   touchesTests,
   type WorkContext,
@@ -260,14 +262,18 @@ describe("step() against the real client", () => {
 
   it("passes the guard call before completing", async () => {
     replyWith(VALID_DIFF);
-    const seen: unknown[] = [];
+    const seen: Array<{
+      action: string;
+      permission: string;
+      input: Record<string, unknown>;
+    }> = [];
 
     const agent = createForgedAgent({
       client: anthropicClient({ apiKey: "sk-test", baseUrl: baseUrl() }),
       model: "m",
       guard: {
         call: async (a) => {
-          seen.push(a);
+          seen.push(a as (typeof seen)[number]);
           return { ok: true };
         },
       },
@@ -275,9 +281,37 @@ describe("step() against the real client", () => {
 
     await agent.step(context("Add bump()."));
 
-    expect(seen).toEqual([
-      { action: "llm:complete", input: { trialId: 7, iteration: 1 }, permission: "trial:run" },
-    ]);
+    expect(seen).toHaveLength(1);
+    const call = seen[0]!;
+    expect(call.action).toBe(MODEL_ACTION);
+    expect(call.permission).toBe(MODEL_PERMISSION);
+    expect(call.input.trialId).toBe(7);
+    expect(call.input.iteration).toBe(1);
+    // The guard has to see what it is authorising. A permission gate that is handed only an
+    // id cannot tell a model call from any other one, which is why the prompt travels.
+    expect(call.input.system).toBe(SYSTEM_PROMPT);
+    expect(String(call.input.prompt)).toContain("Add bump().");
+  });
+
+  it("takes the completion from a guard that performed the call, and does not call twice", async () => {
+    let direct = 0;
+    const agent = createForgedAgent({
+      client: {
+        complete: async () => {
+          direct += 1;
+          return VALID_DIFF;
+        },
+      },
+      model: "m",
+      guard: {
+        call: async () => ({ ok: true, output: VALID_DIFF }),
+      },
+    });
+
+    const result = await agent.step(context("Add bump()."));
+
+    expect(direct, "the client was called beside the guard that already performed the call").toBe(0);
+    expect(result.patch).not.toBe("");
   });
 });
 
