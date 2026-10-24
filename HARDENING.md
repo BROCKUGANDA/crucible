@@ -350,6 +350,27 @@ the check, because the script's *comments* explain the flag and contain the stri
 scans executable lines with comments filtered out. A gate that matches prose in the file it
 guards is the decoration it exists to detect.
 
+- **The receipt is minted by settlement, not by the caller that batched it** (`7f47ed8`). The
+  first deploy surfaced this by measurement, not by reading: the live chain reported
+  `receiptsEnabled = true`, a wired `verificationReceipt`, eight settled trials and
+  `receiptIdOfTrial(1..8) == 0`. `mintReceipt` sat inside `settleBatch`'s loop, so the doors that
+  settle one trial — `finalize`, and the committee's `tally` — left no proof behind, and the
+  warden's per-trial fallback (added in `2b1227b`) runs exactly that door. The mint moved to
+  `_settle`, after the ledger writes. Proven able to fail: deleting the call reddens both the new
+  `test_Finalize_MintsTheSameReceiptAsTheBatch` and the existing batch test.
+- **`deploy/edge-attach.sh` now exists** (`801afea`). deploy.yml installed the edge-repair host
+  timer behind `if [ -f deploy/edge-attach.sh ]`, and no commit ever added that file, so the
+  guard was false on every deploy and the repair of the 2026-10-21 failure mode was still a
+  human task. The timer is on the box (`crontab -l | grep crucible-edge`) and the script has been
+  run for real: it finds three caddy containers on this host, not one, which is the shared-box
+  reality the inline step's `grep -iE 'caddy'` already assumed.
+- **The 2026-10-24 deploy shipped with the pipeline off, and said so.** Actions could not start a
+  job — every run ended `startup_failure` with `path: "BuildFailed"` and zero jobs since
+  2026-10-23T14:37 — so the seven workflows are disabled by hand and the gate was run locally on
+  the exact shipped commit instead: typecheck plus 1398 Vitest (6 Docker-sandbox skips), 249
+  Foundry (4 fork skips), `coverage-gate` at all eight floors. What that leaves unproven is named
+  in `Still open` item 18 rather than glossed.
+
 ## Still open from this pass, by severity
 
 These are known and intentional, not claims that the software is safe. Ordered by how
@@ -572,5 +593,27 @@ much of the product's promise each one costs.
     less true, not more. What *is* already true of the showcase's premises: cross-deployment
     artifact rejection is the EIP-712 domain binding the arena already enforces, and
     simulate-before-sign already runs on every SDK write.
+
+18. **The pipeline is switched off, so four of the contract gates have not run on the shipped
+    code at all.** All seven workflows are `disabled_manually` (`gh workflow list --all`) after
+    every run started failing at job startup — `startup_failure`, `path: "BuildFailed"`, zero
+    jobs, since 2026-10-23T14:37Z — which is a billing/plan condition on this private repo, not a
+    YAML fault: the same files were green an hour earlier. The local gate covered
+    `forge test`, coverage floors, typecheck and the workspace suites, and `next build` ran inside
+    the web image on the box. It did **not** cover **slither**, **gitleaks**, the **ERC-8004 fork
+    tests** (no `MAINNET_RPC_URL` here) or the **Docker sandbox suite** (6 skips). Two of those —
+    a secret scan and static analysis on new money contracts — are the ones worth re-running
+    before anything with real value posts a trial. Re-enabling is
+    `gh workflow enable <name>`; the self-hosted runners were never touched.
+19. **The recorded relicense is half-landed, and the prose ran ahead of the files.**
+    `docs/since-submission.md:112` states as shipped on 2026-10-24 that `LICENSE` was deleted, 17
+    `package.json` and 2 `Cargo.toml` licence fields became `UNLICENSED`, and 28 Solidity headers
+    flipped. At HEAD none of that is true: `package.json:6` still reads `"license": "MIT"`, 24
+    `.sol` files still carry an MIT header, and `LICENSE` is still in the tree (47 lines, MIT) even
+    though it is gone from disk (item 15). The mechanical changes are sitting uncommitted in the
+    shared working tree — 25 files flipped while this pass ran — and two of them rode into the
+    mint fix (`7f47ed8`), named in its message. Either the row's changes get committed or the row
+    gets corrected; HEAD should not describe a licence posture the repository does not have, and
+    which of those two is intended is an owner call.
 
 Report a vulnerability as described in [`SECURITY.md`](SECURITY.md), not in a public issue.
