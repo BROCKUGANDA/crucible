@@ -470,6 +470,16 @@ guards is the decoration it exists to detect.
   shell on the fetched pages, which is why the replay's three content assertions "failed" against a
   page the screenshot shows rendering all ten beats, the money flow and the caption. A DOM grep that
   runs before hydration is not a browser pass, and the PNG is the evidence.
+- **The six Docker-gated `forge-runner` tests are no longer a permanent skip.** They skip on this
+  laptop because there is no daemon, and every deploy row until today said "not run — the Docker
+  sandbox suite". Run on the deploy box instead, with the same node 20.20.2 the CI TypeScript job
+  resolves to and `npm ci` into the deploy tree (rsync never carries `node_modules` there): **135
+  passed, 1 skipped** the first time, the remaining skip being the cap-drop test asking for
+  `crucible/verifier:latest`; built with the command the test's own comment names, then **136
+  passed, 0 skipped**. The image stays on the box (1.09 GB) so the next manual run covers that test
+  too, and `docker rmi crucible/verifier:latest` returns it to skipping honestly. The same
+  measurement caught a stale line in the README: it carried `forge-runner 132` where the workspace
+  has 136, and the per-workspace breakdown summed to 1468 against a stated total of 1472.
 - **`getLogs({ abi })` does not decode on this node, and the node ignores the topics filter.**
   Both measured inside `crucible-api` against the live anvil on 2026-10-24: 56 logs came back with
   `eventName: undefined` and `args: undefined`, and a one-topic query still answered all 56. The

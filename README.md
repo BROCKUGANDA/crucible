@@ -37,7 +37,8 @@ Open ──claim──> Assigned ──submitRun──> Judging ──fileBreak�
    contracts are in `crucible-contracts/contracts` with 254 tests (4 of them ERC-8004
    fork tests, which skip without an RPC). The workspace suites
    add 1472 more — web 290, smith-sdk 188, grader 165, agent-security 153, api 140,
-   forge-runner 132 (6 need Docker), indexer 95, cidstore 98, juror 74, argus 42, frame 12, keeper 30,
+   forge-runner 136 (6 of them need Docker, and they ran on the deploy box: 136 passed, 0 skipped),
+   indexer 95, cidstore 98, juror 74, argus 42, frame 12, keeper 30,
    warden 24, harness 13, crypto 12 — and `npm test` runs them; the contracts suite
    itself needs Foundry
    (`forge test`), which the seed image runs on a machine without a local
