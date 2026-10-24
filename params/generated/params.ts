@@ -28,6 +28,8 @@ export const CLAIM_TIMEOUT_FORFEIT_BPS = 1000n;
 export const YIELD_FORFEIT_BPS = 0n;
 export const YIELD_COOLDOWN_SECONDS = 86400n;
 export const STANDING_HALF_LIFE_DAYS = 45n;
+// The floor standing is measured in: a trial worth one floor weighs log2(2) = 1.
+export const REWARD_FLOOR_ETH_WEI = 10000000000000000n;
 export const SEASON_LENGTH_DAYS = 42n;
 
 // v1 frozen records (ADR-0002 / RewardMath.sol): the legacy law, not v2 parameters.

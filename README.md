@@ -36,7 +36,7 @@ Open ──claim──> Assigned ──submitRun──> Judging ──fileBreak�
    settlement transaction and the identity registration that earned it. The
    contracts are in `crucible-contracts/contracts` with 254 tests (4 of them ERC-8004
    fork tests, which skip without an RPC). The workspace suites
-   add 1449 more — web 284, smith-sdk 176, grader 165, agent-security 153, api 135,
+   add 1472 more — web 290, smith-sdk 188, grader 165, agent-security 153, api 140,
    forge-runner 132 (6 need Docker), indexer 95, cidstore 98, juror 74, argus 42, frame 12, keeper 30,
    warden 24, harness 13, crypto 12 — and `npm test` runs them; the contracts suite
    itself needs Foundry
@@ -168,8 +168,10 @@ Three branches, and only three commits ever move between them:
 The repo runs on two self-hosted runners (`crucible-vps-1`, `crucible-vps-2`)
 that are systemd services on the same VPS that serves the site — `gh api
 repos/BROCKUGANDA/crucible/actions/runners` lists them, and every job below
-targets their `crucible` label. GitHub-hosted runners are not used: this repo
-is private by choice and the build runs on iron we control.
+targets their `crucible` label. GitHub-hosted runners are not used: the build
+runs on iron we control. The repository became public on 2026-10-24, which is
+why every `ci.yml` job now carries a fork guard — a public repo with
+self-hosted runners must not execute a fork's code beside production's `.env`.
 
 | Workflow | Trigger | What it proves |
 |---|---|---|
@@ -336,7 +338,7 @@ Alloy tiers: Iron (1) · Bronze (3) · Steel (10 & ≥1 survived) · Damascus (2
 
 ```bash
 npm run contracts:test      # 254 Foundry tests: the legacy escrow, the arena flow table, 6 invariants, 30 for the bridge
-npm test                    # 1449 TypeScript tests, then the Foundry suite
+npm test                    # 1472 TypeScript tests, then the Foundry suite
 npm run verify:all          # typecheck + TypeScript suites + Foundry suite in one command
 npm run coverage --workspace crucible-contracts   # line/statement/branch coverage of the contracts
 npm run build               # tsc for packages, next build for the web app
@@ -344,7 +346,7 @@ npm run demo                # anvil + deploy + the whole loop, settles a real ve
 npm run agent:live          # the real agent against a real model in a real sandbox
 ```
 
-**1703 tests total** (1449 TypeScript + 254 Foundry), counted on 2026-10-24 by hand on the
+**1726 tests total** (1472 TypeScript + 254 Foundry), counted on 2026-10-24 by hand on the
 shipped tree, because the pipeline that normally counts them is switched off (see the
 workflow table). Contract coverage was re-measured on the same 2026-10-24 run, from
 `forge coverage --ir-minimum`: `CrucibleTrials.sol` 97.65% of lines / 96.24% of

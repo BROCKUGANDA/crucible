@@ -34,3 +34,4 @@ deploy/edge/** text eol=lf
 # the gate compares with line endings folded, and why the fold is the load-bearing half.
 params/generated/** text eol=lf
 crucible-contracts/contracts/Params.sol text eol=lf
+packages/smith-sdk/src/params.ts text eol=lf
