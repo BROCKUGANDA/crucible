@@ -2,7 +2,7 @@
   "name": "@crucible/crypto",
   "version": "0.1.0",
   "description": "One crypto door — every hash/encrypt/sign call site routes through this module. PQC migration seam.",
-  "license": "MIT",
+  "license": "UNLICENSED",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

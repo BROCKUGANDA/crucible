@@ -2,7 +2,7 @@
   "name": "@crucible/cidstore",
   "version": "0.1.0",
   "description": "Content-addressed storage: real IPFS CIDs computed from the bytes, and a bounded store the runner publishes into and Argus reads back.",
-  "license": "MIT",
+  "license": "UNLICENSED",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

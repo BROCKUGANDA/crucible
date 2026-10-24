@@ -2,7 +2,7 @@
   "name": "@crucible/argus",
   "version": "0.1.0",
   "description": "Argus — the verifier. Re-runs the pinned suite deterministically; only falls back to an LLM rubric when the suite is partial.",
-  "license": "MIT",
+  "license": "UNLICENSED",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

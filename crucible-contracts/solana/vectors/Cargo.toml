@@ -3,7 +3,7 @@ name = "verdict-vectors"
 version = "0.1.0"
 edition = "2021"
 description = "Gate 752 Rust side — JCS subset for pure verdict.v2 bodies, proven against the committed golden vectors"
-license = "MIT"
+license = "UNLICENSED"
 
 [dependencies]
 serde_json = "1"

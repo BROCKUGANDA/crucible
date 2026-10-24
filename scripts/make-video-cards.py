@@ -163,7 +163,7 @@ def demo_closing():
     rows = [
         ("LIVE", "https://crucible.svalley.tech"),
         ("LOCAL", "npm install && npm run demo   ·   whole loop in ~90s"),
-        ("CODE", "github.com/BROCKUGANDA/crucible   ·   MIT"),
+        ("CODE", "github.com/BROCKUGANDA/crucible"),
     ]
     y = 520
     for label, value in rows:

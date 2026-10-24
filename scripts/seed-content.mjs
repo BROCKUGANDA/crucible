@@ -103,7 +103,7 @@ async function pin(content) {
 }
 
 function generated(pinned) {
-  return `// SPDX-License-Identifier: MIT
+  return `// SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.26;
 
 /**

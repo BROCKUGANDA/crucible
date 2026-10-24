@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "The Warden as a service: sweeps the chain and quenches trials whose windows closed, permissionlessly.",
-  "license": "MIT",
+  "license": "UNLICENSED",
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/main.ts",

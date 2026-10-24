@@ -3,7 +3,7 @@ name = "work-escrow"
 version = "0.1.0"
 edition = "2021"
 description = "CRUCIBLE work escrow — the EVM reward flow table as a Solana Anchor program (gates 701-720)"
-license = "MIT"
+license = "UNLICENSED"
 
 [lib]
 crate-type = ["cdylib", "lib"]

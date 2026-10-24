@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "CRUCIBLE work escrow — Solana Anchor port (gates 701-720). Test harness only; the program is Rust under programs/.",
-  "license": "MIT",
+  "license": "UNLICENSED",
   "scripts": {
     "test": "npx ts-mocha -p ./tsconfig.json -t 1000000 tests/**/*.ts",
     "test:lint": "node scripts/check-cpi-allowlist.mjs"

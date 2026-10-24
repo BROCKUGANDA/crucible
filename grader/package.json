@@ -2,7 +2,7 @@
   "name": "@crucible/grader",
   "version": "0.1.0",
   "description": "Grader — the Arena. Treats every frontier model as a swappable candidate engine behind adapter.ts, scored by the same corpus and the same gates.",
-  "license": "MIT",
+  "license": "UNLICENSED",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
