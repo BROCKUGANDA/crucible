@@ -53,6 +53,16 @@ export interface TrialRow {
   /** set once the indexer learns it, for the UI countdown */
   disputeOpenedAt: number | null;
   /**
+   * The block `VerdictFinalized` was seen in, replaced by that block's timestamp on hydrate.
+   *
+   * The row used to stop at "settled, verdict, payout" and nothing else, which left one question
+   * about a settled trial unanswerable from the read model: *when*. An agent's standing decays
+   * from the age of its outcomes, and the only other times on the row — creation and submission —
+   * would have made a trial that sat in dispute for a week look a week younger than it is. So the
+   * settlement log's own block is recorded here rather than approximated from a neighbour.
+   */
+  settledAt: number | null;
+  /**
    * The index never saw this trial's creation.
    *
    * A verdict whose trial is unknown means the index started after the trial
@@ -301,6 +311,7 @@ function didMutate(next: ReadModel, ev: EventLike): boolean {
         status: "open",
         verdict: "none",
         disputeOpenedAt: null,
+        settledAt: null,
       });
       return true;
     }
@@ -465,12 +476,16 @@ function didMutate(next: ReadModel, ev: EventLike): boolean {
           status: "open",
           verdict: "none",
           disputeOpenedAt: null,
+          settledAt: null,
           incomplete: true,
         } satisfies TrialRow);
       if (!t) next.trials.set(row.id, row);
       {
         row.status = "settled";
         row.verdict = verdictName(num(a.verdict));
+        // The block this verdict was seen in. Standing decays on this, so an approximation from
+        // the submission time would silently reward a trial that sat in dispute.
+        row.settledAt = Number(ev.blockNumber);
         // The chain's own payout, from the event that settled the trial. `reward - fee`
         // is what the contract computed and emitted, so this is a fact rather than a
         // re-derivation of one — see `TrialRow.payoutWei`.
@@ -602,12 +617,19 @@ export function hydrateTimestamps(
     const runAt = t.runAt === null ? null : (blockTime.get(BigInt(t.runAt)) ?? t.runAt);
     const disputeOpenedAt =
       t.disputeOpenedAt === null ? null : (blockTime.get(BigInt(t.disputeOpenedAt)) ?? t.disputeOpenedAt);
-    if (createdAt !== t.createdAt || runAt !== t.runAt || disputeOpenedAt !== t.disputeOpenedAt) {
+    const settledAt = t.settledAt === null ? null : (blockTime.get(BigInt(t.settledAt)) ?? t.settledAt);
+    if (
+      createdAt !== t.createdAt ||
+      runAt !== t.runAt ||
+      disputeOpenedAt !== t.disputeOpenedAt ||
+      settledAt !== t.settledAt
+    ) {
       moved = true;
     }
     t.createdAt = createdAt;
     t.runAt = runAt;
     t.disputeOpenedAt = disputeOpenedAt;
+    t.settledAt = settledAt;
   }
   if (moved) model.version += 1;
   return model;

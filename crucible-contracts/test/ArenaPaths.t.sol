@@ -111,23 +111,39 @@ contract ArenaPathsTest is Test {
         uint64 nonce = ++_nonce;
         bytes32 runDigest = keccak256(
             abi.encodePacked(
-                "\x19\x01", DOMAIN,
+                "\x19\x01",
+                DOMAIN,
                 keccak256(abi.encode(_RUN_TH, bytes32(id), agent, ARTIFACT, VERDICT, REPLAY, HARNESS, nonce, DEADLINE))
             )
         );
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(RUNNER_KEY, runDigest);
         bytes32 attestDigest = keccak256(
             abi.encodePacked(
-                "\x19\x01", DOMAIN,
+                "\x19\x01",
+                DOMAIN,
                 keccak256(abi.encode(_ATTEST_TH, bytes32(id), ARTIFACT, VERDICT, REPLAY, true, DEADLINE))
             )
         );
         (uint8 av, bytes32 ar, bytes32 asig) = vm.sign(ATTESTOR_KEY, attestDigest);
-        arena.submitRun(id, ARTIFACT, VERDICT, REPLAY, HARNESS, nonce, DEADLINE, abi.encodePacked(r, s, v), abi.encodePacked(ar, asig, av));
+        arena.submitRun(
+            id,
+            ARTIFACT,
+            VERDICT,
+            REPLAY,
+            HARNESS,
+            nonce,
+            DEADLINE,
+            abi.encodePacked(r, s, v),
+            abi.encodePacked(ar, asig, av)
+        );
     }
 
-    bytes32 internal constant _RUN_TH = keccak256("Run(bytes32 trialId,address agent,bytes32 artifactDigest,bytes32 verdictHash,bytes32 replayHash,bytes32 modelHarnessId,uint64 nonce,uint64 sigDeadline)");
-    bytes32 internal constant _ATTEST_TH = keccak256("ResultAttestation(bytes32 trialId,bytes32 artifactDigest,bytes32 verdictHash,bytes32 replayHash,bool passed,uint64 sigDeadline)");
+    bytes32 internal constant _RUN_TH = keccak256(
+        "Run(bytes32 trialId,address agent,bytes32 artifactDigest,bytes32 verdictHash,bytes32 replayHash,bytes32 modelHarnessId,uint64 nonce,uint64 sigDeadline)"
+    );
+    bytes32 internal constant _ATTEST_TH = keccak256(
+        "ResultAttestation(bytes32 trialId,bytes32 artifactDigest,bytes32 verdictHash,bytes32 replayHash,bool passed,uint64 sigDeadline)"
+    );
 
     // ─────────────── post: every bound ───────────────
     function test_Post_RejectsEmptyDigests() public {
@@ -198,7 +214,7 @@ contract ArenaPathsTest is Test {
         vm.prank(agent);
         arena.claimTrial{value: 3 ether}(id);
         // An oversized bond is escrowed as given: it is the agent's own money at risk.
-        (,,uint256 bond,,) = arena.amountsOf(id);
+        (,, uint256 bond,,) = arena.amountsOf(id);
         assertEq(bond, 3 ether);
 
         vm.prank(skeptic);
@@ -308,8 +324,11 @@ contract ArenaPathsTest is Test {
         _claim(id);
         bytes32 runDigest = keccak256(
             abi.encodePacked(
-                "\x19\x01", DOMAIN,
-                keccak256(abi.encode(_RUN_TH, bytes32(id), agent, ARTIFACT, VERDICT, REPLAY, HARNESS, uint64(1), DEADLINE))
+                "\x19\x01",
+                DOMAIN,
+                keccak256(
+                    abi.encode(_RUN_TH, bytes32(id), agent, ARTIFACT, VERDICT, REPLAY, HARNESS, uint64(1), DEADLINE)
+                )
             )
         );
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(RUNNER_KEY, runDigest);
@@ -330,19 +349,33 @@ contract ArenaPathsTest is Test {
 
         bytes32 runDigest = keccak256(
             abi.encodePacked(
-                "\x19\x01", DOMAIN,
-                keccak256(abi.encode(_RUN_TH, bytes32(id), agent, ARTIFACT, VERDICT, REPLAY, HARNESS, uint64(1), DEADLINE))
+                "\x19\x01",
+                DOMAIN,
+                keccak256(
+                    abi.encode(_RUN_TH, bytes32(id), agent, ARTIFACT, VERDICT, REPLAY, HARNESS, uint64(1), DEADLINE)
+                )
             )
         );
         wallet.setOk(runDigest);
         bytes32 attestDigest = keccak256(
             abi.encodePacked(
-                "\x19\x01", DOMAIN,
+                "\x19\x01",
+                DOMAIN,
                 keccak256(abi.encode(_ATTEST_TH, bytes32(id), ARTIFACT, VERDICT, REPLAY, true, DEADLINE))
             )
         );
         (uint8 av, bytes32 ar, bytes32 asig) = vm.sign(ATTESTOR_KEY, attestDigest);
-        arena.submitRun(id, ARTIFACT, VERDICT, REPLAY, HARNESS, 1, DEADLINE, abi.encodePacked(ar, asig, av), abi.encodePacked(ar, asig, av));
+        arena.submitRun(
+            id,
+            ARTIFACT,
+            VERDICT,
+            REPLAY,
+            HARNESS,
+            1,
+            DEADLINE,
+            abi.encodePacked(ar, asig, av),
+            abi.encodePacked(ar, asig, av)
+        );
         assertEq(uint8(arena.statusOf(id)), uint8(Arena.Status.Submitted));
     }
 
@@ -355,7 +388,9 @@ contract ArenaPathsTest is Test {
         arena.setRunner(id, address(wallet));
         bytes32 attestDigest = keccak256(
             abi.encodePacked(
-                "\x19\x01", DOMAIN, keccak256(abi.encode(_ATTEST_TH, bytes32(id), ARTIFACT, VERDICT, REPLAY, true, DEADLINE))
+                "\x19\x01",
+                DOMAIN,
+                keccak256(abi.encode(_ATTEST_TH, bytes32(id), ARTIFACT, VERDICT, REPLAY, true, DEADLINE))
             )
         );
         (uint8 av, bytes32 ar, bytes32 asig) = vm.sign(ATTESTOR_KEY, attestDigest);
@@ -395,7 +430,11 @@ contract ArenaPathsTest is Test {
         _submit(id);
         bytes32 evidence = keccak256("evidence");
         bytes32 salt = keccak256("salt");
-        bytes32 c = sha256(abi.encodePacked("CRUCIBLE:break:v1", bytes32(id), skeptic, uint8(Arena.BreakKind.PublicFail), evidence, salt));
+        bytes32 c = sha256(
+            abi.encodePacked(
+                "CRUCIBLE:break:v1", bytes32(id), skeptic, uint8(Arena.BreakKind.PublicFail), evidence, salt
+            )
+        );
         vm.deal(skeptic, 5 ether);
         vm.prank(skeptic);
         arena.commitBreak{value: S + A}(id, c);
@@ -423,7 +462,11 @@ contract ArenaPathsTest is Test {
         _submit(id);
         bytes32 evidence = keccak256("e");
         bytes32 salt = keccak256("s");
-        bytes32 c = sha256(abi.encodePacked("CRUCIBLE:break:v1", bytes32(id), skeptic, uint8(Arena.BreakKind.Provenance), evidence, salt));
+        bytes32 c = sha256(
+            abi.encodePacked(
+                "CRUCIBLE:break:v1", bytes32(id), skeptic, uint8(Arena.BreakKind.Provenance), evidence, salt
+            )
+        );
         vm.deal(skeptic, 5 ether);
         vm.prank(skeptic);
         arena.commitBreak{value: S + A}(id, c);
@@ -453,7 +496,9 @@ contract ArenaPathsTest is Test {
         _submit(other);
         bytes32 ev = keccak256("ev");
         bytes32 sa = keccak256("sa");
-        bytes32 cm = sha256(abi.encodePacked("CRUCIBLE:break:v1", bytes32(other), skeptic, uint8(Arena.BreakKind.PublicFail), ev, sa));
+        bytes32 cm = sha256(
+            abi.encodePacked("CRUCIBLE:break:v1", bytes32(other), skeptic, uint8(Arena.BreakKind.PublicFail), ev, sa)
+        );
         vm.prank(skeptic);
         arena.commitBreak{value: S + A}(other, cm);
         vm.warp(arena.windowEndOf(other) + 1);
@@ -500,7 +545,9 @@ contract ArenaPathsTest is Test {
         _submitOn(a2, id);
         bytes32 ev = keccak256("vrf evidence");
         bytes32 sa = keccak256("vrf salt");
-        bytes32 cm = sha256(abi.encodePacked("CRUCIBLE:break:v1", bytes32(id), skeptic, uint8(Arena.BreakKind.PublicFail), ev, sa));
+        bytes32 cm = sha256(
+            abi.encodePacked("CRUCIBLE:break:v1", bytes32(id), skeptic, uint8(Arena.BreakKind.PublicFail), ev, sa)
+        );
         vm.prank(skeptic);
         a2.commitBreak{value: S + A}(id, cm);
         vm.warp(a2.windowEndOf(id) + 1);
@@ -524,15 +571,33 @@ contract ArenaPathsTest is Test {
         uint64 nonce = ++_nonce;
         bytes32 dom = which.DOMAIN();
         bytes32 runDigest = keccak256(
-            abi.encodePacked("\x19\x01", dom, keccak256(abi.encode(_RUN_TH, bytes32(id), agent, ARTIFACT, VERDICT, REPLAY, HARNESS, nonce, DEADLINE)))
+            abi.encodePacked(
+                "\x19\x01",
+                dom,
+                keccak256(abi.encode(_RUN_TH, bytes32(id), agent, ARTIFACT, VERDICT, REPLAY, HARNESS, nonce, DEADLINE))
+            )
         );
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(RUNNER_KEY, runDigest);
         bytes32 attestDigest = keccak256(
-            abi.encodePacked("\x19\x01", dom, keccak256(abi.encode(_ATTEST_TH, bytes32(id), ARTIFACT, VERDICT, REPLAY, true, DEADLINE)))
+            abi.encodePacked(
+                "\x19\x01",
+                dom,
+                keccak256(abi.encode(_ATTEST_TH, bytes32(id), ARTIFACT, VERDICT, REPLAY, true, DEADLINE))
+            )
         );
         (uint8 av, bytes32 ar, bytes32 asig) = vm.sign(ATTESTOR_KEY, attestDigest);
         which.setAttestor(attestor, true);
-        which.submitRun(id, ARTIFACT, VERDICT, REPLAY, HARNESS, nonce, DEADLINE, abi.encodePacked(r, s, v), abi.encodePacked(ar, asig, av));
+        which.submitRun(
+            id,
+            ARTIFACT,
+            VERDICT,
+            REPLAY,
+            HARNESS,
+            nonce,
+            DEADLINE,
+            abi.encodePacked(r, s, v),
+            abi.encodePacked(ar, asig, av)
+        );
     }
 
     /// @notice Claim, submit, file ONE sealed break, and freeze the docket. Without a filing
@@ -543,7 +608,11 @@ contract ArenaPathsTest is Test {
         _submit(id);
         bytes32 evidence = keccak256(abi.encodePacked("evidence", id));
         bytes32 salt = keccak256(abi.encodePacked("salt", id));
-        bytes32 commitment = sha256(abi.encodePacked("CRUCIBLE:break:v1", bytes32(id), skeptic, uint8(Arena.BreakKind.PublicFail), evidence, salt));
+        bytes32 commitment = sha256(
+            abi.encodePacked(
+                "CRUCIBLE:break:v1", bytes32(id), skeptic, uint8(Arena.BreakKind.PublicFail), evidence, salt
+            )
+        );
         vm.prank(skeptic);
         arena.commitBreak{value: S + A}(id, commitment);
         _breakSalt[id] = salt;
@@ -585,7 +654,8 @@ contract ArenaPathsTest is Test {
         arena.drawPanel(id, 1);
         bytes memory twoRows = hex"0000";
         bytes32 salt = keccak256("s");
-        bytes32 ballot = sha256(abi.encodePacked("CRUCIBLE:vote:v1", bytes32(id), uint8(1), seat1, twoRows, REPLAY, salt));
+        bytes32 ballot =
+            sha256(abi.encodePacked("CRUCIBLE:vote:v1", bytes32(id), uint8(1), seat1, twoRows, REPLAY, salt));
         vm.prank(seat1);
         arena.commitVote(id, ballot);
         vm.prank(seat1);
@@ -778,7 +848,15 @@ contract ArenaPathsTest is Test {
         uint256 id = _post();
         _claim(id);
         _submit(id);
-        (uint256 openedAt, uint256 openUntil, uint256 claimDeadline, uint256 submittedAt, uint256 windowEnd, uint256 holdoutDueBy, uint256 skepticWindow) = arena.windowsOf(id);
+        (
+            uint256 openedAt,
+            uint256 openUntil,
+            uint256 claimDeadline,
+            uint256 submittedAt,
+            uint256 windowEnd,
+            uint256 holdoutDueBy,
+            uint256 skepticWindow
+        ) = arena.windowsOf(id);
         assertEq(skepticWindow, 3600);
         assertGt(openUntil, openedAt);
         assertGe(claimDeadline, submittedAt);

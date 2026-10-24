@@ -32,6 +32,7 @@ pub const CLAIM_TIMEOUT_FORFEIT_BPS: u64 = 1000;
 pub const YIELD_FORFEIT_BPS: u64 = 0;
 pub const YIELD_COOLDOWN_SECONDS: u64 = 86400;
 pub const STANDING_HALF_LIFE_DAYS: u64 = 45;
+pub const REWARD_FLOOR_ETH_WEI: u128 = 10000000000000000;
 pub const SEASON_LENGTH_DAYS: u64 = 42;
 
 // v1 frozen records (ADR-0002 / RewardMath.sol): the legacy law, not v2 parameters.

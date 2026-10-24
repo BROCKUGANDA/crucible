@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import { afterEach, describe, expect, it } from "vitest";
@@ -18,6 +18,9 @@ import { afterEach, describe, expect, it } from "vitest";
 const PAGE = fileURLToPath(new URL("../src/app/page.tsx", import.meta.url));
 const TRIALS = fileURLToPath(new URL("../../../crucible-contracts/contracts/CrucibleTrials.sol", import.meta.url));
 const ALLOY = fileURLToPath(new URL("../../../crucible-contracts/contracts/AlloyRegistry.sol", import.meta.url));
+const STANDING = fileURLToPath(new URL("../../../packages/smith-sdk/src/standing.ts", import.meta.url));
+const API_APP = fileURLToPath(new URL("../../../apps/api/src/app.ts", import.meta.url));
+const CLAIMS_PAGE = fileURLToPath(new URL("../src/app/claims/page.tsx", import.meta.url));
 const page = readFileSync(PAGE, "utf8");
 const sol = readFileSync(TRIALS, "utf8");
 
@@ -96,12 +99,25 @@ describe("the landing page's money claims, bound to the escrow", () => {
     if (!implementsOneCall) expect(promisesOneCall).toBe(false);
   });
 
-  it("keeps the tier claim inside what recordSlash does", () => {
-    // A slash lowers wins by a quarter and recomputes the tier; there is no time decay here, even
-    // though params carries a half-life constant that nothing reads.
+  it("keeps the tier claim inside what recordSlash does, and the fade claim inside the decay", () => {
+    // A slash lowers wins by a quarter and recomputes the tier — that part was always true.
     expect(readFileSync(ALLOY, "utf8")).toMatch(/r\.wins = \(r\.wins \* 3\) \/ 4/);
     expect(page).toMatch(/tier (falls|decays)/);
-    expect(page).not.toMatch(/faded by time|decays on its own/i);
+
+    // The time-fade is the two-sided one. `standing_half_life_days` sat in params unread until
+    // packages/smith-sdk/src/standing.ts computed with it, so the sentence is allowed exactly as
+    // long as the computation exists and is reached by the API. Delete the decay and this fails —
+    // which is the point: the copy cannot outlive the mechanism a second time.
+    const decayImplemented =
+      readFileSync(STANDING, "utf8").includes("DEFAULT_HALF_LIFE_DAYS") &&
+      readFileSync(API_APP, "utf8").includes("computeStanding");
+    const promisesFade = /fades with the age|half-life/i.test(page);
+    expect(promisesFade).toBe(decayImplemented);
+  });
+
+  it("links the promise list it publishes, and the list links back to files", () => {
+    expect(page).toContain("/claims");
+    expect(existsSync(CLAIMS_PAGE)).toBe(true);
   });
 });
 
