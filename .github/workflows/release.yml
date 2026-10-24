@@ -1,0 +1,67 @@
+name: release
+
+# Every deploy that reached `main` and passed its own probes is a release. The tag is computed
+# from the highest `vX.Y.Z` already in the repository (scripts/version.mjs), so the number is a
+# fact about git rather than a constant someone remembers to edit.
+#
+# It hangs off `deploy`'s completion, not main's push: a green build on main is not a release, and
+# tagging one would announce a shipping event when the site never changed.
+#
+# It runs on the ladder's own runner because git and gh are there, and a repository with self-hosted
+# runners does not need a hosted one to push a tag.
+
+on:
+  workflow_run:
+    workflows: ["deploy"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: "which part of the version to bump"
+        type: choice
+        options: [patch, minor, major]
+        default: patch
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    runs-on: [self-hosted, linux, X64, crucible]
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          # Tags are the input to the computation, so the checkout cannot be shallow.
+          fetch-depth: 0
+
+      # A tag is a claim about a commit. If main moved while this job waited in the queue, the
+      # deploy that just finished is no longer the tip, and tagging the new tip would attach an
+      # old deploy's release to someone else's commit.
+      - name: refuse a release on a tree that is not main's tip
+        run: |
+          set -euo pipefail
+          git fetch -q origin main
+          head="$(git rev-parse HEAD)"
+          main="$(git rev-parse origin/main)"
+          if [ "$head" != "$main" ]; then
+            echo "::error::checked out $head but origin/main is $main; refusing to tag a stale tree"
+            exit 1
+          fi
+
+      - name: tag it, push the tag, and publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUMP: ${{ inputs.bump || 'patch' }}
+        run: |
+          set -euo pipefail
+          tag="$(node scripts/version.mjs --bump "$BUMP" --apply)"
+          git push origin "$tag"
+          gh release create "$tag" --generate-notes --title "$tag"
+          echo "released $tag"
