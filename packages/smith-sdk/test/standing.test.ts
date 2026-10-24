@@ -152,3 +152,53 @@ describe("Standing itself", () => {
     expect(String(s.display)).not.toMatch(/e[+-]?\d+/i);
   });
 });
+
+describe("the identity epoch of ADR-0012", () => {
+  const runIn = (outcomes: StandingOutcome[], epochStartedAt: number | null) =>
+    computeStanding({ outcomes, floorWei: FLOOR, halfLifeDays: 45, now: NOW, epochStartedAt });
+
+  it("counts only the outcomes the current holder earned", () => {
+    const before = outcome({ settledAt: NOW - 30 * DAY });
+    const after = outcome({ settledAt: NOW - 1 * DAY, breaksSurvived: 3 });
+    const s = runIn([before, after], NOW - 10 * DAY);
+    expect(s.counted).toBe(1);
+    expect(s.excludedPreEpoch).toBe(1);
+    // The excluded pass is not merely dropped: the score is the buyer's alone, so a strong
+    // predecessor's history cannot hold the display up.
+    expect(s.standing).toBeLessThan(2);
+    expect(s.weightMass).toBeLessThan(runIn([after], null).weightMass + 0.0001);
+  });
+
+  it("reports the boundary it excluded against, so the exclusion is checkable", () => {
+    const s = runIn([outcome({ settledAt: NOW - 5 * DAY })], NOW - 1 * DAY);
+    expect(s.epochStartedAt).toBe(NOW - 1 * DAY);
+    expect(s.excludedPreEpoch).toBe(1);
+    expect(s.counted).toBe(0);
+    // Nothing counted is the prior's answer, not a fabricated zero-history badge: 500 with the
+    // exclusion published beside it is the honest reading.
+    expect(s.display).toBe(500);
+  });
+
+  it("treats an unread epoch as no boundary at all, never as the dawn of the chain", () => {
+    // `epochStartedAt: null` means the registry was not read. Reading that as 0 would count
+    // everything; reading it as "now" would silently exclude everything and publish 500 as if the
+    // agent had no history. Both wrong, and only one of them is visible.
+    const all = [outcome({ settledAt: NOW - 400 * DAY })];
+    expect(runIn(all, null).counted).toBe(1);
+    expect(runIn(all, null).excludedPreEpoch).toBe(0);
+    expect(runIn(all, undefined).counted).toBe(1);
+  });
+
+  it("excludes on the epoch, not on the decay, and the two stay independent", () => {
+    const old = outcome({ settledAt: NOW - 40 * DAY });
+    const sameDay = outcome({ settledAt: NOW - 40 * DAY, verdict: "slashed" });
+    const withEpoch = runIn([old, sameDay], NOW - 20 * DAY);
+    const withoutEpoch = run([old, sameDay]);
+    expect(withEpoch.counted).toBe(0);
+    expect(withoutEpoch.counted).toBe(2);
+    // A boundary one day after the other's decay horizon must not change how the surviving
+    // outcomes age: the filter removes rows, it does not re-age them.
+    const kept = runIn([outcome({ settledAt: NOW - 10 * DAY })], NOW - 20 * DAY);
+    expect(kept.weightMass).toBeCloseTo(run([outcome({ settledAt: NOW - 10 * DAY })]).weightMass, 6);
+  });
+});

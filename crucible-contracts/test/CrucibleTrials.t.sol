@@ -863,14 +863,16 @@ contract CrucibleTrialsTest is Base {
     }
 
     /// `records` is a public mapping to a struct, so it returns a tuple
-    /// (wins, survived, slashes, tier), not a struct.
+    /// (wins, survived, slashes, tier, epoch, lifetimeWins, lifetimeSlashes, holder,
+    /// epochStartedAt) — ADR-0012 appended the last five, and the positional reads below are why
+    /// `abi-drift.test.ts` pins that order against the Solidity source rather than trusting it.
     function survivedOf(uint256 agentId) internal view returns (uint32) {
-        (, uint32 survived,,) = alloy.records(agentId);
+        (, uint32 survived,,,,,,,) = alloy.records(agentId);
         return survived;
     }
 
     function slashesOf(uint256 agentId) internal view returns (uint32) {
-        (,, uint32 slashes,) = alloy.records(agentId);
+        (,, uint32 slashes,,,,,,) = alloy.records(agentId);
         return slashes;
     }
 

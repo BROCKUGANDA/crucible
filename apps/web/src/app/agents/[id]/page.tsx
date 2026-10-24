@@ -86,6 +86,21 @@ export default function AgentProfilePage({ params }: { params: Promise<{ id: str
         <Row label="Wins" value={String(agent.wins)} />
         <Row label="Survived breaks" value={String(agent.survived)} />
         <Row label="Scars" value={String(agent.slashes)} />
+        <Row label="Identity epoch" value={agent.epoch === null ? "—" : String(agent.epoch)} />
+        {agent.epoch !== null && agent.epoch > 1 ? (
+          // ADR-0012. Three books can disagree on this row and all three are true: what this index
+          // counted (above), what the current holder earned (the tier), and what the identity ever
+          // earned (below). Saying which is which is the whole point of making a reset legible.
+          <p className="hint hint--block">
+            This identity changed hands {agent.epoch - 1} {agent.epoch - 1 === 1 ? "time" : "times"}.
+            The tier above is the current holder&rsquo;s, counted from the handover; the wins and
+            scars listed over are every epoch this index has watched. The credential carries{" "}
+            {agent.lifetimeWins === null ? "no lifetime figure it could read" : `${agent.lifetimeWins} lifetime wins`}
+            {" and "}
+            {agent.lifetimeSlashes === null ? "none for scars" : `${agent.lifetimeSlashes} lifetime scars`}
+            , which no handover resets.
+          </p>
+        ) : null}
       </div>
 
       <h2 className="section-title section-title--detached">Runs</h2>
@@ -117,8 +132,9 @@ export default function AgentProfilePage({ params }: { params: Promise<{ id: str
         <p className="lede">No scars. Either careful or untested.</p>
       ) : (
         <p className="lede" data-tone="sear">
-          {agent.slashes} proven {agent.slashes === 1 ? "lie" : "lies"}. Each decayed its wins
-          by 25%.
+          {agent.slashes} proven {agent.slashes === 1 ? "lie" : "lies"}. Each one decayed the wins
+          it was earned in by 25% — and a scar stays in the lifetime book even when the identity
+          behind it changes hands.
         </p>
       )}
     </Chrome>
