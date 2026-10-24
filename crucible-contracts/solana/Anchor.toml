@@ -1,0 +1,35 @@
+[toolchain]
+
+[features]
+resolution = true
+skip-lint = false
+
+[programs.localnet]
+# Synced to this environment's localnet keypair (target/deploy/work_escrow-keypair.json)
+# by `anchor keys sync` — the previous id belonged to the originating environment's
+# keypair, which never travelled with the artifacts. Localnet ids are per-environment;
+# the load-bearing pin is the toolchain below.
+work_escrow = "AnctSTeT8TNQ4riTxkh8Kh8hKpQGfmhQjhd3M15VaJAD"
+
+[registry]
+url = "https://api.apr.dev"
+
+[provider]
+cluster = "Localnet"
+wallet = "~/.config/solana/id.json"
+
+[scripts]
+test = "npx ts-mocha -p ./tsconfig.json -t 1000000 tests/**/*.ts"
+
+# Gate 701 — pinned toolchain, as verified in this environment (2026-10-24):
+#   anchor-cli 0.30.1 (cargo install — no prebuilt binaries exist for 0.30+)
+#   build + localnet: solana-labs v1.18.26 release tarball (solana,
+#     solana-test-validator, solana-keygen, cargo-build-sbf; platform-tools
+#     v1.41 bundled — no post-install fetch). The earlier agave 3.0.0/2.3.6
+#     pins were recorded in an environment whose GitHub could reach the agave
+#     org; this one cannot, and crates.io publishes those names as
+#     library-only. v1.18.26 is anchor 0.30.1's contemporary and the original
+#     setup-list pin.
+#   Cargo.lock is seeded at version 3 (scripts/build-local.sh): platform-tools
+#     v1.41's cargo cannot read a v4 lockfile.
+# Do not float these without re-running the end-to-end suite.

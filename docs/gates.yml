@@ -1,0 +1,1150 @@
+# CRUCIBLE gate definitions — compliance matrix source of truth.
+#
+# Each gate has an id, title, short description, and framework mappings.
+# The compliance matrix generator (scripts/compliance-matrix.mjs) reads this
+# file and publishes /compliance as a crawlable page.
+
+- id: 419
+  title: Arena suite × model matrix runner
+  frameworks: [ai-rmf, soc2]
+- id: 420
+  title: Per-provider model adapters
+  frameworks: [ai-rmf]
+- id: 421
+  title: Smoke set auto-disqualifies false-pass > 1% or p95 > 20s
+  frameworks: [ai-rmf]
+- id: 422
+  title: Boundary suite weighted 3x in kappa
+  frameworks: [ai-rmf]
+- id: 423
+  title: Injection suite — any deferral = hard fail
+  frameworks: [llm-top10, ai-rmf]
+- id: 424
+  title: Consistency suite — 20x retest, agreement >= 98%
+  frameworks: [ai-rmf]
+- id: 425
+  title: Calibration suite — per-model escalation threshold
+  frameworks: [ai-rmf]
+- id: 426
+  title: Canonicalization stress vectors
+  frameworks: [ai-rmf]
+- id: 427
+  title: Frontier BREAK — attacker model, kill-rate >= 90%
+  frameworks: [llm-top10, ai-rmf]
+- id: 428
+  title: Cascade routing — cheap→frontier escalation
+  frameworks: [ai-rmf]
+- id: 429
+  title: Ensemble mode behind flag, default off
+  frameworks: [ai-rmf]
+- id: 430
+  title: Shadow promotion — 1% live traffic
+  frameworks: [ai-rmf]
+- id: 431
+  title: Eval cache keyed by (claimHash, model, promptVersion)
+  frameworks: [ai-rmf]
+- id: 432
+  title: Public scorecard line per graderVersion
+  frameworks: [ai-rmf, soc2]
+- id: 433
+  title: GraderRegistry — model swap = RFC + version bump
+  frameworks: [iso-27001, ai-rmf]
+- id: 434
+  title: Money Trees — "CUE IT" deep-link chip on the settlement screen
+  frameworks: [soc2]
+- id: 435
+  title: Money Trees is link-out only — no embedded audio, no player code
+  frameworks: [soc2]
+- id: 436
+  title: Money Trees chip is a text label — no album art, no logo treatment, no autoplay
+  frameworks: [soc2]
+- id: 437
+  title: Money Trees deep link is remote-config-driven — swappable without a rebuild
+  frameworks: [soc2]
+- id: 438
+  title: No audio assets in the repo — grep-gate on the frenchy surface
+  frameworks: [soc2]
+- id: 439
+  title: Adapter cap — exactly 4 adapter files
+  frameworks: [supply-chain]
+- id: 440
+  title: Config-row test — one JSON row + RFC per model
+  frameworks: [supply-chain]
+- id: 441
+  title: Stub-only CI — zero network smoke tier
+  frameworks: [supply-chain]
+- id: 442
+  title: One-Door Law — one spine writer (the keeper)
+  frameworks: [iso-27001]
+- id: 443
+  title: Span types over producers
+  frameworks: [iso-27001]
+- id: 444
+  title: Cursor law — one chain cursor
+  frameworks: [iso-27001]
+- id: 445
+  title: Projection rule — keeper-internal SQLite only
+  frameworks: [iso-27001]
+- id: 446
+  title: Consumer law — filters over single SSE stream
+  frameworks: [iso-27001]
+- id: 447
+  title: Flywheel exception — append-only probe sources
+  frameworks: [supply-chain]
+- id: 448
+  title: Wallet surface stays one — Privy embedded only
+  frameworks: [owasp-top10]
+- id: 449
+  title: SSR canonical routes
+  frameworks: [seo]
+- id: 450
+  title: Title pattern unique per route
+  frameworks: [seo]
+- id: 451
+  title: Meta descriptions unique per route
+  frameworks: [seo]
+- id: 452
+  title: Canonical URLs on all routes
+  frameworks: [seo]
+- id: 453
+  title: sitemap.xml auto-generated from route manifest
+  frameworks: [seo]
+- id: 454
+  title: JSON-LD structured data
+  frameworks: [seo, geo]
+- id: 455
+  title: Heading discipline — one h1 per route
+  frameworks: [seo]
+- id: 456
+  title: Lighthouse gates on landing
+  frameworks: [seo]
+- id: 457
+  title: True status codes (no soft-404)
+  frameworks: [seo]
+- id: 458
+  title: noindex on internal surfaces
+  frameworks: [seo]
+- id: 459
+  title: /llms.txt at root
+  frameworks: [geo, aeo]
+- id: 460
+  title: Answer-first copy in docs
+  frameworks: [geo, aeo]
+- id: 461
+  title: Quotable facts block as static HTML
+  frameworks: [geo, aeo]
+- id: 462
+  title: Entity coherence — canonical definition string
+  frameworks: [geo, aeo]
+- id: 463
+  title: Stable anchor IDs for deep-linking
+  frameworks: [geo, aeo]
+- id: 464
+  title: AI crawlers welcome in robots.txt
+  frameworks: [geo, aeo]
+- id: 465
+  title: Question-shaped H2s
+  frameworks: [aeo]
+- id: 466
+  title: HowTo JSON-LD for escrow lifecycle
+  frameworks: [aeo]
+- id: 467
+  title: Comparison table in semantic HTML
+  frameworks: [aeo]
+- id: 468
+  title: Definition sentence as canonical string
+  frameworks: [aeo]
+- id: 469
+  title: FAQPage markup mirrors visible FAQ
+  frameworks: [aeo]
+- id: 470
+  title: Date-stamped changelog
+  frameworks: [aeo]
+- id: 471
+  title: Metadata API as single source
+  frameworks: [seo]
+- id: 472
+  title: OG cards per route
+  frameworks: [seo]
+- id: 473
+  title: Twitter cards summary_large_image
+  frameworks: [seo]
+- id: 474
+  title: theme-color / viewport / charset from metadata API
+  frameworks: [seo]
+- id: 475
+  title: Complete icon set
+  frameworks: [seo]
+- id: 476
+  title: No generator/version-leaking tags
+  frameworks: [seo]
+- id: 477
+  title: Metadata audit in CI
+  frameworks: [seo]
+- id: 478
+  title: robots.txt with allow/disallow rules
+  frameworks: [seo]
+- id: 479
+  title: X-Robots-Tag noindex on /api/*
+  frameworks: [seo]
+- id: 480
+  title: AI-bot policy in reviewed robots.txt
+  frameworks: [geo, seo]
+- id: 481
+  title: Defensive disallows for /admin, /debug
+  frameworks: [seo, owasp-top10]
+- id: 482
+  title: Robots E2E test
+  frameworks: [seo]
+- id: 483
+  title: manifest.webmanifest at root
+  frameworks: [seo]
+- id: 484
+  title: Complete icon set in manifest
+  frameworks: [seo]
+- id: 485
+  title: theme_color / background_color from foundry palette
+  frameworks: [seo]
+- id: 486
+  title: Manifest shortcuts for zone nav
+  frameworks: [seo]
+- id: 487
+  title: Install gate — Lighthouse installable pass
+  frameworks: [seo]
+- id: 488
+  title: Service worker — static shell only, never caches /api
+  frameworks: [seo]
+- id: 489
+  title: Proposal envelope — agents propose, keeper does
+  frameworks: [llm-top10, iso-27001]
+- id: 490
+  title: Sandbox harness — sealed execution context
+  frameworks: [llm-top10, iso-27001]
+- id: 491
+  title: Egress allowlist — proxy/DNS denies everything else
+  frameworks: [llm-top10, owasp-top10]
+- id: 492
+  title: Fixed toolset — declared tools only
+  frameworks: [llm-top10]
+- id: 493
+  title: No-key law — no keys in agent/harness graph
+  frameworks: [owasp-top10, iso-27001]
+- id: 494
+  title: Output contract — zod schema + size cap
+  frameworks: [llm-top10]
+- id: 495
+  title: Budgets — token cap, cost cap, wall-clock p95 < 20s
+  frameworks: [llm-top10]
+- id: 496
+  title: Injection containment — fencing + pre-gate
+  frameworks: [llm-top10, owasp-top10]
+- id: 497
+  title: FS isolation — read-only fixtures + scratch
+  frameworks: [llm-top10, iso-27001]
+- id: 498
+  title: Replayable sandbox — tool calls + responses to spine
+  frameworks: [iso-27001]
+- id: 499
+  title: One breaker for all agents — kill-switch flag
+  frameworks: [iso-27001]
+- id: 500
+  title: Demo agents hold no keys
+  frameworks: [owasp-top10]
+- id: 501
+  title: Arena attackers sandboxed too
+  frameworks: [llm-top10]
+- id: 502
+  title: CI enforcement — import-graph lint + egress canary
+  frameworks: [supply-chain, iso-27001]
+- id: 503
+  title: Frontier = agent, no exceptions
+  frameworks: [ai-rmf]
+- id: 504
+  title: Snapshot pinning — exact provider snapshot + date
+  frameworks: [ai-rmf, supply-chain]
+- id: 505
+  title: Spend governance — per-stage budget, hard daily cap
+  frameworks: [ai-rmf]
+- id: 506
+  title: Egress scrubber — no keys/PII in outbound payloads
+  frameworks: [llm-top10, owasp-top10]
+- id: 507
+  title: Provider data posture — retention/training-use terms
+  frameworks: [ai-rmf, iso-27001]
+- id: 508
+  title: Refusal is an output class
+  frameworks: [llm-top10]
+- id: 509
+  title: Retries are transport-only
+  frameworks: [ai-rmf]
+- id: 510
+  title: Cache is content-addressed and permanent
+  frameworks: [ai-rmf]
+- id: 511
+  title: Judge-family independence — conflict check at dispatch
+  frameworks: [ai-rmf]
+- id: 512
+  title: Shadow stays silent — non-authoritative by construction
+  frameworks: [ai-rmf]
+- id: 513
+  title: Frontier latency law — p95 < 20s
+  frameworks: [ai-rmf]
+- id: 514
+  title: Public model card page
+  frameworks: [ai-rmf, soc2]
+- id: 515
+  title: OWASP A01 Access Control
+  frameworks: [owasp-top10]
+- id: 516
+  title: OWASP A02 Crypto Failures
+  frameworks: [owasp-top10]
+- id: 517
+  title: OWASP A03 Injection
+  frameworks: [owasp-top10]
+- id: 518
+  title: OWASP A04 Insecure Design
+  frameworks: [owasp-top10]
+- id: 519
+  title: OWASP A05 Misconfiguration
+  frameworks: [owasp-top10]
+- id: 520
+  title: OWASP A06 Vulnerable Components
+  frameworks: [owasp-top10, supply-chain]
+- id: 521
+  title: OWASP A07 Auth Failures
+  frameworks: [owasp-top10]
+- id: 522
+  title: OWASP A08 Integrity Failures
+  frameworks: [owasp-top10, supply-chain]
+- id: 523
+  title: OWASP A09 Logging Failures
+  frameworks: [owasp-top10, iso-27001]
+- id: 524
+  title: OWASP A10 SSRF
+  frameworks: [owasp-top10]
+- id: 525
+  title: SCSVS — Reentrancy
+  frameworks: [scsvs]
+- id: 526
+  title: SCSVS — Arithmetic
+  frameworks: [scsvs]
+- id: 527
+  title: SCSVS — Access control
+  frameworks: [scsvs]
+- id: 528
+  title: SCSVS — DoS & gas griefing
+  frameworks: [scsvs]
+- id: 529
+  title: SCSVS — Push-payment safety
+  frameworks: [scsvs]
+- id: 530
+  title: SCSVS — Front-running & ordering
+  frameworks: [scsvs]
+- id: 531
+  title: SCSVS — Time dependence
+  frameworks: [scsvs]
+- id: 532
+  title: SCSVS — Invariants, nightly fuzz
+  frameworks: [scsvs]
+- id: 533
+  title: SCSVS — Static analysis in CI
+  frameworks: [scsvs]
+- id: 534
+  title: SCSVS — Artifact integrity
+  frameworks: [scsvs]
+- id: 535
+  title: LLM01 Prompt Injection
+  frameworks: [llm-top10]
+- id: 536
+  title: LLM02 Sensitive Disclosure
+  frameworks: [llm-top10]
+- id: 537
+  title: LLM03 Supply Chain
+  frameworks: [llm-top10, supply-chain]
+- id: 538
+  title: LLM04 Data/Model Poisoning
+  frameworks: [llm-top10]
+- id: 539
+  title: LLM05 Improper Output Handling
+  frameworks: [llm-top10]
+- id: 540
+  title: LLM06 Excessive Agency
+  frameworks: [llm-top10]
+- id: 541
+  title: LLM07 System Prompt Leakage
+  frameworks: [llm-top10]
+- id: 542
+  title: LLM08 Vector/Embedding Weaknesses
+  frameworks: [llm-top10]
+- id: 543
+  title: LLM09 Misinformation
+  frameworks: [llm-top10, ai-rmf]
+- id: 544
+  title: LLM10 Unbounded Consumption
+  frameworks: [llm-top10]
+- id: 545
+  title: CSP exact policy
+  frameworks: [owasp-top10]
+- id: 546
+  title: CORS same-origin only
+  frameworks: [owasp-top10]
+- id: 547
+  title: Rate limits per IP per route class
+  frameworks: [owasp-top10]
+- id: 548
+  title: Input schema — zod validation
+  frameworks: [owasp-top10]
+- id: 549
+  title: Runtime hygiene — non-root, read-only FS
+  frameworks: [iso-27001]
+- id: 550
+  title: Error envelope — no stack traces to clients
+  frameworks: [owasp-top10]
+- id: 551
+  title: Asset inventory — YAML of all assets
+  frameworks: [iso-27001]
+- id: 552
+  title: Access control — least privilege architectural
+  frameworks: [iso-27001]
+- id: 553
+  title: Cryptography & key management — standard only
+  frameworks: [iso-27001]
+- id: 554
+  title: Change management — PR + CI + CODEOWNERS
+  frameworks: [iso-27001]
+- id: 555
+  title: Incident management — S1-S4, blameless postmortem
+  frameworks: [iso-27001]
+- id: 556
+  title: Business continuity — backup + restore drill
+  frameworks: [iso-27001]
+- id: 557
+  title: Supplier security — vendor register
+  frameworks: [iso-27001, supply-chain]
+- id: 558
+  title: Disclosure — SECURITY.md
+  frameworks: [iso-27001]
+- id: 559
+  title: Data classification — public/internal/restricted
+  frameworks: [iso-27001]
+- id: 560
+  title: Log retention & tamper-evidence
+  frameworks: [iso-27001]
+- id: 561
+  title: Monitoring & capacity
+  frameworks: [iso-27001]
+- id: 562
+  title: Privacy by minimization — no PII
+  frameworks: [iso-27001]
+- id: 563
+  title: AI RMF: Map — AI decision inventory
+  frameworks: [ai-rmf]
+- id: 564
+  title: AI RMF: Measure — Arena scorecard
+  frameworks: [ai-rmf]
+- id: 565
+  title: AI RMF: Manage — breaker, shadow, dispute
+  frameworks: [ai-rmf]
+- id: 566
+  title: AI RMF: Govern — model change control
+  frameworks: [ai-rmf]
+- id: 567
+  title: EU AI Act posture — limited-risk AI-assisted decision support
+  frameworks: [eu-ai-act]
+- id: 568
+  title: AI transparency duty — verdicts disclose model
+  frameworks: [eu-ai-act, ai-rmf]
+- id: 569
+  title: Human oversight — dispute path reaches human
+  frameworks: [eu-ai-act, ai-rmf]
+- id: 570
+  title: SOC2-lite evidence — security, availability, integrity
+  frameworks: [soc2]
+- id: 571
+  title: Policy pack — /docs/policies/
+  frameworks: [soc2]
+- id: 572
+  title: Compliance matrix — auto-built from gate front-matter
+  frameworks: [soc2]
+- id: 573
+  title: SLSA provenance
+  frameworks: [supply-chain]
+- id: 574
+  title: Lockfile law — npm ci only
+  frameworks: [supply-chain]
+- id: 575
+  title: Dependency policy — allowlists + osv-scanner
+  frameworks: [supply-chain]
+- id: 576
+  title: Model supply chain — snapshot + promptVersion pinned
+  frameworks: [supply-chain]
+- id: 577
+  title: Contract artifacts — forge-verified source↔bytecode
+  frameworks: [scsvs, supply-chain]
+- id: 578
+  title: Containers & SBOM — trivy scan, syft SBOM
+  frameworks: [supply-chain]
+- id: 579
+  title: Release integrity — tag → build → SBOM + provenance
+  frameworks: [supply-chain]
+- id: 580
+  title: CI is the only path to main
+  frameworks: [supply-chain]
+- id: 581
+  title: Scale law — reads scale horizontally, writes by batch
+  frameworks: [soc2]
+- id: 582
+  title: SSE fan-out — p95 < 2s at 5k clients
+  frameworks: [soc2]
+- id: 583
+  title: Projection scaling — one writer, read replicas
+  frameworks: [soc2]
+- id: 584
+  title: Static via CDN — hashed assets
+  frameworks: [soc2]
+- id: 585
+  title: Write benchmark — settleBatch throughput published
+  frameworks: [soc2]
+- id: 586
+  title: Backpressure everywhere — bounded queue depth
+  frameworks: [soc2]
+- id: 587
+  title: Workers vs writer — agents scale out, writer stays one
+  frameworks: [soc2]
+- id: 588
+  title: Spine rotation — hash-chained segments
+  frameworks: [iso-27001]
+- id: 589
+  title: Cache strategy — content-addressed, derivable
+  frameworks: [soc2]
+- id: 590
+  title: Multi-chain and sharded keepers — post-demo RFC
+  frameworks: [soc2]
+- id: 591
+  title: Degradation ladder — shadow off → stub → replay → static
+  frameworks: [soc2]
+- id: 592
+  title: Soak & capacity — nightly 1h at 2x peak
+  frameworks: [soc2]
+- id: 593
+  title: Monorepo boundaries — dependency-cruiser
+  frameworks: [iso-27001]
+- id: 594
+  title: Pure-core law — types down, effects up
+  frameworks: [iso-27001]
+- id: 595
+  title: TS strict — any banned, non-null assertions banned
+  frameworks: [iso-27001]
+- id: 596
+  title: Test pyramid — unit ≥ 90% on pure cores
+  frameworks: [iso-27001]
+- id: 597
+  title: Goldens & fixtures — versioned, PR-reviewed
+  frameworks: [iso-27001]
+- id: 598
+  title: RFC/ADR + CODEOWNERS
+  frameworks: [iso-27001]
+- id: 599
+  title: Lint tiers — zero warnings on main
+  frameworks: [iso-27001]
+- id: 600
+  title: Vocabulary is code law — glossary enforced
+  frameworks: [iso-27001]
+- id: 601
+  title: Errors & config are typed — zod at boot
+  frameworks: [iso-27001]
+- id: 602
+  title: Runbooks + delete culture
+  frameworks: [iso-27001]
+- id: 603
+  title: SLOs published
+  frameworks: [soc2]
+- id: 604
+  title: Env matrix — dev/ci/demo as data
+  frameworks: [iso-27001]
+- id: 605
+  title: Secret inventory — four secret classes
+  frameworks: [iso-27001]
+- id: 606
+  title: Deploy & rollback — pinned release, never main @ HEAD
+  frameworks: [supply-chain]
+- id: 607
+  title: First-response card — breaker first
+  frameworks: [iso-27001]
+- id: 608
+  title: Incident severities — S1-S4
+  frameworks: [iso-27001]
+- id: 609
+  title: Drill calendar — monthly breaker + restore
+  frameworks: [iso-27001]
+- id: 610
+  title: Demo-day checklist — P0 gates green
+  frameworks: [iso-27001]
+- id: 611
+  title: Judge due-diligence pack — one URL
+  frameworks: [soc2]
+- id: 612
+  title: Hall of shame — grep-able never-list
+  frameworks: [iso-27001]
+- id: 613
+  title: The five numbers — false-pass, kappa, spend, SSE p95, conservation
+  frameworks: [ai-rmf, soc2]
+- id: 614
+  title: Data layer — spine JSONL + SQLite WAL
+  frameworks: [iso-27001]
+- id: 615
+  title: Projection schema — named tables, keeper-only writes
+  frameworks: [iso-27001]
+- id: 616
+  title: Cursor spec — (block, logIndex, blockHash)
+  frameworks: [iso-27001]
+- id: 617
+  title: Backups — hourly sqlite3 .backup + S3
+  frameworks: [iso-27001]
+- id: 618
+  title: Network map — 443 → 3000 → 8545 → 5432
+  frameworks: [iso-27001]
+- id: 619
+  title: SSE transport tuning — nginx buffering off
+  frameworks: [soc2]
+- id: 620
+  title: Secrets — systemd LoadCredential / Docker secrets
+  frameworks: [iso-27001]
+- id: 621
+  title: Anvil binding law — 127.0.0.1, keeper only
+  frameworks: [owasp-top10]
+- id: 622
+  title: Booth network — wifi → hotspot → offline shell
+  frameworks: [soc2]
+- id: 623
+  title: Topology doc — diagram from network map
+  frameworks: [iso-27001]
+- id: 624
+  title: Primitives table is law
+  frameworks: [owasp-top10]
+- id: 625
+  title: One crypto door — packages/crypto
+  frameworks: [owasp-top10]
+- id: 626
+  title: Key hierarchy — exactly three keys
+  frameworks: [iso-27001]
+- id: 627
+  title: Keeper spend caps — per-tx + per-hour
+  frameworks: [iso-27001]
+- id: 628
+  title: EIP-712 for structured operator approvals
+  frameworks: [owasp-top10]
+- id: 629
+  title: JCS everywhere a hash is computed
+  frameworks: [owasp-top10]
+- id: 630
+  title: Merkle-ization — probe batches per verdict
+  frameworks: [iso-27001]
+- id: 631
+  title: Encryption at rest matrix
+  frameworks: [iso-27001]
+- id: 632
+  title: Scrubbers — egress + log scrubbers share regex set
+  frameworks: [owasp-top10]
+- id: 633
+  title: Randomness discipline — CSPRNG only
+  frameworks: [owasp-top10]
+- id: 634
+  title: PQC inventory & CRQC horizon
+  frameworks: [owasp-top10]
+- id: 635
+  title: HNDL assessment — low exposure
+  frameworks: [owasp-top10]
+- id: 636
+  title: Hybrid encryption — X25519 + ML-KEM-768
+  frameworks: [owasp-top10]
+- id: 637
+  title: Dual-signature placeholder — secp256k1 + ML-DSA-65
+  frameworks: [owasp-top10]
+- id: 638
+  title: No homemade crypto extends to PQC
+  frameworks: [owasp-top10]
+- id: 639
+  title: Query security — zero write grants, zod params
+  frameworks: [owasp-top10]
+- id: 640
+  title: Flow table — economic source of truth
+  frameworks: [soc2]
+- id: 641
+  title: Fee mechanics — 15% at postWork, separate from gas
+  frameworks: [soc2]
+- id: 642
+  title: Stake floor — stake ≥ k × verification cost
+  frameworks: [soc2]
+- id: 643
+  title: Fail path — stake slashed 50/50
+  frameworks: [soc2]
+- id: 644
+  title: Pass path — worker takes 85% + stake
+  frameworks: [soc2]
+- id: 645
+  title: Expiry — deadline refund via pull pattern
+  frameworks: [soc2]
+- id: 646
+  title: Dispute economics — flat fee, winner refunded
+  frameworks: [soc2]
+- id: 647
+  title: Conservation double-entry
+  frameworks: [soc2]
+- id: 648
+  title: Solidity-side assert — settleBatch reverts on drift
+  frameworks: [scsvs]
+- id: 649
+  title: Monetization lines — 15% fee, dispute fees, sponsored display
+  frameworks: [soc2]
+- id: 650
+  title: Agent reputation — non-economic, weighted nothing
+  frameworks: [soc2]
+- id: 651
+  title: Frontier model rewards — model_credits ledger
+  frameworks: [soc2]
+- id: 652
+  title: Crowd incentives — non-monetary badges
+  frameworks: [soc2]
+- id: 653
+  title: Payout discipline — monthly batched keeper txs
+  frameworks: [soc2]
+- id: 654
+  title: No new money primitives
+  frameworks: [soc2]
+- id: 655
+  title: Economic unit tests — Foundry + TS ledger mirror
+  frameworks: [scsvs]
+- id: 656
+  title: Idempotency — escrowId:phase:attempt key
+  frameworks: [scsvs]
+- id: 657
+  title: Outbox pattern — span → outbox → tx → ack
+  frameworks: [iso-27001]
+- id: 658
+  title: Serial nonce writer — one cache, receipt-wait
+  frameworks: [iso-27001]
+- id: 659
+  title: Finality policy — showtime 1-conf, realism depth-2
+  frameworks: [iso-27001]
+- id: 660
+  title: Reorg/wedge recovery — cursor revalidated
+  frameworks: [iso-27001]
+- id: 661
+  title: Spine walk on boot — prevHash + segment-root verification
+  frameworks: [iso-27001]
+- id: 662
+  title: Evidence merkle check — replayed verdict roots match
+  frameworks: [iso-27001]
+- id: 663
+  title: Crash drill — kill -9 keeper mid-batch
+  frameworks: [iso-27001]
+- id: 664
+  title: Anvil state checkpoints — dump/load < 60s
+  frameworks: [soc2]
+- id: 665
+  title: Prod-readiness memo — Anvil vs production honesty
+  frameworks: [iso-27001]
+- id: 666
+  title: Invariant battery — nightly full check
+  frameworks: [scsvs, soc2]
+- id: 667
+  title: /integrity — public battery results page
+  frameworks: [soc2]
+- id: 668
+  title: Frenchy quip budget — per-event / 5-min / hour caps
+  frameworks: [soc2]
+- id: 669
+  title: Frenchy cooldown — 45s minimum between quips
+  frameworks: [soc2]
+- id: 670
+  title: Frenchy tone ladder — roast the situation, never the person
+  frameworks: [ai-rmf]
+- id: 671
+  title: Frenchy silence zones — no quips during verification or wallet signing
+  frameworks: [soc2]
+- id: 672
+  title: Frenchy word count — reactive quips <= 12 words
+  frameworks: [soc2]
+- id: 673
+  title: Frenchy mute — two consecutive dismissals auto-quiet the session
+  frameworks: [soc2]
+- id: 674
+  title: Frenchy quips are static text pools — no runtime LLM, no new producer
+  frameworks: [ai-rmf, supply-chain]
+- id: 675
+  title: Frenchy determinism — quip = f(sessionSeed, trigger, history)
+  frameworks: [ai-rmf]
+- id: 676
+  title: Frenchy is never a spine writer — spectator spans only
+  frameworks: [iso-27001]
+- id: 677
+  title: Frenchy anti-repeat — no quip twice in the last 10
+  frameworks: [soc2]
+- id: 678
+  title: Eval spine — model manifest: sha256 + size + path per weight shard, canonically sorted
+  frameworks: [ai-rmf, supply-chain]
+- id: 679
+  title: Eval spine — merkle root over domain-separated shard leaves, stable under reordering
+  frameworks: [ai-rmf, supply-chain]
+- id: 680
+  title: Eval spine — modelIdentityHash binds modelId/revision/quantization/weightRoot/configHash/tokenizerId
+  frameworks: [ai-rmf]
+- id: 681
+  title: Eval spine — byte-verify fails closed with named codes, each code tested
+  frameworks: [ai-rmf]
+- id: 682
+  title: Eval spine — structural rejection at load: traversal, duplicates, zero-byte shards, unknown quantization
+  frameworks: [ai-rmf, supply-chain]
+- id: 683
+  title: Eval spine — one flipped shard byte moves the identity; a name-swap cannot hide it
+  frameworks: [ai-rmf, supply-chain]
+- id: 684
+  title: Eval spine — tokenizer manifest per model: id/family/vocabSize/contextWindow/implementation/corpusHash
+  frameworks: [ai-rmf]
+- id: 685
+  title: Eval spine — preflight context-fit before any completion, margin enforced, overflow named
+  frameworks: [ai-rmf]
+- id: 686
+  title: Eval spine — deterministic reference counter; NFC normalize-then-count; same text same count
+  frameworks: [ai-rmf]
+- id: 687
+  title: Eval spine — tokenizer corpus drift aborts the run (TOKENIZER_CORPUS_DRIFT)
+  frameworks: [ai-rmf]
+- id: 688
+  title: Eval spine — agent is a declared bundle; validation fail-closed with named range/format codes
+  frameworks: [ai-rmf]
+- id: 689
+  title: Eval spine — determinism ladder: seed AND (temp 0 or replay guarantee), else NONDET_SAMPLING
+  frameworks: [ai-rmf]
+- id: 690
+  title: Eval spine — paramsHash is canonical: key order and tool order cannot change it
+  frameworks: [ai-rmf]
+- id: 691
+  title: Eval spine — replay verification: NONDETERMINISTIC_OUTPUT and TRUNCATED_RUN fail the run
+  frameworks: [ai-rmf]
+- id: 692
+  title: Eval spine — probes.jsonl: one schema offline and online; checkers referenced by checkerId only
+  frameworks: [ai-rmf]
+- id: 693
+  title: Eval spine — bank floors at load: DUP_ID / DUP_PROMPT / UNKNOWN_CHECKER / TOO_FEW_PROBES / TOO_FEW_FAMILIES
+  frameworks: [ai-rmf]
+- id: 694
+  title: Eval spine — deterministic checkers only; a throwing checker is CHECKER_THREW, never a vanished exception
+  frameworks: [ai-rmf]
+- id: 695
+  title: Eval spine — bank hash over the sorted canonical projection; shuffled JSONL hashes identically
+  frameworks: [ai-rmf]
+- id: 696
+  title: Eval spine — NFC policy on probe text; text that changes under NFC is tagged
+  frameworks: [ai-rmf]
+- id: 697
+  title: Eval spine — pipeline order fixed: manifests, tokenizer self-test, drift, preflight, execute, replay, usage audit, score
+  frameworks: [ai-rmf]
+- id: 698
+  title: Eval spine — verdict hash binds paramsHash + modelIdentityHash + tokenizerCorpusHash + probeBankHash + results
+  frameworks: [ai-rmf, soc2]
+- id: 699
+  title: Eval spine — scoring gates: BATCH_AUTO_VOID under 80%; INJECTION_FAIL overrides everything
+  frameworks: [ai-rmf]
+- id: 700
+  title: Eval spine — eval cache is content-addressed and the runner is the one door
+  frameworks: [ai-rmf, iso-27001]
+- id: 701
+  title: Solana port — Anchor workspace, pinned toolchain, reproducible build
+  frameworks: [supply-chain]
+- id: 702
+  title: Solana port — CPI allowlist (SPL Token + System only), build-fail enforced
+  frameworks: [scsvs, supply-chain]
+- id: 703
+  title: Solana port — PDA seeds documented (["escrow", worker, work_id] / ["vault", escrow]), no user bump
+  frameworks: [scsvs]
+- id: 704
+  title: Solana port — escrow account mirrors the EVM struct field-for-field, version tag
+  frameworks: [scsvs]
+- id: 705
+  title: Solana port — typed errors matching the EVM fail-closed table
+  frameworks: [scsvs]
+- id: 706
+  title: Solana port — stake lives only in the PDA-owned vault
+  frameworks: [scsvs]
+- id: 707
+  title: Solana port — fee assessed and frozen at post_work; fee_held is a field
+  frameworks: [scsvs]
+- id: 708
+  title: Solana port — pass charges the fee; fail/expiry returns it
+  frameworks: [scsvs]
+- id: 709
+  title: Solana port — dispute 50/50 slash, dispute fee routed exactly once
+  frameworks: [scsvs]
+- id: 710
+  title: Solana port — stake floor = k x verification cost; checked u64, overflow = tx failure
+  frameworks: [scsvs]
+- id: 711
+  title: Solana port — conservation predicate asserted at the end of every mutating instruction
+  frameworks: [scsvs]
+- id: 712
+  title: Solana port — verdict hash = sha256 over JCS body, byte-identical with the eval engine
+  frameworks: [ai-rmf]
+- id: 713
+  title: Solana port — Clock.slot expiry with the documented slots/second constant
+  frameworks: [scsvs]
+- id: 714
+  title: Solana port — checks-effects-interactions; value last; no CPI after value
+  frameworks: [scsvs]
+- id: 715
+  title: Solana port — upgrade authority = Squads multisig; single key fails CI
+  frameworks: [iso-27001]
+- id: 716
+  title: Solana port — Anchor test suite mirrors the Foundry handler cases (ghost mirror, conservation)
+  frameworks: [scsvs]
+- id: 717
+  title: Solana port — event parity with the EVM events; Frenchy triggers bind to these
+  frameworks: [scsvs]
+- id: 718
+  title: Solana port — eval verdict (mock provider) settles a Solana escrow, one CI job
+  frameworks: [ai-rmf]
+- id: 719
+  title: Solana port — Token-2022 extensions declared; transfer-fee mints rejected at open
+  frameworks: [scsvs]
+- id: 720
+  title: Solana port — spec stays in sync; devnet-to-mainnet runbook incl. multisig handover
+  frameworks: [soc2]
+- id: 721
+  title: Solana upgrade authority = multisig or immutable
+  frameworks: [iso-27001]
+- id: 722
+  title: Devnet deploy; program ids published
+  frameworks: [supply-chain]
+- id: 723
+  title: Deterministic build — solana-verify hash equals deployed
+  frameworks: [supply-chain]
+- id: 724
+  title: Program logs emit the verdict-hash field
+  frameworks: [soc2]
+- id: 725
+  title: work-escrow Solana events equal the EVM ABI events
+  frameworks: [scsvs]
+- id: 726
+  title: Trainable eval — deterministic splits (sha256 mod 100)
+  frameworks: [ai-rmf]
+- id: 727
+  title: Trainable eval — trajectory JSONL, no wall-clock fields
+  frameworks: [ai-rmf]
+- id: 728
+  title: Trainable eval — best-of-n SFT + fail-pass DPO pairs
+  frameworks: [ai-rmf]
+- id: 729
+  title: Trainable eval — DSPy-lite prompt opt, holdout touched once
+  frameworks: [ai-rmf]
+- id: 730
+  title: Trainable eval — corpus-drift regression alerts
+  frameworks: [ai-rmf]
+- id: 731
+  title: Restore gate + persistence (restore.sh green every session)
+  frameworks: [supply-chain]
+- id: 732
+  title: Params single source — codegen, drift check, 5 derived invariants
+  frameworks: [supply-chain]
+- id: 733
+  title: DECISIONS.md — D-1..D-15 resolved or defaulted
+  frameworks: [soc2]
+- id: 734
+  title: Arena post/cancel/expire on both chains
+  frameworks: [scsvs]
+- id: 735
+  title: Token policy — allowlist, extension rejection, balance-delta checks
+  frameworks: [scsvs]
+- id: 736
+  title: Claim/yield/timeout with bond; anti-squatting
+  frameworks: [scsvs]
+- id: 737
+  title: submit_run — runner + attestor signatures, pass only
+  frameworks: [ai-rmf]
+- id: 738
+  title: Domain separation + replay protection (EIP-712 / Ed25519, nonces)
+  frameworks: [scsvs]
+- id: 739
+  title: Permissionless O1 settlement after window + grace
+  frameworks: [scsvs]
+- id: 740
+  title: Sealed holdout reveal + holdout-fail path
+  frameworks: [ai-rmf]
+- id: 741
+  title: Break commit-reveal; reveals only after the window
+  frameworks: [scsvs]
+- id: 742
+  title: Stake-ranked docket, refunds, failed-stake routing to treasury
+  frameworks: [scsvs]
+- id: 743
+  title: Outcomes O1–O8 with conservation per instruction
+  frameworks: [scsvs]
+- id: 744
+  title: Ghost ledger + reconcile over full history
+  frameworks: [scsvs]
+- id: 745
+  title: Argus seats, draw, votes, tally, rounds, slashing
+  frameworks: [scsvs]
+- id: 746
+  title: Exits never close — every state times out to a permissionless exit
+  frameworks: [scsvs]
+- id: 747
+  title: Standing library — TS equals Rust on golden vectors
+  frameworks: [ai-rmf]
+- id: 748
+  title: Soulbound credential both chains; epochs on identity transfer
+  frameworks: [scsvs]
+- id: 749
+  title: ERC-8004 publish in try/catch + republish; one-call getSummary
+  frameworks: [ai-rmf]
+- id: 750
+  title: Solana Agent Registry adapter; anti-wash weighting
+  frameworks: [ai-rmf]
+- id: 751
+  title: Validation Registry behind a flag — soft then hard responses
+  frameworks: [ai-rmf]
+- id: 752
+  title: Verdict golden vectors — TS = Rust = Solidity sha256
+  frameworks: [ai-rmf]
+- id: 753
+  title: Arena event/error snapshots across chains
+  frameworks: [scsvs]
+- id: 754
+  title: Artifact digest + EIP-712 + Ed25519 message parity
+  frameworks: [scsvs]
+- id: 755
+  title: CAIP-2 / CAIP-10 identifiers everywhere
+  frameworks: [soc2]
+- id: 756
+  title: Harena sandbox policy + escape tests (gVisor, no egress, limits)
+  frameworks: [scsvs]
+- id: 757
+  title: Suite checks — satisfiable, strong (mutation), stable (3 replays)
+  frameworks: [ai-rmf]
+- id: 758
+  title: Sealed holdout — encryption, access audit, scrubbed logs
+  frameworks: [scsvs]
+- id: 759
+  title: R2/IPFS storage; digests re-verified on fetch
+  frameworks: [supply-chain]
+- id: 760
+  title: argus-node crash-safe salts + auto-reveal after restart
+  frameworks: [soc2]
+- id: 761
+  title: AI judge manifests + prompt-injection fixtures
+  frameworks: [ai-rmf]
+- id: 762
+  title: Five frontier adapters; sampling pinned where supported
+  frameworks: [ai-rmf]
+- id: 763
+  title: Open Bench — pass@k / pass^k, model×harness table, Merkle anchor
+  frameworks: [ai-rmf]
+- id: 764
+  title: Keys memory-only; redaction tests
+  frameworks: [iso-27001]
+- id: 765
+  title: RLVR export + grader-hacking probes + dataset cards; no holdout ids
+  frameworks: [ai-rmf]
+- id: 766
+  title: MCP server — 11 tools, unsigned-transaction pattern
+  frameworks: [soc2]
+- id: 767
+  title: TS SDK, Python SDK, CLI
+  frameworks: [soc2]
+- id: 768
+  title: Session keys + spend caps; over-cap rejected
+  frameworks: [scsvs]
+- id: 769
+  title: Injection fixtures — house agents refuse
+  frameworks: [ai-rmf]
+- id: 770
+  title: External MCP agent completes a devnet trial with no UI
+  frameworks: [ai-rmf]
+- id: 771
+  title: App shell, routes, design system, WCAG 2.2 AA
+  frameworks: [soc2]
+- id: 772
+  title: Wallets, embedded login, sponsored fees
+  frameworks: [soc2]
+- id: 773
+  title: Posting wizard with AI drafts + suite checks
+  frameworks: [ai-rmf]
+- id: 774
+  title: Live trial room (Durable Objects / SSE)
+  frameworks: [soc2]
+- id: 775
+  title: Agent profile, credential, epochs
+  frameworks: [ai-rmf]
+- id: 776
+  title: Six leaderboards + weekly Merkle root on both chains
+  frameworks: [ai-rmf]
+- id: 777
+  title: Seasons engine, tiers, laurels
+  frameworks: [soc2]
+- id: 778
+  title: Daily Trial, Exhibition mode, house gladiators
+  frameworks: [ai-rmf]
+- id: 779
+  title: Favor + Augur Brier board; no transfer or cash-out path
+  frameworks: [scsvs]
+- id: 780
+  title: Quests, streaks, badges
+  frameworks: [soc2]
+- id: 781
+  title: Notifications — push, email, bots, webhooks
+  frameworks: [soc2]
+- id: 782
+  title: Shareables — OG cards, Blinks, clips, Praeco herald
+  frameworks: [seo]
+- id: 783
+  title: Threat model + security checklists signed off
+  frameworks: [iso-27001]
+- id: 784
+  title: Static analysis — Slither, Aderyn, clippy -D warnings, cargo audit
+  frameworks: [supply-chain]
+- id: 785
+  title: Fuzzing + invariants — proptest, model-based, Foundry
+  frameworks: [scsvs]
+- id: 786
+  title: Indexer idempotent, finality-aware, reorg-tested
+  frameworks: [scsvs]
+- id: 787
+  title: Telemetry — traces, metrics, alerts
+  frameworks: [soc2]
+- id: 788
+  title: CI all green on main
+  frameworks: [supply-chain]
+- id: 789
+  title: demo.ts + demo-arena.ts run output
+  frameworks: [soc2]
+- id: 790
+  title: Seeded arena (trials, agents, skeptics, seats, a season)
+  frameworks: [soc2]
+- id: 791
+  title: Pitch video + technical demo video
+  frameworks: [soc2]
+- id: 792
+  title: README, ARCHITECTURE, SECURITY, THREAT_MODEL, AI-ATTRIBUTION, LICENSE
+  frameworks: [soc2]
+- id: 793
+  title: Business plan
+  frameworks: [soc2]
+- id: 794
+  title: Submission checklist for the chosen event complete
+  frameworks: [soc2]
+- id: 795
+  title: Persistence drill — delete local, restore, all green
+  frameworks: [supply-chain]
+
+frameworks:
+  owasp-top10: "OWASP Web Top 10 (2021)"
+  llm-top10: "OWASP LLM Top 10 (2025)"
+  scsvs: "SCSVS / SWC"
+  iso-27001: "ISO 27001 Annex A"
+  ai-rmf: "NIST AI RMF"
+  eu-ai-act: "EU AI Act"
+  soc2: "SOC2-lite"
+  supply-chain: "SLSA / SBOM"
+  seo: "SEO / discoverability"
+  geo: "Generative Engine Optimization"
+  aeo: "Answer Engine Optimization"

@@ -8,10 +8,13 @@ COPY crucible-contracts/package.json crucible-contracts/package.json
 COPY packages/agent-security/package.json packages/agent-security/
 COPY packages/argus/package.json packages/argus/
 COPY packages/cidstore/package.json packages/cidstore/
+COPY packages/crypto/package.json packages/crypto/
 COPY packages/forge-runner/package.json packages/forge-runner/
+COPY packages/harness/package.json packages/harness/
 COPY packages/indexer/package.json packages/indexer/
 COPY packages/smith-sdk/package.json packages/smith-sdk/
 COPY packages/warden/package.json packages/warden/
+COPY grader/package.json grader/
 COPY apps/api/package.json apps/api/
 COPY apps/web/package.json apps/web/
 COPY apps/keeper/package.json apps/keeper/

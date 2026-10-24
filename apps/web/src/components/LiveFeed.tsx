@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Chrome, ColdForge, Quenching, SignalLost } from "@/components/Chrome";
+import { ColdForge, Quenching, SignalLost } from "@/components/Chrome";
 import { useSnapshot } from "@/lib/useSnapshot";
 import { TrialTable } from "@/components/TrialTable";
 

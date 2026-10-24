@@ -45,7 +45,7 @@ contract Handler is Test {
         uint64 win = uint64(bound(wSeed, 1 hours, 3 days));
         vm.deal(sponsor, reward);
         vm.prank(sponsor);
-        try trials.createTrial{value: reward}(SPEC, TESTS, uint64(block.timestamp + 2 days), win) {} catch {}
+        try trials.createTrial{value: reward}(reward, SPEC, TESTS, uint64(block.timestamp + 2 days), win) {} catch {}
     }
 
     function claim(uint256 idSeed) external {

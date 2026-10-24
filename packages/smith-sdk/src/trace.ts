@@ -51,6 +51,49 @@ export interface SealedSpan extends TraceSpan {
   hash: Hex;
 }
 
+/**
+ * The span inventory: what the spine carries, as data rather than prose.
+ *
+ * The showcase renders a trace it did not witness, so it has to know what a span
+ * *is* before it can decide what to show: which actor writes it, when, and which
+ * detail keys it carries. An entry missing here is a span the evidence page cannot
+ * explain, so the keeper's test reads the `span:` literals out of its own `main.ts`
+ * and fails on one that is not in this table — the inventory cannot rot behind the
+ * code it describes.
+ */
+export type SpanActor = "keeper" | "seat" | "api";
+
+/** The writers the spine recognizes — a span claiming any other actor is not explainable. */
+export const SPAN_ACTORS: readonly SpanActor[] = ["keeper", "seat", "api"];
+
+export interface SpanSpec {
+  /** the process that writes this span */
+  actor: SpanActor;
+  /** when the span is written, in plain words */
+  meaning: string;
+  /** the keys `detail` carries; absent keys mean the alternative shape that span can take */
+  detail: readonly string[];
+}
+
+export const SPAN_INVENTORY: Readonly<Record<string, SpanSpec>> = {
+  "keeper.start": {
+    actor: "keeper",
+    meaning: "first entry of a trace — which mode, which signer, which trials contract",
+    detail: ["mode", "signer", "trials"],
+  },
+  "keeper.sweep": {
+    actor: "keeper",
+    meaning: "a sweep that changed something; a sweep that did nothing is not recorded",
+    detail: ["chainNow", "acted", "notified"],
+  },
+  "keeper.act": {
+    actor: "keeper",
+    meaning:
+      "one finalize/reclaim decision — txHash is null when the keeper was second, error carries why",
+    detail: ["action", "reason", "txHash", "error"],
+  },
+};
+
 export type VerifyResult =
   | { ok: true; entries: number; head: Hex }
   | { ok: false; index: number; reason: string };
