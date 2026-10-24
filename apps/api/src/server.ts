@@ -1,7 +1,7 @@
 import { serve } from "@hono/node-server";
 import { foundry } from "viem/chains";
 import { createPublicClient, http, keccak256, toHex } from "viem";
-import { Scribe, UNKNOWN_ALLOY, type AlloyState } from "@crucible/indexer";
+import { Scribe, TRIALS_SOURCE, UNKNOWN_ALLOY, type AlloyState } from "@crucible/indexer";
 import { ALLOY_ABI, selfSchedulingLoop } from "@crucible/smith";
 import { createApp } from "./app.js";
 import { makeReplaySource } from "./replay.js";
@@ -132,7 +132,7 @@ const voice = (() => {
 const publicClient = createPublicClient({ chain: foundry, transport: http(rpcUrl) });
 
 const scribe = new Scribe({
-  trialsAddress,
+  source: { ...TRIALS_SOURCE, address: trialsAddress },
   alloyAddress,
   chain: foundry,
   rpcUrl,

@@ -889,15 +889,24 @@ much of the product's promise each one costs.
     carried survive in the OFL texts beside the fonts and in `forge-std`'s own licence files.
     The two demo fixtures keep their MIT headers on purpose — their bytes are pinned by a keccak
     digest already published on-chain, and `npm run seed:check` re-proves both still resolve.
-16. **HALF-CLOSED — the arena has an ABI and a keeper crank, but no deploy and no reader.**
+16. **HALF-CLOSED — the arena has an ABI, a keeper crank and a transport that can read it, but
+    no deploy, no projection and no route.**
     `Arena.sol` and `ArgusCourt.sol` are tested by `forge test` and by no other name until now.
     Landed: `ARENA_ABI`, generated from the artifact (51 functions, 23 events, 54 errors) and
     drift-checked against the source; `trialCount()`, the one enumeration both a keeper and a
-    reader need; and the keeper's crank loop for `expireTrial`, `claimTimeout`, `freezeDocket`,
+    reader need; the keeper's crank loop for `expireTrial`, `claimTimeout`, `freezeDocket`,
     `drawPanel` and `tally`, behind its own `keeper.arena` switch and breaker, reported in
-    `/health` and absent when `ARENA_ADDRESS` is empty. Still absent, and named rather than
-    implied: **no deploy** — `Deploy.s.sol` and `Demo` never construct an arena, so the address
-    is empty on every host and the loop is not created; **no indexer projection**; **no route**.
+    `/health` and absent when `ARENA_ADDRESS` is empty; and, as of 2026-10-25, **the scribe's
+    transport takes its contract as a parameter** — `LogSource` is `{ address, abi, eventNames }`
+    and the address, ABI and twelve event names stopped being module constants, so one transport
+    can serve both escrows. Two facts keep that from being more than it is. The **reducer** is
+    still the v1 escrow's, so an Arena `Scribe` would project Arena logs into a Trials read model;
+    the projection is the next slice, not this one. And the generalisation is proven by an A/B on
+    one node — a block whose bloom carries `TrialCreated` is crossed as quiet by a source that
+    does not accept it and stops a source that does — not by a second contract in production.
+    Still absent, and named rather than implied: **no deploy** — `Deploy.s.sol` and `Demo` never
+    construct an arena, and `new Arena(` appears only in `test/`, so the address is empty on every
+    host and the loop is not created; **no indexer projection**; **no route**.
     `revealHoldout` is not a crank and stays the agent's own act. A reviewer arriving from the v2
     bible still finds gates 734–746 green at the contract layer and the off-chain half missing.
 

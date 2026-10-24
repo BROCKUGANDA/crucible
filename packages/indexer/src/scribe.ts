@@ -7,6 +7,8 @@ import {
   hexToBytes,
   http,
   keccak256,
+  type Abi,
+  type AbiEvent,
   type Address,
   type Chain,
   type Hex,
@@ -25,15 +27,62 @@ import {
 import { RpcThrottler, withBackoff, BreakerOpen, CircuitBreaker } from "@crucible/smith";
 
 /**
- * Live tailing of CrucibleTrials.
+ * Live tailing of one contract's logs, replayed into a read model.
  *
  * Ponder is the intended production indexer; this is a dependency-light tailer
  * that produces the identical read model, so the API and frontend work without a
  * Postgres instance and the demo runs with one process.
+ *
+ * The contract is a parameter (`source`), not a constant: the transport below is the same
+ * sharded, bloom-checked, quiet-tail-proof, reorg-safe reader whichever escrow it points at.
+ * The reducer is still the v1 escrow's — `TRIALS_SOURCE` is the only source wired to one today.
  */
 
+/**
+ * One contract's log surface: the address to read, the ABI the shapes come from, and the events
+ * to accept.
+ *
+ * The Scribe was written against `CrucibleTrials` and carried all three as module constants, so a
+ * second contract could only have been indexed by forking the file. Nothing in the transport —
+ * sharded reads, the bloom cross-check, the quiet-tail proof, reorg replay — knows which contract
+ * it is reading; these three fields are the whole of what does.
+ */
+export interface LogSource {
+  /** The contract whose logs this transport reads. */
+  address: Address;
+  /** The ABI the event shapes are decoded from. */
+  abi: Abi;
+  /** Which of that ABI's events to accept. A list that matches none is a construction error. */
+  eventNames: readonly string[];
+}
+
+/** The v1 escrow's events — the only contract this repository has indexed until now. */
+export const TRIALS_EVENTS = [
+  "TrialCreated",
+  "AgentRegistered",
+  "RunnerSet",
+  "TrialClaimed",
+  "RunSubmitted",
+  "BreakFiled",
+  "DisputeOpened",
+  // The two seat votes. A dispute's `_disputes` mapping is private and neither
+  // `disputeOf` nor `disputeVote` can enumerate WHO holds a commitment, so these logs are
+  // the only source for "how many seats have committed" — the count an Argus seat must
+  // wait for before revealing, per ADR-0004.
+  "VoteCommitted",
+  "VoteRevealed",
+  "VerdictFinalized",
+  "StakeWithdrawn",
+  "Withdrawn",
+  "IdentityLinked",
+] as const;
+
+/** The v1 escrow as a source. A caller spreads it and supplies the address. */
+export const TRIALS_SOURCE = { abi: TRIALS_ABI, eventNames: TRIALS_EVENTS } as const;
+
 export interface IndexerConfig {
-  trialsAddress: Address;
+  /** The contract to read, and which of its events to accept. */
+  source: LogSource;
   /**
    * Accepted for callers that pass one chain config, and deliberately NOT indexed.
    *
@@ -76,37 +125,6 @@ export interface IndexerConfig {
    */
   cursorFile?: string;
 }
-
-const EVENT_NAMES = [
-  "TrialCreated",
-  "AgentRegistered",
-  "RunnerSet",
-  "TrialClaimed",
-  "RunSubmitted",
-  "BreakFiled",
-  "DisputeOpened",
-  // The two seat votes. A dispute's `_disputes` mapping is private and neither
-  // `disputeOf` nor `disputeVote` can enumerate WHO holds a commitment, so these logs are
-  // the only source for "how many seats have committed" — the count an Argus seat must
-  // wait for before revealing, per ADR-0004.
-  "VoteCommitted",
-  "VoteRevealed",
-  "VerdictFinalized",
-  "StakeWithdrawn",
-  "Withdrawn",
-  "IdentityLinked",
-] as const;
-
-// viem `getLogs` needs the full ABI event shape, not bare names.
-const EVENTS = TRIALS_ABI.filter(
-  (item): item is Extract<typeof item, { type: "event"; name: string }> =>
-    item.type === "event" && EVENT_NAMES.includes(item.name as (typeof EVENT_NAMES)[number]),
-);
-
-/** Every topic0 this indexer would accept, for the block-bloom cross-check below. */
-const TOPIC0S: `0x${string}`[] = EVENTS.map(
-  (e) => encodeEventTopics({ abi: TRIALS_ABI, eventName: e.name })[0] as `0x${string}`,
-);
 
 /**
  * Does this block's logsBloom possibly contain `topic`?
@@ -268,8 +286,30 @@ export class Scribe {
   private reportedPartialTrials = 0;
   /** One ceiling on concurrent RPC calls for the whole indexer. */
   private readonly rpc = new RpcThrottler(8);
+  /** The events this source accepts, resolved from its ABI once rather than per read. */
+  private readonly events: AbiEvent[];
+  /** Every topic0 this source would accept, for the block-bloom cross-check. */
+  private readonly topic0s: `0x${string}`[];
 
   constructor(private readonly cfg: IndexerConfig) {
+    this.events = cfg.source.abi.filter(
+      (item): item is AbiEvent =>
+        item.type === "event" && cfg.source.eventNames.includes(item.name),
+    );
+    /**
+     * A name that matches nothing indexes nothing, and an index that accepts no event looks
+     * exactly like a quiet chain from every caller's side. Refusing at construction is the only
+     * place the difference can still be seen.
+     */
+    if (this.events.length === 0) {
+      throw new Error(
+        `indexer source ${cfg.source.address} accepts no event from its own ABI: ` +
+          `[${cfg.source.eventNames.join(", ")}] matched none of its ${cfg.source.abi.length} entries.`,
+      );
+    }
+    this.topic0s = this.events.map(
+      (e) => encodeEventTopics({ abi: cfg.source.abi, eventName: e.name })[0] as `0x${string}`,
+    );
     this.client = createPublicClient({
       chain: cfg.chain,
       // Deliberately NOT batched, for two reasons that both cost the site.
@@ -540,7 +580,7 @@ export class Scribe {
         this.noteHeadRead(b.number ?? block, Number(b.timestamp));
 
         const bloom = b.logsBloom;
-        if (!bloom || bloom === "0x" || !TOPIC0S.some((t) => bloomMayContain(bloom, t))) {
+        if (!bloom || bloom === "0x" || !this.topic0s.some((t) => bloomMayContain(bloom, t))) {
           continue;
         }
         // A block's own number is the authority, and it is null only for a
@@ -569,14 +609,14 @@ export class Scribe {
         try {
           const logs = await this.rpc.run(() =>
             withBackoff(
-              () => this.client.getLogs({ fromBlock: number, toBlock: number, events: EVENTS }),
+              () => this.client.getLogs({ fromBlock: number, toBlock: number, events: this.events }),
               { operation: "scribe.getLogs" },
             ),
           );
           if (logs.length === 0) {
             verdict = "disagrees";
           } else {
-            const ours = this.cfg.trialsAddress.toLowerCase();
+            const ours = this.cfg.source.address.toLowerCase();
             verdict = logs.some((l) => l.address.toLowerCase() === ours) ? "ours" : "foreign";
           }
         } catch (err) {
@@ -680,8 +720,8 @@ export class Scribe {
       withBackoff(
         () =>
           this.client.getLogs({
-            address: this.cfg.trialsAddress,
-            events: EVENTS,
+            address: this.cfg.source.address,
+            events: this.events,
             fromBlock: from,
             toBlock: to,
           }),
@@ -812,5 +852,3 @@ export function toEventLike(log: Log): EventLike {
     args,
   };
 }
-
-export { TRIALS_ABI };

@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { createPublicClient, createWalletClient, http } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { foundry } from "viem/chains";
-import { Scribe } from "@crucible/indexer";
+import { Scribe, TRIALS_SOURCE } from "@crucible/indexer";
 import { CircuitBreaker, Crucible, Flags } from "@crucible/smith";
 import { TraceLog, type TraceSpan } from "@crucible/smith/trace";
 import { Warden } from "@crucible/warden";
@@ -170,7 +170,7 @@ async function boot(): Promise<void> {
   console.log(`[keeper] ${mode} — signer ${account.address}`);
 
   const scribe = new Scribe({
-    trialsAddress,
+    source: { ...TRIALS_SOURCE, address: trialsAddress },
     alloyAddress,
     chain: foundry,
     rpcUrl,

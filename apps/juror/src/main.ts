@@ -6,7 +6,7 @@ import { ContentBridge, CidStore, DisclosureLog } from "@crucible/cidstore";
 import { ContentService, DEFAULT_SANDBOX } from "@crucible/forge-runner";
 import { LiveVerifier } from "@crucible/argus";
 import { CircuitBreaker, Flags, digestOfContent, envKillSwitches } from "@crucible/smith";
-import { Scribe, disputeState, listTrials } from "@crucible/indexer";
+import { Scribe, TRIALS_SOURCE, disputeState, listTrials } from "@crucible/indexer";
 import { readConfig } from "./config.js";
 import { CrucibleChain } from "./chain.js";
 import { DurableSeat } from "./cast.js";
@@ -107,7 +107,7 @@ async function boot(): Promise<void> {
   console.log(`[juror] seat state ${cfg.stateDir} — ${pending.length} unopened commitment(s) recovered`);
 
   const scribe = new Scribe({
-    trialsAddress: cfg.trialsAddress,
+    source: { ...TRIALS_SOURCE, address: cfg.trialsAddress },
     chain: chain.chainConfig,
     rpcUrl: cfg.rpcUrl,
     fromBlock: cfg.fromBlock ?? 0n,
