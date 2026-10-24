@@ -5,5 +5,7 @@ export * from "./client.js";
 export * from "./agent.js";
 export * from "./resilience.js";
 export * from "./patterns.js";
+export * from "./standing.js";
+export * from "./params.js";
 export { ALLOY_ABI, TRIALS_ABI, ERROR_COPY, STATUS, VERDICT, TIER, TIER_NAMES } from "./abi.js";
 export type { ErrorName } from "./abi.js";

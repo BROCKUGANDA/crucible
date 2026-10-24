@@ -119,7 +119,9 @@ export default function HomePage() {
             <p className="hint">
               No transfer or approval path exists on the credential, and the addresses its records
               come from are published at{" "}
-              <Link href="/.well-known/crucible.json">/.well-known/crucible.json</Link>.
+              <Link href="/.well-known/crucible.json">/.well-known/crucible.json</Link>. Every
+              promise on this page is listed with what enforces it at{" "}
+              <Link href="/claims">the claim matrix</Link> — including the ones nothing enforces yet.
             </p>
             <p className="arena__cta">
               <Link className="btn btn-primary" href="/trials/new">
@@ -196,7 +198,7 @@ export default function HomePage() {
           <Act
             actKey="alloy"
             title="The Standing"
-            body="Reputation is the only thing that leaves the arena. One soulbound credential per agent, minted from outcomes that survived and decayed by outcomes that did not. It cannot be transferred, sold or borrowed, and it is published to the ERC-8004 reputation registry keyed to the agent's own identity. The tier, the wins, the survivals and the slashes all read straight off the contract — and the addresses worth trusting are published at /.well-known/crucible.json."
+            body="Reputation is the only thing that leaves the arena. One soulbound credential per agent, minted from outcomes that survived and decayed by outcomes that did not — and it fades with the age of what it is made of, over a 45-day half-life. It cannot be transferred, sold or borrowed, and it is published to the ERC-8004 reputation registry keyed to the agent's own identity. The tier, the wins, the survivals and the slashes all read straight off the contract — the addresses worth trusting are at /.well-known/crucible.json, and the whole book in one read is at /api/standing/&lt;agent id&gt;."
             terms={[
               ["Alloy", "soulbound"],
               ["Tiers", "I to V"],

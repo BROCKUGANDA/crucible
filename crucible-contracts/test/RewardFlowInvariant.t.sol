@@ -69,8 +69,7 @@ contract RewardFlowInvariant is Test {
     function test_rewardMath_settleOnPass() public {
         uint256 reward = 100 ether;
         uint256 stake = 20 ether;
-        (uint256 workerPayout, uint256 feePayout, uint256 stakeBack) =
-            RewardMath.settleOnPass(reward, stake);
+        (uint256 workerPayout, uint256 feePayout, uint256 stakeBack) = RewardMath.settleOnPass(reward, stake);
         // worker gets 95 + 20 = 115; feeVault gets 5; stake back 20
         assertEq(workerPayout, 115 ether);
         assertEq(feePayout, 5 ether);
@@ -80,8 +79,7 @@ contract RewardFlowInvariant is Test {
     function test_rewardMath_settleOnFail() public {
         uint256 reward = 100 ether;
         uint256 stake = 20 ether;
-        (uint256 funderRefund, uint256 funderStakeBack, uint256 feeStakeBack) =
-            RewardMath.settleOnFail(reward, stake);
+        (uint256 funderRefund, uint256 funderStakeBack, uint256 feeStakeBack) = RewardMath.settleOnFail(reward, stake);
         // funder gets full reward 100; stake slashed 50/50: 10 to funder, 10 to feeVault
         assertEq(funderRefund, 100 ether);
         assertEq(funderStakeBack, 10 ether);
@@ -112,22 +110,22 @@ contract RewardFlowInvariant is Test {
         assertTrue(
             RewardMath.conservation(
                 1_000 ether, // balance
-                400 ether,   // rewardsHeld
-                300 ether,   // stakesHeld
-                50 ether,    // disputeFeesHeld
-                150 ether,   // feeVault
-                100 ether    // pendingHeld
+                400 ether, // rewardsHeld
+                300 ether, // stakesHeld
+                50 ether, // disputeFeesHeld
+                150 ether, // feeVault
+                100 ether // pendingHeld
             ),
             "conservation should hold"
         );
         assertFalse(
             RewardMath.conservation(
                 1_000 ether, // balance
-                400 ether,   // rewardsHeld
-                300 ether,   // stakesHeld
-                50 ether,    // disputeFeesHeld
-                150 ether,   // feeVault
-                101 ether    // pendingHeld — off by one breaks equality
+                400 ether, // rewardsHeld
+                300 ether, // stakesHeld
+                50 ether, // disputeFeesHeld
+                150 ether, // feeVault
+                101 ether // pendingHeld — off by one breaks equality
             ),
             "conservation should fail off by one"
         );
@@ -142,7 +140,9 @@ contract RewardFlowInvariant is Test {
     function trialIds() public view returns (uint256[] memory) {
         uint256 n = trials.trialCount();
         uint256[] memory ids = new uint256[](n);
-        for (uint256 i; i < n; ++i) ids[i] = i + 1;
+        for (uint256 i; i < n; ++i) {
+            ids[i] = i + 1;
+        }
         return ids;
     }
 
@@ -169,11 +169,14 @@ contract RewardFlowInvariant is Test {
 
         // RewardMath prediction:
         //   workerPayout = 95 + 20 = 115; feePayout = 5; stakeBack = 20
-        (uint256 expectedWorker, uint256 expectedFee, uint256 expectedStakeBack) =
-            RewardMath.settleOnPass(reward, bond);
+        (uint256 expectedWorker, uint256 expectedFee, uint256 expectedStakeBack) = RewardMath.settleOnPass(reward, bond);
 
         // Contract's actual credit ledger:
-        assertEq(trials.credit(operator), expectedWorker - expectedStakeBack, "worker credit must equal RewardMath (bond returns to stake)");
+        assertEq(
+            trials.credit(operator),
+            expectedWorker - expectedStakeBack,
+            "worker credit must equal RewardMath (bond returns to stake)"
+        );
         assertEq(trials.credit(treasury), expectedFee, "feeVault credit must equal RewardMath");
         assertEq(trials.totalPending(), reward, "totalPending must equal reward (fee + worker payout)");
     }
@@ -217,13 +220,20 @@ contract RewardFlowInvariant is Test {
         // RewardMath prediction on fail:
         //   funderRefund = 100; funderStakeBack = bond/2 = 10; feeStakeBack = 10
         //   skeptic gets 30% of bond + breakStake returned
-        (uint256 funderRefund, uint256 funderStakeBack, uint256 feeStakeBack) =
-            RewardMath.settleOnFail(reward, bond);
+        (uint256 funderRefund, uint256 funderStakeBack, uint256 feeStakeBack) = RewardMath.settleOnFail(reward, bond);
         uint256 skepticCut = (bond * 3000) / 10_000;
         uint256 expectedSkeptic = skepticCut + breakStake;
 
-        assertEq(trials.credit(sponsor), funderRefund, "sponsor credit must equal RewardMath (reward refunded; bond is slashed, not returned)");
-        assertEq(trials.credit(treasury), bond - (bond * trials.SLASH_SKEPTIC_NUM() / trials.BPS()), "treasury credit must equal slash split");
+        assertEq(
+            trials.credit(sponsor),
+            funderRefund,
+            "sponsor credit must equal RewardMath (reward refunded; bond is slashed, not returned)"
+        );
+        assertEq(
+            trials.credit(treasury),
+            bond - (bond * trials.SLASH_SKEPTIC_NUM() / trials.BPS()),
+            "treasury credit must equal slash split"
+        );
         assertEq(trials.credit(skeptic), expectedSkeptic, "skeptic credit must equal slash + returned stake");
     }
 }

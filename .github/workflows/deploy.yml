@@ -11,8 +11,10 @@ name: deploy
 #      browser bundle, and a tarball that carried a developer's .env once
 #      pointed the whole site at localhost. It is excluded from the sync.
 #   2. **anvil is never restarted.** The chain holds the live trials the site
-#      narrates; only web and api are swapped, with --no-deps, so the RPC
-#      container keeps its state across every deploy.
+#      narrates; only web, api and keeper are swapped, with --no-deps, so the RPC
+#      container keeps its state across every deploy. The keeper is in that list
+#      because it holds nothing a restart loses: it re-derives the due-set and
+#      skips trials already settled.
 
 on:
   # The deploy rides the gate, not the push.
@@ -166,6 +168,35 @@ jobs:
           echo "=== the sign-in and proxy keys, values redacted ==="
           sed -E 's/=.*/=<redacted>/' .env | grep -E "^(AUTH_ORIGIN|AUTH_SECRET|AUTH_ALLOW_DEV_SECRET|CHAIN_ID|TRUST_PROXY)=" || true
 
+      # The keeper refuses to start without a signing key. `compose.yaml` passes
+      # `PRIVATE_KEY: ${KEEPER_PRIVATE_KEY:-}`, `apps/keeper/src/main.ts` calls
+      # `required("TRIALS_ADDRESS")`/`resolveKeeperAccount` at boot, and viem rejects anything
+      # that is not a 32-byte hex key — so recreating the keeper on a host whose .env has no
+      # key replaces a running service with a crash loop, and nothing sweeps until someone
+      # reads the logs. Refuse before the build, with the existing keeper still running.
+      #
+      # The value is never printed. The shape is checked because a typo fails the same way
+      # a missing key does, and `privateKeyToAccount` is the only consumer that would say so.
+      - name: refuse to swap the keeper onto a host with no signing key
+        working-directory: /home/ubuntu/crucible
+        run: |
+          set -euo pipefail
+          if [ ! -f .env ]; then
+            echo "::error::no .env on the host; the keeper has no signing key to read"
+            exit 1
+          fi
+          key="$(grep -E '^KEEPER_PRIVATE_KEY=' .env | tail -n 1 | cut -d= -f2- \
+            | tr -d '[:space:]' || true)"
+          if [ -z "$key" ]; then
+            echo "::error::KEEPER_PRIVATE_KEY is empty in .env; leaving the running keeper in place"
+            exit 1
+          fi
+          if ! printf '%s' "$key" | grep -Eq '^0x[0-9a-fA-F]{64}$'; then
+            echo "::error::KEEPER_PRIVATE_KEY is not a 0x-prefixed 32-byte hex key; leaving the running keeper in place"
+            exit 1
+          fi
+          echo "KEEPER_PRIVATE_KEY is set and shaped like a key (value not printed)"
+
       - name: build web, api and keeper
         working-directory: /home/ubuntu/crucible
         # The seed image is built too — and only BUILT, never run. The deploy
@@ -241,6 +272,59 @@ jobs:
         # nothing credits twice; settlement credits the pull ledger before any ETH
         # moves (ADR-0003), so a mid-swap death leaves a credit, not a loss.
         run: docker compose -f compose.yaml -f compose.vps.yaml up -d --no-deps web api keeper
+
+      # A recreate is not a swap. The keeper's healthcheck is declared in compose.yaml
+      # (`wget /health`, 10s interval, 30 retries); this polls Docker's view of it with its
+      # own bound, so a keeper that never becomes healthy fails the deployment here instead
+      # of being discovered later by a settlement that never happened. It stays separate from
+      # the public probes below: those answer for the site, not for the daemon.
+      - name: wait for the keeper that was just started to become healthy
+        working-directory: /home/ubuntu/crucible
+        run: |
+          set -euo pipefail
+          id=""
+          for _ in $(seq 1 10); do
+            id="$(docker compose -f compose.yaml -f compose.vps.yaml ps -a -q keeper)"
+            [ -n "$id" ] && break
+            sleep 1
+          done
+          if [ -z "$id" ]; then
+            echo "::error::the keeper container is not there after the swap"
+            exit 1
+          fi
+          deadline=$((SECONDS + 180))
+          while [ "$SECONDS" -lt "$deadline" ]; do
+            state="$(docker inspect -f '{{.State.Status}}|{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$id" 2>/dev/null || echo gone)"
+            case "$state" in
+              running\|healthy)
+                echo "the keeper is healthy"
+                exit 0
+                ;;
+              running\|starting)
+                ;;
+              running\|none)
+                echo "::error::the keeper is running with no healthcheck; compose.yaml and the image disagree"
+                exit 1
+                ;;
+              running\|unhealthy)
+                echo "::error::the keeper reported unhealthy"
+                docker inspect -f '{{range .State.Health.Log}}{{.ExitCode}}: {{.Output}}{{"\n"}}{{end}}' "$id" 2>/dev/null | tail -20 || true
+                exit 1
+                ;;
+              gone)
+                echo "::error::the keeper container disappeared during the swap"
+                exit 1
+                ;;
+              *)
+                echo "::error::the keeper is not running after the swap ($state) — it refused to start"
+                docker logs --tail 40 "$id" 2>&1 || true
+                exit 1
+                ;;
+            esac
+            sleep 5
+          done
+          echo "::error::the keeper did not become healthy within 180s (last: $state)"
+          exit 1
 
       - name: prove it serves
         run: |
