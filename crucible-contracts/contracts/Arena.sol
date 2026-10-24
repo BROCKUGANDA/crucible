@@ -1041,66 +1041,6 @@ contract Arena {
     // take seven and name six of them, which is how a mis-ordered destructuring becomes a
     // wrong deadline on a live screen.
 
-    function statusOf(uint256 id) external view returns (Status) {
-        return _trials[id].status;
-    }
-
-    function outcomeOf(uint256 id) external view returns (Outcome) {
-        return _trials[id].outcome;
-    }
-
-    function roundOf(uint256 id) external view returns (uint8) {
-        return _trials[id].round;
-    }
-
-    function docketFrozenOf(uint256 id) external view returns (bool) {
-        return _trials[id].docketFrozen;
-    }
-
-    function holdoutRevealedOf(uint256 id) external view returns (bool) {
-        return _trials[id].holdoutRevealed;
-    }
-
-    function holdoutMissedOf(uint256 id) external view returns (bool) {
-        return _trials[id].holdoutMissed;
-    }
-
-    function rewardOf(uint256 id) external view returns (uint256) {
-        return _trials[id].reward;
-    }
-
-    function feeOf(uint256 id) external view returns (uint256) {
-        return _trials[id].fee;
-    }
-
-    function bondOf(uint256 id) external view returns (uint256) {
-        return _trials[id].bond;
-    }
-
-    function openUntilOf(uint256 id) external view returns (uint256) {
-        return _trials[id].openUntil;
-    }
-
-    function claimDeadlineOf(uint256 id) external view returns (uint256) {
-        return _trials[id].claimDeadline;
-    }
-
-    function submittedAtOf(uint256 id) external view returns (uint256) {
-        return _trials[id].submittedAt;
-    }
-
-    function windowEndOf(uint256 id) external view returns (uint256) {
-        return _trials[id].windowEnd;
-    }
-
-    function holdoutDueByOf(uint256 id) external view returns (uint256) {
-        return _trials[id].holdoutDueBy;
-    }
-
-    function skepticWindowOf(uint256 id) external view returns (uint256) {
-        return _trials[id].skepticWindow;
-    }
-
     function stateOf(uint256 id)
         external
         view
@@ -1191,22 +1131,6 @@ contract Arena {
     {
         Break storage b = _breakAt(id, index);
         return (b.skeptic, b.stake, b.seatFee, b.revealed, b.onDocket, b.landed, uint8(b.kind), b.committedAt);
-    }
-
-    function breakSkepticAt(uint256 id, uint256 index) external view returns (address) {
-        return _breakAt(id, index).skeptic;
-    }
-
-    function breakRevealedAt(uint256 id, uint256 index) external view returns (bool) {
-        return _breakAt(id, index).revealed;
-    }
-
-    function breakOnDocketAt(uint256 id, uint256 index) external view returns (bool) {
-        return _breakAt(id, index).onDocket;
-    }
-
-    function breakLandedAt(uint256 id, uint256 index) external view returns (bool) {
-        return _breakAt(id, index).landed;
     }
 
     function breakCount(uint256 id) external view returns (uint256) {
