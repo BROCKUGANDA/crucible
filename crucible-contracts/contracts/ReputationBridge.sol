@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.26;
 
 import {IERC8004ReputationRegistry, IERC8004IdentityRegistry} from "./interfaces/IERC8004.sol";

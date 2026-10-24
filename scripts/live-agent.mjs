@@ -76,7 +76,7 @@ Do not change the event signature. Do not add new imports.`;
  * only way it could be caught: the model diagnosed the real problem in the pinned
  * suite rather than "fixing" it, which is precisely the behaviour the guard is for.
  */
-const FIXTURE_SUITE = `// SPDX-License-Identifier: MIT
+const FIXTURE_SUITE = `// SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.20;
 
 import "../src/Forge.sol";
@@ -110,7 +110,7 @@ contract ForgeTest {
 }
 `;
 
-const FIXTURE_SOURCE = `// SPDX-License-Identifier: MIT
+const FIXTURE_SOURCE = `// SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.20;
 
 contract Forge {

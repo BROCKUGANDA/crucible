@@ -44,7 +44,7 @@ export default function GlobalError() {
   return (
     <html lang="en">
       <body>
-        <Crack message="The forge itself faulted. Nothing was sent, nothing was signed, and no money moved." />
+        <Crack message="The forge itself faulted. Check your wallet or transaction history before retrying — an action you started may already have been submitted." />
       </body>
     </html>
   );

@@ -2,7 +2,7 @@
   "name": "@crucible/harness",
   "version": "0.1.0",
   "description": "Agent sandbox harness — proposal envelope, sealed execution context, import-lint CI enforcement. Agents propose; only the keeper does.",
-  "license": "MIT",
+  "license": "UNLICENSED",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

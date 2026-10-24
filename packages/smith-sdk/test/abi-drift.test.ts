@@ -92,6 +92,20 @@ describe("TRIALS_ABI against the Solidity source", () => {
       }
     });
 
+    it(`${file}: every event the source emits is present in the ABI`, () => {
+      // The other three checks all read ABI -> source, so they prove the ABI invents nothing and
+      // say nothing about what it OMITS. An event missing here is not an error anywhere: the log
+      // filter built from this ABI simply never matches it, the ingest list that names it is
+      // silently short one, and a decoder reports the live log as undecodable. Measured on the
+      // deployed chain 2026-10-24: four `VerificationReceiptMinted` logs — one per settled trial,
+      // the receipts the verify page exists to show — came back unnameable, and `RunnerSet` was in
+      // the indexer's own EVENT_NAMES while having no ABI entry to match it, so that case had never
+      // run in production. Both directions are the gate.
+      const abiNames = new Set(inAbi.map((i) => (i as { name: string }).name));
+      const missing = declared.map((e) => e.name).filter((n) => !abiNames.has(n));
+      expect(missing, `${file}: events the ABI does not carry`).toEqual([]);
+    });
+
     it(`${file}: topic0 of every ABI event is the source's own digest`, () => {
       for (const item of inAbi) {
         const source = declared.find((e) => e.name === (item as { name: string }).name)!;

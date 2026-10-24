@@ -24,7 +24,7 @@ export default function AgentProfilePage({ params }: { params: Promise<{ id: str
   if (loading && !data) {
     return (
       <Chrome>
-        <Quenching label={`drawing agent ${rawId} from the fire…`} />
+        <Quenching label={`reading agent ${rawId}'s record from the chain…`} />
       </Chrome>
     );
   }

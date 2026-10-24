@@ -99,4 +99,4 @@ Each of these is a bug the tests caught, not a preference:
   never blocks a verdict. Backfill is canonical and write-once per trial. The
   Identity Registry is linked by the operator, never registered on their behalf.
 
-MIT.
+All rights reserved.

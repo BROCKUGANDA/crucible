@@ -168,6 +168,19 @@ export class ForgeRunner {
         };
 
         const step = await this.runAgentStep(ctx);
+        if (step.withheld?.suiteOutput) {
+          // Say it out loud: the agent wrote this iteration's patch without the previous
+          // suite output. The label names the cause and carries none of the withheld text.
+          emit(
+            "forging",
+            "suite output withheld — it matched a retrieved-content injection pattern",
+            {
+              iteration: state.iterations,
+              maxIterations: req.iterBudget,
+              withheld: "suite-output",
+            },
+          );
+        }
         await this.applyStep(sandbox, step);
 
         // run the pinned suite

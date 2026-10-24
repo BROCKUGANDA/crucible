@@ -95,10 +95,24 @@ current tree actually verifies, what it deliberately does not, and what is still
   input whose own docstring promised it "is never an instruction" — reached the model verbatim.
   `createForgedAgent` now defaults to `wrapUntrusted`, and the second untrusted channel
   (suite stdout from a sandbox running the sponsor's code) is classified with
-  `scanRetrieved` and withheld when it carries an instruction, with the withholding named in
-  `notes` rather than silent. Proved by reverting each channel to its pre-fix shape and
-  watching the new tests go red — and the assertions are on the prompt the fake client
-  actually received, never on the classifier itself.
+  `scanRetrieved`. Both channels refuse only an instruction — role-hijack, instruction-override,
+  and the HTML hidden-carrier escalation. The patterns are broad on purpose, and refusing a
+  whole spec because it said "send the token" or "owner access" meant a legitimate trial never
+  reached the model at all; those matches are quarantined inside the untrusted region instead.
+  A withheld suite output is named in `notes` and emitted as a text-free
+  `withheld: "suite-output"` status event, so an operator sees the lost context without the
+  runner parsing prose. Proved by reverting each channel to its pre-fix shape and watching the
+  new tests go red — and the assertions are on the prompt the fake client actually received,
+  never on the classifier itself.
+- **The deploy refuses a stale address before it replaces anything.** `web` and `api` are
+  recreated from `.env` before the post-deploy assertions run, so an address that disagrees
+  with what the seed actually deployed used to take the running site down and only then fail.
+  The pipeline now reads `/run/crucible/deployed.env` through a one-off seed container and
+  compares both addresses before the swap, while the old containers are still intact. The
+  keeper read `.env` alone — a second answer to "where are the contracts" — so it now mounts
+  the same volume and sources the same file as the API. Proved by extracting the step and
+  running it against a stubbed `docker`: match exits 0, a mismatch, a missing key and an
+  empty published file each exit 1 with the distinct message.
 - **The CI tool downloads are digest-pinned, which is what their step name always claimed.**
   Three steps in `ci.yml` and one in `fork-nightly.yml` were called "install foundry (pinned
   tarball)" while the body piped `curl` straight into `tar`: the pin was a version tag, and a
@@ -351,6 +365,20 @@ the check, because the script's *comments* explain the flag and contain the stri
 scans executable lines with comments filtered out. A gate that matches prose in the file it
 guards is the decoration it exists to detect.
 
+- **The hand-written ABIs were missing events, and the drift gate that exists to catch ABI drift
+  read in only one direction.** `packages/smith-sdk/test/abi-drift.test.ts` had three checks — ABI
+  claims exist in the source, signatures match, topic0 digests match — and all three iterate over
+  **what the ABI carries**. Nothing asked what the ABI *omits*. Adding that reverse assertion found
+  seven missing events in two files: `CrucibleTrials.sol` emits `RunnerSet`, `ReputationBridgeSet`
+  and `VerificationReceiptMinted`, none in `TRIALS_ABI`; `AlloyRegistry.sol` emits `Transfer`,
+  `Locked`, `TierChanged` and `ForgeSet`, and `ALLOY_ABI` carried **no events at all**. Two concrete
+  consequences, both measured: `RunnerSet` is in the indexer's own `EVENT_NAMES`, but the log filter
+  is built by intersecting that list with the ABI, so the ingest list silently matched nothing and
+  `model.ts`'s `RunnerSet` case had never run against a real log; and on the deployed chain the four
+  `VerificationReceiptMinted` logs — the receipts the verify page exists to show — reported as
+  undecodable noise (`meta.logsUndecoded: 4`). All seven events added, both directions asserted.
+  Caveat the fix does not remove: the index holds a cursor, so `RunnerSet` logs already behind it are
+  not re-read; the case runs from here forward, and a rebuilt index is what makes history agree.
 - **`getLogs({ abi })` does not decode on this node, and the node ignores the topics filter.**
   Both measured inside `crucible-api` against the live anvil on 2026-10-24: 56 logs came back with
   `eventName: undefined` and `args: undefined`, and a one-topic query still answered all 56. The
@@ -597,13 +625,13 @@ much of the product's promise each one costs.
     a floor set at an ambition nobody has met is how a gate gets deleted. Coverage is the map,
     not the territory: the money paths that could pay the wrong person are the ones with
     assertions and mutation proofs.
-15. **`LICENSE` is missing from the working tree, and this session did not remove it.** Found at
-    the commit step: the file existed at HEAD (47 lines, MIT), had been deleted from disk, and
-    its deletion was *staged* by something outside this session's work. It was unstaged before
-    the arena commit so that commit cannot carry it, and it is still absent on disk. A repository
-    whose README says "this repository is the submission" has no business shipping without a
-    licence file; whoever removed it should say whether it is being replaced (Apache-2.0 was the
-    alternative named in the v2 bible §26.3) or whether this is an accident to `git checkout`.
+15. **CLOSED — `LICENSE` was removed deliberately, and the removal is committed.** The file was
+    deleted on the owner's instruction: the project is all rights reserved, recorded in
+    `95b88ef`. Every remaining workspace manifest reads `UNLICENSED`, the SPDX headers that were
+    left are flipped, prose that granted MIT is corrected, and the third-party notices the file
+    carried survive in the OFL texts beside the fonts and in `forge-std`'s own licence files.
+    The two demo fixtures keep their MIT headers on purpose — their bytes are pinned by a keccak
+    digest already published on-chain, and `npm run seed:check` re-proves both still resolve.
 16. **The arena is chain-only: nothing in it is wired to the app, the keeper or the indexer.**
     `Arena.sol` and `ArgusCourt.sol` are deployed and tested by `forge test`, and by no other
     name: no `TRIALS_ABI` entry, no read-model projector, no route, no keeper job, no
@@ -642,16 +670,11 @@ much of the product's promise each one costs.
     a secret scan and static analysis on new money contracts — are the ones worth re-running
     before anything with real value posts a trial. Re-enabling is
     `gh workflow enable <name>`; the self-hosted runners were never touched.
-19. **The recorded relicense is half-landed, and the prose ran ahead of the files.**
-    `docs/since-submission.md:112` states as shipped on 2026-10-24 that `LICENSE` was deleted, 17
-    `package.json` and 2 `Cargo.toml` licence fields became `UNLICENSED`, and 28 Solidity headers
-    flipped. At HEAD none of that is true: `package.json:6` still reads `"license": "MIT"`, 24
-    `.sol` files still carry an MIT header, and `LICENSE` is still in the tree (47 lines, MIT) even
-    though it is gone from disk (item 15). The mechanical changes are sitting uncommitted in the
-    shared working tree — 25 files flipped while this pass ran — and two of them rode into the
-    mint fix (`7f47ed8`), named in its message. Either the row's changes get committed or the row
-    gets corrected; HEAD should not describe a licence posture the repository does not have, and
-    which of those two is intended is an owner call.
+19. **CLOSED — the relicense is committed, and the row now describes the repository.** The owner
+    chose all-rights-reserved over the Apache-2.0 alternative in the v2 bible §26.3. The
+    mechanical changes landed in `95b88ef`, after earlier flips rode into other commits in the
+    shared tree; the counts in the row were re-measured against the result, and the two demo
+    fixture headers are named as the deliberate carve-out. HEAD and the prose agree.
 
 20. **Gate 732's drift check was guarding line endings, and three committed artifacts still carry
     CRLF inside their blobs.** `params-codegen.mjs --check` compared `readFileSync(...) !== template`
