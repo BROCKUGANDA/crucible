@@ -9,6 +9,7 @@ import { CircuitBreaker, Crucible, Flags } from "@crucible/smith";
 import { TraceLog, type TraceSpan } from "@crucible/smith/trace";
 import { Warden } from "@crucible/warden";
 import { createSweepLoop, envKillSwitches } from "./sweep-loop.js";
+import { createArenaCrank } from "./arena.js";
 import { createGasLedger, parseBalanceFloor } from "./gas-ledger.js";
 
 /**
@@ -229,6 +230,15 @@ async function boot(): Promise<void> {
     cooldownMs: 30_000,
   });
 
+  // A separate breaker and a separate kill-switch key (`keeper.arena`): the arena is a second
+  // contract on the same node, and an operator stopping one loop must not have to stop the other.
+  const arenaBreaker = new CircuitBreaker({
+    name: "keeper.arena.rpc",
+    threshold: 3,
+    windowMs: 60_000,
+    cooldownMs: 30_000,
+  });
+
   const flags = new Flags({
     source: envKillSwitches(),
     onError: (err) => console.error(`[keeper] flag source failed: ${(err as Error).message}`),
@@ -317,6 +327,35 @@ async function boot(): Promise<void> {
     onLog: (line) => console.log(`[keeper] ${line}`),
   });
 
+  /**
+   * The arena's permissionless cranks, when an arena is configured.
+   *
+   * `ARENA_ADDRESS` is empty on every host where the v2 arena has not been deployed — today that
+   * is all of them — so the loop is simply not created. It is not a stub: the module behind it is
+   * tested against the same five statuses the contract uses, and the contract re-checks every
+   * precondition, so a wrong answer here costs a revert and never a bad state.
+   */
+  const arenaAddress = (process.env.ARENA_ADDRESS ?? "").trim();
+  const arenaCrank = arenaAddress
+    ? createArenaCrank({
+        publicClient: crucible.publicClient,
+        wallet,
+        arenaAddress: arenaAddress as `0x${string}`,
+        onLog: (line) => console.log(`[keeper] ${line}`),
+      })
+    : null;
+  const arenaLoop = arenaCrank
+    ? createSweepLoop({
+        intervalMs: sweepMs,
+        flag: "keeper.arena",
+        breaker: arenaBreaker,
+        flags,
+        chainNow: async () => Number((await crucible.publicClient.getBlock()).timestamp),
+        act: async (nowSeconds) => arenaCrank.act(BigInt(nowSeconds)),
+        onLog: (line) => console.log(`[keeper] ${line}`),
+      })
+    : null;
+
   // Provenance for the trace's own first entry: which build, which signer, which contract.
   // Public values only — the same ones /health already reports.
   await record({
@@ -331,6 +370,8 @@ async function boot(): Promise<void> {
   void scribe.watch();
   await sweepLoop.sweep();
   sweepLoop.handle.start();
+  await arenaLoop?.sweep();
+  arenaLoop?.handle.start();
 
   /** A health endpoint the compose probe can poll: liveness plus sweep freshness. */
   createServer((req, res) => {
@@ -361,9 +402,14 @@ async function boot(): Promise<void> {
             minBalanceWei: ledger.minBalanceWei === null ? null : ledger.minBalanceWei.toString(),
             lowBalance: ledger.lowBalance,
           },
+          // `null` means no arena is configured, which is not the same as an idle one.
+          arena: arenaLoop
+            ? { address: arenaAddress, ...arenaLoop.status() }
+            : null,
           breakers: {
             [sweepBreaker.name]: status.breaker,
             [scribe.breaker.name]: scribe.breaker.status(),
+            ...(arenaLoop ? { [arenaBreaker.name]: arenaLoop.status().breaker } : {}),
           },
         }),
       );
@@ -376,6 +422,7 @@ async function boot(): Promise<void> {
     // `stop()` on the handle, not `clearInterval` on a timer: what an operator is asking for is
     // that no further pass starts, which a cleared timer only promises for the next one.
     sweepLoop.handle.stop();
+    arenaLoop?.handle.stop();
     void flags.stop();
     scribe.stop();
     process.exit(0);

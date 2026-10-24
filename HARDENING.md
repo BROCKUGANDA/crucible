@@ -730,12 +730,17 @@ much of the product's promise each one costs.
     carried survive in the OFL texts beside the fonts and in `forge-std`'s own licence files.
     The two demo fixtures keep their MIT headers on purpose — their bytes are pinned by a keccak
     digest already published on-chain, and `npm run seed:check` re-proves both still resolve.
-16. **The arena is chain-only: nothing in it is wired to the app, the keeper or the indexer.**
-    `Arena.sol` and `ArgusCourt.sol` are deployed and tested by `forge test`, and by no other
-    name: no `TRIALS_ABI` entry, no read-model projector, no route, no keeper job, no
-    `Deploy.s.sol` step. A reviewer arriving from the v2 bible will find gates 734–746 green at
-    the contract layer and 747–795 unbuilt, which is the honest state rather than a partial one
-    presented as a whole.
+16. **HALF-CLOSED — the arena has an ABI and a keeper crank, but no deploy and no reader.**
+    `Arena.sol` and `ArgusCourt.sol` are tested by `forge test` and by no other name until now.
+    Landed: `ARENA_ABI`, generated from the artifact (51 functions, 23 events, 54 errors) and
+    drift-checked against the source; `trialCount()`, the one enumeration both a keeper and a
+    reader need; and the keeper's crank loop for `expireTrial`, `claimTimeout`, `freezeDocket`,
+    `drawPanel` and `tally`, behind its own `keeper.arena` switch and breaker, reported in
+    `/health` and absent when `ARENA_ADDRESS` is empty. Still absent, and named rather than
+    implied: **no deploy** — `Deploy.s.sol` and `Demo` never construct an arena, so the address
+    is empty on every host and the loop is not created; **no indexer projection**; **no route**.
+    `revealHoldout` is not a crank and stays the agent's own act. A reviewer arriving from the v2
+    bible still finds gates 734–746 green at the contract layer and the off-chain half missing.
 
 17. **v2.1's showcase layer is now half-built, and the first audit's verdict on it was wrong in
     both directions.** Corrected position, measured against the tree rather than the bible's prose:

@@ -1088,6 +1088,14 @@ contract Arena {
         return (t.sponsor, t.agent, t.runner);
     }
 
+    /// @notice How many trials have been posted; ids run `1..trialCount()`.
+    /// @dev `_nextId` is private, so a keeper or a reader that wants to walk the arena would
+    /// otherwise have to scan `TrialPosted` from genesis on every tick. One accessor answers it
+    /// for both, and it is cheaper than the log scan it replaces.
+    function trialCount() external view returns (uint256) {
+        return _nextId - 1;
+    }
+
     function digestsOf(uint256 id)
         external
         view
