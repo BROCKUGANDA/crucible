@@ -1,5 +1,13 @@
 import { Hono, type Context } from "hono";
-import { ERROR_COPY, type BreakerStatus } from "@crucible/smith";
+import {
+  computeStanding,
+  ERROR_COPY,
+  outcomeValue,
+  REWARD_FLOOR_ETH_WEI,
+  TIER_NAMES,
+  type BreakerStatus,
+  type StandingOutcome,
+} from "@crucible/smith";
 import {
   buildSnapshot,
   type AlloyState,
@@ -669,6 +677,86 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
       });
     }
     return c.json({ trial, runs });
+  });
+
+  /**
+   * The standing of one agent, in the caller's one call.
+   *
+   * `GET /standing/:id` answers the question an application hiring an agent actually asks — is
+   * this record good, and how good — with the outcome history the index read off the chain, the
+   * registry tier, the §18.2 computation, the addresses a record must come from, and the two
+   * operands this deployment does not measure. It is a reader, not an authority: the numbers it
+   * quotes are the logs' own, and the standing it computes is recomputable from the outcomes it
+   * returns, which is the only reason to publish a score rather than a badge.
+   */
+  app.get("/standing/:id", (c) => {
+    const id = positiveId(c.req.param("id"));
+    if (id === null) return c.json({ error: "agent id must be a positive integer" }, 400);
+    const model = deps.getModel();
+    const agent = model.agents.get(id);
+    if (!agent) return c.json({ error: `agent ${id} not found` }, 404);
+
+    const outcomes: StandingOutcome[] = [];
+    let settledTrials = 0;
+    let unaged = 0;
+    for (const t of model.trials.values()) {
+      if (t.agentId !== id || t.status !== "settled") continue;
+      settledTrials += 1;
+      if (t.settledAt === null) {
+        // No settlement time means no honest age, and an age is half of a decayed weight. The
+        // outcome is counted out and reported, rather than aged from the submission time — a
+        // trial that sat in dispute for a week is a week older than the day it was run in.
+        unaged += 1;
+        continue;
+      }
+      outcomes.push({
+        rewardWei: t.rewardWei,
+        verdict: t.verdict,
+        breaksSurvived: t.breakSkeptic !== null ? 1 : 0,
+        settledAt: t.settledAt,
+      });
+    }
+
+    const standing = computeStanding({ outcomes, floorWei: REWARD_FLOOR_ETH_WEI, now: Math.floor(Date.now() / 1000) });
+    const alloy = deps.alloyState ? deps.alloyState(id) : null;
+
+    return c.json({
+      data: {
+        agentId: id,
+        operator: agent.operator,
+        runner: agent.runner,
+        identityAgentId: agent.identityAgentId === null ? null : agent.identityAgentId.toString(),
+        registry: alloy
+          ? {
+              tier: alloy.tier,
+              tierName: alloy.tier === null ? null : (TIER_NAMES[alloy.tier] ?? null),
+              locked: alloy.locked,
+              tokenUri: alloy.tokenUri,
+            }
+          : null,
+        book: { wins: agent.wins, survived: agent.survived, slashes: agent.slashes },
+        standing,
+        outcomes: outcomes.map((o) => ({
+          rewardWei: o.rewardWei.toString(),
+          verdict: o.verdict,
+          breaksSurvived: o.breaksSurvived,
+          settledAt: o.settledAt,
+          value: outcomeValue(o),
+        })),
+      },
+      meta: {
+        settledTrials,
+        counted: standing.counted,
+        excludedNoSettlementTime: unaged,
+        halfLifeDays: standing.halfLifeDays,
+        floorWei: REWARD_FLOOR_ETH_WEI.toString(),
+        assumptions: standing.assumptions,
+        /** What this endpoint adds to the chain is one HTTP round trip, not one chain call: the
+         *  registry record and the tier are read from the deployment's own cached alloy sweep. */
+        recordsSource: "VerdictFinalized and TrialCreated logs this index read from the chain",
+        proofSource: deps.proofSource ?? null,
+      },
+    });
   });
 
   app.get("/agents", (c) => {

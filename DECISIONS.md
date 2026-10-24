@@ -99,7 +99,9 @@ ADR/AGENTS.md law → params → existing code+tests → the bible's new specifi
     binding lives as `apps/web/test/landing-claims.test.ts`, which reads the constants out of
     `CrucibleTrials.sol` and fails if the words and the numbers disagree (proved: moving
     `SLASH_SKEPTIC_NUM` to 4000 reddens it); `/claims`, `tests/claims/`, `stages.ts`, identity
-    epochs and time decay remain genuinely absent; and the two CTAs the ledger called unrouted
+    epochs and time decay remain genuinely absent (**superseded on 2026-10-24 by 16, which builds
+    `/claims` and gives the decay a consumer; `tests/claims/`, `stages.ts` and identity epochs
+    still are**); and the two CTAs the ledger called unrouted
     (`/bounties`, `/hall`) already answer 200, while nothing in the repo links `/skeptics`, so that
     redirect would be a route to nowhere. `/.well-known/crucible.json` was added to give "no one can
     fake it" something to check against, and it publishes `null` for an unbaked address rather than
@@ -116,3 +118,35 @@ ADR/AGENTS.md law → params → existing code+tests → the bible's new specifi
     visible instead of silent. Commentary follows the same shape — Frenchy's existing static pools
     (gate 674 forbids a runtime model), deterministic from `f(replay-<trialId>, trigger, history)`,
     so a replay's captions repeat exactly and cost nothing.
+16. **The standing formula is implemented with the two terms it cannot measure held neutral and
+    *reported*, not invented, and the promise list publishes its own gaps.** §18.2's
+    `Standing = Σ(w·o·δ)/(Σ w·δ + 3)` needed three things this repository did not have: an outcome's
+    settlement time, a consumer for `STANDING_HALF_LIFE_DAYS`, and a place to read the result. The
+    first is a read-model change — `TrialRow` recorded created, submitted and dispute-opened but not
+    settled, so an age had to be borrowed from a neighbouring event and a trial that sat in dispute
+    for a week would decay as though it settled the day it ran; `settledAt` now comes from
+    `VerdictFinalized`'s own block, and an outcome still missing one is **excluded and counted** in
+    `meta.excludedNoSettlementTime` rather than aged on a guess. The second and third are
+    `packages/smith-sdk/src/standing.ts` and `GET /api/standing/:id`.
+    `d` (difficulty, 0.5–1.5) and `s` (sponsor independence, 0/0.5/1) are held at 1.0 and 0.5 — the
+    midpoints that leave `w` as the money term alone — and the endpoint returns them as
+    `meta.assumptions`, each with a `needs` line saying what would have to exist to replace the
+    placeholder. The alternative was a per-suite difficulty derived from pass rates in the same
+    in-memory model, which would have made the displayed score a function of what the indexer happened
+    to hold, and a number a judge cannot check is worse than a number labelled unknown. This is the
+    same rule the display follows for money: `—`, never a fabricated `0`.
+    `/claims` (`apps/web/src/lib/claims/registry.ts` + the page) states each promise with the path
+    that enforces it and an explicit `absent` for the ones nothing enforces, gated by
+    `apps/web/test/claims-registry.test.ts`, which requires ≥1 cited file for an `enforced` row,
+    checks every cited path exists, and **requires at least three rows to stay `absent`** so clearing
+    that assertion means fixing a promise instead of relabelling it. A row may quote the landing page
+    only if the page actually carries the words.
+    Correction to 14, in my own words rather than silently: I recorded this morning that "no one-call
+    read exists anywhere". Half right — `getSummary` is still an unimplemented interface declaration,
+    but `AlloyRegistry.records` is a public mapping of a four-field struct, so `records(agentId)` was
+    always one call answering wins, survivals, slashes and tier. The Stage VI sentence was false
+    because it pointed at an ERC-8004 aggregate nothing here serves, not because the chain could not
+    answer. The remedy chosen is the reader that makes the sentence true over HTTP, because an
+    on-chain `getSummary` would be a contract change, and a contract change here is a chain reset on
+    the box that serves the public site — a redeploy of eight settled trials' history to buy a getter
+    the same page can compose from two existing reads.

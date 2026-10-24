@@ -143,10 +143,14 @@ contract Demo is Script {
     }
 
     /// Lights a trial and has `agentId` claim and submit a signed run for it.
-    function _claimAndSubmit(uint256 agentId, uint256 operatorPk, bytes32 spec, bytes32 tests, bytes32 runHash, uint256 reward)
-        internal
-        returns (uint256 id)
-    {
+    function _claimAndSubmit(
+        uint256 agentId,
+        uint256 operatorPk,
+        bytes32 spec,
+        bytes32 tests,
+        bytes32 runHash,
+        uint256 reward
+    ) internal returns (uint256 id) {
         vm.broadcast(pkSponsor);
         id = trials.createTrial{value: reward}(reward, spec, tests, uint64(block.timestamp + 30 days), 12 hours);
 
@@ -184,7 +188,9 @@ contract Demo is Script {
     /// left running for hours and reverted on a fresh one. The path is covered by
     /// `test_Finalize_*` in the contract suite; a demo that only works on a stale chain is
     /// worse than one that skips it.
-    function _paidUncontested(uint256 agentId, uint256 operatorPk, bytes32 spec, bytes32 tests, uint256 reward) internal {
+    function _paidUncontested(uint256 agentId, uint256 operatorPk, bytes32 spec, bytes32 tests, uint256 reward)
+        internal
+    {
         uint256 id = _claimAndSubmit(agentId, operatorPk, spec, tests, keccak256("RunArtifact{quiet}"), reward);
         vm.warp(block.timestamp + 2 days);
         vm.broadcast(pkRelayer); // finalize is permissionless; the relayer is the bystander
