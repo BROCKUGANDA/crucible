@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.26;
 
 /// @title VerificationReceipt — soulbound proof that a Crucible trial settled.
@@ -89,13 +89,11 @@ contract VerificationReceipt {
     /// @param promptHash the trial's specCID (the pinned work)
     /// @param graderVersion the Warden version that produced the verdict
     /// @return tokenId the id of the minted receipt
-    function mintReceipt(
-        address to,
-        uint256 trialId,
-        bytes32 verdictHash,
-        bytes32 promptHash,
-        uint256 graderVersion
-    ) external onlyMinter returns (uint256 tokenId) {
+    function mintReceipt(address to, uint256 trialId, bytes32 verdictHash, bytes32 promptHash, uint256 graderVersion)
+        external
+        onlyMinter
+        returns (uint256 tokenId)
+    {
         if (to == address(0)) revert ZeroAddress();
         if (receiptIdOfTrial[trialId] != 0) revert AlreadyMinted(trialId);
 
@@ -121,25 +119,24 @@ contract VerificationReceipt {
     function tokenURI(uint256 tokenId) external view returns (string memory) {
         ReceiptData storage r = receipts[tokenId];
         if (r.trialId == 0 && ownerOf[tokenId] == address(0)) revert NotMinted();
-        return
-            string.concat(
-                'data:application/json,{"name":"Crucible Verification Receipt"',
-                ',"description":"Non-transferable proof that trial ',
-                uint256ToString(r.trialId),
-                ' settled in Crucible Warden v',
-                uint256ToString(r.graderVersion),
-                '","attributes":[{"trait_type":"trialId","value":',
-                uint256ToString(r.trialId),
-                '},{"trait_type":"verdictHash","value":"',
-                bytes32ToHex(r.verdictHash),
-                '"},{"trait_type":"promptHash","value":"',
-                bytes32ToHex(r.promptHash),
-                '"},{"trait_type":"graderVersion","value":',
-                uint256ToString(r.graderVersion),
-                '},{"trait_type":"mintedAt","value":',
-                uint256ToString(uint256(r.mintedAt)),
-                '}]}'
-            );
+        return string.concat(
+            'data:application/json,{"name":"Crucible Verification Receipt"',
+            ',"description":"Non-transferable proof that trial ',
+            uint256ToString(r.trialId),
+            " settled in Crucible Warden v",
+            uint256ToString(r.graderVersion),
+            '","attributes":[{"trait_type":"trialId","value":',
+            uint256ToString(r.trialId),
+            '},{"trait_type":"verdictHash","value":"',
+            bytes32ToHex(r.verdictHash),
+            '"},{"trait_type":"promptHash","value":"',
+            bytes32ToHex(r.promptHash),
+            '"},{"trait_type":"graderVersion","value":',
+            uint256ToString(r.graderVersion),
+            '},{"trait_type":"mintedAt","value":',
+            uint256ToString(uint256(r.mintedAt)),
+            "}]}"
+        );
     }
 
     // ───────────────────────── encoding helpers ───────────────
@@ -148,17 +145,19 @@ contract VerificationReceipt {
         out[0] = 0x30;
         out[1] = 0x78;
         for (uint256 i; i < 32; ++i) {
-            bytes1 byte_ = bytes1(b >> (248 - i * 8));
-            out[2 + i * 2] = nibbleToHex(byte_ >> 4);
-            out[2 + i * 2 + 1] = nibbleToHex(byte_ & 0x0f);
+            // uint8() of a shifted uint takes the LOW byte. bytes1(b >> n) takes the high one
+            // instead, which is zero for every shift but the last — that version printed 31 zero
+            // bytes and the digest's first byte, into the string the verify page shows as proof.
+            uint8 v = uint8(uint256(b) >> (248 - i * 8));
+            out[2 + i * 2] = nibbleToHex(v >> 4);
+            out[2 + i * 2 + 1] = nibbleToHex(v & 0x0f);
         }
         return string(out);
     }
 
-    function nibbleToHex(bytes1 n) internal pure returns (bytes1) {
-        uint8 v = uint8(n);
-        if (v < 10) return bytes1(48 + v);
-        return bytes1(87 + v);
+    function nibbleToHex(uint8 n) internal pure returns (bytes1) {
+        if (n < 10) return bytes1(uint8(48 + n));
+        return bytes1(uint8(87 + n));
     }
 
     function uint256ToString(uint256 v) internal pure returns (string memory) {
