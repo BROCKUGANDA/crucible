@@ -63,6 +63,18 @@ export function buildAdapter(config: AdapterConfig): ModelAdapter {
         "layer exists to refuse.",
     );
   }
+  // The card names the wire, so it has to be the wire being built. Nothing else reads `dialect`,
+  // and a card loaded from JSON can carry any string: without this, a card written for one provider
+  // guards a call to another and every verdict it stamps is attributed to a model that was never
+  // called. The snapshot pin and the retention posture attached to it go with the wrong provider
+  // too, which is the part that is not recoverable from the scorecard afterwards.
+  if (config.card.dialect !== config.kind) {
+    throw new ModelCardError(
+      `${config.kind} adapter "${config.modelId}" was handed a card for the ` +
+        `"${config.card.dialect}" dialect. A card describes the model it guards; one that describes ` +
+        "a different wire is not a typo to be corrected downstream.",
+    );
+  }
   if (!config.scope || config.scope.trim().length === 0) {
     throw new ModelCardError(
       `${config.kind} adapter "${config.modelId}" needs a scope — an unlabelled stage cannot be ` +
