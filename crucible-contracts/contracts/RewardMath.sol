@@ -24,11 +24,7 @@ library RewardMath {
 
     /// @notice Split of an accepted postWork: worker-share / fee-share. Fee is assessed
     ///         and frozen here; it moves at settle (gate 641).
-    function splitPostWork(uint256 reward)
-        internal
-        pure
-        returns (uint256 workerShare, uint256 feeShare)
-    {
+    function splitPostWork(uint256 reward) internal pure returns (uint256 workerShare, uint256 feeShare) {
         feeShare = (reward * FEE_BPS) / BPS;
         workerShare = reward - feeShare;
     }
@@ -94,11 +90,7 @@ library RewardMath {
         uint256 disputeFeesHeld,
         uint256 feeVault,
         uint256 pendingHeld
-    )
-        internal
-        pure
-        returns (bool ok)
-    {
+    ) internal pure returns (bool ok) {
         return balance == rewardsHeld + stakesHeld + disputeFeesHeld + feeVault + pendingHeld;
     }
 }

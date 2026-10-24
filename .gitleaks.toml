@@ -29,4 +29,11 @@ regexes = [
   # rewritten from a CI config. Exception is the exact literal, so any other key-shaped string —
   # including one that differs from this by a character — still fails.
   '''0x59c6995e998f97a51e2767c046f5c6b7b42d0c4d95c3c6b7a5e2d1c0b9a8f7e6''',
+  # A second invented "different key" literal: `const SECRET` in `grader/test/frontier-layer.test.ts`
+  # at commit c2d6b1e, used to prove the frontier layer scrubs a key-shaped string out of a model
+  # card. It is not Anvil key #1 and not any published dev key (26 of its 66 characters differ), it
+  # appears in no other commit, and the fixture was removed from the tree afterwards — but the
+  # commit is published and this job scans `--log-opts=--all`, so it reddens every branch until it
+  # is named. Exception is the exact literal; any other key-shaped string still fails.
+  '''0x59c6995e998f97a5a0044966f0945389dc98a1073772777215dc9d3f5d5d0b4f''',
 ]
