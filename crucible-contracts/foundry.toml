@@ -1,7 +1,12 @@
 [profile.default]
 solc = "0.8.26"
 optimizer = true
-optimizer_runs = 10_000
+# Size-first, not gas-first. At 10,000 runs `Arena` compiled to 26,209 bytes of runtime code —
+# 1,633 over EIP-170's 24,576-byte limit, which `forge build --sizes` refuses, correctly. At 200
+# the same contract is 21,338 bytes, and 20,155 with the per-field getters that duplicated
+# stateOf/amountsOf/windowsOf/breakAt removed; the cost is a little runtime gas per call, and
+# that is the trade this gate asks for. Measured 2026-10-24 with the pinned forge v1.8.5.
+optimizer_runs = 200
 # Required, not cosmetic: `getTrial`/`getAgent` return 15-field structs by memory, and the
 # EIP-712 / settle paths hold many live locals. Under solc's legacy codegen that overflows
 # the 16-slot stack the moment any external file references the contract.
