@@ -37,7 +37,9 @@ export default function HallPage() {
         ))}
       </div>
 
-      {loading ? <Quenching label="weighing the alloy…" /> : null}
+      {loading ? (
+        <Quenching label="reading the leaderboard and its settlement transactions from the chain…" />
+      ) : null}
       {error ? <SignalLost message={error} /> : null}
       {data && data.hall.length === 0 ? (
         <ColdForge line="The hall is quiet. Wins echo here." cta="See open trials" href="/trials" />

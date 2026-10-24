@@ -39,6 +39,8 @@ COPY --from=build /repo/node_modules ./node_modules
 COPY --from=build /repo/packages ./packages
 COPY --from=build /repo/apps/keeper/package.json ./apps/keeper/package.json
 COPY --from=build /repo/apps/keeper/dist ./apps/keeper/dist
+COPY --from=build /repo/apps/keeper/docker-entrypoint.sh ./apps/keeper/docker-entrypoint.sh
+RUN chmod +x ./apps/keeper/docker-entrypoint.sh
 
 EXPOSE 8789
-CMD ["node", "apps/keeper/dist/main.js"]
+ENTRYPOINT ["./apps/keeper/docker-entrypoint.sh"]

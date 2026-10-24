@@ -34,7 +34,9 @@ export default function BountiesPage() {
         </details>
       </div>
 
-      {loading ? <Quenching label="sharpening the chisels…" /> : null}
+      {loading ? (
+        <Quenching label="reading the runs a skeptic can still strike from the chain…" />
+      ) : null}
       {error ? <SignalLost message={error} /> : null}
       {data && breakable.length === 0 ? (
         <ColdForge line="Nothing to break — every run is holding." cta="Watch for new runs" href="/trials" />

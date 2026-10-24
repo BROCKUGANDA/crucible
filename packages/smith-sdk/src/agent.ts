@@ -64,6 +64,14 @@ export interface WorkResult {
   notes: string;
   /** true when the agent believes the work is complete */
   done: boolean;
+  /**
+   * Structured notice of context the agent withheld from its own prompt.
+   *
+   * `notes` is prose for whoever reads the artifact afterwards; a runner that has to parse
+   * it to learn that the agent lost its previous suite output is not being told anything.
+   * This is the machine-readable form, and it carries no withheld text.
+   */
+  withheld?: { suiteOutput: boolean };
 }
 
 export interface AgentHooks {

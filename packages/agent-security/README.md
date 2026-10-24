@@ -112,4 +112,4 @@ npm test --workspace @crucible/agent-security    # 153 tests
 Every control above has at least one test that proves it *refuses*, not just one that
 proves the happy path. A security control with no failing test is a comment.
 
-MIT.
+All rights reserved.

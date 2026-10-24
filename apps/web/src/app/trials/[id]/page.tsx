@@ -60,7 +60,7 @@ export default function TrialDetailPage() {
   if (loading) {
     return (
       <Chrome>
-        <Quenching label="drawing the trial from the fire…" />
+        <Quenching label="reading this trial and its settlement from the chain…" />
       </Chrome>
     );
   }

@@ -2,7 +2,7 @@
   "name": "@crucible/warden",
   "version": "0.1.0",
   "description": "Warden — the window watcher. Notices when a trial's windows close and queues the permissionless finalize.",
-  "license": "MIT",
+  "license": "UNLICENSED",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

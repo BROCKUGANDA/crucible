@@ -49,7 +49,14 @@ function forgeJson(passed: number, failed: number): string {
 
 interface HarnessOpts {
   /** run this instead of the default no-op step */
-  step?: (ctx: WorkContext) => Promise<{ patch: string; notes: string; done: boolean }>;
+  step?: (
+    ctx: WorkContext,
+  ) => Promise<{
+    patch: string;
+    notes: string;
+    done: boolean;
+    withheld?: { suiteOutput: boolean };
+  }>;
   agentThrows?: boolean;
   specThrows?: boolean;
   requireDocker?: boolean;
@@ -218,6 +225,40 @@ describe("ForgeRunner invariants", () => {
     expect(out.artifact).toBeDefined();
     expect(out.artifact!.testResults.every((t) => t.status === "pass")).toBe(true);
     expect(out.summary?.green).toBe(true);
+  }, 30_000);
+
+  it("tells the operator, without the withheld text, when the agent lost its suite output", async () => {
+    const { sink, events } = memorySink();
+    const deps = harness({
+      step: async () => ({
+        patch: "",
+        notes: "Suite output from the previous iteration was withheld.",
+        done: true,
+        withheld: { suiteOutput: true },
+      }),
+    });
+    deps.status = sink;
+    const out = await new ForgeRunner(deps).run(
+      request({ suiteCommand: GREEN_SUITE, iterBudget: 1 }),
+    );
+    expect(out.ok).toBe(true);
+
+    const event = events.find((e) => e.withheld === "suite-output");
+    expect(event, "no status event carried the withholding").toBeDefined();
+    expect(event!.status).toBe("forging");
+    expect(event!.label).toMatch(/withheld/i);
+    // The status event is structural: it must not smuggle the withheld content along.
+    expect(JSON.stringify(event)).not.toContain("from the previous iteration");
+
+    // Negative control — an ordinary step must emit nothing with that flag, so a green here
+    // means the emit is conditional rather than unconditional decoration.
+    const plain = memorySink();
+    const cleanDeps = harness();
+    cleanDeps.status = plain.sink;
+    await new ForgeRunner(cleanDeps).run(
+      request({ suiteCommand: GREEN_SUITE, iterBudget: 1 }),
+    );
+    expect(plain.events.some((e) => e.withheld)).toBe(false);
   }, 30_000);
 
   it("never submits when the suite never goes green", async () => {

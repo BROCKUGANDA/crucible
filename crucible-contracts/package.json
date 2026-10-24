@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "Crucible Solidity contracts — Foundry project. Not published to npm; workspace entry exists so the repo is one unit.",
-  "license": "MIT",
+  "license": "UNLICENSED",
   "scripts": {
     "build": "node ../scripts/run-forge.mjs build",
     "pretest": "node ../scripts/run-forge.mjs --version",

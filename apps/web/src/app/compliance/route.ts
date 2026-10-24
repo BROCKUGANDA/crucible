@@ -383,7 +383,7 @@ const GATES = [
     { id: 789, title: "demo.ts + demo-arena.ts run output", frameworks: ["soc2"] },
     { id: 790, title: "Seeded arena (trials, agents, skeptics, seats, a season)", frameworks: ["soc2"] },
     { id: 791, title: "Pitch video + technical demo video", frameworks: ["soc2"] },
-    { id: 792, title: "README, ARCHITECTURE, SECURITY, THREAT_MODEL, AI-ATTRIBUTION, LICENSE", frameworks: ["soc2"] },
+    { id: 792, title: "README, ARCHITECTURE, SECURITY, THREAT_MODEL, AI-ATTRIBUTION", frameworks: ["soc2"] },
     { id: 793, title: "Business plan", frameworks: ["soc2"] },
     { id: 794, title: "Submission checklist for the chosen event complete", frameworks: ["soc2"] },
     { id: 795, title: "Persistence drill — delete local, restore, all green", frameworks: ["supply-chain"] },
