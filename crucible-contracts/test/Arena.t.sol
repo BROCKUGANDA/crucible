@@ -219,6 +219,17 @@ contract ArenaTest is Test {
     }
 
     // ───────────────────────── gate 734 — post, cancel, expire ─────────────────────────
+    /// The only enumeration a keeper or a reader gets: ids run 1..trialCount(). If this ever
+    /// counts past the ids that exist, a keeper walks to a trial that is not there.
+    function test_trialCount_tracksPostedTrials() public {
+        assertEq(arena.trialCount(), 0, "a fresh arena has no trials");
+        uint256 first = _post();
+        assertEq(arena.trialCount(), 1);
+        uint256 second = _post();
+        assertEq(arena.trialCount(), 2);
+        assertEq(second, first + 1, "ids are consecutive from 1");
+    }
+
     function test_734_Post_EscrowsRewardPlusFee() public {
         uint256 id = _post();
         (uint256 reward, uint256 fee, uint256 bond, uint256 deposited, uint256 paidOut) = arena.amountsOf(id);

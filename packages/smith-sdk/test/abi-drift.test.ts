@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { keccak256, toHex } from "viem";
 import { ALLOY_ABI, TRIALS_ABI } from "../src/abi.js";
+import { ARENA_ABI } from "../src/arena-abi.js";
 
 /**
  * The ABI is hand-written, and a hand-written ABI drifts.
@@ -21,10 +22,11 @@ import { ALLOY_ABI, TRIALS_ABI } from "../src/abi.js";
 const SOURCES = [
   { file: "CrucibleTrials.sol", abi: TRIALS_ABI },
   { file: "AlloyRegistry.sol", abi: ALLOY_ABI },
+  { file: "Arena.sol", abi: ARENA_ABI },
 ] as const;
 
 /** Solidity encodes an enum as its smallest unsigned int; the contracts' enums all fit in one byte. */
-const ENUMS = new Set(["Verdict", "Status"]);
+const ENUMS = new Set(["Verdict", "Status", "Outcome", "BreakKind", "Vote"]);
 
 interface SourceEvent {
   name: string;
