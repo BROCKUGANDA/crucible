@@ -87,6 +87,7 @@ export interface ScorecardRow {
   p95LatencyMs: number;
   avgCostUsd: number;
   disqualified: boolean;
+  /** Every gate that fired, `; `-joined — not the first in precedence order. */
   disqualifyReason?: string;
 }
 

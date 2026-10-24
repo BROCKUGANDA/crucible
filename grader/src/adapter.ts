@@ -49,6 +49,13 @@ export interface AdapterConfig {
   spend?: SpendLedger;
   /** Tournament stage the calls are billed against (`smoke` | `full` | `adversarial` | `shadow`). */
   scope?: string;
+  /**
+   * Wall-clock deadline for one call, openai-compat only. Distinct from `card.latencyP95Ms`, which
+   * is the latency the arena will *tolerate* in a scorecard; this is how long a caller waits before
+   * it stops waiting. The two differ by design — a provider can answer inside its deadline and still
+   * be disqualified for being slow, and that is the finding worth publishing.
+   */
+  timeoutMs?: number;
 }
 
 /** Build an adapter from a config row. No code change per model. */
@@ -93,7 +100,7 @@ function buildDialect(config: AdapterConfig): ModelAdapter {
       if (!config.baseUrl || !config.apiKey || !config.model) {
         throw new Error("openai-compat adapter requires baseUrl, apiKey, model");
       }
-      return new OpenAICompatAdapter(config.baseUrl, config.apiKey, config.model, config.promptVersion, config.modelId);
+      return new OpenAICompatAdapter(config.baseUrl, config.apiKey, config.model, config.promptVersion, config.modelId, config.timeoutMs);
     case "anthropic":
       if (!config.apiKey || !config.model) {
         throw new Error("anthropic adapter requires apiKey, model");

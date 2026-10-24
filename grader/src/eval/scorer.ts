@@ -115,21 +115,32 @@ export function scorecardRow(
   const notMeasured = gated && draws < drawsMin;
   const unsteady = gated && !notMeasured && con < agreementMin;
 
-  const disqualified =
-    fpRate > thresholds.maxFalsePassRate ||
-    p95(latencies) > thresholds.maxP95LatencyMs ||
-    notMeasured ||
-    unsteady;
+  /**
+   * Every gate that fired, in a fixed order, and `disqualified` derived from the same list so the
+   * flag and the reason cannot drift apart.
+   *
+   * This used to be a precedence chain that named the first failing gate and dropped the rest. The
+   * first real scorecard measured through `scripts/grade-arena.mjs` is what that cost: it published
+   * `false-pass rate 22.22% > 1.00%` on a row whose p95 was 268638ms against a 20000ms budget —
+   * thirteen times over — and nothing in the row said so. A reader who fixed the named gate and
+   * re-ran would still be disqualified, with no way to know that from what they were given.
+   *
+   * `notMeasured` and `unsteady` are exclusive by construction above, so at most three reasons can
+   * ever appear.
+   */
+  const reasons = [
+    fpRate > thresholds.maxFalsePassRate &&
+      `false-pass rate ${(fpRate * 100).toFixed(2)}% > ${(thresholds.maxFalsePassRate * 100).toFixed(2)}%`,
+    p95(latencies) > thresholds.maxP95LatencyMs &&
+      `p95 latency ${p95(latencies).toFixed(0)}ms > ${thresholds.maxP95LatencyMs}ms`,
+    notMeasured &&
+      `consistency not measured: ${draws} draw${draws === 1 ? "" : "s"} of ${drawsMin} required`,
+    unsteady &&
+      `test-retest agreement ${(con * 100).toFixed(1)}% < ${(agreementMin * 100).toFixed(0)}%`,
+  ].filter((r): r is string => typeof r === "string");
 
-  const reason = !disqualified
-    ? undefined
-    : fpRate > thresholds.maxFalsePassRate
-      ? `false-pass rate ${(fpRate * 100).toFixed(2)}% > ${(thresholds.maxFalsePassRate * 100).toFixed(2)}%`
-      : p95(latencies) > thresholds.maxP95LatencyMs
-        ? `p95 latency ${p95(latencies).toFixed(0)}ms > ${thresholds.maxP95LatencyMs}ms`
-        : notMeasured
-          ? `consistency not measured: ${draws} draw${draws === 1 ? "" : "s"} of ${drawsMin} required`
-          : `test-retest agreement ${(con * 100).toFixed(1)}% < ${(agreementMin * 100).toFixed(0)}%`;
+  const disqualified = reasons.length > 0;
+  const reason = disqualified ? reasons.join("; ") : undefined;
 
   return {
     modelId,

@@ -199,6 +199,32 @@ describe("the row carries what the adapter measured", () => {
     expect(row.p95LatencyMs).toBe(30_000);
     expect(row.disqualifyReason).toBe("p95 latency 30000ms > 20000ms");
   });
+
+  /**
+   * Two gates fire on one row and the row has to name both. The first scorecard measured against a
+   * real provider published `false-pass rate 22.22% > 1.00%` on a row whose p95 was 268638ms against
+   * a 20000ms budget; a precedence chain named the first and dropped the second, so the row invited
+   * a reader to fix one gate and expect the model to qualify.
+   *
+   * `smokeSet` cycles PASS/VOID/FAIL, so an adapter that answers PASS to everything false-passes
+   * every artifact that did not expect one — the first five carry three.
+   */
+  it("names every gate that fired, not the first in precedence order", async () => {
+    const liar: ModelAdapter = {
+      id: "liar-and-slow",
+      async grade() {
+        return { verdict: "PASS", confidence: 0.9, latencyMs: 25_000, promptVersion: "v1" };
+      },
+    };
+
+    const row = (await new Arena().runSmoke([liar], { smoke: slice(5) }, 1, THRESHOLDS)).rows[0]!;
+    // Both premises asserted, so the test cannot pass by tripping only one gate.
+    expect(row.falsePassRate).toBeGreaterThan(THRESHOLDS.maxFalsePassRate);
+    expect(row.p95LatencyMs).toBeGreaterThan(THRESHOLDS.maxP95LatencyMs);
+    expect(row.disqualified).toBe(true);
+    expect(row.disqualifyReason).toContain("false-pass rate 60.00% > 1.00%");
+    expect(row.disqualifyReason).toContain("p95 latency 25000ms > 20000ms");
+  });
 });
 
 /**
