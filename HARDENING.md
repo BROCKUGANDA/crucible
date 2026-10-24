@@ -448,6 +448,28 @@ guards is the decoration it exists to detect.
   it pointed at a standard nobody here serves, not because the chain could not answer. Fixed by
   shipping the reader that makes the sentence true (`GET /api/standing/:id`, tested) and by binding
   the wording in the gate, rather than by leaving a promise to a contract that does not exist.
+- **The production box's `forge-std` was empty, and only a re-seed would have noticed.** Every hand
+  deploy since the chain reset ran `git archive` and then `rsync -a --delete`, and an archive carries
+  a submodule as an *empty directory* — so `~/crucible/crucible-contracts/lib/forge-std` had been
+  emptied on the box, which has no `.git` to restore it from. Nothing broke, because the deploy that
+  follows builds `web api keeper` and the `seed` image was already cached; the failure was scheduled
+  for the next chain reset, when `forge build` inside the seed image would die on
+  `Source forge-std/Script.sol not found` with the site down and the demo unseedable. Found because
+  the deploy script's own "copy the running tree's `forge-std` forward" step had an empty source, and
+  fixed by cloning at the pin the superproject names (`f3dae6e`, confirmed by `git rev-parse HEAD`
+  after checkout, 14 entries where there had been 0). The lesson generalises: **a `--delete` sync
+  from an export of a repository is a submodule-wiping machine**, and a box whose images are cached
+  will not tell you until the day it has to compile.
+- **The browser pass this machine cannot run, run where a Chromium exists.** The VPS's
+  Chromium 156 rendered `/`, `/claims`, `/trials/1/replay`, `/agents`, `/hall` and `/trials/1` at
+  1440 and 390 wide: six desktop and six phone PNGs, zero console errors, zero error boundaries, and
+  the claim matrix read on screen as 11 `Enforced` / 3 `Partly` / 3 `Not yet` over 17 rows. Two
+  instrument faults found on the way, both mine: `--virtual-time-budget` **hangs** on this site
+  because every page opens an EventSource, so virtual time never expires and the first attempt wrote
+  no PNG at all — `--timeout` is the bound that works; and `--dump-dom` captures the pre-hydration
+  shell on the fetched pages, which is why the replay's three content assertions "failed" against a
+  page the screenshot shows rendering all ten beats, the money flow and the caption. A DOM grep that
+  runs before hydration is not a browser pass, and the PNG is the evidence.
 - **`getLogs({ abi })` does not decode on this node, and the node ignores the topics filter.**
   Both measured inside `crucible-api` against the live anvil on 2026-10-24: 56 logs came back with
   `eventName: undefined` and `args: undefined`, and a one-topic query still answered all 56. The
