@@ -579,8 +579,9 @@ much of the product's promise each one costs.
       lines has to re-check them after touching the file it points at.
 
 
-11. **The deployed keeper is two weeks older than the keeper in this repository, and no gate says
-    so.** `deploy.yml:182` swaps exactly two services — `docker compose up -d --no-deps web api` —
+11. **CLOSED — the deploy recreates the keeper now, and refuses to replace it with one that cannot
+    start.** When this was written, `deploy.yml` swapped exactly two services —
+    `docker compose up -d --no-deps web api` —
     and the comment above it explains why `anvil` and `seed` are left alone: the chain must keep its
     state. The keeper is not in that list either, and unlike those two it holds nothing a restart
     would lose — it reads the chain, acts with a nonce, and `finalize` is permissionless and reverts
@@ -596,9 +597,15 @@ much of the product's promise each one costs.
     `keeper.sweep` is not behind the kill switch that exists in the image; and the self-scheduling
     sweep loop and the breaker around the acting hop are the hackathon build.
 
-    **Deliberately not fixed in this pass.** Restarting the daemon that moves money, and editing the
-    job that would restart it, are deployment actions on a shared box, and the omission carries no
-    recorded reason — so it is logged with evidence rather than closed by an unasked-for reboot.
+    **Closed by the deploy change the owner asked for.** `keeper` now joins the build and the
+    `--no-deps` swap, so anvil keeps its chain and the daemon cannot age behind the repository
+    again. Three guards make that safe, and each was extracted from the workflow and run: the host
+    must carry a nonempty `KEEPER_PRIVATE_KEY` shaped like `0x` + 64 hex (never printed; absent,
+    empty and malformed each exit 1 with the running keeper left in place), the `.env` addresses
+    must match the seed-published `deployed.env` before anything is replaced, and the deploy polls
+    the container's own healthcheck to `healthy` within 180s, failing on `unhealthy`, `exited`,
+    `restarting`, a missing healthcheck, or a container that disappeared. The measurement above is
+    left as recorded, because the fix does not make it wrong.
     The change is small: add `keeper` to that `up -d`, keeping `--no-deps`, which is the part that
     protects anvil. The check that would keep it from silently ageing again is a version stamp —
     have the keeper publish the commit it was built from and assert in `/health` that it matches

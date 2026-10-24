@@ -196,9 +196,10 @@ services:
     # THE fix of this pass. Without a policy the keeper ran under Docker's default `no`: one
     # crash, or one VPS reboot, and it stayed down silently — nothing finalized or refunded
     # trials and the stack still reported itself healthy, because every other container was up.
-    # `unless-stopped` makes the deployed keeper survive a reboot; note it only ever fires on a
-    # host reboot, since the deploy pipeline never recreates the keeper (it swaps web/api with
-    # --no-deps, and the keeper was started by the initial full `up`).
+    # `unless-stopped` makes the deployed keeper survive a reboot. The deploy pipeline now
+    # recreates the keeper alongside web and api (`--no-deps`, so anvil keeps its chain) and
+    # waits for this healthcheck before it calls the deploy done, which is what stops a
+    # deployed keeper from aging silently behind the repository.
     restart: unless-stopped
     logging: *log-rotation
 
