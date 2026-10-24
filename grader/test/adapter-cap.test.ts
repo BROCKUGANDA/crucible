@@ -18,6 +18,7 @@ const CARD: ModelCard = {
   },
   budgetUsd: { stage: 40, day: 120 },
   costPerCallUsd: 0.004,
+  maxCallsPerStage: 10_000,
   latencyP95Ms: 20_000,
 };
 

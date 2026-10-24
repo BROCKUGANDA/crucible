@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { Arena } from "../src/eval/arena.js";
 import {
   BudgetExhausted,
+  CallCeilingReached,
   ModelCardError,
   SpendLedger,
   scrubEgress,
@@ -29,6 +30,8 @@ function card(over: Partial<ModelCard> = {}): ModelCard {
     },
     budgetUsd: { stage: 40, day: 120 },
     costPerCallUsd: 0.001,
+    // Generous by default so the dollar-budget tests below are testing the dollar budget.
+    maxCallsPerStage: 10_000,
     latencyP95Ms: 20_000,
     ...over,
   };
@@ -191,6 +194,101 @@ describe("spend governance caps before the money moves", () => {
       scope: "smoke",
     });
     await expect(guarded.grade(artifact("a"), "v1")).rejects.toThrow(/fall back to the stub tier/);
+  });
+});
+
+/**
+ * A dollar cap cannot fire when the price is zero: `spent + 0 > cap` is false for every positive
+ * cap. Unmetered catalogs are exactly that, and the arena's ladder is the runaway — 200 artifacts
+ * at 20 retests is 4000 calls per candidate. These tests are about the ceiling that does bind.
+ */
+describe("the call ceiling caps what the dollar budget cannot", () => {
+  function counting(id: string) {
+    const calls: number[] = [];
+    const adapter: ModelAdapter = {
+      id,
+      async grade() {
+        calls.push(1);
+        return { verdict: "PASS", confidence: 0.9, latencyMs: 5, promptVersion: "v1" };
+      },
+    };
+    return { adapter, calls: () => calls.length };
+  }
+
+  it("refuses a zero-priced model that the dollar budget would have waved through", async () => {
+    const ledger = new SpendLedger();
+    const { adapter, calls } = counting("gpt-frontier");
+    const guarded = withFrontierGuard(
+      adapter,
+      // Every dollar figure here is permissive. Under the old guard this adapter never refused.
+      card({ costPerCallUsd: 0, budgetUsd: { stage: 1_000, day: 10_000 }, maxCallsPerStage: 2 }),
+      ledger,
+      { scope: "smoke" },
+    );
+
+    await guarded.grade(artifact("a"), "v1");
+    await guarded.grade(artifact("b"), "v1");
+    await expect(guarded.grade(artifact("c"), "v1")).rejects.toThrow(CallCeilingReached);
+
+    expect(calls()).toBe(2); // the third never reached the model
+    expect(ledger.dayUsd("gpt-frontier")).toBe(0);
+    expect(ledger.stageCallCount("gpt-frontier", "smoke")).toBe(2);
+  });
+
+  it("counts the ceiling per stage, so one stage cannot spend another's calls", async () => {
+    const ledger = new SpendLedger();
+    const { adapter } = counting("gpt-frontier");
+    const smoke = withFrontierGuard(adapter, card({ costPerCallUsd: 0, maxCallsPerStage: 1 }), ledger, {
+      scope: "smoke",
+    });
+    const full = withFrontierGuard(adapter, card({ costPerCallUsd: 0, maxCallsPerStage: 1 }), ledger, {
+      scope: "full",
+    });
+
+    await smoke.grade(artifact("a"), "v1");
+    await full.grade(artifact("b"), "v1");
+    await expect(smoke.grade(artifact("c"), "v1")).rejects.toThrow(/call ceiling reached on stage "smoke"/);
+    await expect(full.grade(artifact("d"), "v1")).rejects.toThrow(/call ceiling reached on stage "full"/);
+
+    expect(ledger.stageCallCount("gpt-frontier", "smoke")).toBe(1);
+    expect(ledger.stageCallCount("gpt-frontier", "full")).toBe(1);
+    expect(ledger.callCount("gpt-frontier")).toBe(2);
+  });
+
+  it("says to narrow the stage rather than to raise the ceiling", async () => {
+    const ledger = new SpendLedger();
+    const { adapter } = counting("gpt-frontier");
+    const guarded = withFrontierGuard(adapter, card({ costPerCallUsd: 0, maxCallsPerStage: 1 }), ledger, {
+      scope: "adversarial",
+    });
+
+    await guarded.grade(artifact("a"), "v1");
+    await expect(guarded.grade(artifact("b"), "v1")).rejects.toThrow(/Narrow the stage/);
+  });
+
+  /** A ceiling that survived `reset()` would carry one run's calls into the next. */
+  it("clears the stage count on reset, so a new run starts with its full ceiling", async () => {
+    const ledger = new SpendLedger();
+    const { adapter } = counting("gpt-frontier");
+    const guarded = withFrontierGuard(adapter, card({ costPerCallUsd: 0, maxCallsPerStage: 1 }), ledger, {
+      scope: "smoke",
+    });
+
+    await guarded.grade(artifact("a"), "v1");
+    await expect(guarded.grade(artifact("b"), "v1")).rejects.toThrow(CallCeilingReached);
+
+    ledger.reset();
+    expect(ledger.stageCallCount("gpt-frontier", "smoke")).toBe(0);
+    await expect(guarded.grade(artifact("c"), "v1")).resolves.toBeDefined();
+  });
+
+  it("refuses a card whose ceiling could not fire, or could not be met", () => {
+    expect(() => validateModelCard(card({ maxCallsPerStage: 0 }))).toThrow(/positive integer/);
+    expect(() => validateModelCard(card({ maxCallsPerStage: -5 }))).toThrow(/positive integer/);
+    expect(() => validateModelCard(card({ maxCallsPerStage: 2.5 }))).toThrow(/positive integer/);
+    // Absent is not zero: a card that forgot the field must not read as "unmetered".
+    const { maxCallsPerStage: _dropped, ...withoutCeiling } = card();
+    expect(() => validateModelCard(withoutCeiling as ModelCard)).toThrow(/positive integer/);
   });
 });
 

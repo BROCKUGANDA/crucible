@@ -17,6 +17,8 @@ import type { Artifact, ModelAdapter, ModelVerdict } from "./types.js";
  *                     is how a model gets used for training data nobody signed up for.
  *   SpendLedger     — day and stage totals per model, and a guard that refuses *before* the
  *                     call. A ledger that only reports after the invoice is a report, not a cap.
+ *                     It counts calls per stage as well as dollars, because a provider whose
+ *                     price is zero has no dollar cap that can fire.
  *   scrubEgress     — the one egress path. Secret shapes and host paths are redacted, and the
  *                     categories found are returned so the span can name them.
  */
@@ -42,6 +44,19 @@ export interface ModelCard {
   retention: RetentionPosture;
   budgetUsd: { stage: number; day: number };
   costPerCallUsd: number;
+  /**
+   * Calls this stage may make, enforced ahead of the call like the dollar budget is.
+   *
+   * Required because the dollar budget cannot carry this alone. A provider with no metered price
+   * has `costPerCallUsd: 0`, and `spent + 0 > cap` is false for every positive cap — so the dollar
+   * guard refuses nothing, ever. Unmetered-but-rate-limited catalogs are that provider, and the
+   * arena's own ladder is the runaway: 200 artifacts × 20 retests is 4000 calls per candidate
+   * before it has decided anything.
+   *
+   * Per stage rather than per day, because `SpendLedger`'s "day" is "since the last `reset()`" and
+   * not a calendar day; a ceiling named `day` here would inherit that fiction.
+   */
+  maxCallsPerStage: number;
   /** p95 latency budget in ms (gate 513). */
   latencyP95Ms: number;
 }
@@ -84,6 +99,15 @@ export function validateModelCard(card: ModelCard): void {
   if (!(card.costPerCallUsd >= 0)) {
     throw new ModelCardError(`model ${card.id}: costPerCallUsd must be a number >= 0`);
   }
+  // A whole number of calls, not a dollar figure rounded into one. Zero is refused for the reason
+  // `budgetUsd` refuses zero: it reads as "capped" and behaves as "no stage may run at all", which
+  // a caller will "fix" by widening it rather than by noticing the card is wrong.
+  if (!Number.isInteger(card.maxCallsPerStage) || card.maxCallsPerStage <= 0) {
+    throw new ModelCardError(
+      `model ${card.id}: maxCallsPerStage must be a positive integer. An unmetered provider is not ` +
+        "an uncapped one — the call count is the only ceiling that binds when the price is zero.",
+    );
+  }
 }
 
 // ────────────────────────── the ledger ──────────────────────────
@@ -104,17 +128,43 @@ export class BudgetExhausted extends Error {
   }
 }
 
+/**
+ * The call ceiling, as distinct from the dollar budget.
+ *
+ * Separate error because the remedy is different. A dollar cap says "this cost too much"; a call
+ * ceiling says "this made too many requests", which on an unmetered provider is the only thing that
+ * can be true — and which a rate-limited catalog will otherwise say for us, with a 429, halfway
+ * through a stage.
+ */
+export class CallCeilingReached extends Error {
+  constructor(
+    readonly modelId: string,
+    readonly scope: string,
+    readonly calls: number,
+    readonly ceiling: number,
+  ) {
+    super(
+      `model ${modelId}: call ceiling reached on stage "${scope}" — ${calls} of ${ceiling}. ` +
+        `Refused before the call. Narrow the stage (fewer artifacts, fewer retests) rather than ` +
+        `raising the ceiling to make a run finish.`,
+    );
+    this.name = "CallCeilingReached";
+  }
+}
+
 /** Per-model spend, in dollars, with the cap enforced ahead of the call. */
 export class SpendLedger {
   private day = new Map<string, number>();
   private stage = new Map<string, number>();
   private calls = new Map<string, number>();
+  private callsPerStage = new Map<string, number>();
 
   record(card: ModelCard, scope: string): void {
     const stageKey = `${card.id}::${scope}`;
     this.day.set(card.id, (this.day.get(card.id) ?? 0) + card.costPerCallUsd);
     this.stage.set(stageKey, (this.stage.get(stageKey) ?? 0) + card.costPerCallUsd);
     this.calls.set(card.id, (this.calls.get(card.id) ?? 0) + 1);
+    this.callsPerStage.set(stageKey, (this.callsPerStage.get(stageKey) ?? 0) + 1);
   }
 
   dayUsd(modelId: string): number {
@@ -129,6 +179,11 @@ export class SpendLedger {
     return this.calls.get(modelId) ?? 0;
   }
 
+  /** Calls made against one stage. The count the ceiling is compared to. */
+  stageCallCount(modelId: string, scope: string): number {
+    return this.callsPerStage.get(`${modelId}::${scope}`) ?? 0;
+  }
+
   /** Average cost per graded artifact — the number the scorecard publishes. */
   averageUsd(modelId: string): number {
     const n = this.calls.get(modelId) ?? 0;
@@ -140,6 +195,7 @@ export class SpendLedger {
     this.day.clear();
     this.stage.clear();
     this.calls.clear();
+    this.callsPerStage.clear();
   }
 }
 
@@ -240,6 +296,13 @@ export function withFrontierGuard(
   return {
     id: adapter.id,
     async grade(artifact: Artifact, promptVersion: string): Promise<ModelVerdict> {
+      // Checked first, because on an unmetered provider it is the only one of the three that can
+      // ever fire — and a refusal here has to name the ceiling that was actually reached.
+      const stageCalls = ledger.stageCallCount(card.id, opts.scope);
+      if (stageCalls + 1 > card.maxCallsPerStage) {
+        throw new CallCeilingReached(card.id, opts.scope, stageCalls, card.maxCallsPerStage);
+      }
+
       const daySpent = ledger.dayUsd(card.id);
       if (daySpent + card.costPerCallUsd > card.budgetUsd.day) {
         throw new BudgetExhausted(card.id, "day", daySpent, card.budgetUsd.day);
