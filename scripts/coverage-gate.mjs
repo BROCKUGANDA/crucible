@@ -55,8 +55,9 @@ const POLICY = [
     target: { lines: 96, statements: 95, branches: 90, functions: 95 },
   },
   {
-    // The v2 arena escrow (ADR-0011). Measured 2026-10-24 at 96.18 / 93.21 / 73.86 / 90.28:
-    // the branch figure is the one to watch, and it is where the unexercised revert arms live.
+    // The v2 arena escrow (ADR-0011). Measured 2026-10-24 at 98.76 / 94.24 / 73.20 / 100.00 after
+    // the duplicate scalar getters moved to test/ArenaReads.sol: the branch figure is the one to
+    // watch, and it is where the unexercised revert arms live.
     file: "contracts/Arena.sol",
     floor: { lines: 95, statements: 92, branches: 70, functions: 88 },
     target: { lines: 98, statements: 96, branches: 90, functions: 95 },

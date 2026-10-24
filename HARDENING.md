@@ -120,6 +120,14 @@ current tree actually verifies, what it deliberately does not, and what is still
   `if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository`.
   GitHub runs the base branch's workflow file for `pull_request`, so a fork cannot remove the
   clause, and `ci.yml` is the only PR-triggered workflow in the repository.
+- **The arena fits EIP-170, and the gate that says so is measured.** `forge build --sizes` refused
+  `Arena` at 26,209 bytes — 1,633 over the 24,576-byte runtime limit — because the project optimized
+  for runtime gas (`optimizer_runs = 10_000`). Two measured changes, both with the pinned forge
+  v1.8.5: the setting is 200 now (21,338 alone), and 19 getters that were strict subsets of
+  `stateOf`/`amountsOf`/`windowsOf`/`breakAt` moved to `test/ArenaReads.sol` (20,155, 4,421 under).
+  The ABI shrink is cheap this moment because nothing off-chain reads the arena yet (item 16); once
+  an indexer does, a removed selector is a breaking change. After the move: 250 Foundry tests
+  green, Arena coverage 98.76 / 94.24 / 73.20 / 100.00, every floor cleared.
 - **The CI tool downloads are digest-pinned, which is what their step name always claimed.**
   Three steps in `ci.yml` and one in `fork-nightly.yml` were called "install foundry (pinned
   tarball)" while the body piped `curl` straight into `tar`: the pin was a version tag, and a
