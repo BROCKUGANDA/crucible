@@ -61,3 +61,25 @@ ADR/AGENTS.md law → params → existing code+tests → the bible's new specifi
 10. **Ghost-ledger convention.** `paidOut` counts every wei the trial routed out, including the
     bond's three exits (prize, seat pools, treasury remainder) as one whole, so
     `paidOut == deposited` at settlement is a check and not an approximation.
+11. **v2.1's Showcase Arena and Frenchy (gates 796–805) are read, judged, and not built.** The
+    bible's own dependency note (§16.13.6) puts Ghost Runs behind P5 (Harena) and P3/P4, Frenchy
+    behind gate 801 plus the P7 indexer, and House Bouts behind gate 796 — a second deployment
+    on Base Sepolia with `gUSDC`/`gSOL` play money. What exists to build on is the arena contract
+    and the escrow; the indexer, Standing and the agent surface (P7/P8) do not exist yet, so
+    there is nothing for a showcase to showcase. Two of its claims are already law here rather
+    than new work: an artifact cannot cross deployments because the EIP-712 `verifyingContract`
+    and `chainId` are inside the signed digest (`Arena.sol` `DOMAIN`, asserted at
+    `Arena.t.sol` `test_738_Submit_DomainBindsTheChainAndThisContract`), and writes are already
+    simulated before they are signed (`packages/smith-sdk/src/client.ts`, `simulateContract`
+    before every send) — gate 804's premise is half-shipped.
+12. **D-16 (Frenchy's voice) meets an existing decision, not a blank page.** The repo already
+    has an optional voice host and refused the interactive variant in advance:
+    `docs/adr/0009-optional-voice-host.md:47` rejects "an interactive voice agent (WebSocket +
+    STT)", and `docs/security-whitepaper.md:231` lists a second stream or WebSocket as a
+    forbidden change. Text-first with the existing host is compatible; "the room calls a Worker
+    through a Queue" is not, and would need a new ADR like the Postgres/Ponder case in §16.1.
+13. **No profiles in `params/` until something consumes one.** §5.2 asks for a `showcase` profile
+    compiled into a second deployment. `scripts/params-codegen.mjs` has no profile concept and the
+    arena's own generated constants only just acquired a consumer (`Params.sol`); adding a second
+    profile with no deployment to compile into would be the same title-only artefact the gate
+    register is already full of, so it is deferred with the deployment it belongs to.

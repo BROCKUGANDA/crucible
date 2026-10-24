@@ -562,4 +562,15 @@ much of the product's promise each one costs.
     the contract layer and 747–795 unbuilt, which is the honest state rather than a partial one
     presented as a whole.
 
+17. **v2.1's Showcase Arena and Frenchy (gates 796–805) are unbuilt, by dependency, not by
+    oversight.** The bible's §16.13.6 puts each mode behind work that does not exist here: Ghost
+    Runs behind Harena (P5) and the arena programs, Frenchy's director behind gate 801 and the P7
+    indexer, House Bouts behind a second deployment on Base Sepolia with play-money USDC and SOL
+    — which is ADR-0002's territory and a new ADR, not a config change. They were read and judged
+    (DECISIONS.md 11–13) rather than transcribed into `docs/gates.yml`, because the register
+    already carries 51 rows with nothing behind them and adding ten more makes the public count
+    less true, not more. What *is* already true of the showcase's premises: cross-deployment
+    artifact rejection is the EIP-712 domain binding the arena already enforces, and
+    simulate-before-sign already runs on every SDK write.
+
 Report a vulnerability as described in [`SECURITY.md`](SECURITY.md), not in a public issue.
