@@ -101,7 +101,8 @@ ADR/AGENTS.md law → params → existing code+tests → the bible's new specifi
     `SLASH_SKEPTIC_NUM` to 4000 reddens it); `/claims`, `tests/claims/`, `stages.ts`, identity
     epochs and time decay remain genuinely absent (**superseded on 2026-10-24 by 16, which builds
     `/claims` and gives the decay a consumer; `tests/claims/`, `stages.ts` and identity epochs
-    still are**); and the two CTAs the ledger called unrouted
+    still are** — identity epochs were built the same day by 17, and the `getSummary` clause two
+    lines above was wrong, corrected by 18); and the two CTAs the ledger called unrouted
     (`/bounties`, `/hall`) already answer 200, while nothing in the repo links `/skeptics`, so that
     redirect would be a route to nowhere. `/.well-known/crucible.json` was added to give "no one can
     fake it" something to check against, and it publishes `null` for an unbaked address rather than
@@ -169,5 +170,32 @@ ADR/AGENTS.md law → params → existing code+tests → the bible's new specifi
     unlinked agent, revert, empty return, a zero answer) on the policy `ReputationBridge` already
     states: a verdict cannot be undone, a missed transition is seen at the next settlement. Row
     `VI-8` was added in the same commit — the standard's own `getSummary` aggregate is still
-    unimplemented — so the matrix keeps three `absent` rows without inventing a promise to replace
+    unimplemented **(this clause is wrong; 18 corrects it, and the row it describes moves to
+    `enforced`)** — so the matrix keeps three `absent` rows without inventing a promise to replace
     the one this fixed.
+18. **The `getSummary` clause in 14 and 17 was wrong, and the promise it denied was failing for a
+    different reason than I recorded.** I wrote twice that `getSummary` "exists only as an interface
+    declaration, never implemented", and built `/claims` row `VI-8` on it. It is implemented — in
+    `MockReputationRegistry`, with the standard's own signature, and `test/ReputationBridge.t.sol`
+    has been reading it since the bridge landed. What was actually missing is one line of wiring:
+    the demo chain left `trials.reputationBridge()` at `address(0)`, so no verdict ever reached the
+    registry and the aggregate read correctly answered zero across four settled trials. That is a
+    worse finding than the one I recorded, not a better one — a getter that works over a record
+    nobody wrote is exactly the shape this ledger claims to watch for, and I mislabelled it as an
+    absent feature because I grepped the escrow and the alloy registry for a function that lives in
+    the reputation registry.
+    Fixed in the same direction as the mistake: `Demo.s.sol` deploys and wires the registry and the
+    bridge, and — the part the ordering made load-bearing — moves the identity links *before* the
+    trial loop, because the bridge resolves the ERC-8004 subject at settlement and an unlinked agent
+    publishes nothing but a `FeedbackSkipped`. Measured on a freshly seeded local chain: identity 1
+    answers 2 writes and 1500, identity 2 answers 2 writes and 350 — a survived win plus a landed
+    break on the 0–1000 scale the bridge declares. The mock's `setAgent` step is named in the script
+    rather than passed off as the standard's own behaviour: a real registry learns about an agent
+    from the identity registry it is paired with, and this double keeps a separate map.
+    `VI-8` moves to `enforced` and `VI-7`'s note stops claiming the getter is missing. The `absent`
+    floor would have been quietly satisfied by leaving `VI-8` mislabelled, so the row that replaces
+    it is a promise this repository genuinely does not keep: `III-2`, three independent replays
+    agreeing before a verdict stands — one execution and one run hash today. The landing gate that
+    bans promising a one-call read now checks the registry *and* the wiring, and was proved to bite
+    both ways: promise it with the seed unwired and it reddens, promise it with the wiring present
+    and it stays green.
