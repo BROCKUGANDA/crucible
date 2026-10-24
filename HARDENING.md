@@ -480,6 +480,41 @@ guards is the decoration it exists to detect.
   too, and `docker rmi crucible/verifier:latest` returns it to skipping honestly. The same
   measurement caught a stale line in the README: it carried `forge-runner 132` where the workspace
   has 136, and the per-workspace breakdown summed to 1468 against a stated total of 1472.
+- **Identity epochs (ADR-0012) shipped with every new branch mutation-proved, and the harness that
+  proved them was itself the finding.** Eleven new Foundry tests (`test/IdentityEpochs.t.sol`, plus
+  eight in `AlloyRegistry.t.sol`) and nine TypeScript ones. Seven mutations, each one the removal of
+  a behaviour the design depends on, and what reddened:
+  window not reset → 5 tests; lifetime book reset too (a handover that erases history) → 4; an
+  unobserved holder read as a handover to zero → 6, which is the fail-open set; `ownerOf` following
+  the identity instead of staying minted → 2, the soulbound pair; epoch fields dropped from
+  `tokenURI` → `test_TokenURI_OnChainJSON`; the identity read made to block a verdict → the two
+  fail-open escrow tests; the escrow reporting the operator instead of the holder → 3, including the
+  log-shape test. **Not proven, and named:** that `holderOf` is the right address for a reader that
+  never saw the handover (no test asserts the seller cannot keep settling into the buyer's window),
+  and nothing here tests a registry that answers with a *stale* owner, because there is no such mock.
+- **A mutation harness that cannot fail is worse than no harness: mine reported "not caught" seven
+  times out of seven, and the tests were fine.** The first version invoked forge with a path
+  resolved against the wrong working directory, so every run died with `Cannot find module` before
+  compiling, produced no `[FAIL:` lines, and the harness read that as "the suite did not catch this
+  mutation" — a clean-looking verdict built on a command that never ran. Fixed by correcting the
+  path *and* by refusing to report anything unless the output contains `Suite result:`. The general
+  rule this repo already states ("a wiring check must read the command that runs, not the file's
+  prose") has a second half: a mutation run must read the tool's summary line, not just the absence
+  of failures.
+- **A source mutation is invisible to a cross-workspace test until the library is rebuilt.** The
+  API suite imports `@crucible/smith`'s built `dist`, so mutating `packages/smith-sdk/src` and
+  running `apps/api`'s tests proved nothing — it reported "not caught" for a case the API test does
+  catch. Rebuilt between mutation and run, and the answer flipped to caught. Any future mutation
+  proof that crosses a workspace boundary has to run `npm run build --workspace <lib>` in between,
+  or it is measuring the previous commit.
+- **The `records()` widening was caught by the gate that exists to catch it, and the gate was then
+  found brittle in the safe direction.** `abi-drift.test.ts` parses `struct Record` out of the
+  Solidity and compares it field-for-field with the ABI's declared outputs, so appending five fields
+  reddened two tests before anything was published — the positional readers cannot silently shift
+  under this change now. The parser itself could not read a struct field carrying a trailing `//`
+  comment, which is how a packed struct gets documented here, so it threw on my own comment rather
+  than on a mismatch; it strips comments now, with a fixture test that fails if the strip is removed
+  and a second test that pins all nine output names in order.
 - **`getLogs({ abi })` does not decode on this node, and the node ignores the topics filter.**
   Both measured inside `crucible-api` against the live anvil on 2026-10-24: 56 logs came back with
   `eventName: undefined` and `args: undefined`, and a one-topic query still answered all 56. The
@@ -740,12 +775,17 @@ much of the product's promise each one costs.
     carried survive in the OFL texts beside the fonts and in `forge-std`'s own licence files.
     The two demo fixtures keep their MIT headers on purpose — their bytes are pinned by a keccak
     digest already published on-chain, and `npm run seed:check` re-proves both still resolve.
-16. **The arena is chain-only: nothing in it is wired to the app, the keeper or the indexer.**
-    `Arena.sol` and `ArgusCourt.sol` are deployed and tested by `forge test`, and by no other
-    name: no `TRIALS_ABI` entry, no read-model projector, no route, no keeper job, no
-    `Deploy.s.sol` step. A reviewer arriving from the v2 bible will find gates 734–746 green at
-    the contract layer and 747–795 unbuilt, which is the honest state rather than a partial one
-    presented as a whole.
+16. **HALF-CLOSED — the arena has an ABI and a keeper crank, but no deploy and no reader.**
+    `Arena.sol` and `ArgusCourt.sol` are tested by `forge test` and by no other name until now.
+    Landed: `ARENA_ABI`, generated from the artifact (51 functions, 23 events, 54 errors) and
+    drift-checked against the source; `trialCount()`, the one enumeration both a keeper and a
+    reader need; and the keeper's crank loop for `expireTrial`, `claimTimeout`, `freezeDocket`,
+    `drawPanel` and `tally`, behind its own `keeper.arena` switch and breaker, reported in
+    `/health` and absent when `ARENA_ADDRESS` is empty. Still absent, and named rather than
+    implied: **no deploy** — `Deploy.s.sol` and `Demo` never construct an arena, so the address
+    is empty on every host and the loop is not created; **no indexer projection**; **no route**.
+    `revealHoldout` is not a crank and stays the agent's own act. A reviewer arriving from the v2
+    bible still finds gates 734–746 green at the contract layer and the off-chain half missing.
 
 17. **v2.1's showcase layer is now half-built, and the first audit's verdict on it was wrong in
     both directions.** Corrected position, measured against the tree rather than the bible's prose:

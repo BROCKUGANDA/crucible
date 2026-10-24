@@ -51,6 +51,13 @@ export interface StandingInput {
   halfLifeDays?: number;
   /** now, in seconds. Passed in because a function that reads a clock cannot be tested at 45 days. */
   now: number;
+  /**
+   * ADR-0012: the second the agent's current identity epoch opened, from `AlloyRegistry.epochOf`.
+   * Outcomes settled before it belong to whoever held the identity then, and are excluded — counted
+   * in `excludedPreEpoch`, never dropped silently. Null means the caller did not read an epoch,
+   * which is a different answer from "the epoch started at the dawn of the chain".
+   */
+  epochStartedAt?: number | null;
 }
 
 import { STANDING_HALF_LIFE_DAYS } from "./params.js";
@@ -106,6 +113,10 @@ export interface Standing {
   counted: number;
   /** sum of the decayed weights, so a reader can see how much history is behind the score */
   weightMass: number;
+  /** settled outcomes left out because they belong to a previous identity epoch (ADR-0012) */
+  excludedPreEpoch: number;
+  /** the boundary they were left out against, echoed back so the exclusion is checkable */
+  epochStartedAt: number | null;
   assumptions: StandingAssumption[];
   halfLifeDays: number;
 }
@@ -151,11 +162,20 @@ function round4(v: number): number {
  */
 export function computeStanding(input: StandingInput): Standing {
   const halfLifeDays = input.halfLifeDays ?? DEFAULT_HALF_LIFE_DAYS;
+  const epochStartedAt = input.epochStartedAt ?? null;
   let numerator = 0;
   let denominatorWeight = 0;
   let counted = 0;
+  let excludedPreEpoch = 0;
 
   for (const o of input.outcomes) {
+    // ADR-0012: an outcome the current holder did not earn is not this agent's standing. Excluded
+    // and counted, for the same reason a missing settlement time is: a figure a reader cannot
+    // reconstruct from the payload is not a figure worth publishing.
+    if (epochStartedAt !== null && o.settledAt < epochStartedAt) {
+      excludedPreEpoch += 1;
+      continue;
+    }
     const value = outcomeValue(o);
     // A refund is not an outcome for the agent — nobody won or failed the work — so it enters
     // neither side of the ratio. Counting it would drag a score toward zero with no event behind
@@ -177,6 +197,8 @@ export function computeStanding(input: StandingInput): Standing {
     display: round4(500 + 250 * standing),
     counted,
     weightMass: round4(denominatorWeight),
+    excludedPreEpoch,
+    epochStartedAt,
     assumptions: STANDING_ASSUMPTIONS,
     halfLifeDays,
   };

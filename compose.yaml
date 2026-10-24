@@ -165,6 +165,8 @@ services:
       RPC_URL: http://anvil:8545
       TRIALS_ADDRESS: ${TRIALS_ADDRESS:-}
       ALLOY_ADDRESS: ${ALLOY_ADDRESS:-}
+      # Empty on every host where the arena is not deployed; the crank loop is not created then.
+      ARENA_ADDRESS: ${ARENA_ADDRESS:-}
       FROM_BLOCK: "0"
       PRIVATE_KEY: ${KEEPER_PRIVATE_KEY:-}
       # The floor at which /health says this wallet is low. Passed through rather than defaulted:

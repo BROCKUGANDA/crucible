@@ -163,7 +163,7 @@ const scribe = new Scribe({
 const alloyById = new Map<number, AlloyState>();
 
 /**
- * Three view calls, all of which may fail independently. A failure is a null field, not
+ * Five view calls per agent, all of which may fail independently. A failure is a null field, not
  * a zero: `tokenURI` reverts with `NotMinted` for an agent with no alloy, and an agent
  * the registry never touched is not the same as an agent whose tier is 0.
  */
@@ -182,7 +182,7 @@ async function readAlloy(agentId: number): Promise<AlloyState | null> {
       return null;
     });
 
-  const [tier, isLocked, tokenUri] = await Promise.all([
+  const [tier, isLocked, tokenUri, epochRow, holderRow] = await Promise.all([
     attempt(() =>
       publicClient.readContract({
         address: alloyAddress,
@@ -207,13 +207,35 @@ async function readAlloy(agentId: number): Promise<AlloyState | null> {
         args,
       }),
     ),
+    // ADR-0012, and read as its own named getter rather than as slice of `records`: this file's own
+    // comment below explains why a number picked out of a nine-wide tuple by position is a number
+    // that can be published without ever having been measured. `epochOf` never reverts for an
+    // unminted agent — it answers zeros, which is a real reading (no outcome recorded), as distinct
+    // from the null this returns when the RPC itself failed.
+    attempt(() =>
+      publicClient.readContract({
+        address: alloyAddress,
+        abi: ALLOY_ABI,
+        functionName: "epochOf",
+        args,
+      }),
+    ),
+    attempt(() =>
+      publicClient.readContract({
+        address: alloyAddress,
+        abi: ALLOY_ABI,
+        functionName: "holderOf",
+        args,
+      }),
+    ),
   ]);
 
   // A failure is not a null tier — it is the absence of a tier, and the two
   // are different. The caller keeps the last good value so that one
   // transient RPC error does not turn a measured tier into "tier unknown"
   // for a whole TTL.
-  if (tier === null && isLocked === null && tokenUri === null) return null;
+  const [epoch, epochStartedAt, lifetimeWins, lifetimeSlashes] = epochRow ?? [];
+  if (tier === null && isLocked === null && tokenUri === null && epochRow === null) return null;
 
   return {
     // `tierOf(agentId)` is read on its own rather than as the fourth
@@ -225,6 +247,11 @@ async function readAlloy(agentId: number): Promise<AlloyState | null> {
     tier,
     locked: isLocked,
     tokenUri,
+    epoch: epoch === undefined ? null : Number(epoch),
+    epochStartedAt: epochStartedAt === undefined ? null : Number(epochStartedAt),
+    lifetimeWins: lifetimeWins === undefined ? null : Number(lifetimeWins),
+    lifetimeSlashes: lifetimeSlashes === undefined ? null : Number(lifetimeSlashes),
+    holder: holderRow ?? null,
   };
 }
 
@@ -248,9 +275,9 @@ async function sweepAlloy(): Promise<void> {
   if (protocolFeeBps === null) await readProtocolFee();
 
   const ids = [...scribe.state.agents.keys()];
-  // Bounded fan-out. This used to be one unbounded `Promise.all`, at three `readContract` calls
+  // Bounded fan-out. This used to be one unbounded `Promise.all`, at five `readContract` calls
   // per agent, every `ALLOY_TTL_MS` — and `registerAgent` costs only `MIN_BOND` and is never
-  // removed, so anyone could add three permanent reads per two seconds to the node that the
+  // removed, so anyone could add five permanent reads per two seconds to the node that the
   // indexer and `/snapshot` share. Eight at a time keeps a full sweep honest without letting the
   // registry's size choose this process's concurrency.
   for (let i = 0; i < ids.length; i += ALLOY_SWEEP_BATCH) {
