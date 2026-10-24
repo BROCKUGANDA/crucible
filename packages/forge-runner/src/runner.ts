@@ -125,6 +125,7 @@ export class ForgeRunner {
     ) => sink({ status, label, at: Date.now(), ...extra });
 
     const state: RunState = { iterations: 0, parsed: [], degraded: false };
+    const runLog: string[] = [];
     let sandbox: Sandbox | null = null;
 
     try {
@@ -143,8 +144,6 @@ export class ForgeRunner {
       }
       await sandbox.writeSpec(specText);
       const commitSHA = await this.deps.fetchSuite(req.testsCID, sandbox);
-      const suiteRepoCID = await this.tryPin(() => this.deps.uploadRepo(sandbox!));
-      const logsCID = await this.tryPin(() => this.deps.uploadLogs(state.lastOutput ?? ""));
 
       const startedAt = Date.now();
       emit("planning", `planning — ${this.deps.model}`);
@@ -191,6 +190,10 @@ export class ForgeRunner {
         const suite = await sandbox.runSuite(req.suiteCommand);
         state.lastOutput = `${suite.stdout}\n${suite.stderr}`.trim();
         state.parsed = readSuiteResults(state.lastOutput);
+        // Every iteration, not the last one. `state.lastOutput` is overwritten each pass and
+        // feeds the agent's next prompt; this is the record a skeptic fetches, and output
+        // withheld from the agent still belongs in it.
+        runLog.push(`# iteration ${state.iterations}\n${state.lastOutput}`);
 
         const results = summarise(state.parsed);
         emit(
@@ -221,12 +224,20 @@ export class ForgeRunner {
         );
       }
 
+      // Both pins come after the loop. A skeptic's re-run overlays `repoCID`'s files onto a
+      // fresh bench holding the sponsor's suite (`packages/argus/src/live.ts:184`), so a repo
+      // pinned before the agent wrote anything re-runs the exam with no answer in it and
+      // reports a verification that verified nothing. Pinning only on the green path also
+      // means a run that throws never pays for a pin nobody will read.
+      const repoCID = await this.tryPin(() => this.deps.uploadRepo(sandbox!));
+      const logsCID = await this.tryPin(() => this.deps.uploadLogs(runLog.join("\n")));
+
       const artifact = buildArtifact({
         trialId: req.trialId,
         agentId: req.agentId,
         specCID: req.specCID,
         testsCID: req.testsCID,
-        repoCID: suiteRepoCID || req.testsCID,
+        repoCID: repoCID || req.testsCID,
         commitSHA,
         suiteCommand: req.suiteCommand,
         testResults: state.parsed,

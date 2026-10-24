@@ -330,4 +330,85 @@ describe("ForgeRunner invariants", () => {
       expect(out.degraded).toBe(false); // Docker was available, so it was sealed
     }
   }, 30_000);
+
+  /**
+   * Both pins are evidence a third party fetches later: `rerunOnFreshBench` overlays
+   * `repoCID`'s files onto a fresh bench (`packages/argus/src/live.ts:184`) and a skeptic reads
+   * `logsCID` for the run's output. Pinned before the loop, the repo holds the sponsor's
+   * unpacked suite with no answer in it and the logs hold the empty string — a re-run that
+   * looks like a verification and verifies nothing.
+   */
+  describe("the artifact's content pins", () => {
+    it("pins the repo and the logs after the work, not before it", async () => {
+      let iterations = 0;
+      let repoPinnedAtIteration = -1;
+      let logged = "";
+
+      const deps = harness({
+        step: async () => {
+          iterations += 1;
+          return { patch: "", notes: "ok", done: true };
+        },
+      });
+      deps.uploadRepo = async () => {
+        repoPinnedAtIteration = iterations;
+        return CID_A;
+      };
+      deps.uploadLogs = async (contents) => {
+        logged = contents;
+        return CID_A;
+      };
+
+      const out = await new ForgeRunner(deps).run(
+        request({ suiteCommand: GREEN_SUITE, iterBudget: 1 }),
+      );
+      expect(out.ok).toBe(true);
+      expect(repoPinnedAtIteration, "the repo was pinned before any iteration ran").toBe(1);
+      expect(logged, "the logs were pinned from an empty run").toContain("test_Pass0");
+      expect(logged).toContain("# iteration 1");
+    }, 30_000);
+
+    it("keeps every iteration's suite output in the logs, not just the last", async () => {
+      let logged = "";
+      const deps = harness({
+        // `done` only on the second pass, so the loop runs twice and the log has to carry both.
+        step: async (ctx) => ({
+          patch: "",
+          notes: ctx.iteration === 1 ? "still working" : "done",
+          done: ctx.iteration > 1,
+        }),
+      });
+      deps.uploadLogs = async (contents) => {
+        logged = contents;
+        return CID_A;
+      };
+
+      const out = await new ForgeRunner(deps).run(
+        request({ suiteCommand: GREEN_SUITE, iterBudget: 3 }),
+      );
+      expect(out.ok).toBe(true);
+      expect(out.iterations).toBe(2);
+      expect(logged).toContain("# iteration 1");
+      expect(logged).toContain("# iteration 2");
+    }, 30_000);
+
+    it("does not pin at all when the run never goes green", async () => {
+      let repoPins = 0;
+      let logPins = 0;
+      const deps = harness();
+      deps.uploadRepo = async () => {
+        repoPins += 1;
+        return CID_A;
+      };
+      deps.uploadLogs = async () => {
+        logPins += 1;
+        return CID_A;
+      };
+
+      const out = await new ForgeRunner(deps).run(request({ suiteCommand: "false", iterBudget: 2 }));
+      expect(out.ok).toBe(false);
+      expect(repoPins).toBe(0);
+      expect(logPins).toBe(0);
+    }, 30_000);
+  });
 });

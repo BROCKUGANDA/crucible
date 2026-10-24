@@ -21,6 +21,7 @@ way it does and what would have to change to revisit it.
 | [0008](0008-in-memory-indexer.md)               | In-memory indexer for the demo; no Postgres/queue dependency         | Accepted |
 | [0009](0009-optional-voice-host.md)             | Frenchy is an optional, server-proxied, muted-by-default TTS host    | Accepted |
 | [0010](0010-index-cursor-semantics.md)          | The index cursor means "next block"; `head + 1` is caught up         | Accepted |
+| [0011](0011-crucible-v2-arena-edition.md)       | The v2 arena sits beside the legacy law; fees become parameters      | Accepted |
 
 ## Writing a new ADR
 
