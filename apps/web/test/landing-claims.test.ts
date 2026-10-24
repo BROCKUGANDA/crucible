@@ -19,6 +19,8 @@ const PAGE = fileURLToPath(new URL("../src/app/page.tsx", import.meta.url));
 const TRIALS = fileURLToPath(new URL("../../../crucible-contracts/contracts/CrucibleTrials.sol", import.meta.url));
 const ALLOY = fileURLToPath(new URL("../../../crucible-contracts/contracts/AlloyRegistry.sol", import.meta.url));
 const STANDING = fileURLToPath(new URL("../../../packages/smith-sdk/src/standing.ts", import.meta.url));
+const REP_REGISTRY = fileURLToPath(new URL("../../../crucible-contracts/contracts/mocks/ERC8004Mocks.sol", import.meta.url));
+const DEMO_SCRIPT = fileURLToPath(new URL("../../../crucible-contracts/script/Demo.s.sol", import.meta.url));
 const API_APP = fileURLToPath(new URL("../../../apps/api/src/app.ts", import.meta.url));
 const CLAIMS_PAGE = fileURLToPath(new URL("../src/app/claims/page.tsx", import.meta.url));
 const page = readFileSync(PAGE, "utf8");
@@ -92,11 +94,19 @@ describe("the landing page's money claims, bound to the escrow", () => {
     expect(page).toMatch(/two of three/i);
   });
 
-  it("does not promise a one-call read that no contract implements", () => {
-    const implementsOneCall = readFileSync(ALLOY, "utf8").includes("function getSummary") ||
-      sol.includes("function getSummary");
+  it("binds a one-call promise to the registry that answers it and the wiring that fills it", () => {
+    // `getSummary` lives in the reputation registry, not the escrow or the alloy book — the first
+    // version of this check grepped those two files, so it could only ever answer "not
+    // implemented" and the sentence stayed banned for the wrong reason.
+    //
+    // The promise has two halves, and both are required now: something that answers the call, and
+    // a deployment that connects it. A chain with `reputationBridge() == address(0)` has a getter
+    // that works over a record nobody wrote — four settled trials, summary zero — which is exactly
+    // the shape this gate was written to refuse.
+    const answers = readFileSync(REP_REGISTRY, "utf8").includes("function getSummary");
+    const wired = readFileSync(DEMO_SCRIPT, "utf8").includes("setReputationBridge");
     const promisesOneCall = /in one call/i.test(page);
-    if (!implementsOneCall) expect(promisesOneCall).toBe(false);
+    if (!(answers && wired)) expect(promisesOneCall).toBe(false);
   });
 
   it("keeps the tier claim inside what recordSlash does, and the fade claim inside the decay", () => {
