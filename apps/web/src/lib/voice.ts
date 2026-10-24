@@ -9,8 +9,9 @@
  * does not exist. A voice host that breaks the page it decorates is worse than no host.
  */
 
-export type VoiceMoment = "greeting" | "tour" | "verdict" | "verdict-repeat" | "spec";
+import { API_BASE } from "./apiBase";
 
+export type VoiceMoment = "greeting" | "tour" | "verdict" | "verdict-repeat" | "spec";
 export const VOICE_ENABLED_KEY = "crucible.voice.enabled";
 export const VOICE_DAY_KEY = "crucible.voice.lastDay";
 export const VOICE_CATCHPHRASE_KEY = "crucible.voice.catchphrase";
@@ -86,12 +87,10 @@ export function verdictMoment(catchphraseUsed: boolean): VoiceMoment {
   return catchphraseUsed ? "verdict-repeat" : "verdict";
 }
 
-const API = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8787";
-
 /** Whether the server has a key and a voice id. Never returns the key. */
 export async function fetchVoiceStatus(): Promise<boolean> {
   try {
-    const res = await fetch(`${API}/voice/status`, { method: "GET" });
+    const res = await fetch(`${API_BASE}/voice/status`, { method: "GET" });
     if (!res.ok) return false;
     const body = (await res.json()) as { configured?: unknown };
     return body.configured === true;
@@ -130,7 +129,7 @@ function clipKey(moment: VoiceMoment, text?: string): string {
 async function requestClip(moment: VoiceMoment, text?: string): Promise<VoiceClip> {
   let res: Response;
   try {
-    res = await fetch(`${API}/voice/speak`, {
+    res = await fetch(`${API_BASE}/voice/speak`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(text === undefined ? { moment } : { moment, text }),

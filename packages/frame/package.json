@@ -1,0 +1,28 @@
+{
+  "name": "@crucible/frame",
+  "version": "0.1.0",
+  "description": "The frame reducer and the moment detector: a trial's own event log, folded into the ordered beats a replay and a commentary line are built from. Pure — no chain, no clock, no model.",
+  "license": "UNLICENSED",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" },
+    "./moments": { "types": "./dist/moments.d.ts", "default": "./dist/moments.js" }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@crucible/crypto": "*",
+    "@crucible/smith": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.5"
+  }
+}

@@ -83,3 +83,15 @@ ADR/AGENTS.md law → params → existing code+tests → the bible's new specifi
     arena's own generated constants only just acquired a consumer (`Params.sol`); adding a second
     profile with no deployment to compile into would be the same title-only artefact the gate
     register is already full of, so it is deferred with the deployment it belongs to.
+14. **The replay reads the chain back instead of storing lines, and that is a divergence from
+    §16.13.3 made on purpose.** The bible says "every line is stored with its frame hash, moment id
+    and prompt version in Postgres; audio goes to R2. Replays read lines back instead of
+    regenerating them." ADR-0008 admits no database to this repository, so the replay regenerates —
+    and the guarantee the store was there to provide is kept a different way: the reducer is pure, so
+    the same logs fold to the same frames on any machine, each frame carries its own `frameHash`
+    through the one crypto door, and the whole replay carries `replayHash`. What that gives up is
+    honest to name: a stored line survives a decode-rule change and a re-derived one does not, so
+    `test/fixtures/{paid-with-break,slashed}.json` and the pinned golden hash are what make a drift
+    visible instead of silent. Commentary follows the same shape — Frenchy's existing static pools
+    (gate 674 forbids a runtime model), deterministic from `f(replay-<trialId>, trigger, history)`,
+    so a replay's captions repeat exactly and cost nothing.

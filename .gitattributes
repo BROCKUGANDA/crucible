@@ -16,3 +16,21 @@ fixtures/** text eol=lf
 # parse error. Pin these to LF so the line ending cannot become a production
 # incident on the way to the box.
 deploy/edge/** text eol=lf
+
+# Generated artifacts are compared byte-for-byte by the gate that guards them.
+#
+# `scripts/params-codegen.mjs --check` regenerates in memory and diffs against the file on disk;
+# the generated text is a template literal in that file, so its newlines are the source file's own,
+# while a Windows checkout with `core.autocrlf=true` smudges the committed blob to whatever it likes.
+# Measured 2026-10-24: a clean checkout of a commit whose values matched the JSON exactly reported
+# drift on all three artifacts. A byte compare there guards the line ending, not the numbers — and
+# teaches everyone to distrust the gate that exists to catch a parameter hand-edited into a
+# generated file.
+#
+# What this pin does and does not do, stated plainly because the difference matters: it makes the
+# clean filter strip CRLF from these paths on every future commit, and `eol=lf` stops CR being
+# re-inserted at checkout. It does NOT rewrite the blobs already in history, three of which were
+# committed with CRLF inside them, so a checkout of the current commit still shows them. That is why
+# the gate compares with line endings folded, and why the fold is the load-bearing half.
+params/generated/** text eol=lf
+crucible-contracts/contracts/Params.sol text eol=lf
