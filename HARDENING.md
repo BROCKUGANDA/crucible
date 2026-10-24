@@ -515,6 +515,38 @@ guards is the decoration it exists to detect.
   comment, which is how a packed struct gets documented here, so it threw on my own comment rather
   than on a mismatch; it strips comments now, with a fixture test that fails if the strip is removed
   and a second test that pins all nine output names in order.
+- **`forge test` does not compile `script/`, so 266 green tests sat on a tree whose deploy scripts
+  could not build.** The epoch change widened `records()` to nine outputs and I updated the two
+  demo scripts' destructurings wrongly (8 and 6 components). `forge test` passed all 266 anyway;
+  `forge build --sizes` failed on the same working copy in the same second, and the first thing to
+  say so on the real path was `RUN forge build` inside the seed image, on the production box, during
+  a ship. CI's `Contracts` job *would* have caught it earlier — it runs `forge build --sizes` — but
+  my own commit failed `forge fmt --check` one step before, so the build step never executed: a gate
+  that aborts early hides the next gate's answer. AGENTS.md's command block now names the build
+  step beside `forge test`, and the CI run on `develop` after the fmt fix is what proved both.
+- **The seat operator's image could not be built at all, and no gate had ever asked.**
+  `.dockerignore` excludes `scripts` under "repo tooling and prose no image reads", while
+  `apps/juror/Dockerfile:52` copies `scripts/seed-content.mjs` out of the build stage and its
+  entrypoint runs `node scripts/seed-content.mjs --check` at start — so `COPY --from=build` failed
+  with `not found`, and it had been failing for as long as that service has existed, because
+  `deploy.yml` builds `web api keeper seed` and never names `juror`. Fixed in two lines, both
+  needed: the exclusion becomes `scripts/*` with the one file re-included (a negation cannot
+  re-include a file under an excluded *directory*, so the shape matters), and the image also
+  carries `crucible-contracts/script/SeedContent.sol`, because `--check` reads the pinned digests
+  back out of that source — the first fix alone only moved the failure from build time to start
+  time. Proved on the box, the only place with a daemon: the image builds, and the check ends with
+  "the committed constants answer to the bytes they name". What it then hits is a correct refusal —
+  `SEAT_PRIVATE_KEY is required and is unset or empty` — so the seat stays off this host, the same
+  policy the keeper's key guard enforces, and the container was stopped rather than left
+  restart-looping.
+- **Deployed bytecode was compared to the compiled artifact, not assumed equal to it.** The seed
+  image compiles with `foundry:latest` while the local and CI gates use pinned forge v1.8.5, so
+  "the tests cover what is deployed" needed a measurement: `cast code` for both contracts against
+  `forge inspect … deployedBytecode`, CBOR metadata stripped, byte lengths equal (13,216 B and
+  4,481 B) and all 25 differing runs accounted for as constructor-linked immutables — zeros in the
+  artifact, the owner `0xf39f…` and the registry `0xe7f1…` on chain. That closes the compiler-version
+  gap without spending a live transaction. The live handover itself is still proven only in
+  `test/IdentityEpochs.t.sol`, and is named as such rather than claimed from the box.
 - **`getLogs({ abi })` does not decode on this node, and the node ignores the topics filter.**
   Both measured inside `crucible-api` against the live anvil on 2026-10-24: 56 logs came back with
   `eventName: undefined` and `args: undefined`, and a one-topic query still answered all 56. The
