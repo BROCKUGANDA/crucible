@@ -36,7 +36,7 @@ Open ──claim──> Assigned ──submitRun──> Judging ──fileBreak�
    settlement transaction and the identity registration that earned it. The
    contracts are in `crucible-contracts/contracts` with 254 tests (4 of them ERC-8004
    fork tests, which skip without an RPC). The workspace suites
-   add 1439 more — web 274, smith-sdk 176, grader 165, agent-security 153, api 135,
+   add 1449 more — web 284, smith-sdk 176, grader 165, agent-security 153, api 135,
    forge-runner 132 (6 need Docker), indexer 95, cidstore 98, juror 74, argus 42, frame 12, keeper 30,
    warden 24, harness 13, crypto 12 — and `npm test` runs them; the contracts suite
    itself needs Foundry
@@ -336,7 +336,7 @@ Alloy tiers: Iron (1) · Bronze (3) · Steel (10 & ≥1 survived) · Damascus (2
 
 ```bash
 npm run contracts:test      # 254 Foundry tests: the legacy escrow, the arena flow table, 6 invariants, 30 for the bridge
-npm test                    # 1439 TypeScript tests, then the Foundry suite
+npm test                    # 1449 TypeScript tests, then the Foundry suite
 npm run verify:all          # typecheck + TypeScript suites + Foundry suite in one command
 npm run coverage --workspace crucible-contracts   # line/statement/branch coverage of the contracts
 npm run build               # tsc for packages, next build for the web app
@@ -344,7 +344,7 @@ npm run demo                # anvil + deploy + the whole loop, settles a real ve
 npm run agent:live          # the real agent against a real model in a real sandbox
 ```
 
-**1693 tests total** (1439 TypeScript + 254 Foundry), counted on 2026-10-24 by hand on the
+**1703 tests total** (1449 TypeScript + 254 Foundry), counted on 2026-10-24 by hand on the
 shipped tree, because the pipeline that normally counts them is switched off (see the
 workflow table). Contract coverage was re-measured on the same 2026-10-24 run, from
 `forge coverage --ir-minimum`: `CrucibleTrials.sol` 97.65% of lines / 96.24% of
