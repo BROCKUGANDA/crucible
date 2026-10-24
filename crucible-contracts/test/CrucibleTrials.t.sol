@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.26;
 
 import {Base} from "./Base.t.sol";
@@ -382,7 +382,8 @@ contract CrucibleTrialsTest is Base {
         for (uint256 i; i < 3; ++i) {
             vm.deal(sponsor, REWARD);
             vm.prank(sponsor);
-            uint256 id = trials.createTrial{value: REWARD}(REWARD, SPEC, TESTS, uint64(block.timestamp + 2 days), WINDOW);
+            uint256 id =
+                trials.createTrial{value: REWARD}(REWARD, SPEC, TESTS, uint64(block.timestamp + 2 days), WINDOW);
             vm.prank(operator);
             trials.claimTrial(id);
             _submitRun(id);
@@ -428,8 +429,7 @@ contract CrucibleTrialsTest is Base {
         // One trial ready: submitted, break window closed.
         vm.deal(sponsor, 2 * REWARD);
         vm.prank(sponsor);
-        uint256 ready =
-            trials.createTrial{value: REWARD}(REWARD, SPEC, TESTS, uint64(block.timestamp + 2 days), WINDOW);
+        uint256 ready = trials.createTrial{value: REWARD}(REWARD, SPEC, TESTS, uint64(block.timestamp + 2 days), WINDOW);
         vm.prank(operator);
         trials.claimTrial(ready);
         _submitRun(ready);
@@ -510,6 +510,53 @@ contract CrucibleTrialsTest is Base {
         // settled, so the skip path leaves the receipt count alone.
         trials.settleBatch(ids);
         assertEq(receipt.tokenCounter(), 2);
+    }
+
+    /// The other door. `finalize` is the path a single settlement takes — the keeper's per-trial
+    /// fallback, and every demo settlement on the live chain — and it minted nothing while
+    /// `settleBatch` did, so the box carried eight settled trials and zero proofs. The receipt is
+    /// the attestation, so it belongs to settlement itself, not to whichever caller batched it.
+    function test_Finalize_MintsTheSameReceiptAsTheBatch() public {
+        VerificationReceipt receipt = new VerificationReceipt();
+        receipt.setMinter(address(trials));
+        trials.setVerificationReceipt(address(receipt));
+        trials.setReceiptsEnabled(true);
+
+        _register(3 ether);
+        vm.deal(sponsor, REWARD);
+        vm.prank(sponsor);
+        uint256 id = trials.createTrial{value: REWARD}(REWARD, SPEC, TESTS, uint64(block.timestamp + 2 days), WINDOW);
+        vm.prank(operator);
+        trials.claimTrial(id);
+        _submitRun(id);
+        vm.warp(block.timestamp + WINDOW + 1);
+
+        trials.finalize(id);
+
+        assertEq(receipt.tokenCounter(), 1, "a per-trial settlement must produce a proof");
+        assertEq(receipt.receiptIdOfTrial(id), 1);
+        assertEq(receipt.ownerOf(1), operator);
+
+        CrucibleTrials.Trial memory settled = trials.getTrial(id);
+        bytes32 expectedHash = keccak256(abi.encode(settled.verdict, settled.runHash, settled.breakProofCID));
+        (uint256 receiptTrialId, bytes32 receiptVerdictHash,, uint256 graderVersion,) = receipt.receipts(1);
+        assertEq(receiptTrialId, id);
+        assertEq(receiptVerdictHash, expectedHash);
+        assertEq(graderVersion, 1);
+    }
+
+    /// With the flag off, no settlement door calls an external contract at all.
+    function test_Finalize_WithReceiptsDisabledMintsNothing() public {
+        VerificationReceipt receipt = new VerificationReceipt();
+        receipt.setMinter(address(trials));
+        trials.setVerificationReceipt(address(receipt));
+
+        (uint256 id,) = _liveTrial();
+        _submitRun(id);
+        vm.warp(block.timestamp + WINDOW + 1);
+        trials.finalize(id);
+
+        assertEq(receipt.tokenCounter(), 0);
     }
 
     // ── skeptics ──
