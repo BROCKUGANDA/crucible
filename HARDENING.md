@@ -350,6 +350,16 @@ the check, because the script's *comments* explain the flag and contain the stri
 scans executable lines with comments filtered out. A gate that matches prose in the file it
 guards is the decoration it exists to detect.
 
+- **The verify page was printing a proof hash that was not the proof.** `VerificationReceipt`
+  stores the real digests — the live chain showed `verdictHash = 0xd601ff4e…ec95` — while
+  `tokenURI` rendered `0x000…0000d6`: `bytes1(b >> (248 - i * 8))` truncates to the **high** byte,
+  which is zero for every shift except the last, so 31 of 32 bytes printed as `00`. Found only by
+  reading the live string after the deploy, because the test written for it asserted
+  `length == 66` — a 66-character string of mostly zeros passes a length check. Now
+  `test_TokenURI_PrintsEveryByteOfTheStoredDigests` compares both digests byte-for-byte against a
+  pattern where a shifted-out byte is visible, and the same pattern proves the prompt hash. One
+  implementation of this encoder exists in the tree (`grep bytes1(.*>>`), so the class is closed.
+  `VerificationReceipt` lines coverage moved 98.11% → 100.00% on the way.
 - **The receipt is minted by settlement, not by the caller that batched it** (`7f47ed8`). The
   first deploy surfaced this by measurement, not by reading: the live chain reported
   `receiptsEnabled = true`, a wired `verificationReceipt`, eight settled trials and
