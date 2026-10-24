@@ -365,6 +365,20 @@ the check, because the script's *comments* explain the flag and contain the stri
 scans executable lines with comments filtered out. A gate that matches prose in the file it
 guards is the decoration it exists to detect.
 
+- **The hand-written ABIs were missing events, and the drift gate that exists to catch ABI drift
+  read in only one direction.** `packages/smith-sdk/test/abi-drift.test.ts` had three checks — ABI
+  claims exist in the source, signatures match, topic0 digests match — and all three iterate over
+  **what the ABI carries**. Nothing asked what the ABI *omits*. Adding that reverse assertion found
+  seven missing events in two files: `CrucibleTrials.sol` emits `RunnerSet`, `ReputationBridgeSet`
+  and `VerificationReceiptMinted`, none in `TRIALS_ABI`; `AlloyRegistry.sol` emits `Transfer`,
+  `Locked`, `TierChanged` and `ForgeSet`, and `ALLOY_ABI` carried **no events at all**. Two concrete
+  consequences, both measured: `RunnerSet` is in the indexer's own `EVENT_NAMES`, but the log filter
+  is built by intersecting that list with the ABI, so the ingest list silently matched nothing and
+  `model.ts`'s `RunnerSet` case had never run against a real log; and on the deployed chain the four
+  `VerificationReceiptMinted` logs — the receipts the verify page exists to show — reported as
+  undecodable noise (`meta.logsUndecoded: 4`). All seven events added, both directions asserted.
+  Caveat the fix does not remove: the index holds a cursor, so `RunnerSet` logs already behind it are
+  not re-read; the case runs from here forward, and a rebuilt index is what makes history agree.
 - **`getLogs({ abi })` does not decode on this node, and the node ignores the topics filter.**
   Both measured inside `crucible-api` against the live anvil on 2026-10-24: 56 logs came back with
   `eventName: undefined` and `args: undefined`, and a one-topic query still answered all 56. The
