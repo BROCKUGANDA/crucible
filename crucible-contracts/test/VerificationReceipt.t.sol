@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.26;
 
 import {Test} from "forge-std/Test.sol";
@@ -69,7 +69,8 @@ contract VerificationReceiptTest is Test {
     function test_Soulbound_NoTransferOrApprovalSelectors() public {
         _mint(7);
 
-        (bool okTransfer,) = address(receipt).call(abi.encodeWithSelector(bytes4(0x23b872dd), agent, minter, uint256(1)));
+        (bool okTransfer,) =
+            address(receipt).call(abi.encodeWithSelector(bytes4(0x23b872dd), agent, minter, uint256(1)));
         assertFalse(okTransfer, "transferFrom must not exist");
         (bool okSafe,) = address(receipt).call(abi.encodeWithSelector(bytes4(0x42842e0e), agent, minter, uint256(1)));
         assertFalse(okSafe, "safeTransferFrom must not exist");
@@ -106,7 +107,37 @@ contract VerificationReceiptTest is Test {
         assertTrue(bytes(vm.parseJsonString(json, "$.attributes[1].value")).length == 66); // verdictHash hex
 
         // The description repeats it, because that is the line a reader actually reads.
-        assertEq(vm.parseJsonString(json, "$.description"), 'Non-transferable proof that trial 77 settled in Crucible Warden v1');
+        assertEq(
+            vm.parseJsonString(json, "$.description"),
+            "Non-transferable proof that trial 77 settled in Crucible Warden v1"
+        );
+    }
+
+    /// The length check above is not a content check: a hex encoder that emits 31 zero bytes and
+    /// one real one is still 66 characters. This is the proof a sponsor reads on `/verify`, so
+    /// every byte of it has to be the digest that was stored, in order.
+    function test_TokenURI_PrintsEveryByteOfTheStoredDigests() public {
+        bytes32 pattern = 0x0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20;
+        bytes32 other = 0x201f1e1d1c1b1a191817161514131211100f0e0d0c0b0a090807060504030201;
+        vm.prank(minter);
+        uint256 tokenId = receipt.mintReceipt(agent, 5, pattern, other, 1);
+
+        string memory json = _jsonOf(receipt.tokenURI(tokenId));
+        assertEq(
+            vm.parseJsonString(json, "$.attributes[1].value"),
+            "0x0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20",
+            "the verdict digest must print whole"
+        );
+        assertEq(
+            vm.parseJsonString(json, "$.attributes[2].value"),
+            "0x201f1e1d1c1b1a191817161514131211100f0e0d0c0b0a090807060504030201",
+            "the prompt digest must print whole"
+        );
+
+        // And the printed digest is the one in storage, not one the renderer invented.
+        (, bytes32 storedVerdict, bytes32 storedPrompt,,) = receipt.receipts(tokenId);
+        assertEq(storedVerdict, pattern);
+        assertEq(storedPrompt, other);
     }
 
     function test_TokenURI_UnknownTokenReverts() public {
