@@ -4,6 +4,8 @@ pragma solidity 0.8.26;
 import {Script} from "forge-std/Script.sol";
 import {console} from "forge-std/console.sol";
 import {CrucibleTrials} from "../contracts/CrucibleTrials.sol";
+import {Arena} from "../contracts/Arena.sol";
+import {ArgusCourt} from "../contracts/ArgusCourt.sol";
 import {AlloyRegistry} from "../contracts/AlloyRegistry.sol";
 import {MockIdentityRegistry, MockReputationRegistry} from "../contracts/mocks/ERC8004Mocks.sol";
 import {ReputationBridge} from "../contracts/ReputationBridge.sol";
@@ -33,8 +35,16 @@ contract Demo is Script {
     /// digests — so a synthetic key is the honest choice here.
     uint256 constant RUNNER_KEY = 0xA11CE;
 
+    /// What each demo seat posts. The Arena's per-trial floor is
+    /// `reward * SEAT_FEE_BPS/BPS * MAX_DOCKET * SEAT_BOND_MIN_MULTIPLE` — 0.2 × reward for this
+    /// parameter set — and that contract number still decides every draw. This is only what the
+    /// demo chooses to post; 1 ether clears the floor for any demo trial up to 5 ether.
+    uint256 constant SEAT_BOND = 1 ether;
+
     CrucibleTrials internal trials;
     AlloyRegistry internal alloy;
+    Arena internal arena;
+    ArgusCourt internal court;
     MockIdentityRegistry internal identity;
     MockReputationRegistry internal reputation;
     ReputationBridge internal bridge;
@@ -48,6 +58,12 @@ contract Demo is Script {
     uint256 internal pkSponsor;
     uint256 internal pkSkeptic;
     uint256 internal pkRelayer;
+    /// Seats four to six of the v2 arena. The court needs six, not three: `Arena._exclusions`
+    /// adds all three round-1 seats to round 2's exclusion list, so a three-seat pool leaves
+    /// nothing drawable for round 2 and reverts `NotEnoughSeats` — and O8 with it.
+    uint256 internal pkSeat4;
+    uint256 internal pkSeat5;
+    uint256 internal pkSeat6;
 
     function run() external {
         _keyActors();
@@ -58,6 +74,8 @@ contract Demo is Script {
         trials.setIdentityRegistry(address(identity));
         _wireReputation();
         vm.stopBroadcast();
+
+        _deployArena(payable(vm.addr(pkDeployer)));
 
         console.log("CrucibleTrials", address(trials));
         console.log("AlloyRegistry", address(alloy));
@@ -121,8 +139,11 @@ contract Demo is Script {
         pkSponsor = vm.deriveKey(DEV_MNEMONIC, 6);
         pkSkeptic = vm.deriveKey(DEV_MNEMONIC, 7);
         pkRelayer = vm.deriveKey(DEV_MNEMONIC, 8);
+        pkSeat4 = vm.deriveKey(DEV_MNEMONIC, 9);
+        pkSeat5 = vm.deriveKey(DEV_MNEMONIC, 10);
+        pkSeat6 = vm.deriveKey(DEV_MNEMONIC, 11);
 
-        address[] memory funded = new address[](8);
+        address[] memory funded = new address[](9);
         funded[0] = vm.addr(pkDeployer);
         funded[1] = vm.addr(pkArgus1);
         funded[2] = vm.addr(pkArgus2);
@@ -131,7 +152,11 @@ contract Demo is Script {
         funded[5] = vm.addr(pkOperatorB);
         funded[6] = vm.addr(pkSponsor);
         funded[7] = vm.addr(pkSkeptic);
+        funded[8] = vm.addr(pkRelayer);
 
+        // Seats four to six derive past anvil's ten funded genesis accounts, so they start empty
+        // and are funded from the deployer in `_deployArena`. `vm.deal` is a cheatcode: against an
+        // RPC it does nothing to the sender, which is the same trap the header records.
         for (uint256 i; i < funded.length; ++i) {
             require(funded[i].balance > 2 ether, "not a funded anvil account");
         }
@@ -156,8 +181,100 @@ contract Demo is Script {
         console.log("VerificationReceipt", address(receipt));
     }
 
-    function _forgeAgent(uint256 pk, string memory metadataURI) internal returns (uint256 agentId) {
-        vm.broadcast(pk);
+    /// The v2 arena, and the six seats that make its panels drawable.
+    ///
+    /// Six, not three. `Arena._exclusions` excludes the sponsor, the agent, every skeptic on the
+    /// docket, and — from round 2 — all three seats that sat in round 1. With only three bonded,
+    /// round 1 consumes the pool and round 2 reverts `NotEnoughSeats`, taking O8 (the no-quorum
+    /// refund) with it. The proof below is the court's own `draw`, which is the same call
+    /// `drawPanel` makes, so it tests the number that will actually gate a panel.
+    ///
+    /// The seats are distinct wallets from the sponsor, the agents and the skeptic: a seat that is
+    /// any of those is excluded from the draw, shrinking the pool by one exactly on the trial that
+    /// matters.
+    ///
+    /// Keys are derived ONLY on Anvil. The dev mnemonic is published, so these keys are public —
+    /// fine on a local chain whose funds are worthless, and a griefing surface anywhere else. Any
+    /// other chain refuses rather than deploy a court a stranger can vote in; there, the keys come
+    /// from the secret store and the addresses are recorded in `AS_BUILT.md`.
+    function _deployArena(address treasury) internal {
+        require(
+            block.chainid == 31337,
+            "Demo seat keys derive from the public dev mnemonic; on any other chain load them from the secret store"
+        );
+
+        vm.startBroadcast(pkDeployer);
+        court = new ArgusCourt();
+        // Mode 0: the seed is `keccak256(prevrandao, block.number, id, round)`, which is not a
+        // VRF. Mode 1 fails closed (`RandomnessNotConfigured`) until a consumer is wired, so a
+        // demo that needs a panel can only run mode 0. Recorded as D-17, not left as script
+        // behaviour.
+        arena = new Arena(treasury, address(court), 0);
+        court.setArena(address(arena));
+        vm.stopBroadcast();
+
+        uint256[6] memory keys = _seatKeys();
+        address[6] memory seats;
+        for (uint256 i; i < 6; ++i) seats[i] = vm.addr(keys[i]);
+
+        // Seats four to six sit past anvil's ten funded genesis accounts. Fund them from the
+        // deployer — a real transfer, because `vm.deal` is a cheatcode and does nothing against
+        // an RPC.
+        vm.startBroadcast(pkDeployer);
+        for (uint256 i = 3; i < 6; ++i) {
+            (bool ok, ) = seats[i].call{value: SEAT_BOND * 2}("");
+            require(ok, "could not fund a seat");
+        }
+        vm.stopBroadcast();
+
+        for (uint256 i; i < 6; ++i) {
+            vm.startBroadcast(keys[i]);
+            court.bondSeat{value: SEAT_BOND}();
+            vm.stopBroadcast();
+        }
+
+        require(court.poolLength() == 6, "seat pool is not six");
+        for (uint256 i; i < 6; ++i) {
+            (uint256 bond,,) = court.bondedOf(seats[i]);
+            require(bond >= SEAT_BOND, "seat bond below the demo bond");
+        }
+
+        // Both rounds must survive their real exclusion lists. `seatCount() >= 3` does not test
+        // that: the pool is only large enough if three seats remain after round 2 excludes the
+        // three trial parties AND all three round-1 seats.
+        address[] memory round1 = new address[](3);
+        round1[0] = vm.addr(pkSponsor);
+        round1[1] = vm.addr(pkOperatorA);
+        round1[2] = vm.addr(pkSkeptic);
+
+        address[3] memory first = court.draw(1, round1, 0);
+
+        address[] memory round2 = new address[](6);
+        for (uint256 i; i < 3; ++i) round2[i] = round1[i];
+        for (uint256 i; i < 3; ++i) round2[3 + i] = first[i];
+
+        // Reverts `NotEnoughSeats` if a second panel cannot be filled.
+        address[3] memory second = court.draw(2, round2, 0);
+        require(
+            second[0] != address(0) && second[1] != address(0) && second[2] != address(0),
+            "round 2 drew an empty seat"
+        );
+
+        console.log("Arena", address(arena));
+        console.log("ArgusCourt", address(court));
+        console.log("seats bonded", uint256(6));
+    }
+
+    function _seatKeys() internal view returns (uint256[6] memory k) {
+        k[0] = pkArgus1;
+        k[1] = pkArgus2;
+        k[2] = pkArgus3;
+        k[3] = pkSeat4;
+        k[4] = pkSeat5;
+        k[5] = pkSeat6;
+    }
+
+    function _forgeAgent(uint256 pk, string memory metadataURI) internal returns (uint256 agentId) {        vm.broadcast(pk);
         agentId = trials.registerAgent{value: 1 ether}(metadataURI, vm.addr(RUNNER_KEY));
     }
 
