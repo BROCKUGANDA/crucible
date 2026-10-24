@@ -2,7 +2,8 @@
 // Do not edit: change the JSON, re-run the generator, commit the diff.
 // v2 arena parameters (ADR-0011). The v1 constants at the bottom are frozen records.
 
-export const FEE_BPS = 1500n;
+// ARENA_FEE_BPS, not FEE_BPS — see the note in params.rs: the legacy escrow's live FEE_BPS is 500.
+export const ARENA_FEE_BPS = 1500n;
 export const TRIAL_OPEN_MAX_SECONDS = 2592000n;
 export const AGENT_BOND_MIN_BPS = 2000n;
 export const CLAIM_DEADLINE_MIN_SECONDS = 3600n;

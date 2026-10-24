@@ -71,7 +71,7 @@ contract GoldenPath is Script {
         // "make this suite pass", and the two paths differ in what the agent answers, not in what
         // was asked. The tag stays because it is what the log line and the judge's memory need.
         id = trials.createTrial{value: 0.5 ether}(
-            SeedContent.SPEC_HASH, SeedContent.TESTS_HASH, uint64(block.timestamp + 2 days), 1 hours
+            0.5 ether, SeedContent.SPEC_HASH, SeedContent.TESTS_HASH, uint64(block.timestamp + 2 days), 1 hours
         );
         console.log("trial posted:", tag);
         console.log("  id", id, "0.5 ETH, 1h window");

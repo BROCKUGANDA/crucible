@@ -4,7 +4,10 @@
 
 #![allow(dead_code)]
 
-pub const FEE_BPS: u64 = 1500;
+// ARENA_FEE_BPS, not FEE_BPS: CrucibleTrials.sol:143 owns a live FEE_BPS = 500, and a
+// generated FEE_BPS = 1500 one import away from it is the exact confusion AGENTS.md names
+// as the product pivot. The arena's fee is therefore only addressable by its arena name.
+pub const ARENA_FEE_BPS: u64 = 1500;
 pub const TRIAL_OPEN_MAX_SECONDS: u64 = 2592000;
 pub const AGENT_BOND_MIN_BPS: u64 = 2000;
 pub const CLAIM_DEADLINE_MIN_SECONDS: u64 = 3600;

@@ -54,6 +54,14 @@ const POLICY = [
     floor: { lines: 91, statements: 90, branches: 70, functions: 73 },
     target: { lines: 96, statements: 95, branches: 90, functions: 95 },
   },
+  {
+    // Minted by the settlement path and never moved. The one uncovered branch is the
+    // double-guard in `tokenURI` (`trialId == 0 && ownerOf == 0`), where either half
+    // alone already rejects an unminted token.
+    file: "contracts/VerificationReceipt.sol",
+    floor: { lines: 95, statements: 93, branches: 85, functions: 95 },
+    target: { lines: 100, statements: 98, branches: 100, functions: 100 },
+  },
 ];
 
 const METRICS = ["lines", "statements", "branches", "functions"];

@@ -1,11 +1,16 @@
 # Gate 701 artifact — the MSRV fallback the pinned-toolchain note names.
 #
-# SBF platform-tools v1.51 carries rustc 1.84; some late-2025 transitive crates
-# declare edition-2024 (rust-version >= 1.85). This option makes cargo's
-# resolver prefer the newest version of each crate whose declared rust-version
-# the build rustc actually satisfies, instead of failing the resolve. The
-# blake3 1.5.1 pin (scripts/toolchain-pin.sh) handles the one crate that
-# needed an explicit floor. Do not float platform-tools without re-running
-# the end-to-end suite.
+# SBF platform-tools v1.41 (bundled with the solana-labs v1.18.26 tarball Anchor.toml pins)
+# carries rustc 1.75; some late-2025 transitive crates declare edition-2024 and a
+# rust-version well above that. This option makes cargo's resolver prefer the newest
+# version of each crate whose declared rust-version the build rustc actually satisfies,
+# instead of failing the resolve. The blake3 1.5.1 pin (scripts/toolchain-pin.sh) handles
+# the one crate that needed an explicit floor. Do not float platform-tools without
+# re-running the end-to-end suite.
+#
+# This file once said "platform-tools v1.51 carries rustc 1.84". That was the agave
+# 3.0.0/2.3.6 recipe this environment rejected (see Anchor.toml's gate-701 note); the
+# comment survived the pin change and read as corroboration for a toolchain that is not
+# installed here. The pin is v1.41 / rustc 1.75.
 [resolver]
 incompatible-rust-versions = "fallback"

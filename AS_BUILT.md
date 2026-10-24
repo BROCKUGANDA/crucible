@@ -7,10 +7,11 @@ showed it green and the date. A tool or artifact not listed here is not claimed.
 
 | Piece | Version | Proof |
 | --- | --- | --- |
-| host rustc/cargo | stable 1.99.1 (rustup, minimal) | `cargo test -p work-escrow`: 12/12 green (WSL Ubuntu 26.04) |
+| host rustc/cargo | stable 1.99.1 (rustup, minimal) | `cargo test -p work-escrow`: green in the 2026-10-24 WSL session. Re-counted in the tree on 2026-10-24: `programs/work-escrow/src/math.rs` carries **11** `#[test]`, and they are the only ones in `programs/` — the earlier row said 12/12. The 3 vectors tests live in the sibling `vectors` crate and are not run by `-p work-escrow`. **No CI job runs any of it** (see `HARDENING.md` still-open 13) |
 | anchor-cli | 0.30.1 (built from source) | `anchor build` produced the `.so`; `anchor test` 10/10 on localnet |
 | Solana build + localnet | solana-labs **v1.18.26** release tarball (`solana`, `solana-test-validator`, `solana-keygen`, `cargo-build-sbf`; platform-tools **v1.41**, rustc 1.75, bundled) | e2e run 2026-10-24; amends D-13 for this machine — agave 3.0.0/2.3.6 unreachable here (org does not resolve; crates.io names are library-only) |
-| lockfile discipline | Cargo.lock v3, floor pins in `crucible-contracts/solana/scripts/toolchain-pin.sh` (blake3 1.5.1, proc-macro-crate 3.1.0, indexmap 2.11.0, zeroize_derive 1.4.2, borsh 1.5.1, unicode-segmentation 1.12.0, cc 1.1.6, jobserver 0.1.31) | the build logs in the 2026-10-24 session |
+| lockfile discipline | Cargo.lock v3. **Script-enforced floor pins — three, in `crucible-contracts/solana/scripts/toolchain-pin.sh`:** blake3 1.5.1 (`:28`), proc-macro-crate 3.1.0 (`:32`), indexmap 2.11.0 (`:36`) | the build logs in the 2026-10-24 session |
+| resolved-but-not-pinned | zeroize_derive 1.4.2, borsh 1.5.1 (alongside 0.9.3/0.10.4), unicode-segmentation 1.12.0, cc 1.1.6, jobserver 0.1.31 are what `Cargo.lock` resolved to on 2026-10-24. They are **not** in `toolchain-pin.sh`, so `build-local.sh:33-34` (`rm -f Cargo.lock`, then `cargo generate-lockfile`) will not restore them; a verifiable rebuild needs them pinned before it needs a claim | measured 2026-10-24: `grep -cE "^pin " scripts/toolchain-pin.sh` = 3 |
 | Node / npm | 24.x / 11.x (Windows host + WSL) | `npm test`: 1360 TS tests green |
 
 ## Program ids (localnet; devnet deploys pending P1-close)

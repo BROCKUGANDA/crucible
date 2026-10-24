@@ -220,6 +220,41 @@ current tree actually verifies, what it deliberately does not, and what is still
   records the proven toolchain (and what is *not* claimed); `scripts/restore.sh` ran green
   in-session (gate 731). Gates 721–795 joined the registry — **377 gates, gapless
   419–795** — and the params drift check runs in the CI node job.
+- **The batch settlement path keeps the escrow's idempotency revert where the law puts it
+  (2026-10-24).** `settleBatch` caught every per-entry revert and discarded it, and the sweep
+  then stamped all trials in the batch with the single tx hash — so the keeper could report
+  settling a trial the chain had refused. Now only an already-settled entry is skipped, a trial
+  that is not finalizable aborts the batch, and the warden — the layer AGENTS.md names as
+  owning per-trial error isolation — retries each trial alone and records each outcome on its
+  own. `test_SettleBatch_RevertsOnNotSettleable` asserts the *end state* (neither trial settled,
+  no credit moved), not that the caller stopped waiting; restoring the `try/catch` turns it red.
+  `crucible-contracts/contracts/CrucibleTrials.sol:637`, `packages/warden/src/warden.ts:83,96`
+- **`VerificationReceipt` is immobile, one-per-trial, and names the trial it proves
+  (2026-10-24).** The in-flight contract shipped a full ERC-721 transfer/approve surface — a
+  proof of proven work that could be sold, beside `AlloyRegistry`, which refuses the ERC-721
+  label for exactly that reason (contract-spec.md §8, at :285-289) — and its `tokenURI` printed
+  the mint
+  counter where the spec asked for the trial id, two numbers that part company the moment a
+  batch skips an entry. Every move path is gone, `receiptIdOfTrial` makes a second receipt for
+  one trial revert `AlreadyMinted`, and the metadata carries the real trial id. 12 Foundry
+  tests, including a low-level call to each of the four standard transfer/approve selectors
+  asserting the function does not exist, and one that refuses ETH.
+  `crucible-contracts/test/VerificationReceipt.t.sol`
+- **Gate 702's own pattern was the bug it claimed to catch (2026-10-24).** The CPI allowlist
+  header forbids `solana_program::invoke` and `invoke_signed`; the regex was
+  `invoke_signed?\s*\(`, where `?` binds to the `d` — so plain `invoke(` matched nothing. Proven
+  with a throwaway crate that carries both an out-of-policy dependency and a raw `invoke(`: only
+  the dependency fired before the fix, both fire now. The allowlist is also scoped per program
+  by name, because gate 702 is `work-escrow`'s law and the arena is designed around the Ed25519
+  precompile; a program not named in `PROGRAM_POLICY` is **reported**, never silently passed.
+  `crucible-contracts/solana/scripts/check-cpi-allowlist.mjs:32-37,73`
+- **The arena's 15% cannot be imported into the 5% path by accident (2026-10-24).** Codegen
+  emitted `FEE_BPS = 1500n` next to `CrucibleTrials.sol`'s live `FEE_BPS = 500`. The generated
+  constant is `ARENA_FEE_BPS` in both Rust and TS, with the reason inline; `params:check` still
+  gates drift and the five invariants in CI, and
+  `test_FeeBpsIsFiveHundredNotFifteenHundred` reads 500 from the contract itself (flip the
+  constant and it goes red, mirroring the Rust `fee_is_five_percent_not_fifteen`).
+  `scripts/params-codegen.mjs:98-101`, `crucible-contracts/test/CrucibleTrials.t.sol:463`
 - **The 2026-10-24 Mimosa deep scan's 16 findings triage to zero code changes, with the
   evidence named per finding.** Scan `scan-2026-10-23T21-56-23.604Z-87faa63b4be5` (deep, sealed
   `sha256:c4309e86890e…`): 11 high, 5 medium; the dependency pass scanned 684 packages and
@@ -449,5 +484,40 @@ much of the product's promise each one costs.
     have the keeper publish the commit it was built from and assert in `/health` that it matches
     what `web` and `api` report, because "the image in the repo is the one running" is exactly the
     assumption this finding cost two weeks to disprove.
+
+12. **The gate register cannot fail, and 51 of its 75 v2 rows describe nothing that exists.**
+    `docs/gates.yml` carries exactly two keys per gate — `title` and `frameworks` (measured:
+    377 of each, ids gapless 419–795). There is no `status`, no `proof`, no command, no excerpt,
+    so gate 419 (shipped, tested) and gate 795 (a persistence drill that has never run) are
+    structurally identical to a reader and to every tool. Nothing reads the file: no test, no
+    script, no CI step (`grep -rn "gates.yml"` answers `compliance-matrix.mjs`, two generated
+    comments, and prose). `compliance-matrix.mjs` is itself invoked by nothing, so the register
+    and the `/compliance` JSON it publishes can drift apart silently — and `/compliance` is not
+    a page, it is `export default function CompliancePage() { return null; }` serving JSON.
+    `worklog.md`, which the v2 bible makes the place a gate's proof excerpt lives, does not
+    exist. Two consequences are already visible in the tree: gates 585 and 648 title a function
+    (`settleBatch`) that had never been committed when this was written, and the in-flight
+    receipts and batch surface cite gates 402/415/416/418, which are below the register's floor
+    of 419 and therefore answerable by nothing. AGENTS.md's own rule — "a green you cannot turn
+    red is decoration" — applies to the register itself. The fix is a `proof:` key plus a checker
+    that goes red when a claimed command does not exist, or a separate planned-register so the
+    public count stops reading as verified.
+13. **The Solana workstream has no CI job, so every gate 701–720 "proof" is a session log.**
+    `grep -rniE "solana|anchor|cargo|sbf|work-escrow" .github/workflows/` returns nothing. The
+    workspace is not in `package.json`'s workspaces list either, which means
+    `workspace-coverage-gate.mjs` cannot enumerate it to notice that its `test` and `test:lint`
+    scripts are never run — it is outside the universe that gate looks at, not excluded with a
+    reason. `@coral-xyz/anchor` is not installed, `target/` is gitignored, and `scripts/restore.sh`
+    — whose second step is titled "toolchain vs AS_BUILT.md" — never opens `AS_BUILT.md`: it probes
+    for the presence of node/npm/cargo/anchor, treats a missing Solana toolchain as a `note` that
+    does not set the fail flag, and then prints "RESTORE GREEN — tree, tools, params, coverage all
+    proven." On a Linux box without `wsl` the anchor branch degrades to that same note, so a
+    restored machine with no Solana toolchain reports green. The recorded counts do not all agree
+    with the code either: `AS_BUILT.md` says **12/12** host where `programs/work-escrow/src/math.rs`
+    holds 11 `#[test]` (measured, and the only `#[test]` in `programs/`; the crate
+    `crucible-contracts/solana/vectors` adds 3 more that `-p work-escrow` does not run), while its
+    **10/10** localnet does match the 10 `it()` blocks in `tests/work-escrow.ts`. Either wire the
+    host tests and the CPI lint into CI (both run in seconds, no validator needed) or mark gates
+    701–720 as session-proved rather than green.
 
 Report a vulnerability as described in [`SECURITY.md`](SECURITY.md), not in a public issue.

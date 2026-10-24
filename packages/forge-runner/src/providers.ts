@@ -53,6 +53,28 @@ export const DEFAULT_GROQ_MODEL = "qwen/qwen3.8-27b";
 export const DEFAULT_NIM_MODEL = "z-ai/glm-5.3-flash";
 
 /**
+ * A provider endpoint is configured, not user input — but a misconfigured one
+ * should fail loudly at construction, not quietly fetch. http(s) only; every
+ * other scheme (file:, data:, anything a typo can produce) is refused here.
+ * Localhost is allowed on purpose: the over-the-wire tests and the local demo
+ * both point at a loopback server.
+ */
+export function assertProviderUrl(url: string): void {
+  const parsed = (() => {
+    try {
+      return new URL(url);
+    } catch {
+      throw new Error(`provider baseUrl is not a URL: ${url}`);
+    }
+  })();
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+    throw new Error(
+      `provider baseUrl must be http(s), got ${parsed.protocol}// — refusing to fetch`,
+    );
+  }
+}
+
+/**
  * The one OpenAI-compatible chat-completions client.
  *
  * Reasoning models (gpt-oss, nemotron) put their chain of thought in `reasoning_content`
@@ -62,6 +84,7 @@ export const DEFAULT_NIM_MODEL = "z-ai/glm-5.3-flash";
  */
 export function openAiCompatibleClient(opts: CompatibleOptions): LlmClient {
   const base = opts.baseUrl ?? GROQ_BASE;
+  assertProviderUrl(base);
   const model = opts.model ?? opts.defaultModel ?? DEFAULT_GROQ_MODEL;
   const maxTokens = opts.maxTokens ?? 8000;
   const name = opts.name ?? "provider";
@@ -174,6 +197,7 @@ export function promptGuard(args: PromptGuardOptions): {
   const shape = args.shape ?? "float";
   const base =
     args.baseUrl ?? (shape === "verdict" ? NIM_BASE : GROQ_BASE);
+  assertProviderUrl(base);
   const model =
     args.model ??
     (shape === "verdict"

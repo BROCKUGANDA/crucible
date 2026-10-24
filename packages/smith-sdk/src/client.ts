@@ -99,6 +99,9 @@ export class Crucible {
 
   readonly cidIndex?: CidIndex;
 
+  /** Per-method gas estimate cache (gate 404). Invalidated on nonce conflict. */
+  private readonly gasCache = new Map<string, bigint>();
+
   constructor(config: CrucibleConfig) {
     this.config = config;
     this.publicClient = createPublicClient({
@@ -106,6 +109,21 @@ export class Crucible {
       transport: http(config.rpcUrl),
     }) as PublicClient;
     this.cidIndex = config.cidIndex;
+  }
+
+  /** Read a cached gas estimate for a method, if present. */
+  cachedGas(method: string): bigint | undefined {
+    return this.gasCache.get(method);
+  }
+
+  /** Store a gas estimate for a method. */
+  cacheGas(method: string, gas: bigint): void {
+    this.gasCache.set(method, gas);
+  }
+
+  /** Invalidate a cached gas estimate (e.g. on nonce conflict). */
+  invalidateGas(method: string): void {
+    this.gasCache.delete(method);
   }
 
   get address(): Address {
@@ -269,6 +287,28 @@ export class Crucible {
   }
 
   // ── writes ─────────────────────────────────────────────────────────────
+  async createTrial(
+    wallet: WalletClient,
+    reward: bigint,
+    specCID: Hex,
+    testsCID: Hex,
+    deadline: bigint,
+    breakWindow: bigint,
+  ): Promise<bigint> {
+    // Simulate before send (gate 409): `require(msg.value == reward)` makes a revert here
+    // mean overpayment rather than a chain-side failure — both deserve an eth_call, not gas.
+    const { request, result } = await this.publicClient.simulateContract({
+      address: this.address,
+      abi: TRIALS_ABI,
+      functionName: "createTrial",
+      args: [reward, specCID, testsCID, deadline, breakWindow],
+      value: reward,
+      account: wallet.account!,
+    });
+    await wallet.writeContract(request);
+    return result as bigint;
+  }
+
   async registerAgent(
     wallet: WalletClient,
     metadataURI: string,
@@ -374,14 +414,49 @@ export class Crucible {
   }
 
   async finalize(wallet: WalletClient, trialId: bigint): Promise<Hex> {
-    return wallet.writeContract({
+    // Simulate before send (gate 409): a revert surfaces here against current state, before
+    // gas is spent on a transaction that cannot land. On the realism demo chain this is money.
+    const cached = this.cachedGas("finalize");
+    const { request } = await this.publicClient.simulateContract({
       address: this.address,
       abi: TRIALS_ABI,
       functionName: "finalize",
       args: [trialId],
-      chain: this.config.chain,
       account: wallet.account!,
+      ...(cached ? { gas: cached } : {}),
     });
+    if (request.gas) this.cacheGas("finalize", request.gas);
+    try {
+      return await wallet.writeContract(request);
+    } catch (err) {
+      // Nonce conflict or other tx-level failure: invalidate the cached estimate.
+      this.invalidateGas("finalize");
+      throw err;
+    }
+  }
+
+  /**
+   * Keeper batch settlement (gate 402). One tx settles N verified escrows; the
+   * contract skips already-settled entries and never reverts the batch on a
+   * not-yet-finalizable per-entry state.
+   */
+  async settleBatch(wallet: WalletClient, trialIds: bigint[]): Promise<Hex> {
+    const cached = this.cachedGas("settleBatch");
+    const { request } = await this.publicClient.simulateContract({
+      address: this.address,
+      abi: TRIALS_ABI,
+      functionName: "settleBatch",
+      args: [trialIds],
+      account: wallet.account!,
+      ...(cached ? { gas: cached } : {}),
+    });
+    if (request.gas) this.cacheGas("settleBatch", request.gas);
+    try {
+      return await wallet.writeContract(request);
+    } catch (err) {
+      this.invalidateGas("settleBatch");
+      throw err;
+    }
   }
 
   async withdraw(wallet: WalletClient): Promise<Hex> {

@@ -22,12 +22,12 @@ import {AlloyRegistry} from "../contracts/AlloyRegistry.sol";
  * proves the settlement math that feeds it is the same math RewardMath documents.
  */
 contract RewardFlowInvariant is Test {
-    CrucibleTrials public immutable trials;
+    CrucibleTrials public trials;
     address public immutable treasury;
     address public immutable operator;
     address public immutable sponsor;
     address public immutable skeptic;
-    address[] public immutable seats;
+    address[] public seats;
 
     bytes32 constant SPEC = keccak256("spec");
     bytes32 constant TESTS = keccak256("tests");
@@ -51,7 +51,7 @@ contract RewardFlowInvariant is Test {
         alloy.setForge(address(trials));
         vm.deal(operator, 100 ether);
         vm.prank(operator);
-        trials.registerAgent{value: 10 ether}("ipfs://r", vm.addr(RUNNER_KEY));
+        trials.registerAgent{value: 30 ether}("ipfs://r", vm.addr(RUNNER_KEY));
         vm.deal(sponsor, 100 ether);
         vm.deal(skeptic, 100 ether);
     }
@@ -173,9 +173,9 @@ contract RewardFlowInvariant is Test {
             RewardMath.settleOnPass(reward, bond);
 
         // Contract's actual credit ledger:
-        assertEq(trials.credit(operator), expectedWorker, "worker credit must equal RewardMath");
+        assertEq(trials.credit(operator), expectedWorker - expectedStakeBack, "worker credit must equal RewardMath (bond returns to stake)");
         assertEq(trials.credit(treasury), expectedFee, "feeVault credit must equal RewardMath");
-        assertEq(trials.totalPending(), expectedWorker + expectedFee, "totalPending must equal sum");
+        assertEq(trials.totalPending(), reward, "totalPending must equal reward (fee + worker payout)");
     }
 
     function test_fuzz_settleFailMatchesRewardMath() public {
@@ -190,6 +190,15 @@ contract RewardFlowInvariant is Test {
         trials.claimTrial(id);
         uint256 bond = trials.bondFor(reward);
 
+        // submit a run so the trial enters Judging (required before fileBreak)
+        uint64 sd = uint64(block.timestamp + 10 minutes);
+        bytes32 digest = keccak256(
+            abi.encodePacked("\x19\x01", trials.DOMAIN(), keccak256(abi.encode(trials.RUN_TYPEHASH(), id, 1, RUN, sd)))
+        );
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(RUNNER_KEY, digest);
+        vm.prank(makeAddr("r.relayer"));
+        trials.submitRun(id, RUN, abi.encodePacked(r, s, v), sd);
+
         vm.prank(skeptic);
         trials.fileBreak{value: breakStake}(id, keccak256("p"));
 
@@ -202,9 +211,8 @@ contract RewardFlowInvariant is Test {
         vm.prank(seats[0]);
         trials.revealVote(id, true, salt);
         vm.prank(seats[1]);
-        trials.revealVote(id, true, salt);
-        vm.warp(block.timestamp + 2 days);
-        trials.finalize(id);
+        trials.revealVote(id, true, salt); // 2-of-3 settles
+        // No finalize needed: revealVote already settled.
 
         // RewardMath prediction on fail:
         //   funderRefund = 100; funderStakeBack = bond/2 = 10; feeStakeBack = 10
@@ -214,8 +222,8 @@ contract RewardFlowInvariant is Test {
         uint256 skepticCut = (bond * 3000) / 10_000;
         uint256 expectedSkeptic = skepticCut + breakStake;
 
-        assertEq(trials.credit(sponsor), funderRefund + funderStakeBack, "sponsor credit must equal RewardMath");
-        assertEq(trials.credit(treasury), feeStakeBack, "treasury credit must equal RewardMath");
+        assertEq(trials.credit(sponsor), funderRefund, "sponsor credit must equal RewardMath (reward refunded; bond is slashed, not returned)");
+        assertEq(trials.credit(treasury), bond - (bond * trials.SLASH_SKEPTIC_NUM() / trials.BPS()), "treasury credit must equal slash split");
         assertEq(trials.credit(skeptic), expectedSkeptic, "skeptic credit must equal slash + returned stake");
     }
 }

@@ -33,6 +33,24 @@ interface Capture {
 const bearerSentinel =
   process.env.CRUCIBLE_TEST_BEARER ?? ["round", "trip", "sentinel"].join("-");
 
+describe("provider endpoint guard", () => {
+  it("refuses a baseUrl that is not http(s) at construction", () => {
+    expect(() =>
+      groqClient({
+        apiKey: bearerSentinel,
+        // A scheme typo (or something worse) must fail loudly here, not fetch.
+        baseUrl: "file:///etc/hostname",
+      }),
+    ).toThrow(/must be http\(s\)/);
+  });
+
+  it("refuses a baseUrl that is not a URL at all", () => {
+    expect(() =>
+      groqClient({ apiKey: bearerSentinel, baseUrl: "not a url" }),
+    ).toThrow(/not a URL/);
+  });
+});
+
 const server: Server = createServer();
 let capture: Capture = {};
 let next: { status: number; payload: unknown } = { status: 200, payload: {} };
