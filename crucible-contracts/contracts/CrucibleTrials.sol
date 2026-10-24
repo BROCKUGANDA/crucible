@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.26;
 
 import {ReputationBridge} from "./ReputationBridge.sol";
@@ -20,7 +20,9 @@ interface IAlloyRegistry {
 /// it settles: tokenURI -> verdictHash, with graderVersion, promptHash and the trial id
 /// on-chain. Zero means "not wired"; settlement proceeds without minting.
 interface IVerificationReceipt {
-    function mintReceipt(address to, uint256 trialId, bytes32 verdictHash, bytes32 promptHash, uint256 graderVersion) external returns (uint256 tokenId);
+    function mintReceipt(address to, uint256 trialId, bytes32 verdictHash, bytes32 promptHash, uint256 graderVersion)
+        external
+        returns (uint256 tokenId);
     function tokenURI(uint256 tokenId) external view returns (string memory);
     function isMinter(address account) external view returns (bool);
 }
@@ -630,8 +632,10 @@ contract CrucibleTrials {
     /// what the batch refused. Swallowing it here would let one tx report success for trials it
     /// never settled.
     ///
-    /// When receipts are enabled and a VerificationReceipt is wired, one receipt is minted per
-    /// trial this batch settled.
+    /// When receipts are enabled, each trial this batch settles carries one — but the mint lives
+    /// in `_settle`, not here, because `finalize` and the committee's `tally` settle trials too.
+    /// Minting here instead left those doors producing a settled trial with no proof: the live
+    /// demo chain carried eight settled trials and zero receipts.
     ///
     /// @param trialIds the trials to settle, in the keeper's FIFO job order
     function settleBatch(uint256[] calldata trialIds) external {
@@ -639,14 +643,6 @@ contract CrucibleTrials {
             uint256 id = trialIds[i];
             if (trials[id].status == Status.Settled) continue;
             this.finalize(id);
-            if (receiptsEnabled && verificationReceipt != address(0)) {
-                Trial storage t = trials[id];
-                bytes32 verdictHash = keccak256(abi.encode(t.verdict, t.runHash, t.breakProofCID));
-                uint256 tokenId = IVerificationReceipt(verificationReceipt).mintReceipt(
-                    agents[uint256(t.agentId)].operator, id, verdictHash, t.specCID, 1
-                );
-                emit VerificationReceiptMinted(tokenId, id, verdictHash);
-            }
         }
     }
 
@@ -678,6 +674,20 @@ contract CrucibleTrials {
             if (agentWins) _settleWin(id);
             else _settleSlash(id);
         }
+        // After every ledger update, and outside the frame above: the proof attests to the verdict
+        // the settlement just wrote, and the split frames are what keep this off the 16-slot limit.
+        _mintReceipt(id);
+    }
+
+    /// @dev The one door that mints a verification receipt, called by every settlement path.
+    /// Mints nothing when unwired or disabled, so a deployment can be run without the receipt.
+    function _mintReceipt(uint256 id) internal {
+        if (!receiptsEnabled || verificationReceipt == address(0)) return;
+        Trial storage t = trials[id];
+        bytes32 verdictHash = keccak256(abi.encode(t.verdict, t.runHash, t.breakProofCID));
+        uint256 tokenId = IVerificationReceipt(verificationReceipt)
+            .mintReceipt(agents[t.agentId].operator, id, verdictHash, t.specCID, 1);
+        emit VerificationReceiptMinted(tokenId, id, verdictHash);
     }
 
     function _settleWin(uint256 id) internal {
