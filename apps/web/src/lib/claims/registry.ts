@@ -140,16 +140,28 @@ export const CLAIMS: Claim[] = [
   {
     id: "VI-8",
     copy: "the standard's own one-call aggregate of an agent's feedback",
+    status: "enforced",
+    enforcedBy: [
+      "crucible-contracts/contracts/mocks/ERC8004Mocks.sol",
+      "crucible-contracts/contracts/ReputationBridge.sol",
+      "crucible-contracts/test/ReputationBridge.t.sol",
+      "crucible-contracts/script/Demo.s.sol",
+    ],
+    note: "`getSummary(agentId, clientAddresses, tag1, tag2)` is answered by the reputation registry this deployment wires, and the seed now connects them: `reputationBridge()` was `address(0)` on the live chain, so the getter existed and read nothing. A freshly seeded chain answers identity 1 with 2 writes and 1500, identity 2 with 2 writes and 350 — a survived win plus a slash. The limit is the registry itself: on this chain it is the repository's own ERC-8004 double, so the call shape and the aggregation are ours until a real registry is wired, and the numbers a hiring app reads from `/api/standing/:id` are computed from the trial logs rather than from this aggregate.",
+  },
+  {
+    id: "III-2",
+    copy: "three independent replays must agree before a verdict stands",
     status: "absent",
     enforcedBy: [],
-    note: "`getSummary` is declared in `crucible-contracts/contracts/interfaces/IERC8004.sol` and implemented nowhere here, so an application that wants the aggregate reads it from this deployment's `/api/standing/:id` rather than from the standard. Row VI-7 is the publishing half; this is the reading half, and it is still missing.",
+    note: "One execution, one run hash. The sandbox runs the pinned suite once and the committee grades what that single run produced; nothing re-runs it in a second environment and compares. Row III-1 is the sealed-sandbox half, which is enforced — this is the agreement half, and it is not.",
   },
   {
     id: "VI-7",
     copy: "published to the ERC-8004 reputation registry",
     status: "partial",
     enforcedBy: ["crucible-contracts/contracts/ReputationBridge.sol", "crucible-contracts/test/ReputationBridge.t.sol"],
-    note: "The bridge publishes after settlement and cannot revert it, and `backfill` is permissionless. But the registry on this deployment is a mock, and `getSummary` — the standard one-call aggregate a hiring application would use — is declared in the interface and implemented nowhere, so the reading path is ours, not the standard's.",
+    note: "The bridge publishes after settlement and cannot revert it, and `backfill` is permissionless. What was missing was not the reader — `getSummary` is implemented in the registry — but the wiring: the demo chain left `reputationBridge()` at `address(0)`, so no verdict ever reached it. The seed wires both now, and row VI-8 carries the reading half.",
   },
   {
     id: "III-1",
