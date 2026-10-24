@@ -113,6 +113,13 @@ current tree actually verifies, what it deliberately does not, and what is still
   the same volume and sources the same file as the API. Proved by extracting the step and
   running it against a stubbed `docker`: match exits 0, a mismatch, a missing key and an
   empty published file each exit 1 with the distinct message.
+- **A public repository cannot execute a fork PR on the VPS.** Every CI job runs on the two
+  self-hosted runners, and those are the box that serves the site and holds its `.env` — so
+  making the repository public turned every `pull_request` into an execution path. All seven
+  `ci.yml` jobs carry
+  `if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository`.
+  GitHub runs the base branch's workflow file for `pull_request`, so a fork cannot remove the
+  clause, and `ci.yml` is the only PR-triggered workflow in the repository.
 - **The CI tool downloads are digest-pinned, which is what their step name always claimed.**
   Three steps in `ci.yml` and one in `fork-nightly.yml` were called "install foundry (pinned
   tarball)" while the body piped `curl` straight into `tar`: the pin was a version tag, and a
@@ -403,6 +410,36 @@ guards is the decoration it exists to detect.
   and still open: `STANDING_HALF_LIFE_DAYS` is codegen'd into `params.ts` and `params.rs` and read
   by nothing, and there is no identity epoch in any layer, so the 45-day fade the ledger describes
   is a parameter without a consumer rather than a behaviour.
+- **`standing_half_life_days` finally has a consumer, and the read model gained the one fact it
+  was missing to use it.** `packages/smith-sdk/src/standing.ts` computes §18.2's
+  `Σ w·o·δ ÷ (Σ w·δ + 3)` from the settled logs, with `DEFAULT_HALF_LIFE_DAYS` imported from the
+  generated params so the number has one source, and a test asserting the default reaches the
+  computation — the half-life previously existed in `params.rs` and `params.ts` and was read by
+  nothing. Getting there exposed a gap in the projection: a `TrialRow` recorded creation, submission
+  and dispute-opening but **not settlement**, so an age had to be borrowed from a neighbour and a
+  trial that sat in dispute for a week would have been aged as if it settled the day it ran.
+  `settledAt` is now stored from `VerdictFinalized`'s own block and hydrated like the other three
+  times; an outcome that still lacks it is excluded and counted in
+  `meta.excludedNoSettlementTime` rather than guessed. §18.2's `d` (difficulty) and `s` (sponsor
+  independence) are held at 1.0 and 0.5 and **reported as assumptions by the endpoint**, because
+  nothing here measures either; a score that folded in an invented difficulty would be a measurement
+  nobody could check.
+- **`/claims` publishes the promise list with what enforces each row, including the rows nothing
+  enforces.** The table is `apps/web/src/lib/claims/registry.ts`, and the page renders it verbatim,
+  so `apps/web/test/claims-registry.test.ts` is the gate: every `enforcedBy` path must exist, a row
+  cannot be `enforced` with nothing cited, at least three rows must still read `absent` (to clear
+  that assertion a promise has to be *fixed*, not relabelled), and a row flagged `onSite` must quote
+  a fragment the landing page actually carries. Both halves were mutation-proved: citing
+  `contracts/Nowhere.sol` reddened the file check, and writing "unanimous or nothing settles the
+  trial" into a row that claims site copy reddened the quotation check.
+- **My own earlier reading of "read in one call" was wrong, and the correction matters.** I recorded
+  this morning that no one-call read exists anywhere, citing `getSummary` being an interface
+  declaration. Half right: the ERC-8004 aggregate still is unimplemented (row `VI-7` says so), but
+  `AlloyRegistry.records` is a public mapping of a four-field struct, so `records(agentId)` was
+  already one call returning wins, survivals, slashes and tier. The live sentence was false because
+  it pointed at a standard nobody here serves, not because the chain could not answer. Fixed by
+  shipping the reader that makes the sentence true (`GET /api/standing/:id`, tested) and by binding
+  the wording in the gate, rather than by leaving a promise to a contract that does not exist.
 - **`getLogs({ abi })` does not decode on this node, and the node ignores the topics filter.**
   Both measured inside `crucible-api` against the live anvil on 2026-10-24: 56 logs came back with
   `eventName: undefined` and `args: undefined`, and a one-topic query still answered all 56. The
@@ -690,17 +727,16 @@ much of the product's promise each one costs.
     for the reason in item 12: the register already has 51 rows with nothing behind them, and a row
     here would bind to no checker.
 
-18. **The pipeline is switched off, so four of the contract gates have not run on the shipped
-    code at all.** All seven workflows are `disabled_manually` (`gh workflow list --all`) after
-    every run started failing at job startup — `startup_failure`, `path: "BuildFailed"`, zero
-    jobs, since 2026-10-23T14:37Z — which is a billing/plan condition on this private repo, not a
-    YAML fault: the same files were green an hour earlier. The local gate covered
-    `forge test`, coverage floors, typecheck and the workspace suites, and `next build` ran inside
-    the web image on the box. It did **not** cover **slither**, **gitleaks**, the **ERC-8004 fork
-    tests** (no `MAINNET_RPC_URL` here) or the **Docker sandbox suite** (6 skips). Two of those —
-    a secret scan and static analysis on new money contracts — are the ones worth re-running
-    before anything with real value posts a trial. Re-enabling is
-    `gh workflow enable <name>`; the self-hosted runners were never touched.
+18. **CLOSED — the pipeline is back on, and the cause was the private repository's Actions plan.**
+    Every run failed at job startup (`startup_failure`, `path: "BuildFailed"`, zero jobs) from
+    2026-10-23T14:37Z, which this item named as a billing/plan condition rather than a YAML fault.
+    Measured on 2026-10-24: the identical `workflow_dispatch` of `ci` failed in 0s while the
+    repository was private and `queued` within seconds of it becoming public, so the plan gated
+    Actions on a private repository and nothing in the workflow files was wrong. All eight
+    workflows are `active` again, and the first full run since the outage is executing on the
+    self-hosted runners — its conclusion belongs to the run, not to this paragraph. That run is
+    what first covers **slither**, **gitleaks** and the **ERC-8004 fork tests** since 2026-10-23;
+    the Docker sandbox suite still skips 6 tests on a runner without a daemon.
 19. **CLOSED — the relicense is committed, and the row now describes the repository.** The owner
     chose all-rights-reserved over the Apache-2.0 alternative in the v2 bible §26.3. The
     mechanical changes landed in `95b88ef`, after earlier flips rode into other commits in the
