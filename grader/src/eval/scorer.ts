@@ -1,9 +1,11 @@
+import { createHash } from "node:crypto";
 import type {
   ClaimHash,
   EvalResult,
   Scorecard,
   ScorecardRow,
   SmokeThresholds,
+  SuiteEpoch,
   SuiteName,
   Verdict,
 } from "./types.js";
@@ -85,6 +87,7 @@ export function scorecardRow(
   modelId: string,
   promptVersion: string,
   suite: SuiteName,
+  suiteEpoch: SuiteEpoch,
   results: EvalResult[],
   perArtifactConsistency: Map<ClaimHash, Verdict[]>,
   avgCostUsd: number,
@@ -132,6 +135,7 @@ export function scorecardRow(
     modelId,
     promptVersion,
     suite,
+    suiteEpoch,
     n,
     falsePassRate: fpRate,
     falseFailRate: ffRate,
@@ -168,6 +172,7 @@ export function buildScorecard(
     modelId: string;
     promptVersion: string;
     suite: SuiteName;
+    suiteEpoch: SuiteEpoch;
     results: EvalResult[];
     perArtifactConsistency: Map<ClaimHash, Verdict[]>;
     avgCostUsd: number;
@@ -179,13 +184,27 @@ export function buildScorecard(
       entry.modelId,
       entry.promptVersion,
       entry.suite,
+      entry.suiteEpoch,
       entry.results,
       entry.perArtifactConsistency,
       entry.avgCostUsd,
       thresholds,
     ),
   );
-  return { rows, generatedAt: Date.now() };
+  return { rows, corpusEpoch: corpusEpochOf(rows), generatedAt: Date.now() };
+}
+
+/**
+ * One digest for the whole exam set, derived from the rows rather than declared beside them.
+ *
+ * A card has one row per (model, suite), so the same suite appears once per candidate and its epoch
+ * should be identical every time. Deduplicating by the pair keeps that; keeping a *disagreement* as
+ * two entries is the part that matters, because the alternative — keying a map by suite name — would
+ * silently pick one of two different corpora and publish a hash that describes neither.
+ */
+export function corpusEpochOf(rows: readonly ScorecardRow[]): SuiteEpoch {
+  const pairs = [...new Set(rows.map((r) => `${r.suite}::${r.suiteEpoch}`))].sort();
+  return createHash("sha256").update(JSON.stringify(pairs)).digest("hex");
 }
 
 /** Serialize a scorecard row as one JSONL line. */

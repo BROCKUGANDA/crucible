@@ -5,10 +5,12 @@ import type {
   Scorecard,
   ScorecardRow,
   SmokeThresholds,
+  SuiteEpoch,
   SuiteName,
 } from "./types.js";
 import { buildScorecard, scorecardLine } from "./scorer.js";
 import { MemoryEvalCache, gradeCached, gradeFresh } from "./cache.js";
+import { suiteEpoch } from "./suites.js";
 import type { SpendLedger } from "./frontier.js";
 
 const DEFAULT_THRESHOLDS: SmokeThresholds = {
@@ -136,6 +138,7 @@ export class Arena {
       modelId: string;
       promptVersion: string;
       suite: SuiteName;
+      suiteEpoch: SuiteEpoch;
       results: EvalResult[];
       perArtifactConsistency: Map<string, Array<"PASS" | "VOID" | "FAIL">>;
       avgCostUsd: number;
@@ -144,6 +147,10 @@ export class Arena {
     for (const adapter of adapters) {
       for (const [suiteName, suiteFn] of Object.entries(suiteFns)) {
         const artifacts = suiteFn();
+        // Hashed once per suite, from the artifacts the loop is about to grade — not from a
+        // constant, and not from the suite's name. Two runs of the same name over two generations
+        // of `suites.ts` produce two different epochs, which is the whole point of computing it here.
+        const epoch = suiteEpoch(artifacts);
         const results: EvalResult[] = [];
         const perArtifact = new Map<string, Array<"PASS" | "VOID" | "FAIL">>();
 
@@ -162,6 +169,7 @@ export class Arena {
               adapter.id.includes(":")
                 ? (adapter.id.split(":")[1] ?? "v1")
                 : "v1",
+              epoch,
               async () => adapter.grade(artifact, "v1"),
             );
             verdicts.push(verdict.verdict);
@@ -179,6 +187,7 @@ export class Arena {
             modelId: adapter.id,
             promptVersion: "v1",
             suite: suiteName,
+            suiteEpoch: epoch,
             expected: artifact.expectedVerdict,
             actual: final,
             confidence: 0.5,
@@ -194,6 +203,7 @@ export class Arena {
           modelId: adapter.id,
           promptVersion: "v1",
           suite: suiteName as SuiteName,
+          suiteEpoch: epoch,
           results,
           perArtifactConsistency: perArtifact,
           avgCostUsd: this.spend?.averageUsd(adapter.id) ?? 0,

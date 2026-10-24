@@ -27,10 +27,16 @@ import type { EvalResult } from "./types.js";
  * than a mutation of an old one.
  *
  * **Nothing is loaded silently.** A line that is not valid JSON, or whose recorded
- * `(claimHash, modelId, promptVersion)` disagrees with the key it is filed under, is counted and
- * skipped — counted because a cache that quietly drops entries is a cache that reports a
- * different tournament than the one that ran. `corruptLines` is the number to alert on, and
+ * `(claimHash, modelId, promptVersion, suiteEpoch)` disagrees with the key it is filed under, is
+ * counted and skipped — counted because a cache that quietly drops entries is a cache that reports
+ * a different tournament than the one that ran. `corruptLines` is the number to alert on, and
  * `null` is returned for a key whose line was rejected rather than a guess at its verdict.
+ *
+ * That policy has a consequence worth stating rather than discovering: a file written before the key
+ * carried `suiteEpoch` loads as **entirely corrupt**. It is not migrated and not defaulted, because
+ * the epoch is the one component that cannot be recovered after the fact — the artifacts it digests
+ * are gone, and guessing one would file an old verdict under a corpus it was never computed
+ * against, which is the exact error the component exists to prevent.
  */
 export class FileEvalCache implements EvalCache {
   private store = new Map<string, { key: CacheKey; value: EvalResult }>();
@@ -123,14 +129,21 @@ function isKey(value: unknown): value is CacheKey {
   return (
     typeof k.claimHash === "string" &&
     typeof k.modelId === "string" &&
-    typeof k.promptVersion === "string"
+    typeof k.promptVersion === "string" &&
+    typeof k.suiteEpoch === "string"
   );
 }
 
 function isResult(value: unknown): value is EvalResult {
   if (typeof value !== "object" || value === null) return false;
   const r = value as Partial<EvalResult>;
-  return typeof r.claimHash === "string" && typeof r.actual === "string";
+  return (
+    typeof r.claimHash === "string" &&
+    typeof r.actual === "string" &&
+    // The record has to carry its own epoch, or `keyOfResult` cannot reconstruct the key it is
+    // filed under — and a key that cannot be checked is a key that can be wrong silently.
+    typeof r.suiteEpoch === "string"
+  );
 }
 
 /** The key a result describes, derived from the record itself rather than from where it sits. */
@@ -139,5 +152,6 @@ function keyOfResult(result: EvalResult): string {
     claimHash: result.claimHash,
     modelId: result.modelId,
     promptVersion: result.promptVersion,
+    suiteEpoch: result.suiteEpoch,
   });
 }

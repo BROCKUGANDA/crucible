@@ -5,6 +5,16 @@ export type PromptVersion = string;
 export type ClaimHash = string;
 export type SuiteName = string;
 
+/**
+ * A digest of the corpus a number was computed from, not a label for it.
+ *
+ * `SuiteName` alone cannot carry this: the suites are generated from literals in `suites.ts`, so
+ * `"smoke"` denotes whatever those literals say at the time of the run. Two rows reading
+ * `suite: "smoke"` from two generations of that file are different exams, and the only way to tell
+ * them apart is a hash of the artifacts themselves. See `suiteEpoch`.
+ */
+export type SuiteEpoch = string;
+
 /** A single graded artifact, with its gold label from the JUDGE corpus. */
 export interface Artifact {
   claimHash: ClaimHash;
@@ -31,12 +41,14 @@ export interface ModelAdapter {
   grade(artifact: Artifact, promptVersion: PromptVersion): Promise<ModelVerdict>;
 }
 
-/** Per-artifact eval result, cache-keyed by (claimHash, model, promptVersion). */
+/** Per-artifact eval result, cache-keyed by (claimHash, model, promptVersion, suiteEpoch). */
 export interface EvalResult {
   claimHash: ClaimHash;
   modelId: ModelId;
   promptVersion: PromptVersion;
   suite: SuiteName;
+  /** The corpus this verdict was recorded against. Part of the cache key: see `CacheKey`. */
+  suiteEpoch: SuiteEpoch;
   expected: Verdict;
   actual: Verdict;
   confidence: number;
@@ -52,6 +64,12 @@ export interface ScorecardRow {
   modelId: ModelId;
   promptVersion: PromptVersion;
   suite: SuiteName;
+  /**
+   * Required, not optional. A row without the digest of the corpus it was scored against cannot
+   * be compared to another row wearing the same `suite` name, and there is no honest placeholder
+   * for that — an empty string would read as a value rather than as an absence.
+   */
+  suiteEpoch: SuiteEpoch;
   n: number;
   falsePassRate: number;
   falseFailRate: number;
@@ -90,5 +108,11 @@ export interface SmokeThresholds {
 /** Full scorecard output. */
 export interface Scorecard {
   rows: ScorecardRow[];
+  /**
+   * One digest naming the whole exam set this card was scored against — the distinct
+   * `(suite, suiteEpoch)` pairs its rows carry. Derived from the rows by `buildScorecard`, never
+   * supplied beside them, so it cannot disagree with the numbers it labels.
+   */
+  corpusEpoch: SuiteEpoch;
   generatedAt: number;
 }

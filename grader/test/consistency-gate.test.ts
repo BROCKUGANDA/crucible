@@ -52,7 +52,7 @@ const SUITES = { smoke: () => artifacts(3) };
 /**
  * Gate 424 asked for "same artifact × 20 runs, agreement ≥ 98%". Before this the arena could not
  * fail it for two independent reasons, and the second one is the instructive one: the retest loop
- * called `gradeCached`, whose key is `(claimHash, modelId, promptVersion)`, so draws 2..20 were
+ * called `gradeCached`, whose key was `(claimHash, modelId, promptVersion)`, so draws 2..20 were
  * answered from the cache without reaching the model and agreement was 1.0 by construction. A gate
  * that reports perfect stability while making one call is worse than no gate — it retires the
  * question.
