@@ -361,6 +361,16 @@
   color: var(--text);
 }
 
+/* The hero's small print carries the three sentences a visitor has to actually read to trust the
+   lede, so it gets a measure instead of the full viewport. `.hint` itself is the site's shared
+   field-caption class (base.css) and stays unconstrained everywhere else — a 0.78rem line at
+   1640px is not a caption, it is a wall. */
+.arena__hero .hint {
+  margin: var(--s-3) auto 0;
+  max-width: 72ch;
+  line-height: 1.55;
+}
+
 .arena__cta {
   display: flex;
   flex-wrap: wrap;
