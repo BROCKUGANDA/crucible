@@ -371,14 +371,17 @@ contract Demo is Script {
         address[3] memory first = court.draw(1, round1, 0);
 
         address[] memory round2 = new address[](6);
-        for (uint256 i; i < 3; ++i) round2[i] = round1[i];
-        for (uint256 i; i < 3; ++i) round2[3 + i] = first[i];
+        for (uint256 i; i < 3; ++i) {
+            round2[i] = round1[i];
+        }
+        for (uint256 i; i < 3; ++i) {
+            round2[3 + i] = first[i];
+        }
 
         // Reverts `NotEnoughSeats` if a second panel cannot be filled.
         address[3] memory second = court.draw(2, round2, 0);
         require(
-            second[0] != address(0) && second[1] != address(0) && second[2] != address(0),
-            "round 2 drew an empty seat"
+            second[0] != address(0) && second[1] != address(0) && second[2] != address(0), "round 2 drew an empty seat"
         );
 
         console.log("Arena", address(arena));
@@ -395,7 +398,8 @@ contract Demo is Script {
         k[5] = pkSeat6;
     }
 
-    function _forgeAgent(uint256 pk, string memory metadataURI) internal returns (uint256 agentId) {        vm.broadcast(pk);
+    function _forgeAgent(uint256 pk, string memory metadataURI) internal returns (uint256 agentId) {
+        vm.broadcast(pk);
         agentId = trials.registerAgent{value: 1 ether}(metadataURI, vm.addr(RUNNER_KEY));
     }
 
