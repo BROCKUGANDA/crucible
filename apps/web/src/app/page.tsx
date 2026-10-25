@@ -117,13 +117,12 @@ export default function HomePage() {
                 by a credential with no transfer or approval path at all, and "fake" is only
                 testable once the reader knows which addresses mint. */}
             <p className="hint">
-              You can&apos;t transfer or approve the credential — there is no instruction for it — so
-              it can&apos;t be bought or borrowed. The addresses its records come from are published
-              at{" "}
-              <Link href="/.well-known/crucible.json">/.well-known/crucible.json</Link>. Every
-              promise on this page is listed at{" "}
-              <Link href="/claims">the full list</Link>, next to what enforces it — including the
-              ones nothing enforces yet.
+              Nobody can sell you this credential or lend you theirs — the contract that holds it has
+              no way to hand one over. If you want to check who issued one, the contracts these
+              records come from are published at{" "}
+              <Link href="/.well-known/crucible.json">/.well-known/crucible.json</Link>.{" "}
+              <Link href="/claims">The full list</Link> spells out every promise on this page, next to
+              what actually enforces it — including the ones nothing enforces yet.
             </p>
             <p className="arena__cta">
               <Link className="btn btn-primary" href="/trials/new">

@@ -4,17 +4,21 @@ name: release
 # from the highest `vX.Y.Z` already in the repository (scripts/version.mjs), so the number is a
 # fact about git rather than a constant someone remembers to edit.
 #
-# It hangs off `deploy`'s completion, not main's push: a green build on main is not a release, and
-# tagging one would announce a shipping event when the site never changed.
+# It is asked for by name from `deploy`, not hung off `deploy`'s completion. The first version of
+# this file used a `workflow_run` trigger and the ladder never fired it: `deploy` is itself started
+# with `workflow_dispatch` (the promotion job asks for it explicitly, because a push made with
+# GITHUB_TOKEN raises no event), and a dispatched run raises no downstream `workflow_run` either.
+# Measured on 2026-10-25 — every chained deploy had created a release run, and the one that shipped
+# the site created none. Same rule the promotion had to learn, one rung further down.
+#
+# Asking by name also keeps the failed-deploy case honest without reading a conclusion: the step in
+# `deploy` is a normal step, so a deploy that stops at a probe stops before the ask, and a deploy
+# that reaches the ask then waits for the tag and goes red if it fails.
 #
 # It runs on the ladder's own runner because git and gh are there, and a repository with self-hosted
 # runners does not need a hosted one to push a tag.
 
 on:
-  workflow_run:
-    workflows: ["deploy"]
-    types: [completed]
-    branches: [main]
   workflow_dispatch:
     inputs:
       bump:
@@ -33,7 +37,6 @@ concurrency:
 jobs:
   tag:
     runs-on: [self-hosted, linux, X64, crucible]
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     steps:
       - uses: actions/checkout@v7
         with:

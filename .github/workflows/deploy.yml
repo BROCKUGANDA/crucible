@@ -29,6 +29,12 @@ on:
     types: [completed]
     branches: [main]
   workflow_dispatch:
+    inputs:
+      bump:
+        description: "what the matching release tag bumps"
+        type: choice
+        options: [patch, minor, major]
+        default: patch
 
 concurrency:
   group: deploy
@@ -423,4 +429,66 @@ jobs:
             exit 1
           fi
           echo "the public surface is serving the deployment that was just asserted"
+
+      # The rung below this one, asked for by name.
+      #
+      # `release.yml` used to listen for this workflow's completion and never heard it: the
+      # promotion starts `deploy` with `workflow_dispatch` (a push made with GITHUB_TOKEN raises
+      # no event), and a dispatched run raises no downstream `workflow_run` either. Measured on
+      # 2026-10-25 — the chained deploys of 2026-10-24 each created a release run that correctly
+      # skipped for a red gate, while the deploy that actually shipped the site created none, and
+      # the first tag was asked for by hand. Same rule the promotion already had to learn, one
+      # rung further down.
+      #
+      # Waiting instead of firing and forgetting is what makes "every deploy tags its own release"
+      # a fact rather than a hope: a deploy that stops at a probe never reaches this step, and a
+      # deploy that reaches it goes red if the tag fails, so main cannot serve an untagged build
+      # quietly. The token needs `actions: write`, which comes from the repository's Actions
+      # setting for the same reason promote.yml spells it out — it cannot be requested in-file.
+      - name: ask for the release and wait for it
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BUMP: ${{ inputs.bump || 'patch' }}
+        run: |
+          set -euo pipefail
+          # The dispatch endpoint answers with no run id, so record the newest run of this kind
+          # first and wait for a greater one; otherwise this watches the previous release and
+          # calls a tag that never happened a success.
+          before=$(gh run list \
+            --workflow release.yml \
+            --branch main \
+            --event workflow_dispatch \
+            --limit 1 \
+            --json databaseId \
+            --jq '.[0].databaseId // 0' 2>/dev/null || echo 0)
+
+          # gh exits non-zero when the API refuses the dispatch, so a release that was never asked
+          # for is a red run here rather than a missing tag noticed a week later.
+          gh workflow run release.yml --ref main -f bump="$BUMP"
+
+          run_id=""
+          for _ in $(seq 1 20); do
+            run_id=$(gh run list \
+              --workflow release.yml \
+              --branch main \
+              --event workflow_dispatch \
+              --limit 10 \
+              --json databaseId \
+              --jq '.[].databaseId' 2>/dev/null | sort -nr | while read -r id; do
+                if [ "$id" -gt "$before" ]; then echo "$id"; break; fi
+              done || true)
+            if [ -n "$run_id" ]; then break; fi
+            sleep 3
+          done
+          if [ -z "$run_id" ]; then
+            echo "::error::could not find the release run this deploy asked for"
+            exit 1
+          fi
+
+          echo "watching release run $run_id"
+          if ! gh run watch "$run_id" --exit-status --interval 10; then
+            echo "::error::the site shipped and the release did not; main is serving without a tag"
+            exit 1
+          fi
+          echo "the deploy that shipped the site also tagged it"
 
