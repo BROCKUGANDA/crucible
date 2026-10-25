@@ -626,10 +626,41 @@ jobs:
             exit 1
           fi
 
-          echo "watching release run $run_id"
-          if ! gh run watch "$run_id" --exit-status --interval 10; then
-            echo "::error::the site shipped and the release did not; main is serving without a tag"
-            exit 1
+          # Bounded, and the bound is the fix for a deadlock this step caused.
+          #
+          # Measured 2026-10-25: the first deploy that used `gh run watch` here held its runner for
+          # two hours, because the release it was waiting on was queued behind a slot — and the only
+          # two slots were held by this deploy and by a promotion waiting on a gate of its own. A job
+          # that occupies a runner while it waits for a job from the same pool can starve that pool,
+          # and the pipeline jams with nothing failing at all. So the wait has a deadline, and the
+          # two ways to miss it are treated differently:
+          #
+          #   started and failed  -> this deploy is red. A tag that was attempted and lost must not
+          #                          pass quietly; that was the whole point of watching.
+          #   never got a slot    -> warn loudly, print the run id, and release the runner. The tag is
+          #                          still owed and the release will run when the pool frees up; a
+          #                          second jam is strictly worse than a delayed tag.
+          echo "waiting on release run $run_id"
+          deadline=$((SECONDS + 900))
+          outcome=""
+          while [ "$SECONDS" -lt "$deadline" ]; do
+            state=$(gh run view "$run_id" --json status,conclusion \
+              --jq '[.status, (.conclusion // "")] | join("/")' 2>/dev/null || echo "unknown/")
+            case "$state" in
+              completed/success)
+                outcome="success"
+                break
+                ;;
+              completed/*)
+                echo "::error::the site shipped and the release did not ($state); main is serving without a tag"
+                exit 1
+                ;;
+            esac
+            sleep 15
+          done
+          if [ "$outcome" = "success" ]; then
+            echo "the deploy that shipped the site also tagged it"
+          else
+            echo "::warning::release run $run_id did not finish within 15m (state ${state:-unknown}) — it is queued behind a busy runner, not broken. The tag for this deploy is still owed; watch it with: gh run watch $run_id"
           fi
-          echo "the deploy that shipped the site also tagged it"
 

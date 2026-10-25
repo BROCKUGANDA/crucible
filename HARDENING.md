@@ -718,6 +718,23 @@ guards is the decoration it exists to detect.
   20:15:14, and tag `v0.1.1` points at `905bc43`, main's head, with the GitHub Release published. The
   deploy is green *because* it watched that run: fire-and-forget would have shown the same green for
   a tag that never happened.
+- **…and that watch then deadlocked the pipeline for two hours, which is the part "proven" had not
+  covered (2026-10-25).** The first deploy to use it swapped, passed every probe, cleared the chain
+  fence, and then held its runner waiting for a release run that was queued — behind the two slots
+  occupied by that deploy and by a promotion waiting on a gate of its own. Nothing failed; the pool
+  simply starved, and every job after it queued indefinitely. A job that occupies a runner while it
+  waits for a job from the same two-slot pool can jam the whole ladder, and the fix is not to cancel
+  harder. The wait is now bounded (15 minutes) and the two ways to miss its deadline are treated
+  differently on purpose: **started and failed** turns the deploy red, because a tag that was
+  attempted and lost must not pass quietly — that was the entire point of watching; **never got a
+  slot** warns with the run id and releases the runner, because the tag is still owed, the release
+  will run when the pool frees, and a second jam is worse than a delayed tag. Recovered by cancelling
+  the stale promotion, which let the release start and the deploy finish green within ~2 minutes —
+  the diagnosis confirmed by the cure. Two mutations prove the gate still guards both halves: the
+  deadline set to 0, and the `completed/*` failure branch made unreachable. **What this says about the
+  earlier entry:** "proven on the next deploy" was true and misleading at once — it proved the happy
+  path on an idle pool and did not prove the step under contention, which is the only condition a
+  wait can deadlock in.
 - **The deploy's money check was one-directional and did not look at a third of the ledger
   (2026-10-25).** `crucible-contracts/scripts/assert-deployment.sh` asserted
   `escrowed + totalPending <= balance` — the shape of `test/Invariants.t.sol:170`'s equality with
