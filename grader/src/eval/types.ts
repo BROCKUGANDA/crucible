@@ -38,6 +38,8 @@ export interface ModelVerdict {
 /** One model, swappable behind adapter.ts. Zero new wires per model — one JSON row + RFC. */
 export interface ModelAdapter {
   id: ModelId;
+  /** Exact provider snapshot used to separate persistent verdicts across model releases. */
+  cacheIdentity?: string;
   grade(artifact: Artifact, promptVersion: PromptVersion): Promise<ModelVerdict>;
 }
 

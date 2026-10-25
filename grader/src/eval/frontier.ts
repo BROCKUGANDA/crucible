@@ -295,6 +295,7 @@ export function withFrontierGuard(
 
   return {
     id: adapter.id,
+    cacheIdentity: card.snapshot,
     async grade(artifact: Artifact, promptVersion: string): Promise<ModelVerdict> {
       // Checked first, because on an unmetered provider it is the only one of the three that can
       // ever fire — and a refusal here has to name the ceiling that was actually reached.

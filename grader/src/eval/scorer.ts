@@ -92,6 +92,7 @@ export function scorecardRow(
   perArtifactConsistency: Map<ClaimHash, Verdict[]>,
   avgCostUsd: number,
   thresholds: SmokeThresholds,
+  latencySamples: number[] = results.map((r) => r.latencyMs),
 ): ScorecardRow {
   const n = results.length;
   const fpRate = falsePassRate(results);
@@ -101,7 +102,7 @@ export function scorecardRow(
   const kr = killRate(results);
   const con = consistency(perArtifactConsistency);
   const draws = maxDraws(perArtifactConsistency);
-  const latencies = results.map((r) => r.latencyMs);
+  const latencies = latencySamples;
 
   /**
    * Gate 424 activates only when the stage asks for it. `minRetests` is the load-bearing half:
@@ -187,6 +188,7 @@ export function buildScorecard(
     results: EvalResult[];
     perArtifactConsistency: Map<ClaimHash, Verdict[]>;
     avgCostUsd: number;
+    latencySamples?: number[];
   }>,
   thresholds: SmokeThresholds,
 ): Scorecard {
@@ -200,6 +202,7 @@ export function buildScorecard(
       entry.perArtifactConsistency,
       entry.avgCostUsd,
       thresholds,
+      entry.latencySamples,
     ),
   );
   return { rows, corpusEpoch: corpusEpochOf(rows), generatedAt: Date.now() };

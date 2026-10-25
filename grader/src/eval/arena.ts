@@ -148,6 +148,7 @@ export class Arena {
       results: EvalResult[];
       perArtifactConsistency: Map<string, Array<"PASS" | "VOID" | "FAIL">>;
       avgCostUsd: number;
+      latencySamples: number[];
     }> = [];
 
     for (const adapter of adapters) {
@@ -158,7 +159,11 @@ export class Arena {
         // of `suites.ts` produce two different epochs, which is the whole point of computing it here.
         const epoch = suiteEpoch(artifacts);
         const results: EvalResult[] = [];
+        const latencySamples: number[] = [];
         const perArtifact = new Map<string, Array<"PASS" | "VOID" | "FAIL">>();
+        // A provider snapshot is part of the persistent identity; model IDs can remain stable
+        // while the pinned release changes.
+        const cacheAdapter = { id: adapter.cacheIdentity ?? adapter.id };
 
         for (const artifact of artifacts) {
           const draws: Array<ModelVerdict & { cached: boolean }> = [];
@@ -171,7 +176,7 @@ export class Arena {
             draws.push(
               await gradeFn(
                 this.cache,
-                adapter,
+                cacheAdapter,
                 artifact,
                 adapter.id.includes(":")
                   ? (adapter.id.split(":")[1] ?? "v1")
@@ -183,6 +188,7 @@ export class Arena {
           }
           const last = draws.at(-1);
           const final = last?.verdict ?? "VOID";
+          latencySamples.push(...draws.map((draw) => draw.latencyMs));
           perArtifact.set(artifact.claimHash, draws.map((d) => d.verdict));
 
           const firstResult = results.find((r) => r.claimHash === artifact.claimHash);
@@ -223,6 +229,7 @@ export class Arena {
           results,
           perArtifactConsistency: perArtifact,
           avgCostUsd: this.spend?.averageUsd(adapter.id) ?? 0,
+          latencySamples,
         });
       }
     }
