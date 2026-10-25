@@ -6,6 +6,7 @@ import {
   gateReveal,
   windowStillOpen,
   ballotFor,
+  replayabilityOf,
   type DisputeView,
   type SeatConstants,
 } from "./policy.js";
@@ -270,10 +271,14 @@ export function createOperator(deps: OperatorDeps): JurorOperator {
         }
 
         const tx = await deps.cast.seal(trialId, ballot.breakWins);
+        // Named in the log line because it is the fact a later reader of this receipt actually
+        // needs: two `breakWins=true` commits look identical here and mean different things — one
+        // anyone can re-derive from the pinned suite, one that stands on this seat's rubric pass.
         record(
           trialId,
           "commit",
-          `breakWins=${ballot.breakWins} because ${report.reason} — ${view.committed.length + 1} seat(s) sealed once this lands`,
+          `breakWins=${ballot.breakWins} because ${report.reason} ` +
+            `[${replayabilityOf(report)}] — ${view.committed.length + 1} seat(s) sealed once this lands`,
           tx,
         );
       } catch (err) {

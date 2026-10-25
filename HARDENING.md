@@ -756,6 +756,36 @@ guards is the decoration it exists to detect.
   `packages/argus/test/no-orphan.test.ts` red. **Not proven, and named:** the rollback path has never
   executed. Proving it end to end means failing a deploy deliberately after its swap on the box that
   serves the site, which restarts live containers — so it waits for an explicit ask.
+- **A verdict now says what a stranger can re-derive, and two outside claims about the dispute
+  market turned out to be one closed and one open (2026-10-25).** `Argus` has always recorded which
+  phase decided — `phase: "deterministic" | "rubric" | "abstain"` at `packages/argus/src/argus.ts:65`
+  — and never said it, so two commitments reading `breakWins=true because …` in the seat's log could
+  mean "anyone with the bytes reaches this" or "a model judged this". `replayabilityOf` in
+  `apps/juror/src/policy.ts` now derives the class from the phase and the seat records it on the
+  commit line. It is keyed on the phase and *not* the outcome on purpose: deriving it from the verdict
+  would label a rubric's agreement as reproducible. Four policy cases (including two pairs with
+  identical verdicts and opposite classes), two behavioural cases through the real pass, and three
+  mutations — call replaced by a literal, function made constant, function keyed on `verdict` — each
+  turn the suite red. ADR-0013 records the rule, the second axis that belongs to the index
+  (`awaitingDisclosure`), and the on-chain field as a change with a cost attached rather than an
+  implication, because the contract that would carry it holds 10.04 ETH.
+- **Challenge laundering is already closed by arithmetic; griefing is live and mispriced in the
+  units (ADR-0014).** Measured from the contract, not argued: a failed break forfeits the skeptic's
+  *entire* stake, split 50% to the attacked agent's operator and 50% to the treasury
+  (`CrucibleTrials.sol:715-716`), and `SelfBreak` (`:560`) already stops one address playing both
+  sides — so a colluding pair nets **−0.5% of the reward** for the exercise. Nothing to add. The
+  exposure is elsewhere: the bond is 1% of reward (`:147`, `:562`) while the harm it buys is fixed —
+  three seats each running a sandbox up to 900 s (`apps/juror/src/policy.ts:36-41`) and a window of
+  24 h commit plus up to 3 days timeout (`:171`, `:154`). At the reward floor the contract enforces
+  (0.05 ETH, from `MIN_BOND` 0.01 ETH at a 20% bond) a break costs **0.0005 ETH** to consume
+  45 seat-minutes. The fix is a floor denominated in verification cost, and ADR-0014 puts it on the
+  arena, where ADR-0011 already made parameters legal, rather than editing a funded escrow. **Open,
+  named:** no bench figure for a seat's verification cost on the deployed box exists, and choosing
+  the multiplier without it would be a guess; the `/assay` row that publishes the ratio is unwritten.
+- **ADR-0012 was never indexed.** `docs/adr/README.md` stopped at 0011 while 0012 had been in the
+  tree since 2026-10-24 — the same rot the index exists to prevent, caught by looking rather than by
+  a gate. Fixed in the same commit as 0013–0015, with 0015 (the funded-wallet boundary, ADR-0006's
+  shape if CDP ever funds guest wallets) left **proposed** because nothing in it is built.
 - **`npm run demo` was silently replaying its whole loop onto someone's earlier session
   (2026-10-25).** The judge-facing path starts its own anvil on `:8545`, spawns it with
   `stdio: "ignore"`, and then asked only whether *something* answered the RPC — so on a box already

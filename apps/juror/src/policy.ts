@@ -224,3 +224,28 @@ export function ballotFor(report: VerifyReport): Ballot {
     }
   }
 }
+
+/**
+ * What a stranger can do with this verdict after the fact.
+ *
+ * `artifact-replayable` — the deterministic phase decided it, so the claim rests on hashes,
+ * signatures and a pinned suite that any observer with the same bytes re-derives identically.
+ * `generation-attested` — the rubric phase decided it, which means the verdict stands on what this
+ * seat's model said about output that cannot be re-run to a bit-exact answer. Still evidence, still
+ * signed, but not reproduction.
+ * `undecided` — the verifier abstained, so there is no verdict to classify.
+ *
+ * The distinction is not cosmetic and it is not future work: a lab can deprecate a model, jitter a
+ * temperature, or update an endpoint under a run, and no amount of re-running will reproduce a
+ * generation. Saying which kind of claim a receipt holds is the difference between "verified" and
+ * "verified in the only sense that was ever available". ADR-0013 carries the rule, the second half
+ * of it — whether a cold observer can actually *fetch* the suite today, which is the index's
+ * `awaitingDisclosure` and not this seat's knowledge — and the on-chain field that would make the
+ * class part of the vote rather than part of this service's log.
+ */
+export type Replayability = "artifact-replayable" | "generation-attested" | "undecided";
+
+export function replayabilityOf(report: VerifyReport): Replayability {
+  if (report.phase === "abstain") return "undecided";
+  return report.phase === "deterministic" ? "artifact-replayable" : "generation-attested";
+}
