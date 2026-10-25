@@ -12,6 +12,7 @@ import {
   buildSnapshot,
   type AlloyState,
   type ApiSnapshot,
+  type ArenaModel,
   type ReadModel,
   type ScribeStatus,
   type TrialStatus,
@@ -22,6 +23,7 @@ import { TickPump } from "./tick-pump.js";
 import { authRoutes } from "./auth.js";
 import { createVoiceRoutes, type VoiceConfig } from "./voice.js";
 import { createReplayRoutes, type ReplaySourceResult } from "./replay.js";
+import { createFrenchyRoutes, type FrenchyConfig } from "./frenchy.js";
 import {
   bodyLimit,
   corsPolicy,
@@ -46,6 +48,14 @@ import { streamSSE } from "hono/streaming";
 
 export interface ApiDeps {
   getModel: () => ReadModel;
+  /**
+   * The v2 arena's projection, or nothing when this host has no arena address.
+   *
+   * A second model over the same transport rather than a second reader. `undefined` is a
+   * measurement — "nobody is indexing an arena here" — and the route says so instead of
+   * rendering an empty list that reads as "an arena with no trials".
+   */
+  arena?: () => ArenaModel;
   /**
    * Alloy facts for one agent — tier, soulbound lock, token URI — sourced from
    * `AlloyRegistry`. Kept synchronous so a snapshot build cannot await the chain: the
@@ -265,6 +275,10 @@ export interface ApiOptions {
    */
   voice?: VoiceConfig | null;
   /**
+   * Frenchy's brain. Null or absent means the conversational assistant is off.
+   */
+  frenchy?: FrenchyConfig | null;
+  /**
    * The voice route spends a provider credit per call, so it gets its own bucket
    * rather than sharing the 60/min read allowance. `false` disables it for tests.
    */
@@ -344,6 +358,7 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
         alloyState: deps.alloyState,
         feeBps: deps.protocolFeeBps?.() ?? null,
         headTimestamp: deps.indexStatus?.().headTimestamp ?? null,
+        disclosure: deps.disclosure?.(),
       });
       tick = {
         builtAt: now,
@@ -502,6 +517,21 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
     app.use("/voice/*", voiceLimiter);
   }
   app.route("/voice", createVoiceRoutes(opts.voice ?? null));
+
+  /**
+   * Frenchy's brain — the conversational assistant. `/frenchy` for chat, `/frenchy/voice` for premium TTS.
+   * Both spend provider credits, so they get their own bucket.
+   */
+  if (opts.frenchy) {
+    const frenchyLimiter = rateLimit({
+      limit: 20,
+      windowMs: 60_000,
+      burst: 5,
+      trustProxy: opts.trustProxy ?? false,
+    });
+    app.use("/frenchy*", frenchyLimiter);
+  }
+  app.route("/frenchy", createFrenchyRoutes(opts.frenchy ?? null));
 
   /**
    * The replay projector. One request makes the node answer a `getLogs` over the whole look-back
@@ -825,6 +855,43 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
         count: snap.hall.length,
         asOf: snap.now,
       },
+    });
+  });
+
+  /**
+   * The v2 arena, projected from `Arena.sol` logs by the same transport that reads the v1 escrow.
+   *
+   * `projected: false` is a different answer from an empty list: the first means no one is reading
+   * an arena on this host, the second would mean an arena with nothing in it. Wei crosses as a
+   * decimal string because JSON has no bigint, and a float would lose the low digits.
+   */
+  app.get("/arena", (c) => {
+    const model = deps.arena?.();
+    if (!model) {
+      return c.json({
+        data: { trials: [] },
+        meta: { readModel: "arena", projected: false, reason: "no arena address on this host" },
+      });
+    }
+    const trials = [...model.trials.values()]
+      .sort((a, b) => a.id - b.id)
+      .map((t) => ({
+        id: t.id,
+        sponsor: t.sponsor,
+        agent: t.agent,
+        runner: t.runner,
+        status: t.status,
+        rewardWei: t.rewardWei.toString(),
+        feeWei: t.feeWei.toString(),
+        bondWei: t.bondWei.toString(),
+        claimDeadline: t.claimDeadline,
+        skepticWindow: t.skepticWindow,
+        specDigest: t.specDigest,
+        postedAtBlock: t.postedAtBlock.toString(),
+      }));
+    return c.json({
+      data: { trials },
+      meta: { readModel: "arena", projected: true, count: trials.length, version: model.version },
     });
   });
 

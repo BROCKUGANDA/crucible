@@ -7,14 +7,24 @@ import type { ModelAdapter, ModelVerdict } from "../types.js";
 export class OpenAICompatAdapter implements ModelAdapter {
   readonly id: string;
 
+  /**
+   * @param timeoutMs wall-clock deadline for one call. Absent means no deadline, which is what a
+   *   caller that has never met the provider wants — and what a caller that has met this one
+   *   cannot afford. Measured against `z-ai/glm-5.3-flash` on 42–55 byte payloads: 157773,
+   *   178477, 179534 and 180225 ms, plus one bare transport failure. Without a deadline a hung
+   *   socket holds the arena open forever, and a run that never returns cannot report the p95
+   *   that was supposed to disqualify it.
+   */
   constructor(
     private readonly baseUrl: string,
     private readonly apiKey: string,
     private readonly model: string,
     private readonly promptVersion: string,
     id?: string,
+    private readonly timeoutMs?: number,
   ) {
     this.id = id ?? `openai-compat:${model}`;
+    assertEndpoint(baseUrl);
   }
 
   async grade(artifact: { claimHash: string; payload: unknown }, promptVersion: string): Promise<ModelVerdict> {
@@ -29,14 +39,31 @@ export class OpenAICompatAdapter implements ModelAdapter {
       response_format: { type: "json_object" },
     };
 
-    const res = await fetch(`${this.baseUrl}/chat/completions`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        authorization: `Bearer ${this.apiKey}`,
-      },
-      body: JSON.stringify(body),
-    });
+    let res: Response;
+    try {
+      res = await fetch(`${this.baseUrl}/chat/completions`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${this.apiKey}`,
+        },
+        body: JSON.stringify(body),
+        signal: this.timeoutMs === undefined ? undefined : AbortSignal.timeout(this.timeoutMs),
+      });
+    } catch (err) {
+      // The arena reports a model that could not be graded, so the reason has to name the model
+      // and distinguish "never answered" from "answered late". A bare `fetch failed` names
+      // neither, and it is what the operator gets today.
+      if (err instanceof Error && err.name === "TimeoutError") {
+        throw new Error(
+          `openai-compat ${this.model}: no response in ${this.timeoutMs}ms — the call was ` +
+            "aborted, not answered. Raise --timeout-ms only if the provider's measured latency " +
+            "is genuinely above it; a wider deadline does not make a slow model gradeable.",
+        );
+      }
+      const cause = err instanceof Error ? err.message : String(err);
+      throw new Error(`openai-compat ${this.model}: transport failure — ${cause}`);
+    }
 
     if (!res.ok) {
       throw new Error(`openai-compat ${this.model}: ${res.status} ${await res.text()}`);
@@ -52,6 +79,28 @@ export class OpenAICompatAdapter implements ModelAdapter {
       latencyMs: Date.now() - start,
       promptVersion,
     };
+  }
+}
+
+/**
+ * A base URL is configuration, and configuration is loaded from JSON rows — so it is a boundary,
+ * not a trusted input. `packages/forge-runner/src/providers.ts:assertProviderUrl` guards the same
+ * thing for the agent's clients; this is the grader's copy rather than an import, because the
+ * grader package carries no dependencies at all and a six-line scheme check is not worth breaking
+ * that for. Loopback is allowed on purpose: the over-the-wire tests point at one.
+ */
+function assertEndpoint(baseUrl: string): void {
+  const parsed = (() => {
+    try {
+      return new URL(baseUrl);
+    } catch {
+      throw new Error(`openai-compat baseUrl is not a URL: ${baseUrl}`);
+    }
+  })();
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+    throw new Error(
+      `openai-compat baseUrl must be http(s), got ${parsed.protocol}// — refusing to fetch`,
+    );
   }
 }
 

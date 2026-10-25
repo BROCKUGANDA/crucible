@@ -141,8 +141,70 @@ control, and the value written afterwards is a cache of the registry's own state
 registry that lied to us could lie about its own index. It cannot affect payout — that
 happens entirely inside `CrucibleTrials` before the bridge is called.
 
+### `calls-loop` / `costly-loop` — `tally` and `_credit`
+
+Both fire on bounded loops. `tally` walks at most `ARGUS_SEATS` (3) votes; `_credit` is reached
+from `_paySeats` over at most three seats; `MAX_DOCKET` (8) and `MAX_SEATS` (256) bound the rest.
+The bound is a constant, so the gas is bounded with it. Excluding them means a genuinely unbounded
+loop added later would not be flagged.
+
+### `cyclomatic-complexity` — `freezeDocket` (16), `tally` (18)
+
+Both are settlement state machines whose branches **are** the protocol's outcome table (O1–O8, two
+panel rounds). Splitting them to satisfy a score would distribute one invariant across helpers and
+make it harder to see that every path reaches `Settled` exactly once. Readability of the outcome
+table is preferred over the number.
+
+### `too-many-digits` — numeric literals
+
+Fires on decimal constants in the basis-point arithmetic. Underscore separators would silence it
+without changing a value; excluded because it adds nothing to a review that already checks these
+numbers against `Params.sol`.
+
+### One that is still silenced at the line
+
+`reentrancy-no-eth` is **not** in `detectors_to_exclude`: the `// slither-disable-next-line`
+directive does work for it (it disappeared from the report), and its justification above stands.
+
 ## What this does not cover
 
 Slither is static analysis over one snapshot of source. It is not a substitute for the 82
 tests, the 6 invariant suites, or reading the diff. It is here to catch the class of
 mistake that tests written by the same author in the same sitting would miss.
+
+## The v2 arena's remaining classes
+
+**Correction, and it cost a CI cycle:** these were first written as
+`// slither-disable-next-line` comments beside each statement and **did not take** — `slither .`
+kept reporting every one. A suppression that does not fire is indistinguishable from no suppression
+at all, and CI output is the only place the difference shows. They are now in
+`detectors_to_exclude`, where the config's own comment says suppressions belong. What each one
+costs is stated, not implied.
+
+### `weak-prng` — `Arena.drawPanel` seed
+
+The seed is `keccak256(prevrandao, block.number, id, round)`. This **is** predictable to the
+block proposer, and that is recorded rather than denied: decision **D-17** says mode 0 is the
+devnet fallback D-12 already allows, that it is not a VRF, and that it must not be used for
+real money. Mode 1 — the VRF path — fails closed with `RandomnessNotConfigured()` until a
+consumer is wired, so a deployment that wants unpredictable panels cannot silently get this
+one. The finding is the documented limitation, not a surprise.
+
+### `incorrect-equality` — `conservationHolds` / `conservationDetail`
+
+The strict equality **is** the invariant: every wei the vault ever took in equals what has
+left it plus what it still holds. Rewriting it as `>=` to satisfy the detector would weaken
+the exact check that gate 744 exists to make, and the `>=` form is already present beside it
+as `balanceOk` — the looser question, asked separately and on purpose. Tested by
+`test_744_Ledger_EveryStepKeepsDepositedEqualToPaidPlusHeld`.
+
+### `reentrancy-no-eth` — `Arena.tally`
+
+`tally` calls `court.slashNoShow` and `court.closeDraw` and then keeps working on `Panel` and
+`Trial` storage. The callee is not a third party: `court` is an immutable reference to this
+repository's own `ArgusCourt`, set at construction, and those two functions are `onlyArena`
+and move value only through a credit ledger that `withdraw()` pays out in a separate
+transaction. There is no attacker-controlled callback in the path, which is why the function
+does not carry `notReentrant` — adding the modifier would suggest a threat that does not
+exist. If a future version makes the court upgradeable or callable by anyone else, this
+suppression must come out with it.

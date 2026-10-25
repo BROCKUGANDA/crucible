@@ -34,19 +34,15 @@ Open ──claim──> Assigned ──submitRun──> Judging ──fileBreak�
    with the API on `:8787`. Every `up` is a fresh, deterministic chain.
 3. Read the proofs: `/hall` shows the leaderboard where each row quotes the
    settlement transaction and the identity registration that earned it. The
-   contracts are in `crucible-contracts/contracts` with 270 tests (4 of them ERC-8004
+   contracts are in `crucible-contracts/contracts` with 270 tests (266 passed; 4 of them ERC-8004
    fork tests, which skip without an RPC). The workspace suites
-   add 1503 more — web 290, smith-sdk 197, grader 165, agent-security 153, forge-runner 146
-   (6 need Docker; they ran green on the deploy box today at 136 tests, before the ten now in
-   flight), api 142, cidstore 98, indexer 95, juror 74, argus 42, keeper 40, warden 24,
-   harness 13, frame 12, crypto 12 — and `npm test` runs them; the contracts suite
-   itself needs Foundry
+   add 1544 more — web 290, grader 206, smith-sdk 197, agent-security 153, forge-runner 146
+   (6 need Docker and skip without a daemon), api 142, cidstore 98, indexer 95, juror 74,
+   argus 42, keeper 40, warden 24, harness 13, frame 12, crypto 12 — and `npm test` runs them; the
+   contracts suite itself needs Foundry
    (`forge test`), which the seed image runs on a machine without a local
-   forge. The numbers were measured from the suites on 2026-10-24; run `npm test`
-   to reproduce them. One condition on that count, stated rather than smoothed: 8 of the
-   grader's 165 are red in the shared working tree against an in-flight `suiteEpoch` field
-   that is not part of the epoch slice, so the green figure at that moment was 1489 passed
-   and 6 skipped.
+   forge. Measured from one `npm test` on 2026-10-25: 1538 passed and 6 skipped across the
+   TypeScript workspaces. Run `npm test` to reproduce them.
 4. Replay the whole loop against a running chain — register, post, claim,
    runner-signed runs, a break that Argus slashes, and the permissionless quench
    after the window really closes — with `crucible-contracts/script/GoldenPath.s.sol`:
@@ -505,11 +501,28 @@ Two properties it checks that a stub could not:
   their identity with the ERC-8004 Identity registry themselves (`register(agentURI)`
   mints to the caller), and Crucible records the association via `linkIdentity`.
   Verified on mainnet in `ForkTests.test_Fork_OperatorLinksARealIdentityRegistration`.
-- **26 npm advisories remain** (24 moderate, 2 high), all inside the wallet stack —
-  `@walletconnect/*`, `@metamask/sdk`, `@reown/*`, `@base-org/*` — plus the pre-existing
-  `postcss` and `next` pair. The wallet ones have no fix without dropping RainbowKit for
-  wagmi 3, and the Next pair affects every released version through `16.3.0-preview`.
-  CI's audit gate fails only on advisories outside the documented set.
+- **28 npm advisories remain** (15 moderate, 13 high), and CI's audit gate passes them because
+  each one is inside the documented set in `scripts/audit-gate.mjs` with a written ceiling. They
+  reduce to **two leaf advisories**, and both are in the wallet stack:
+  - **`ws` — uninitialized memory disclosure (GHSA-58qx-3vcg-4xpx) and memory-exhaustion DoS
+    (GHSA-96hv-2xvq-fx4p).** Reached through `@walletconnect/ethereum-provider` →
+    `@walletconnect/utils` → `viem@2.23.2` → `ws@8.18.0`, all of them pinned exactly. The
+    vulnerable copy sits under a viem this app never uses for websockets — the chains talk HTTP —
+    but it is installed and importable. **Not fixable by a version bump:** npm `overrides` are
+    inert in this tree (measured three ways, including a full re-resolution with the lockfile
+    deleted), `@wagmi/connectors` 6.x tops out at the pinned version, and `wagmi` 3 does not
+    change the chain. It needs `patch-package` to relax the exact pin, or the connector dropped.
+  - **`zod` — memory exhaustion while validating oversized constrained collections
+    (GHSA-mrhx-c7xc-m3w5).** Reached through `abitype` → `viem`, and through
+    `@coinbase/cdp-sdk` (which `apps/web/next.config.mjs` aliases out of the browser bundle
+    entirely). There is no patched 3.x — the fix is 4.6.6, a major that `abitype` cannot take.
+    The exposure here is low: zod validates ABI and parameter schemas, not attacker-supplied
+    collections, and no request path feeds it one.
+  **The cost of this ceiling, stated rather than implied:** npm scores a package by the worst
+  advisory *anywhere in its chain*, and this gate scores per package, so it cannot tell "this
+  package's own advisory" from "the leaf's advisory it inherits". A **new** high advisory
+  appearing anywhere in the wallet stack would pass CI without a human reading it. That is the
+  price of a leaf we cannot patch; the thing that watches it is this paragraph, not the list.
 
 ## Bugs found in the original spec
 

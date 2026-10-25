@@ -18,6 +18,7 @@ const CARD: ModelCard = {
   },
   budgetUsd: { stage: 40, day: 120 },
   costPerCallUsd: 0.004,
+  maxCallsPerStage: 10_000,
   latencyP95Ms: 20_000,
 };
 
@@ -82,6 +83,37 @@ describe("Config-row test (gate 440)", () => {
   it("rejects unknown adapter kinds", () => {
     const config = { kind: "unknown-dialect" } as unknown as AdapterConfig;
     expect(() => buildAdapter(config)).toThrow(/unknown adapter kind/);
+  });
+
+  /**
+   * The card names the wire, so the wire has to be the one built. Nothing read `dialect` before
+   * this, and a card is loaded from JSON at the caller, where any string is possible: a card written
+   * for one provider could guard a call to another, and every verdict it stamped would carry a
+   * snapshot pin and a retention posture belonging to a model that was never called.
+   */
+  it("refuses to guard one dialect with a card written for another", () => {
+    const mismatched: AdapterConfig = {
+      kind: "anthropic",
+      modelId: "gpt-5.2",
+      promptVersion: "pv7",
+      apiKey: "sk-test",
+      model: "gpt-5.2",
+      card: CARD, // dialect: "openai-compat"
+      spend: new SpendLedger(),
+      scope: "full",
+    };
+    expect(() => buildAdapter(mismatched)).toThrow(
+      /was handed a card for the "openai-compat" dialect/,
+    );
+
+    // The same card on its own dialect still builds, so what is refused is the disagreement and not
+    // the card.
+    const agreed = buildAdapter({
+      ...mismatched,
+      kind: "openai-compat",
+      baseUrl: "https://api.openai.com/v1",
+    });
+    expect(agreed.id).toBe("gpt-5.2");
   });
 });
 

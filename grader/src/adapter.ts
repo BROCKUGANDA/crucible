@@ -49,6 +49,13 @@ export interface AdapterConfig {
   spend?: SpendLedger;
   /** Tournament stage the calls are billed against (`smoke` | `full` | `adversarial` | `shadow`). */
   scope?: string;
+  /**
+   * Wall-clock deadline for one call, openai-compat only. Distinct from `card.latencyP95Ms`, which
+   * is the latency the arena will *tolerate* in a scorecard; this is how long a caller waits before
+   * it stops waiting. The two differ by design — a provider can answer inside its deadline and still
+   * be disqualified for being slow, and that is the finding worth publishing.
+   */
+  timeoutMs?: number;
 }
 
 /** Build an adapter from a config row. No code change per model. */
@@ -61,6 +68,18 @@ export function buildAdapter(config: AdapterConfig): ModelAdapter {
       `${config.kind} adapter "${config.modelId}" needs a card and a spend ledger: a paid call ` +
         "with no snapshot pin, no retention posture and no cap is exactly the frontier access this " +
         "layer exists to refuse.",
+    );
+  }
+  // The card names the wire, so it has to be the wire being built. Nothing else reads `dialect`,
+  // and a card loaded from JSON can carry any string: without this, a card written for one provider
+  // guards a call to another and every verdict it stamps is attributed to a model that was never
+  // called. The snapshot pin and the retention posture attached to it go with the wrong provider
+  // too, which is the part that is not recoverable from the scorecard afterwards.
+  if (config.card.dialect !== config.kind) {
+    throw new ModelCardError(
+      `${config.kind} adapter "${config.modelId}" was handed a card for the ` +
+        `"${config.card.dialect}" dialect. A card describes the model it guards; one that describes ` +
+        "a different wire is not a typo to be corrected downstream.",
     );
   }
   if (!config.scope || config.scope.trim().length === 0) {
@@ -81,7 +100,7 @@ function buildDialect(config: AdapterConfig): ModelAdapter {
       if (!config.baseUrl || !config.apiKey || !config.model) {
         throw new Error("openai-compat adapter requires baseUrl, apiKey, model");
       }
-      return new OpenAICompatAdapter(config.baseUrl, config.apiKey, config.model, config.promptVersion, config.modelId);
+      return new OpenAICompatAdapter(config.baseUrl, config.apiKey, config.model, config.promptVersion, config.modelId, config.timeoutMs);
     case "anthropic":
       if (!config.apiKey || !config.model) {
         throw new Error("anthropic adapter requires apiKey, model");

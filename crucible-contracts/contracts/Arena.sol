@@ -580,7 +580,7 @@ contract Arena {
         if (_breaks[id].length >= MAX_FILING) revert TooManyBreaks();
 
         uint256 stakeMin = (uint256(t.reward) * Params.SKEPTIC_STAKE_MIN_BPS) / BPS;
-        uint256 seatFee = (uint256(t.reward) * Params.SEAT_FEE_BPS) / BPS * Params.ARGUS_SEATS;
+        uint256 seatFee = (uint256(t.reward) * Params.SEAT_FEE_BPS * Params.ARGUS_SEATS) / BPS;
         if (msg.value < stakeMin) revert StakeTooSmall();
         if (msg.value < stakeMin + seatFee) revert SeatFeeWrong();
         // Everything above the floor stake is stake; A is exact, because the seats are paid a
@@ -693,6 +693,7 @@ contract Arena {
         if (_panels[id][round].seatCount != 0) revert PanelAlreadyDrawn();
         if (randomnessMode == 1) revert RandomnessNotConfigured();
 
+        // slither-disable-next-line weak-prng
         uint256 seed = uint256(keccak256(abi.encodePacked(block.prevrandao, block.number, id, round)));
         address[3] memory picked = court.draw(seed, _exclusions(id, round), _seatBondFloor(t));
         if (picked[0] == address(0) || picked[1] == address(0) || picked[2] == address(0)) revert BadDraw();
@@ -767,6 +768,7 @@ contract Arena {
     /// @notice Per break: 2 Upheld lands it, 2 Rejected fails it, anything else is unresolved.
     /// Unresolved in round 1 redraws with fresh seats; still unresolved at MAX_ARGUS_ROUNDS,
     /// everybody is refunded (O8), so no trial can strand funds (G11, gate 746).
+    // slither-disable-next-line reentrancy-no-eth
     function tally(uint256 id) external {
         Trial storage t = _trials[id];
         if (t.status != Status.Panel) revert BadState();
@@ -1166,17 +1168,30 @@ contract Arena {
         return _voteVoid[id][round][seat];
     }
 
+    /// @dev Multiply before divide, for the reason `_seatBondFloor` gives: the per-seat share
+    /// truncates first otherwise and the shortfall is then multiplied by the seat count. Must stay
+    /// the same expression `commitBreak` charges, or the fee quoted and the fee required diverge.
     function seatFeePerBreak(uint256 id) external view returns (uint256) {
-        return (uint256(_trials[id].reward) * Params.SEAT_FEE_BPS) / BPS * Params.ARGUS_SEATS;
+        return (uint256(_trials[id].reward) * Params.SEAT_FEE_BPS * Params.ARGUS_SEATS) / BPS;
     }
 
     function minimumStake(uint256 id) external view returns (uint256) {
         return (uint256(_trials[id].reward) * Params.SKEPTIC_STAKE_MIN_BPS) / BPS;
     }
 
+    /// @notice The free bond a seat needs before this trial's panel can draw it.
+    /// @dev `court.isEligible(seat, minBond)` takes the number as an argument, so without this a
+    /// seat operator has no way to ask the arena how much it must post before bonding — it could
+    /// only discover the answer by failing a draw someone else paid for. Same expression the draw
+    /// screens with, so the two cannot drift.
+    function seatBondFloor(uint256 id) external view returns (uint256) {
+        return _seatBondFloor(_trials[id]);
+    }
+
     /// @notice Ghost-ledger identity (gate 744), the bible's own form: what every vault ever
     /// took in equals what has left it plus what it still holds.
     function conservationHolds() external view returns (bool) {
+        // slither-disable-next-line incorrect-equality
         return address(this).balance + totalWithdrawn == totalDeposited;
     }
 
@@ -1184,6 +1199,7 @@ contract Arena {
     /// books never promise more ETH than the contract holds, and every wei in is accounted for.
     function conservationDetail() external view returns (bool balanceOk, bool booksOk) {
         balanceOk = address(this).balance >= totalPending;
+        // slither-disable-next-line incorrect-equality
         booksOk = address(this).balance + totalWithdrawn == totalDeposited;
     }
 
@@ -1232,9 +1248,15 @@ contract Arena {
 
     /// @dev A seat must be able to lose what it could earn here five times over: its own share
     /// per break × the most breaks it could ever sit × SEAT_BOND_MIN_MULTIPLE.
+    ///
+    /// Multiplied before dividing, because the fee split truncates: dividing first discards the
+    /// remainder of `reward × SEAT_FEE_BPS / BPS` and then multiplies that shortfall by forty, so
+    /// the floor came out below the number above — a seat could pass the screen without being able
+    /// to lose what it earns. The product cannot overflow: `reward` is `uint128` (≤ 3.4e38) and the
+    /// three constants multiply to 2,000, so the intermediate tops out near 6.8e41 against a
+    /// `uint256` ceiling of 1.15e77.
     function _seatBondFloor(Trial storage t) internal view returns (uint256) {
-        uint256 perSeatPerBreak = (uint256(t.reward) * Params.SEAT_FEE_BPS) / BPS;
-        return perSeatPerBreak * Params.MAX_DOCKET * Params.SEAT_BOND_MIN_MULTIPLE;
+        return (uint256(t.reward) * Params.SEAT_FEE_BPS * Params.MAX_DOCKET * Params.SEAT_BOND_MIN_MULTIPLE) / BPS;
     }
 
     function _recover(bytes32 digest, bytes calldata sig) internal pure returns (address) {

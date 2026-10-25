@@ -4,13 +4,19 @@ import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { FileEvalCache } from "../src/eval/cache-file.js";
 import { cacheKey, gradeCached, type CacheKey } from "../src/eval/cache.js";
+import { suiteEpoch } from "../src/eval/suites.js";
 import type { Artifact, EvalResult, ModelAdapter } from "../src/eval/types.js";
 
 function tempFile(): string {
   return join(mkdtempSync(join(tmpdir(), "eval-cache-")), "cache.jsonl");
 }
 
-const KEY = cacheKey("0xclaim", "stub-model", "pv7");
+function artifact(): Artifact {
+  return { claimHash: "0xclaim", suite: "smoke", expectedVerdict: "PASS", payload: { kind: "run-artifact" } } as Artifact;
+}
+
+const EPOCH = suiteEpoch([artifact()]);
+const KEY = cacheKey("0xclaim", "stub-model", "pv7", EPOCH);
 
 function result(over: Partial<EvalResult> = {}): EvalResult {
   return {
@@ -18,6 +24,7 @@ function result(over: Partial<EvalResult> = {}): EvalResult {
     modelId: "stub-model",
     promptVersion: "pv7",
     suite: "smoke",
+    suiteEpoch: EPOCH,
     expected: "PASS",
     actual: "PASS",
     confidence: 0.9,
@@ -28,10 +35,6 @@ function result(over: Partial<EvalResult> = {}): EvalResult {
     killed: false,
     ...over,
   };
-}
-
-function artifact(): Artifact {
-  return { claimHash: "0xclaim", suite: "smoke", expectedVerdict: "PASS" } as Artifact;
 }
 
 /**
@@ -80,15 +83,41 @@ describe("FileEvalCache — the cold tier", () => {
     };
 
     const first = FileEvalCache.open(file);
-    const fresh = await gradeCached(first, adapter, artifact(), "pv7", () => adapter.grade(artifact(), "pv7"));
+    const fresh = await gradeCached(first, adapter, artifact(), "pv7", EPOCH, () => adapter.grade(artifact(), "pv7"));
     expect(fresh.cached).toBe(false);
     expect(adapter.grade).toHaveBeenCalledTimes(1);
 
     const replayed = FileEvalCache.open(file);
-    const second = await gradeCached(replayed, adapter, artifact(), "pv7", () => adapter.grade(artifact(), "pv7"));
+    const second = await gradeCached(replayed, adapter, artifact(), "pv7", EPOCH, () => adapter.grade(artifact(), "pv7"));
     expect(second.cached).toBe(true);
     expect(second.verdict).toBe("PASS");
     expect(adapter.grade).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * The warm tier is the dangerous one: it survives the process, so a stale hit is not a nuisance
+   * in this run but a published number in the next. Same file, same claim hash, same prompt —
+   * a re-cut corpus must cost a real model call.
+   */
+  it("does not replay a paid verdict into a corpus that changed after it was paid for", async () => {
+    const file = tempFile();
+    const adapter: ModelAdapter = {
+      id: "stub-model",
+      grade: vi.fn(async () => ({ verdict: "PASS", confidence: 0.8, latencyMs: 5, promptVersion: "pv7" })),
+    };
+
+    await gradeCached(FileEvalCache.open(file), adapter, artifact(), "pv7", EPOCH, () =>
+      adapter.grade(artifact(), "pv7"),
+    );
+    expect(adapter.grade).toHaveBeenCalledTimes(1);
+
+    const recut = suiteEpoch([{ ...artifact(), expectedVerdict: "VOID" }]);
+    const next = await gradeCached(FileEvalCache.open(file), adapter, artifact(), "pv7", recut, () =>
+      adapter.grade(artifact(), "pv7"),
+    );
+
+    expect(next.cached).toBe(false);
+    expect(adapter.grade).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -111,6 +140,39 @@ describe("FileEvalCache refuses what it cannot vouch for", () => {
 
     const cache = FileEvalCache.open(file);
     expect(cache.corruptLines).toBe(1);
+    expect(cache.get(KEY)).toBeNull();
+  });
+
+  it("rejects a line filed under an epoch it does not describe", () => {
+    const file = tempFile();
+    const lying = { key: KEY, value: result({ suiteEpoch: suiteEpoch([artifact(), artifact()]) }) };
+    writeFileSync(file, `${JSON.stringify(lying)}\n`, "utf8");
+
+    const cache = FileEvalCache.open(file);
+    expect(cache.corruptLines).toBe(1);
+    expect(cache.get(KEY)).toBeNull();
+  });
+
+  /**
+   * Not migrated, not defaulted. A file written before the key carried `suiteEpoch` cannot be
+   * repaired after the fact — the epoch is a digest of artifacts that are gone — so guessing one
+   * would file last generation's verdicts under this generation's exam. The whole file reads as
+   * corrupt, which is a loud number on `corruptLines` rather than a plausible cache hit.
+   */
+  it("counts a pre-epoch line as corrupt rather than adopting it", () => {
+    const file = tempFile();
+    const preEpoch = {
+      key: { claimHash: "0xclaim", modelId: "stub-model", promptVersion: "pv7" },
+      value: (() => {
+        const { suiteEpoch: _drop, ...rest } = result();
+        return rest;
+      })(),
+    };
+    writeFileSync(file, `${JSON.stringify(preEpoch)}\n`, "utf8");
+
+    const cache = FileEvalCache.open(file);
+    expect(cache.corruptLines).toBe(1);
+    expect(cache.size).toBe(0);
     expect(cache.get(KEY)).toBeNull();
   });
 

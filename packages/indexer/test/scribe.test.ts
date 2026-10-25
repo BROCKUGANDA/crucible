@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createServer } from "node:http";
 import { keccak256, hexToBytes, toHex, decodeAbiParameters, encodeAbiParameters, encodeEventTopics, parseEventLogs } from "viem";
 import { TRIALS_ABI } from "@crucible/smith";
-import { bloomMayContain, Scribe, toEventLike } from "../src/scribe.js";
+import { bloomMayContain, Scribe, toEventLike, TRIALS_SOURCE } from "../src/scribe.js";
 import { foundry } from "viem/chains";
 import { applyEvent, disputeState, emptyModel, replay } from "../src/model.js";
 
@@ -381,7 +381,7 @@ describe("bloom cross-check on a quiet window", () => {
   it("refuses to advance the cursor when the blocks say there was something to find", async () => {
     const node = await lyingNode({ logs: [] });
     const scribe = new Scribe({
-      trialsAddress: node.address,
+      source: { ...TRIALS_SOURCE, address: node.address },
       alloyAddress: node.address,
       chain: foundry,
       rpcUrl: node.url,
@@ -402,7 +402,7 @@ describe("bloom cross-check on a quiet window", () => {
   it("does advance when every block in the window says nothing was there", async () => {
     const node = await lyingNode({ logs: [], quietBlocks: true });
     const scribe = new Scribe({
-      trialsAddress: node.address,
+      source: { ...TRIALS_SOURCE, address: node.address },
       alloyAddress: node.address,
       chain: foundry,
       rpcUrl: node.url,
@@ -447,7 +447,7 @@ describe("bloom cross-check on a quiet window", () => {
       foreignFrom: 3,
     });
     const scribe = new Scribe({
-      trialsAddress: node.address,
+      source: { ...TRIALS_SOURCE, address: node.address },
       alloyAddress: node.address,
       chain: foundry,
       rpcUrl: node.url,
@@ -466,7 +466,7 @@ describe("bloom cross-check on a quiet window", () => {
   it("crosses a quiet window far wider than the probe chunk", async () => {
     const node = await lyingNode({ logs: [], quietBlocks: true, head: 200 });
     const scribe = new Scribe({
-      trialsAddress: node.address,
+      source: { ...TRIALS_SOURCE, address: node.address },
       alloyAddress: node.address,
       chain: foundry,
       rpcUrl: node.url,
@@ -503,7 +503,7 @@ describe("bloom cross-check on a quiet window", () => {
   it("indexes on a node that refuses JSON-RPC batches", async () => {
     const node = await lyingNode({ logs: [], quietBlocks: true, head: 12, refuseBatches: true });
     const scribe = new Scribe({
-      trialsAddress: node.address,
+      source: { ...TRIALS_SOURCE, address: node.address },
       alloyAddress: node.address,
       chain: foundry,
       rpcUrl: node.url,
@@ -557,7 +557,7 @@ describe("bloom cross-check on a quiet window", () => {
       failBlockRead: (n) => n === 3,
     });
     const scribe = new Scribe({
-      trialsAddress: node.address,
+      source: { ...TRIALS_SOURCE, address: node.address },
       alloyAddress: node.address,
       chain: foundry,
       rpcUrl: node.url,
@@ -622,7 +622,7 @@ describe("bloom cross-check on a quiet window", () => {
       failBlockRead: (n) => unreadable.has(n),
     });
     const scribe = new Scribe({
-      trialsAddress: node.address,
+      source: { ...TRIALS_SOURCE, address: node.address },
       alloyAddress: node.address,
       chain: foundry,
       rpcUrl: node.url,
@@ -664,7 +664,7 @@ describe("bloom cross-check on a quiet window", () => {
       bloomHasEvent: (n) => n === 5,
     });
     const scribe = new Scribe({
-      trialsAddress: node.address,
+      source: { ...TRIALS_SOURCE, address: node.address },
       alloyAddress: node.address,
       chain: foundry,
       rpcUrl: node.url,
@@ -690,7 +690,7 @@ describe("bloom cross-check on a quiet window", () => {
   it("rebuilds when the chain is reset under it", async () => {
     const node = await lyingNode({ logs: [], quietBlocks: true, head: 3 });
     const scribe = new Scribe({
-      trialsAddress: node.address,
+      source: { ...TRIALS_SOURCE, address: node.address },
       alloyAddress: node.address,
       chain: foundry,
       rpcUrl: node.url,
@@ -703,7 +703,7 @@ describe("bloom cross-check on a quiet window", () => {
     // The chain comes back shorter. The indexer has to notice and rebuild.
     const shorter = await lyingNode({ logs: [], quietBlocks: true, head: 1 });
     const reset = new Scribe({
-      trialsAddress: shorter.address,
+      source: { ...TRIALS_SOURCE, address: shorter.address },
       alloyAddress: shorter.address,
       chain: foundry,
       rpcUrl: shorter.url,
@@ -728,7 +728,7 @@ describe("bloom cross-check on a quiet window", () => {
   it("keeps its model when the cursor is simply one past the head", async () => {
     const node = await lyingNode({ logs: [], quietBlocks: true, head: 3 });
     const scribe = new Scribe({
-      trialsAddress: node.address,
+      source: { ...TRIALS_SOURCE, address: node.address },
       alloyAddress: node.address,
       chain: foundry,
       rpcUrl: node.url,
@@ -758,7 +758,7 @@ describe("bloom cross-check on a quiet window", () => {
   it("publishes no chain clock before it has read a block", async () => {
     const node = await lyingNode({ logs: [], quietBlocks: true, head: 3 });
     const scribe = new Scribe({
-      trialsAddress: node.address,
+      source: { ...TRIALS_SOURCE, address: node.address },
       alloyAddress: node.address,
       chain: foundry,
       rpcUrl: node.url,
@@ -773,7 +773,7 @@ describe("bloom cross-check on a quiet window", () => {
   it("publishes the timestamp of the block it read, taken while proving the range quiet", async () => {
     const node = await lyingNode({ logs: [], quietBlocks: true, head: 3 });
     const scribe = new Scribe({
-      trialsAddress: node.address,
+      source: { ...TRIALS_SOURCE, address: node.address },
       alloyAddress: node.address,
       chain: foundry,
       rpcUrl: node.url,
@@ -831,5 +831,51 @@ describe("the seat vote logs", () => {
     const d = disputeState(model, 7);
     expect(d.committed).toEqual([SEAT.toLowerCase(), PEER.toLowerCase()]);
     expect(d.revealed).toEqual([SEAT.toLowerCase()]);
+  });
+});
+
+/**
+ * The transport reads the source it is GIVEN.
+ *
+ * Until this was a parameter, the ABI, the twelve event names and the address were module
+ * constants, so a second contract could only have been indexed by forking this file. The
+ * discriminating case is a block whose bloom carries one of CrucibleTrials' topics while the
+ * configured source does not accept that event: a per-source topic list crosses it as quiet, and
+ * a shared constant stops on it as a possible event. Same node, same block, two sources.
+ */
+describe("the transport follows its source, not a module constant", () => {
+  it("refuses a source whose event list matches none of its ABI", () => {
+    expect(
+      () =>
+        new Scribe({
+          source: { ...TRIALS_SOURCE, address: TRIALS, eventNames: ["NotAnEventInThisAbi"] },
+          chain: foundry,
+          rpcUrl: "http://127.0.0.1:1",
+        }),
+    ).toThrow(/accepts no event from its own ABI/);
+  });
+
+  it("walks past a bloom for an event it does not accept, and stops on one it does", async () => {
+    const node = await lyingNode({ logs: [], head: 3, bloomHasEvent: () => true });
+
+    const other = new Scribe({
+      source: { ...TRIALS_SOURCE, address: node.address, eventNames: ["Withdrawn"] },
+      chain: foundry,
+      rpcUrl: node.url,
+      fromBlock: 0n,
+    });
+    await other.sync();
+
+    const ours = new Scribe({
+      source: { ...TRIALS_SOURCE, address: node.address },
+      chain: foundry,
+      rpcUrl: node.url,
+      fromBlock: 0n,
+    });
+    await ours.sync();
+
+    expect(other.status.syncError).toBeNull();
+    expect(ours.status.syncError).not.toBeNull();
+    node.close();
   });
 });

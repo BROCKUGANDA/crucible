@@ -21,6 +21,7 @@ ADR/AGENTS.md law → params → existing code+tests → the bible's new specifi
 | D-13 | Anchor version | **Stay on 0.30.1** | Amended for this machine in `crucible-contracts/solana/Anchor.toml`: solana-labs v1.18.26 replaces the unreachable agave pins — the era-correct pairing, proven green 10/10 |
 | D-14 | `K_FLOOR` vs new invariants | **Report only** | Legacy `math.rs` formula recorded, never silently changed |
 | D-15 | Patron vaults | **Deferred** (stretch, needs legal review) | Not in the hackathon build |
+| D-17 | Arena randomness on the demo | **Mode 0**, a deterministic seed: `keccak256(prevrandao, block.number, id, round)` | The devnet fallback D-12 already allows, now recorded rather than left as script behaviour. Mode 1 fails closed (`RandomnessNotConfigured`) until a consumer is wired, so the only panel a demo can draw is mode 0 — and it is **not** a VRF: a validator influences both `prevrandao` and `block.number`. `Demo.s.sol` names it in the comment beside the constructor |
 
 ## Conflicts found between the bible and this repo, and the readings taken
 

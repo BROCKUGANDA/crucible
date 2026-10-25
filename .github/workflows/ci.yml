@@ -319,11 +319,11 @@ jobs:
         run: npm run build:libs
 
       # Gate 502 — the sandbox seal, enforced where a push cannot talk its way around it:
-      # the harness module graph (the code an agent runs inside) must not reach fs,
+      # the agent module graph (the code an agent runs inside) must not reach fs,
       # child_process, net or any wallet library. The scanner is the built package itself,
       # so the gate lints exactly the code that ships.
-      - name: import-lint — the harness module graph holds no effectors (gate 502)
-        run: npm run lint:imports --workspace @crucible/harness
+      - name: import-lint — the agent module graph holds no effectors (gate 502)
+        run: npm run lint:imports --workspace @crucible/forge-runner
 
       # Gate 732 (ADR-0011): every v2 arena number comes from params/crucible.params.json
       # through codegen. This proves the five derived invariants hold and that the
@@ -367,7 +367,7 @@ jobs:
             --workspace @crucible/cidstore \
             --workspace @crucible/crypto \
             --workspace @crucible/frame \
-            --workspace @crucible/harness \
+            --workspace @crucible/forge-runner \
             --workspace @crucible/grader \
             --workspace @crucible/keeper \
             --workspace @crucible/juror \
@@ -386,7 +386,7 @@ jobs:
             --workspace @crucible/cidstore \
             --workspace @crucible/crypto \
             --workspace @crucible/frame \
-            --workspace @crucible/harness \
+            --workspace @crucible/forge-runner \
             --workspace @crucible/grader \
             --workspace @crucible/keeper \
             --workspace @crucible/juror \

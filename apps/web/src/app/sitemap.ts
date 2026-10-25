@@ -11,6 +11,11 @@ const ROUTES = [
   "/hall",
   "/assay",
   "/docs",
+  "/clock",
+  "/claims",
+  "/forge",
+  "/compliance",
+  "/verify",
   "/sign-in",
   "/sign-up",
 ];
