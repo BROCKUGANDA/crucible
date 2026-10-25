@@ -12,7 +12,15 @@ function tempFile(): string {
 }
 
 function artifact(): Artifact {
-  return { claimHash: "0xclaim", suite: "smoke", expectedVerdict: "PASS", payload: { kind: "run-artifact" } } as Artifact;
+  // The tier `smokeSet` gives this payload shape: see `tiers.test.ts`.
+  return {
+    claimHash: "0xclaim",
+    suite: "smoke",
+    expectedVerdict: "PASS",
+    payload: { kind: "run-artifact" },
+    tier: "competence",
+    difficulty: "routine",
+  };
 }
 
 const EPOCH = suiteEpoch([artifact()]);
@@ -33,6 +41,9 @@ function result(over: Partial<EvalResult> = {}): EvalResult {
     falseFail: false,
     latencyMs: 12,
     killed: false,
+    // Carried the way the arena carries it: a cached record says what tier it was earned in.
+    tier: "competence",
+    difficulty: "routine",
     ...over,
   };
 }

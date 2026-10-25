@@ -212,6 +212,9 @@ export class Arena {
             falseFail: final !== "PASS" && artifact.expectedVerdict === "PASS",
             latencyMs: last?.latencyMs ?? 0,
             killed: false,
+            tier: artifact.tier,
+            difficulty: artifact.difficulty,
+            ...(artifact.safety === true ? { safety: true } : {}),
           });
         }
 

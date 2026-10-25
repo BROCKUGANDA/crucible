@@ -13,6 +13,11 @@ function artifacts(n: number): Artifact[] {
     payload: { index: i },
     expectedVerdict: "PASS",
     suite: "smoke",
+    // The tier `smokeSet` gives this payload shape: see `tiers.test.ts`. Without it the scorer
+    // refuses the row (`UNKNOWN_TIER`), which is the point — a row cannot be profiled from a
+    // record that does not say what it tested.
+    tier: "competence",
+    difficulty: "routine",
   }));
 }
 

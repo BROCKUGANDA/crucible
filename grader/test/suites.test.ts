@@ -15,6 +15,8 @@ describe("suiteEpoch", () => {
     expectedVerdict: "PASS",
     suite: "smoke",
     thresholdBand: "normal",
+    tier: "competence",
+    difficulty: "routine",
   };
 
   it("is stable across two independent generations of the same corpus", () => {
@@ -48,6 +50,35 @@ describe("suiteEpoch", () => {
     const corpus = smokeSet();
     expect(suiteEpoch([...corpus, { ...one, claimHash: "smoke-9999" }])).not.toBe(suiteEpoch(corpus));
     expect(suiteEpoch(corpus.slice(0, -1))).not.toBe(suiteEpoch(corpus));
+  });
+
+  /**
+   * Tiering is part of the exam, so it is part of the exam's identity.
+   *
+   * Two corpora whose payloads and labels agree but whose tiers differ are different instruments: a
+   * scorecard profiled by tier, and a draw stratified by tier × difficulty, both read a different
+   * thing off them. An epoch that survived re-tiering would let both keep verdicts cached against
+   * the other — the exact failure the projection was cut to prevent, with the label-flip case
+   * above as the precedent. The same argument covers `difficulty` (it decides which stratum an
+   * artifact is drawn from) and `safety` (it decides which side of the blend a probe lands on).
+   */
+  it("moves when a tier moves, and when a difficulty or a safety flag moves", () => {
+    const corpus = [one];
+    expect(suiteEpoch([{ ...one, tier: "frontier" }])).not.toBe(suiteEpoch(corpus));
+    expect(suiteEpoch([{ ...one, difficulty: "stressed" }])).not.toBe(suiteEpoch(corpus));
+    expect(suiteEpoch([{ ...one, safety: true }])).not.toBe(suiteEpoch(corpus));
+  });
+
+  /**
+   * The mirror of the check above, and the one that keeps it honest: an *absent* safety flag and an
+   * explicit `false` are the same artifact. Without the normalization, flipping a generator from
+   * omitting the field to writing `false` would churn every cached verdict of an exam that had not
+   * changed — the same trap `thresholdBand` documents below.
+   */
+  it("treats an absent safety flag as false, and a true one as different", () => {
+    const { safety: _omitted, ...bare } = one;
+    expect(suiteEpoch([bare as Artifact])).toBe(suiteEpoch([one]));
+    expect(suiteEpoch([{ ...one, safety: false }])).toBe(suiteEpoch([one]));
   });
 
   it("separates two suites, so a row cannot be relabelled across them", () => {

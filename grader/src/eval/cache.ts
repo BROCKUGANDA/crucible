@@ -163,5 +163,10 @@ function evalResult(
     falseFail: verdict.verdict !== "PASS" && artifact.expectedVerdict === "PASS",
     latencyMs: verdict.latencyMs,
     killed: false,
+    // Carried from the artifact beside `suite`: the scorer splits a row by tier and by safety, and
+    // a record that could not say which tier it was earned in could not be profiled after the fact.
+    tier: artifact.tier,
+    difficulty: artifact.difficulty,
+    ...(artifact.safety === true ? { safety: true } : {}),
   };
 }
