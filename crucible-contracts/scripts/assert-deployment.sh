@@ -184,13 +184,25 @@ fi
 
 escrowed=$(call_number "$TRIALS" 'escrowed()(uint256)')
 pending=$(call_number "$TRIALS" 'totalPending()(uint256)')
+stakes=$(call_number "$TRIALS" 'totalStakes()(uint256)')
 balance=$(cast balance "$TRIALS" --rpc-url "$RPC" 2>/dev/null | number || echo 0)
-owed=$(dec_add "$escrowed" "$pending")
-if [ "$(dec_cmp "$owed" "$balance")" -le 0 ]; then
-  ok "the contract holds $balance wei against $owed wei of liabilities"
-else
-  bad "the contract holds $balance wei but owes $owed wei"
-fi
+# The same equality `test/Invariants.t.sol:170` asserts on every fuzzed transition:
+# balance == totalStakes + totalPending + escrowed. The previous check here was one-directional
+# and left out stakes, so ETH that had already left the escrow without a book entry — the actual
+# money-loss case — passed it. The escrow has no `receive()`, so there is no legitimate way for
+# the two sides to differ: over or under, a mismatch is an incident, and it is named as one.
+books=$(dec_add "$stakes" "$(dec_add "$pending" "$escrowed")")
+case "$(dec_cmp "$books" "$balance")" in
+  0)
+    ok "the escrow's ETH equals its books exactly: $balance wei = stakes $stakes + credits $pending + escrow $escrowed"
+    ;;
+  1)
+    bad "the escrow owes $books wei but holds only $balance — ETH has left a contract that cannot pay out except through withdraw()"
+    ;;
+  *)
+    bad "the escrow holds $balance wei against $books wei of liabilities — unaccounted ETH is on a contract with no receive()"
+    ;;
+esac
 
 # The public surface is NOT probed from here.
 #

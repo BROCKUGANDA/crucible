@@ -198,4 +198,50 @@ describe("the verifier has a production caller", () => {
       "the release is dispatched and forgotten, so a failed tag leaves main serving with a green deploy",
     ).toBe(true);
   });
+
+  /**
+   * The rollback, checked the same way — on the statements that run, and on their order.
+   *
+   * A deploy that swaps and then fails its probes used to leave the broken build serving and merely
+   * report the fact. The 2026-10-24 incident was recovered by hand on the box, by someone who knew
+   * the old images could be re-tagged; `crucible-web:rollback-20261024c` was still on that disk 26
+   * hours later as proof. These four checks are what stop the automation decaying back into that
+   * memory: the tag must happen BEFORE the build (after it, `:latest` is already the new image and
+   * the tag preserves nothing), the restore must be the reverse direction, it must run only on a
+   * failed job, and it must refuse when the swap never happened — because most of this job's
+   * refusals fire before the swap, and re-pointing `:latest` then would take a healthy site down to
+   * undo a change that was never made.
+   */
+  it("the deploy can put the previous build back, and only when it is the one that broke it", () => {
+    const deploy = readFileSync(path.join(ROOT, ".github/workflows/deploy.yml"), "utf8")
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter((l) => l !== "" && !l.startsWith("#"));
+
+    const tagAt = deploy.findIndex((l) => l.includes('docker tag "crucible-$s:latest" "crucible-$s:$stamp"'));
+    const buildAt = deploy.findIndex((l) => l.includes("build web api keeper seed"));
+    const restoreAt = deploy.findIndex((l) => l.includes('docker tag "crucible-$s:$stamp" "crucible-$s:latest"'));
+
+    expect(tagAt, "the deploy no longer keeps the images it is about to overwrite — there is nothing to roll back to").toBeGreaterThanOrEqual(0);
+    expect(buildAt, "the build step this check is ordered against has changed shape").toBeGreaterThanOrEqual(0);
+    expect(tagAt, "the tag runs after the build, so it tags the new image and preserves nothing").toBeLessThan(buildAt);
+    expect(restoreAt, "nothing points `:latest` back at the kept image — the rollback is one-way").toBeGreaterThanOrEqual(0);
+
+    let header = restoreAt;
+    while (header >= 0 && !deploy[header].startsWith("- name: ")) header -= 1;
+    expect(header, "the restore is not inside a named step").toBeGreaterThanOrEqual(0);
+    expect(
+      deploy.slice(header, header + 4).some((l) => l.startsWith("if: failure()")),
+      "the rollback runs on every deploy instead of only a failed one, so a green run can swap images under a healthy site",
+    ).toBe(true);
+
+    expect(
+      deploy.some((l) => l.includes("touch /tmp/crucible-swapped")),
+      "the swap no longer records that it happened, so the rollback cannot tell a failed deploy from a refusal that never touched anything",
+    ).toBe(true);
+    expect(
+      deploy.some((l) => l.includes("if [ ! -e /tmp/crucible-swapped ]")),
+      "the rollback no longer refuses when the swap never happened",
+    ).toBe(true);
+  });
 });
