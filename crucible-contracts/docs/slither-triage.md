@@ -146,3 +146,38 @@ happens entirely inside `CrucibleTrials` before the bridge is called.
 Slither is static analysis over one snapshot of source. It is not a substitute for the 82
 tests, the 6 invariant suites, or reading the diff. It is here to catch the class of
 mistake that tests written by the same author in the same sitting would miss.
+
+## Suppressed at the line, not in the config
+
+The detectors below are correct in general and wrong here, so they are silenced at the exact
+statement (`// slither-disable-next-line`) rather than added to `detectors_to_exclude`. A
+global exclusion would also hide the real instances this repository would very much want to
+see.
+
+### `weak-prng` — `Arena.drawPanel` seed
+
+The seed is `keccak256(prevrandao, block.number, id, round)`. This **is** predictable to the
+block proposer, and that is recorded rather than denied: decision **D-17** says mode 0 is the
+devnet fallback D-12 already allows, that it is not a VRF, and that it must not be used for
+real money. Mode 1 — the VRF path — fails closed with `RandomnessNotConfigured()` until a
+consumer is wired, so a deployment that wants unpredictable panels cannot silently get this
+one. The finding is the documented limitation, not a surprise.
+
+### `incorrect-equality` — `conservationHolds` / `conservationDetail`
+
+The strict equality **is** the invariant: every wei the vault ever took in equals what has
+left it plus what it still holds. Rewriting it as `>=` to satisfy the detector would weaken
+the exact check that gate 744 exists to make, and the `>=` form is already present beside it
+as `balanceOk` — the looser question, asked separately and on purpose. Tested by
+`test_744_Ledger_EveryStepKeepsDepositedEqualToPaidPlusHeld`.
+
+### `reentrancy-no-eth` — `Arena.tally`
+
+`tally` calls `court.slashNoShow` and `court.closeDraw` and then keeps working on `Panel` and
+`Trial` storage. The callee is not a third party: `court` is an immutable reference to this
+repository's own `ArgusCourt`, set at construction, and those two functions are `onlyArena`
+and move value only through a credit ledger that `withdraw()` pays out in a separate
+transaction. There is no attacker-controlled callback in the path, which is why the function
+does not carry `notReentrant` — adding the modifier would suggest a threat that does not
+exist. If a future version makes the court upgradeable or callable by anyone else, this
+suppression must come out with it.

@@ -693,6 +693,7 @@ contract Arena {
         if (_panels[id][round].seatCount != 0) revert PanelAlreadyDrawn();
         if (randomnessMode == 1) revert RandomnessNotConfigured();
 
+        // slither-disable-next-line weak-prng
         uint256 seed = uint256(keccak256(abi.encodePacked(block.prevrandao, block.number, id, round)));
         address[3] memory picked = court.draw(seed, _exclusions(id, round), _seatBondFloor(t));
         if (picked[0] == address(0) || picked[1] == address(0) || picked[2] == address(0)) revert BadDraw();
@@ -767,6 +768,7 @@ contract Arena {
     /// @notice Per break: 2 Upheld lands it, 2 Rejected fails it, anything else is unresolved.
     /// Unresolved in round 1 redraws with fresh seats; still unresolved at MAX_ARGUS_ROUNDS,
     /// everybody is refunded (O8), so no trial can strand funds (G11, gate 746).
+    // slither-disable-next-line reentrancy-no-eth
     function tally(uint256 id) external {
         Trial storage t = _trials[id];
         if (t.status != Status.Panel) revert BadState();
@@ -1189,6 +1191,7 @@ contract Arena {
     /// @notice Ghost-ledger identity (gate 744), the bible's own form: what every vault ever
     /// took in equals what has left it plus what it still holds.
     function conservationHolds() external view returns (bool) {
+        // slither-disable-next-line incorrect-equality
         return address(this).balance + totalWithdrawn == totalDeposited;
     }
 
@@ -1196,6 +1199,7 @@ contract Arena {
     /// books never promise more ETH than the contract holds, and every wei in is accounted for.
     function conservationDetail() external view returns (bool balanceOk, bool booksOk) {
         balanceOk = address(this).balance >= totalPending;
+        // slither-disable-next-line incorrect-equality
         booksOk = address(this).balance + totalWithdrawn == totalDeposited;
     }
 
