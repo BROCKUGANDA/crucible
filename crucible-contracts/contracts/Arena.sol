@@ -1241,9 +1241,16 @@ contract Arena {
 
     /// @dev A seat must be able to lose what it could earn here five times over: its own share
     /// per break × the most breaks it could ever sit × SEAT_BOND_MIN_MULTIPLE.
+    ///
+    /// Multiplied before dividing, because the fee split truncates: dividing first discards the
+    /// remainder of `reward × SEAT_FEE_BPS / BPS` and then multiplies that shortfall by forty, so
+    /// the floor came out below the number above — a seat could pass the screen without being able
+    /// to lose what it earns. The product cannot overflow: `reward` is `uint128` (≤ 3.4e38) and the
+    /// three constants multiply to 2,000, so the intermediate tops out near 6.8e41 against a
+    /// `uint256` ceiling of 1.15e77.
     function _seatBondFloor(Trial storage t) internal view returns (uint256) {
-        uint256 perSeatPerBreak = (uint256(t.reward) * Params.SEAT_FEE_BPS) / BPS;
-        return perSeatPerBreak * Params.MAX_DOCKET * Params.SEAT_BOND_MIN_MULTIPLE;
+        return (uint256(t.reward) * Params.SEAT_FEE_BPS * Params.MAX_DOCKET * Params.SEAT_BOND_MIN_MULTIPLE)
+            / BPS;
     }
 
     function _recover(bytes32 digest, bytes calldata sig) internal pure returns (address) {
