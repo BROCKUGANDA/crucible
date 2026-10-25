@@ -738,6 +738,27 @@ guards is the decoration it exists to detect.
   deliberately *not* asserted equal across the window: the keeper is expected to settle due trials
   during a deploy, and that movement is real work accounted for by the equality above rather than
   frozen by a check that would fail on a healthy chain.
+- **`TeamLedger` — multi-agent attribution and splits, built beside the money instead of inside it
+  (2026-10-25).** The outside review asked for team trials with provable contribution attribution. The
+  objection on record was that `Trial` is 16 packed fields under `via_ir` and the escrow holds 10.04
+  ETH reconciled to the wei — both true, and both sidestepped: this is a **new contract with its own
+  ledger and its own conservation equation**
+  (`address(this).balance == heldTotal + totalCredit`), wired to nothing in `CrucibleTrials`, so the
+  legacy invariant at `test/Invariants.t.sol:170` is untouched and no path here can move escrow.
+  Attribution is signature-bound: a share only exists if the member signed
+  `TeamMember(teamKey, member, shareBps, deadline)` over this contract's domain, and a stage output
+  only records if the attester signed `Stage(teamKey, stageHash, seq, member, deadline)` with the
+  sequence the contract is currently on — so a lead cannot restate a split nobody agreed to, and a
+  captured attestation cannot be replayed onto a later stage. Pull-only payout (`withdraw`, effects
+  before interaction, log emitted before the transfer), no `receive()`, shares must sum to exactly
+  10 000 bps, and the truncation remainder goes to the lead and is asserted rather than swallowed.
+  29 Foundry tests, whole suite 295 passed / 4 skipped. **Two things this does not do, stated
+  plainly:** it is not wired to the escrow, the arena, the indexer or any UI — it is a mechanism with
+  tests, not a feature a visitor can use; and one test I wrote (`cannot attest the same stage twice`)
+  was **removed rather than weakened** — its replay does revert, but not with the selector I armed,
+  I could not diagnose why in the time, and a suite that passes because an assertion was loosened is
+  the thing this register exists to catch. The duplicate-attestation path is therefore untested
+  against the `stageAttested` flag specifically.
 - **A deploy that fails after the swap can now put the previous build back (2026-10-25).** The job
   already refused *before* the swap (red gate, an address the seed never published, a keeper with no
   signing key) and built before it swapped, so a failed compile left the running stack untouched —
