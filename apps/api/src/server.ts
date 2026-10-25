@@ -323,7 +323,7 @@ void scribe.watch();
  * would restore exactly the fault this wire exists to end.
  */
 const disclosureFile = join(
-  process.env.CRUSCIBLE_CONTENT_DIR ?? ".crucible-content",
+  process.env.CRUCIBLE_CONTENT_DIR ?? ".crucible-content",
   "disclosure",
   "disclosure.json",
 );

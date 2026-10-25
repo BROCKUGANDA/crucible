@@ -104,6 +104,7 @@ services:
     environment:
       NODE_ENV: production
       PORT: 8787
+      CRUCIBLE_CONTENT_DIR: /content
       RPC_URL: http://anvil:8545
       TRIALS_ADDRESS: ${TRIALS_ADDRESS:-}
       ALLOY_ADDRESS: ${ALLOY_ADDRESS:-}
@@ -132,6 +133,7 @@ services:
       - "${API_HOST_PORT:-8787}:8787"
     volumes:
       - deployed:/run/crucible:ro
+      - content:/content:ro
     depends_on:
       anvil:
         condition: service_healthy
