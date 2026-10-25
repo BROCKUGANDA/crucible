@@ -9,6 +9,7 @@ import { WrongNetworkNotice } from "@/components/Wallet";
 import { PourConfirm } from "@/components/Modal";
 import { TxStates } from "@/components/Chrome";
 import { deployment } from "@/lib/wagmi";
+import { guardPastedText } from "@/lib/safety";
 
 /**
  * File a break.
@@ -51,6 +52,21 @@ export function BreakPanel({
   const [stakeText, setStakeText] = useState(() => (minStakeWei > 0n ? formatWei(minStakeWei, 18) : ""));
   const [proof, setProof] = useState("");
   const [confirming, setConfirming] = useState(false);
+  const [seedWarning, setSeedWarning] = useState<string | null>(null);
+
+  /**
+   * The proof box is free text, and free text is where a stranger's wallet backup ends up
+   * when a page like this one is imitated badly. Nothing here can use a seed: this field is
+   * hashed and pinned, the wallet signs in the visitor's own browser, and the API holds no
+   * chain key. So the paste is refused at the field, in words, rather than accepted and
+   * quietly sent somewhere.
+   */
+  function refuseSeedPaste(event: React.ClipboardEvent<HTMLTextAreaElement>) {
+    const decision = guardPastedText(event.clipboardData?.getData("text") ?? "");
+    if (!decision.refuse) return;
+    event.preventDefault();
+    setSeedWarning(decision.warning);
+  }
 
   const stakeWei = parseEth(stakeText);
   const proofOk = proof.trim().length > 0;
@@ -106,7 +122,11 @@ export function BreakPanel({
           <textarea
             className="textarea"
             value={proof}
-            onChange={(e) => setProof(e.target.value)}
+            onChange={(e) => {
+              setProof(e.target.value);
+              setSeedWarning(null);
+            }}
+            onPaste={refuseSeedPaste}
             rows={4}
             placeholder={
               "What falsifies this run. Pinned test names, the failing assertion, the input that breaks it."
@@ -116,6 +136,11 @@ export function BreakPanel({
             Hashed on submission. Pin the artifact to IPFS and cite it here — the contract
             commits to the hash, so the proof cannot be quietly edited afterwards.
           </span>
+          {seedWarning ? (
+            <span className="mono" data-tone="sear" role="alert">
+              {seedWarning}
+            </span>
+          ) : null}
         </label>
 
         <div className="break__actions">

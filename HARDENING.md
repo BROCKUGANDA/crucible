@@ -807,7 +807,49 @@ guards is the decoration it exists to detect.
   tree since 2026-10-24 — the same rot the index exists to prevent, caught by looking rather than by
   a gate. Fixed in the same commit as 0013–0015, with 0015 (the funded-wallet boundary, ADR-0006's
   shape if CDP ever funds guest wallets) left **proposed** because nothing in it is built.
-- **`npm run demo` was silently replaying its whole loop onto someone's earlier session
+- **The grader now profiles by tier, draws a different probe set per trial, and scores safety probes
+  separately — and a delegated worker's planted mutation was caught in its own source
+  (2026-10-25).** Three gaps an outside review named, all closable without touching a contract:
+  `Artifact.suite` was a free string with no notion of what a probe tests; every trial graded the
+  whole corpus, so "unique trial" was impossible; and `injectionSuite` was a *visible* safety block,
+  which is the form a model can behave differently around. `grader/src/eval/sampler.ts` adds a
+  committed-seed stratified draw (strata = tier × difficulty, an anchor floor as a named constant so
+  different draws stay comparable, and an absent seed refused rather than defaulted), the `Tier`
+  union is required on every artifact and inside `suiteEpoch`'s projection so a re-tiered corpus
+  cannot keep its identity, and safety probes are interleaved by the sampler but scored on their own
+  axis. Measured through the real caller on the stub tier: `n=15 capability + 5 safety`, per-tier
+  `robustness n=3 66.7% · domain n=3 100% · frontier n=9 33.3%`, and the disqualification now reads
+  `false-pass rate 20.00% > 1.00%; safety false-pass rate 20.00% > 1.00% over 5 persuasion probes` —
+  a safety failure can no longer be averaged away by a strong capability number. Grader: 252 tests,
+  typecheck clean.
+- **Gate 438 had never run: its path resolved outside the repository and it passed on an empty
+  file list (2026-10-25).** `apps/web/src/lib/frenchy/money-trees.test.ts` built its scan root as
+  `join(process.cwd(), "apps/web/src/lib/frenchy")`. Vitest runs with the *workspace* as cwd, so from
+  `apps/web` that becomes `apps/web/apps/web/src/lib/frenchy` — a directory that does not exist —
+  `collectFiles` walked zero files, and both of its assertions (`no audio files`, `no <audio>/new
+  Audio(`) passed on the empty set. It has been green since the day it was written and has never
+  looked at anything. `ROOT` now resolves from the test file's own URL, and both cases assert
+  `files.length > 0` first, so a broken path is a red gate rather than a clean bill of health — the
+  general rule, not just this instance: **a scan that can walk zero files must fail, or every future
+  directory rename silently retires the check.** Once it actually ran it immediately reported two
+  hits: `provider.tsx`'s `new Audio(url)`, and its own doc comment, which names the string it
+  forbids — the self-match trap arriving from the opposite direction. The test file is now excluded
+  and the rule is narrowed to what a source scan can measure (markup and audio libraries), with the
+  reasoning written in the file: `new Audio` is a browser primitive carrying no asset, no import and
+  no bundle weight, and `components/VoiceControl.tsx:97` has played the server-returned clip that way
+  since the voice host shipped. **The owner's call, left open on purpose:** if the native element
+  should go too, that is a decision about the premium voice path, and a path that resolved to a
+  directory that does not exist was not entitled to make it by accident.
+- **What that work also proved about delegating, stated about myself.** The subagent I sent to build
+  it ran out of turns mid-task and left `tier: "competence"` hard-coded at
+  `grader/src/eval/arena.ts:216` with the comment **`// MUTATION: the row is built without carrying
+  what the artifact tested`** still in the file — a marker from its own mutation-testing loop, never
+  reverted. Its typecheck passed and 251 of 252 tests passed; the one failure was its own tier test
+  catching its own planted bug. Two lessons the repo already documents and I re-learned by being
+  bitten: a delegated report describes intent, not the tree, so `git status` and a real run are the
+  only evidence; and a mutation harness that leaves its mutation in place is worse than no harness,
+  because the surviving code looks reviewed. A repo-wide grep for the marker now returns nothing, and
+  the fix is `tier: artifact.tier`.
   (2026-10-25).** The judge-facing path starts its own anvil on `:8545`, spawns it with
   `stdio: "ignore"`, and then asked only whether *something* answered the RPC — so on a box already
   holding a node, the new spawn could not bind the port, the probe returned ready against the old

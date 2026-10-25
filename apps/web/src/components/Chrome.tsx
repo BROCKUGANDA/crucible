@@ -7,6 +7,8 @@ import { useAccount, useReadContract } from "wagmi";
 import { TRIALS_ABI } from "@crucible/smith";
 import { WalletButton, WalletNotConfiguredNotice } from "@/components/Wallet";
 import { VoiceControl } from "@/components/VoiceControl";
+import { FrenchyAsk } from "@/components/FrenchyAsk";
+import { SeedPhrasePromise } from "@/components/SeedPhrasePromise";
 import { Modal } from "@/components/Modal";
 import { formatWei } from "@/lib/eth";
 import { buildWithdraw, useTx } from "@/lib/useTx";
@@ -81,6 +83,7 @@ export function Chrome({ children }: { children: ReactNode }) {
             <span className="menu-label">Menu</span>
           </button>
           <VoiceControl />
+          <FrenchyAsk />
           <CreditButton />
           <WalletButton />
         </div>
@@ -106,6 +109,7 @@ export function Chrome({ children }: { children: ReactNode }) {
       <footer className="chrome__foot">
         <span>Forged at the Colosseum Crypto World&apos;s Fair.</span>
         <span>Alloy is non-transferable. Trust should be too.</span>
+        <SeedPhrasePromise />
       </footer>
     </div>
   );

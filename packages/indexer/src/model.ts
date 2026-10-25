@@ -1,4 +1,5 @@
 import { STATUS, VERDICT, TIER, TIER_NAMES } from "@crucible/smith";
+import { logDigest } from "./canonical.js";
 
 /**
  * The read model.
@@ -208,6 +209,15 @@ export interface EventLike {
   address: string;
   eventName: string;
   args: Record<string, unknown>;
+  /**
+   * The chain the log came from, when the reader knows it (`Scribe` does, from its own config).
+   *
+   * It is part of a log's identity: height 100 on chain 31337 and height 100 on a fork are two
+   * different facts, and a projection that conflated them would dedupe one away. Optional because
+   * the fixtures and the replay buffers that hand events to the fold have no node in hand, and an
+   * invented chain id is worse than an absent one.
+   */
+  chainId?: number;
 }
 
 /**
@@ -279,6 +289,17 @@ export function applyEventInto(state: ReadModel, ev: EventLike): ReadModel {
 
 /** Applies `ev` to `state` in place. Returns true when the model actually changed. */
 function didMutate(next: ReadModel, ev: EventLike): boolean {
+  // The same log, twice. A re-read range, an overlapping shard boundary, a cursor that stopped on a
+  // block it could not prove quiet and asked for it again: all of them hand the identical emission
+  // back, and the fold's answer is that a second copy of a fact is not a new fact. Everything below
+  // this line is a *state* guard, which is what a reorg needs (a re-mined log has a new hash and so
+  // a new digest) and what a counter needs (a claim that arrived under a hash this index never saw).
+  // Neither guard subsumes the other, and `test/convergence.test.ts` turns each one red on its own.
+  const seen = logLedger(next);
+  const digest = logDigest(ev);
+  if (seen.has(digest)) return false;
+  seen.add(digest);
+
   const a = ev.args;
 
   switch (ev.eventName) {
@@ -560,6 +581,27 @@ export interface ReadModel {
    */
   disputes: Map<number, DisputeRow>;
   /**
+   * The digest of every log this projection has been handed, in canonical form.
+   *
+   * This is what makes an ingest replay safe rather than merely guarded. Each case below already
+   * refuses to double-count a fact it can see (`TrialClaimed` will not re-claim a claimed trial,
+   * `VerdictFinalized` will not settle a settled one), but those guards only cover the events that
+   * move a counter. `StakeWithdrawn` subtracts again, `DisputeOpened` and `RunSubmitted` re-write
+   * the same values and bump the version doing it, and a re-read range is exactly how the Scribe
+   * behaves after a bloom stop: the cursor cannot advance past a block it cannot prove quiet, so the
+   * next tick hands the same logs back. Without this set, that tick costs a cache invalidation and,
+   * for a withdrawal, a stake the chain never moved.
+   *
+   * It grows with the number of distinct logs the index has read — the same order as the model
+   * itself, which already holds all of history in memory (ADR-0008). A second store would not make
+   * it cheaper; it would make it a second source of truth.
+   *
+   * Reorg safety does NOT come from here: a re-mined log carries a new transaction hash, so its
+   * digest is new and the state guards are what keep it from counting twice. That is why both
+   * exist. See `test/convergence.test.ts`.
+   */
+  appliedLogs: Set<string>;
+  /**
    * Bumped once per log that actually changed something. A consumer that rebuilds a
    * projection of this model — the API's per-tick snapshot — can skip the rebuild when the
    * version is unchanged, which is the difference between rebuilding a 5 MB payload once a
@@ -577,6 +619,7 @@ export function emptyModel(): ReadModel {
     agents: new Map(),
     runs: new Map(),
     disputes: new Map(),
+    appliedLogs: new Set<string>(),
     version: 0,
   };
 }
@@ -585,6 +628,12 @@ export function emptyModel(): ReadModel {
  * Fold a batch of logs into a model. `into` is **mutated** and returned — see
  * `applyEventInto` for why this is safe and what the previous per-event clone cost. A caller
  * that needs to keep the original passes `cloneModel(original)` as `into`.
+ *
+ * Folds in the order given. That is a promise about this function, not about the transport: the
+ * chain orders its own logs, so a caller holding a batch that is not in `(blockNumber, logIndex)`
+ * order is describing a state the chain never had. `canonicalOrder` (see `replica.ts`) is the one
+ * place that reorders, and `Replica.deliver` refuses anything below its own cursor rather than
+ * folding backwards into a live model — see ADR-0010 and the convergence suite.
  */
 export function replay(events: EventLike[], into: ReadModel = emptyModel()): ReadModel {
   for (const ev of events) {
@@ -668,6 +717,15 @@ export function attachCids(
   return model;
 }
 
+/**
+ * Attach the agent's submitted-work signature to the run row.
+ *
+ * `attachCids` above guards its own version bump ("only a real change counts"); this one did not, so
+ * re-attaching the same signature moved the counter without moving a fact. That is not cosmetic:
+ * `version` is what tells a consumer the projection changed, and the convergence claim across
+ * replicas is stated in terms of it. A counter that moves on a no-write makes two projections that
+ * agree on every byte disagree on the number that decides whether to rebuild.
+ */
 export function attachSignatures(
   model: ReadModel,
   sigs: { trialId: number; signature: string }[],
@@ -675,6 +733,7 @@ export function attachSignatures(
   for (const s of sigs) {
     const r = model.runs.get(s.trialId);
     if (!r) continue;
+    if (r.signature === s.signature) continue;
     r.signature = s.signature;
     model.version += 1;
   }
@@ -793,6 +852,11 @@ function cloneModel(m: ReadModel): ReadModel {
     disputes: new Map(
       [...m.disputes].map(([k, v]) => [k, { trialId: v.trialId, committed: [...v.committed], revealed: [...v.revealed] }]),
     ),
+    // Copied, not shared — the same ownership rule `disputes` above had to learn the hard way. A
+    // spread would hand the snapshot the live model's own Set, and `applyEvent` (which clones and
+    // then folds into the clone) would mark the log applied in *both*: the live projection would
+    // then refuse the next genuine delivery of that log as a replay it had already seen.
+    appliedLogs: new Set(m.appliedLogs),
     version: m.version,
   };
 }
@@ -809,6 +873,33 @@ function disputeRow(model: ReadModel, trialId: number): DisputeRow {
   const created: DisputeRow = { trialId, committed: [], revealed: [] };
   model.disputes.set(trialId, created);
   return created;
+}
+
+/**
+ * The ledger of digests this projection has folded.
+ *
+ * Created on first use rather than assumed present, because a host can build a `ReadModel` without
+ * going through `emptyModel()` — `apps/api/src/frenchy.ts` does exactly that for its last-resort
+ * context object. Initialising it here is the difference between a fold that self-heals and a
+ * TypeError from the one call site nobody thought about.
+ */
+function logLedger(model: ReadModel): Set<string> {
+  const existing = model.appliedLogs as Set<string> | undefined;
+  if (existing) return existing;
+  const created = new Set<string>();
+  model.appliedLogs = created;
+  return created;
+}
+
+/**
+ * Has this exact log already been handed to the fold?
+ *
+ * Read-only, for a caller that wants to *report* a re-delivery rather than silently absorb it —
+ * which is what a second replica needs: "I already had that" and "I refused that" are different
+ * facts about the transport, and only one of them is normal.
+ */
+export function hasAppliedLog(model: ReadModel, ev: EventLike): boolean {
+  return logLedger(model).has(logDigest(ev));
 }
 
 function num(v: unknown): number {
