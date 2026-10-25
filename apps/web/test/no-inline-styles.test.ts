@@ -22,6 +22,9 @@ function sources(dir: string): string[] {
   for (const entry of readdirSync(dir)) {
     const full = join(dir, entry);
     if (entry === "node_modules" || entry === ".next" || entry.startsWith(".")) continue;
+    // OG image generation (src/app/og) is server-side satori markup: inline styles are the
+    // only way ImageResponse accepts layout, and it never ships to the browser DOM/CSP.
+    if (full.includes("/og/") || full.includes("\\og\\")) continue;
     const stats = statSync(full);
     if (stats.isDirectory()) out.push(...sources(full));
     else if (entry.endsWith(".tsx") || entry.endsWith(".jsx")) out.push(full);

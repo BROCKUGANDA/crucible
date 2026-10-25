@@ -233,6 +233,31 @@ describe("attachCids", () => {
     expect(buildSnapshot(m, { now: 0 }).trials[0]!.awaitingDisclosure).toBe(false);
   });
 
+  /**
+   * The API accepted a `disclosure` dependency and passed it to nobody, so `testsCID` was
+   * permanently null and every trial row said "suite not disclosed yet" — a scheduled reveal that
+   * never came, because no supplier existed. This is the wire: the snapshot applies it.
+   */
+  it("buildSnapshot applies the disclosure the API host supplies", () => {
+    const m = replay(fullStory());
+    expect(buildSnapshot(m, { now: 0 }).trials[0]!.awaitingDisclosure).toBe(true);
+
+    const snap = buildSnapshot(m, { now: 0, disclosure: [{ trialId: 1, specCID: "s", testsCID: "t" }] });
+    expect(snap.trials[0]!.specCID).toBe("s");
+    expect(snap.trials[0]!.testsCID).toBe("t");
+    expect(snap.trials[0]!.awaitingDisclosure).toBe(false);
+  });
+
+  it("does not move the version when the same disclosure is applied twice", () => {
+    const m = replay(fullStory());
+    const disclosure = [{ trialId: 1, specCID: "s", testsCID: "t" }];
+    buildSnapshot(m, { now: 0, disclosure });
+    const settled = m.version;
+    buildSnapshot(m, { now: 0, disclosure });
+    // A version that moves on no change would send a new SSE frame about nothing on every tick.
+    expect(m.version).toBe(settled);
+  });
+
   it("ignores a disclosure for an unknown trial", () => {
     const m = replay(fullStory());
     expect(() => attachCids(m, [{ trialId: 999, specCID: "x" }])).not.toThrow();

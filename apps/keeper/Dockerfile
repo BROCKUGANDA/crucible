@@ -13,7 +13,7 @@ COPY packages/cidstore/package.json packages/cidstore/
 COPY packages/crypto/package.json packages/crypto/
 COPY packages/forge-runner/package.json packages/forge-runner/
 COPY packages/frame/package.json packages/frame/
-COPY packages/harness/package.json packages/harness/
+COPY packages/forge-runner/package.json packages/forge-runner/
 COPY packages/indexer/package.json packages/indexer/
 COPY packages/smith-sdk/package.json packages/smith-sdk/
 COPY packages/warden/package.json packages/warden/

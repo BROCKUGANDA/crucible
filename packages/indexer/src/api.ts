@@ -1,5 +1,6 @@
 import { TIER_NAMES } from "@crucible/smith";
 import {
+  attachCids,
   breakWindowEndsAt,
   deadlineEndsAt,
   hall,
@@ -398,8 +399,18 @@ export function buildSnapshot(
     feeBps?: number | null;
     /** Chain seconds at the highest block read; see `ApiSnapshot.headTimestamp`. */
     headTimestamp?: number | null;
+    /**
+     * Sponsor-published readable addresses for a trial's spec and suite.
+     *
+     * The chain holds only a digest; the CID that resolves to the files is published off-chain.
+     * Without this the rows are permanently `awaitingDisclosure` and every trial says "suite not
+     * disclosed yet", which reads as a scheduled reveal rather than an unfed field.
+     */
+    disclosure?: { trialId: number; specCID?: string; testsCID?: string }[];
   },
 ): ApiSnapshot {
+  if (opts.disclosure && opts.disclosure.length > 0) attachCids(model, opts.disclosure);
+
   const trials = listTrials(model).map((t) => toApiTrial(t, model));
 
   const counts: ApiSnapshot["counts"] = {

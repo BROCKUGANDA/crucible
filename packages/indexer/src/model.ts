@@ -647,12 +647,23 @@ export function attachCids(
   for (const d of disclosure) {
     const t = model.trials.get(d.trialId);
     if (!t) continue;
-    if (d.specCID) t.specCID = d.specCID;
-    if (d.testsCID) t.testsCID = d.testsCID;
+    let changed = false;
+    // Only a real change counts. Re-applying the same disclosure must not move the version,
+    // or every snapshot would carry a new signature and every subscriber would get a frame
+    // about nothing — the same "a version that moves on no change" fault the SSE signature
+    // already had to fix once.
+    if (d.specCID && t.specCID !== d.specCID) {
+      t.specCID = d.specCID;
+      changed = true;
+    }
+    if (d.testsCID && t.testsCID !== d.testsCID) {
+      t.testsCID = d.testsCID;
+      changed = true;
+    }
     // Off-chain attachments change what a reader sees, so they move the version like any
     // other write — otherwise a cached snapshot would keep serving "awaiting disclosure"
     // after the disclosure had arrived.
-    model.version += 1;
+    if (changed) model.version += 1;
   }
   return model;
 }

@@ -9,6 +9,12 @@
   "orientation": "any",
   "background_color": "#0b0908",
   "theme_color": "#e2612f",
+  "shortcuts": [
+    { "name": "Trials", "short_name": "Trials", "description": "Open trials board", "url": "/trials", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Post a trial", "short_name": "Post", "description": "Light a new trial", "url": "/trials/new", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Hall", "short_name": "Hall", "description": "Public record of settlements", "url": "/hall", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Docs", "short_name": "Docs", "description": "How it settles", "url": "/docs", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] }
+  ],
   "icons": [
     {
       "src": "/icon-192.png",

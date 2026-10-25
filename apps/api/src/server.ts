@@ -1,8 +1,19 @@
 import { serve } from "@hono/node-server";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { foundry } from "viem/chains";
-import { createPublicClient, http, keccak256, toHex } from "viem";
-import { Scribe, UNKNOWN_ALLOY, type AlloyState } from "@crucible/indexer";
-import { ALLOY_ABI, selfSchedulingLoop } from "@crucible/smith";
+import { createPublicClient, http, keccak256, toHex, type Address } from "viem";
+import {
+  ARENA_EVENT_NAMES,
+  emptyArenaModel,
+  replayArena,
+  Scribe,
+  TRIALS_SOURCE,
+  UNKNOWN_ALLOY,
+  type AlloyState,
+  type ArenaModel,
+} from "@crucible/indexer";
+import { ALLOY_ABI, ARENA_ABI, selfSchedulingLoop } from "@crucible/smith";
 import { createApp } from "./app.js";
 import { makeReplaySource } from "./replay.js";
 import { dlq } from "./dlq.js";
@@ -129,10 +140,42 @@ const voice = (() => {
   return { apiKey, voiceId, modelId, baseUrl };
 })();
 
+/**
+ * Frenchy's brain — the conversational assistant. Optional, off by default.
+ * Requires an LLM provider (OpenAI-compatible). Premium TTS uses ElevenLabs if configured.
+ */
+const frenchy = (() => {
+  if (process.env.FRENCHY_DISABLED === "1") return null;
+  const llmApiKey = process.env.FRENCHY_LLM_API_KEY?.trim();
+  const llmModel = process.env.FRENCHY_LLM_MODEL?.trim() || "gpt-4o-mini";
+  const llmBaseUrl = process.env.FRENCHY_LLM_BASE_URL?.trim() || undefined;
+  if (!llmApiKey) return null;
+  if (llmBaseUrl && !/^https?:\/\//.test(llmBaseUrl)) {
+    throw new Error(`FRENCHY_LLM_BASE_URL must be an http(s) URL; got "${llmBaseUrl}"`);
+  }
+
+  // Optional premium TTS
+  let tts: { apiKey: string; voiceId: string; modelId?: string; baseUrl?: string } | undefined;
+  if (process.env.FRENCHY_TTS_DISABLED !== "1") {
+    const ttsApiKey = process.env.ELEVENLABS_API_KEY?.trim();
+    const ttsVoiceId = process.env.ELEVENLABS_VOICE_ID?.trim();
+    const ttsBaseUrl = process.env.ELEVENLABS_BASE_URL?.trim() || undefined;
+    const ttsModelId = process.env.ELEVENLABS_MODEL_ID?.trim() || "eleven_flash_v2_5";
+    if (ttsApiKey && ttsVoiceId) {
+      if (ttsBaseUrl && !/^https?:\/\//.test(ttsBaseUrl)) {
+        throw new Error(`ELEVENLABS_BASE_URL must be an http(s) URL; got "${ttsBaseUrl}"`);
+      }
+      tts = { apiKey: ttsApiKey, voiceId: ttsVoiceId, modelId: ttsModelId, baseUrl: ttsBaseUrl };
+    }
+  }
+
+  return { llm: { apiKey: llmApiKey, model: llmModel, baseUrl: llmBaseUrl }, tts };
+})();
+
 const publicClient = createPublicClient({ chain: foundry, transport: http(rpcUrl) });
 
 const scribe = new Scribe({
-  trialsAddress,
+  source: { ...TRIALS_SOURCE, address: trialsAddress },
   alloyAddress,
   chain: foundry,
   rpcUrl,
@@ -301,6 +344,71 @@ await scribe.sync();
 scribe.hydrate();
 void scribe.watch();
 
+/**
+ * Sponsor-published CIDs, from the same disclosure file the seeding path writes.
+ *
+ * The chain holds a digest of the spec and the suite; the readable address that resolves to the
+ * files is published off-chain and recorded here by `ContentBridge`. Nothing fed this into the
+ * snapshot before, so `testsCID` was permanently null and every trial said "suite not disclosed
+ * yet" — a scheduled reveal that never came. An absent file is the honest empty answer. A
+ * malformed one is not: it goes to the dead-letter queue, because silently returning nothing
+ * would restore exactly the fault this wire exists to end.
+ */
+const disclosureFile = join(
+  process.env.CRUSCIBLE_CONTENT_DIR ?? ".crucible-content",
+  "disclosure",
+  "disclosure.json",
+);
+
+function disclosedCids(): { trialId: number; specCID?: string; testsCID?: string }[] {
+  let specs: Record<string, string>;
+  try {
+    specs = (JSON.parse(readFileSync(disclosureFile, "utf8")) as { specs?: Record<string, string> }).specs ?? {};
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+      dlq.push("disclosure.read", err instanceof Error ? err.message : String(err));
+    }
+    return [];
+  }
+  const out: { trialId: number; specCID?: string; testsCID?: string }[] = [];
+  for (const t of scribe.state.trials.values()) {
+    const specCID = specs[t.specDigest];
+    const testsCID = specs[t.testsDigest];
+    if (specCID || testsCID) out.push({ trialId: t.id, specCID, testsCID });
+  }
+  return out;
+}
+
+/**
+ * The v2 arena, when this host has one.
+ *
+ * A second `Scribe` over the same transport: the reader — sharding, bloom cross-check, quiet-tail
+ * proof, reorg replay — is identical, and only the `source` and the reducer differ. `ARENA_ADDRESS`
+ * empty is the documented state of every host today; the route then reports `projected: false`
+ * rather than an empty arena, because those are different facts.
+ *
+ * No `cursorFile`: the arena's log volume is its own, and sharing the trials cursor would make each
+ * index move the other's position.
+ */
+let arenaModel: ArenaModel = emptyArenaModel();
+const arenaAddress = (process.env.ARENA_ADDRESS ?? "").trim();
+if (arenaAddress.length > 0) {
+  const arenaScribe = new Scribe({
+    source: { abi: ARENA_ABI, eventNames: ARENA_EVENT_NAMES, address: arenaAddress as Address },
+    chain: foundry,
+    rpcUrl,
+    fromBlock: optionalBlock("FROM_BLOCK"),
+    pollMs: scribePollMs,
+    onEvents: (events) => {
+      arenaModel = replayArena(events, arenaModel);
+    },
+    onError: (kind, detail) => dlq.push(`scribe.arena.${kind}`, detail),
+  });
+  await arenaScribe.sync();
+  void arenaScribe.watch();
+  console.log(`[crucible] arena ${arenaAddress}`);
+}
+
 // Primed before the first request is served, so `/hall` never opens on an empty cache.
 await sweepAlloy();
 // Scheduled off the previous pass rather than the wall clock: an overlapping sweep doubles the
@@ -408,6 +516,13 @@ if (security.allowCredentials) {
 
 const app = createApp({
   getModel: () => scribe.state,
+  disclosure: disclosedCids,
+  /**
+   * Only when a scribe is actually running. Passing the model unconditionally made the route
+   * report `projected: true` over an empty Map, which reads as "an arena with no trials" — the
+   * exact confusion the route's `projected` flag exists to prevent.
+   */
+  arena: arenaAddress.length > 0 ? () => arenaModel : undefined,
   // The hall's txHashes are only checkable against one chain and one contract, and the
   // read model cannot infer either — this process is the only party that knows them.
   proofSource: { chain: foundry.name, chainId: foundry.id, trialsAddress },
@@ -430,6 +545,7 @@ const app = createApp({
   trustProxy,
   security,
   voice,
+  frenchy,
 });
 
 serve({ fetch: app.fetch, port }, (info) => {
@@ -444,6 +560,11 @@ serve({ fetch: app.fetch, port }, (info) => {
     voice
       ? `[crucible] voice: Frenchy on (${voice.modelId})`
       : "[crucible] voice: off (set ELEVENLABS_API_KEY and ELEVENLABS_VOICE_ID to enable)",
+  );
+  console.log(
+    frenchy
+      ? `[crucible] frenchy: brain on (${frenchy.llm.model})${frenchy.tts ? " + premium TTS" : ""}`
+      : "[crucible] frenchy: brain off (set FRENCHY_LLM_API_KEY to enable)",
   );
   // A replay reads the trial's own logs back from the node, so the window it searches is a
   // fact an operator needs when a replay comes back missing its first beats.

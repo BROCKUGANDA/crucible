@@ -20,9 +20,11 @@
 
 import type { LlmClient } from "./agent.js";
 import { withBackoff } from "@crucible/smith";
+import { assertEgressAllowed } from "./egress.js";
 
-const GROQ_BASE = "https://api.groq.com/openai/v1";
-const NIM_BASE = "https://integrate.api.nvidia.com/v1";
+export const GROQ_BASE = "https://api.groq.com/openai/v1";
+export const NIM_BASE = "https://integrate.api.nvidia.com/v1";
+export const ANTHROPIC_BASE = "https://api.anthropic.com";
 
 export interface CompatibleOptions {
   apiKey: string;
@@ -35,6 +37,12 @@ export interface CompatibleOptions {
   name?: string;
   /** Set false to disable the retry-on-429 behaviour below. */
   retryOnRateLimit?: boolean;
+  /**
+   * Hosts this run may reach. Absent means no egress check (the scheme guard below still applies);
+   * present means the provider host must be on the list, and a request to anywhere else is refused
+   * before it is made. See `egress.ts` for the matching rule.
+   */
+  egressAllowlist?: string[];
 }
 
 /**
@@ -85,6 +93,7 @@ export function assertProviderUrl(url: string): void {
 export function openAiCompatibleClient(opts: CompatibleOptions): LlmClient {
   const base = opts.baseUrl ?? GROQ_BASE;
   assertProviderUrl(base);
+  assertEgressAllowed(base, opts.egressAllowlist);
   const model = opts.model ?? opts.defaultModel ?? DEFAULT_GROQ_MODEL;
   const maxTokens = opts.maxTokens ?? 8000;
   const name = opts.name ?? "provider";
@@ -189,6 +198,8 @@ export interface PromptGuardOptions {
    * `verdict` — the model answers with a safety label (NIM content-safety).
    */
   shape?: "float" | "verdict";
+  /** Hosts this run may reach; see `egress.ts`. */
+  egressAllowlist?: string[];
 }
 
 export function promptGuard(args: PromptGuardOptions): {
@@ -198,6 +209,7 @@ export function promptGuard(args: PromptGuardOptions): {
   const base =
     args.baseUrl ?? (shape === "verdict" ? NIM_BASE : GROQ_BASE);
   assertProviderUrl(base);
+  assertEgressAllowed(base, args.egressAllowlist);
   const model =
     args.model ??
     (shape === "verdict"
