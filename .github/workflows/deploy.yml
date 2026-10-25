@@ -203,6 +203,28 @@ jobs:
           fi
           echo "KEEPER_PRIVATE_KEY is set and shaped like a key (value not printed)"
 
+      # Blue-green's useful half on a single box is not a second live slot — it is being able to put
+      # the previous build back. Compose builds overwrite `:latest` in place, so without this tag the
+      # build that was serving becomes an untagged dangling layer and the only recovery is rebuilding
+      # a tree that no longer exists. Measured on the box: the 2026-10-24 incident was rolled back by
+      # hand with exactly these tags — `crucible-web:rollback-20261024c` was still there 26 hours
+      # later — so this makes a step of what is already the practice.
+      - name: tag the images this deploy replaces
+        working-directory: /home/ubuntu/crucible
+        run: |
+          set -euo pipefail
+          stamp="rollback-${GITHUB_RUN_ID}"
+          for s in web api keeper; do
+            if docker image inspect "crucible-$s:latest" >/dev/null 2>&1; then
+              docker tag "crucible-$s:latest" "crucible-$s:$stamp"
+              echo "kept crucible-$s:latest as crucible-$s:$stamp"
+            else
+              # Not a failure: on a first deploy there is nothing to go back to, and saying so is
+              # better than a rollback step that quietly restores nothing.
+              echo "no crucible-$s:latest exists — this run cannot roll that service back"
+            fi
+          done
+
       - name: build web, api and keeper
         working-directory: /home/ubuntu/crucible
         # The seed image is built too — and only BUILT, never run. The deploy
@@ -306,7 +328,14 @@ jobs:
         # keeper re-derives the same due-set and skips what it already finished, so
         # nothing credits twice; settlement credits the pull ledger before any ETH
         # moves (ADR-0003), so a mid-swap death leaves a credit, not a loss.
-        run: docker compose -f compose.yaml -f compose.vps.yaml up -d --no-deps web api keeper
+        run: |
+          set -euo pipefail
+          docker compose -f compose.yaml -f compose.vps.yaml up -d --no-deps web api keeper
+          # The rollback step below must know whether the swap actually happened. Most of this job's
+          # refusals fire before it — a red gate, an address the seed never published, a keeper with
+          # no signing key — and re-pointing `:latest` plus recreating three healthy containers after
+          # one of those would take a working site down to undo a change that was never made.
+          touch /tmp/crucible-swapped
 
       # A recreate is not a swap. The keeper's healthcheck is declared in compose.yaml
       # (`wget /health`, 10s interval, 30 retries); this polls Docker's view of it with its
@@ -491,6 +520,56 @@ jobs:
             exit 1
           fi
           echo "same node, same bytecode — the deploy swapped three services and left the chain alone"
+
+      # The other half of the tag step above, and the reason the tag happens before the build.
+      #
+      # `if: failure()` means this runs when something above has already gone red — which is exactly
+      # when the box may be serving a build that failed its own probes. Before this existed, a deploy
+      # that swapped and then failed its assertions left the broken build serving and only reported
+      # the fact; the 2026-10-24 incident was recovered by hand, on the box, by someone remembering
+      # that the old images could be re-tagged.
+      #
+      # It deliberately does not make the job green. A rolled-back deploy is still a failed deploy:
+      # `release.yml` is never asked for, the run stays red, and the annotation says which build is
+      # now live. A rollback that laundered a bad build into a green check would be worse than none.
+      - name: roll the swap back if the deploy failed after it
+        if: failure()
+        working-directory: /home/ubuntu/crucible
+        run: |
+          set -euo pipefail
+          if [ ! -e /tmp/crucible-swapped ]; then
+            echo "the swap never happened — the running stack is untouched and there is nothing to roll back"
+            exit 0
+          fi
+          stamp="rollback-${GITHUB_RUN_ID}"
+          restored=""
+          for s in web api keeper; do
+            if docker image inspect "crucible-$s:$stamp" >/dev/null 2>&1; then
+              docker tag "crucible-$s:$stamp" "crucible-$s:latest"
+              restored="$restored $s"
+            else
+              echo "no $stamp image for $s — that service stays on whatever the failed run put there"
+            fi
+          done
+          if [ -z "$restored" ]; then
+            echo "::error::the swap happened and no rollback images exist; the box is on the failed build"
+            exit 1
+          fi
+          # Word-splitting is intended: `restored` names the services that have a previous image.
+          # shellcheck disable=SC2086
+          docker compose -f compose.yaml -f compose.vps.yaml up -d --no-deps $restored
+          back=""
+          for _ in $(seq 1 12); do
+            code=$(curl -sk -o /dev/null -w '%{http_code}' --max-time 20 https://crucible.svalley.tech/ || echo 000)
+            ready=$(curl -sk -o /dev/null -w '%{http_code}' --max-time 20 https://crucible.svalley.tech/api/ready || echo 000)
+            if [ "$code" = "200" ] && [ "$ready" = "200" ]; then back=1; break; fi
+            sleep 5
+          done
+          if [ -z "$back" ]; then
+            echo "::error::the rollback did not restore a serving site (site=$code ready=$ready); intervene on the box"
+            exit 1
+          fi
+          echo "rolled back to:$restored — the previous build is serving again, and the deploy is still red"
 
       # The rung below this one, asked for by name.
       #

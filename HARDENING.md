@@ -738,6 +738,24 @@ guards is the decoration it exists to detect.
   deliberately *not* asserted equal across the window: the keeper is expected to settle due trials
   during a deploy, and that movement is real work accounted for by the equality above rather than
   frozen by a check that would fail on a healthy chain.
+- **A deploy that fails after the swap can now put the previous build back (2026-10-25).** The job
+  already refused *before* the swap (red gate, an address the seed never published, a keeper with no
+  signing key) and built before it swapped, so a failed compile left the running stack untouched —
+  but nothing recovered a swap that then failed its probes. That gap was not hypothetical: the box
+  still carried `crucible-web:rollback-20261024c`, `…api…` and `…keeper…` when this was measured, so
+  the 2026-10-24 incident had been rolled back by hand, by someone who remembered that compose images
+  can be re-tagged. Three steps replace the memory: the images are tagged `rollback-<run-id>` *before*
+  the build (after it, `:latest` is already the new image and the tag preserves nothing), the swap
+  writes a marker, and a `failure()` step re-points `:latest` at the kept images, brings `web api
+  keeper` up with `--no-deps`, and polls the public surface until the previous build answers 200. It
+  exits non-zero if the restore does not serve, and it never turns the run green — a rolled-back
+  deploy is a failed deploy, so `release.yml` is not asked for. The swap marker is what stops the
+  rollback restarting a healthy stack after a refusal that never swapped anything. Five mutations
+  prove the wiring gate: tag moved after the build, `if: failure()` deleted, marker deleted, restore
+  direction removed, and the restore command left **only in a comment** each turn
+  `packages/argus/test/no-orphan.test.ts` red. **Not proven, and named:** the rollback path has never
+  executed. Proving it end to end means failing a deploy deliberately after its swap on the box that
+  serves the site, which restarts live containers — so it waits for an explicit ask.
 - **`npm run demo` was silently replaying its whole loop onto someone's earlier session
   (2026-10-25).** The judge-facing path starts its own anvil on `:8545`, spawns it with
   `stdio: "ignore"`, and then asked only whether *something* answered the RPC — so on a box already
