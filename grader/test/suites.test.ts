@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { allSuites, injectionSuite, smokeSet, suiteEpoch } from "../src/eval/suites.js";
+import { allSuites, calibrationSuite, injectionSuite, smokeSet, suiteEpoch } from "../src/eval/suites.js";
 import type { Artifact } from "../src/eval/types.js";
 
 /**
@@ -74,5 +74,60 @@ describe("suiteEpoch", () => {
     const empty = suiteEpoch([]);
     expect(empty).toMatch(/^[0-9a-f]{64}$/);
     expect(empty).not.toBe(suiteEpoch([one]));
+  });
+});
+
+/**
+ * The suite that used to be a loop.
+ *
+ * `calibrationSuite` generated sixty artifacts with `expectedVerdict = i % 2 === 0 ? PASS : VOID`
+ * over a payload of `{ kind, index, difficulty }` — a label no content determines, which makes every
+ * accuracy and kappa number computed from it a measurement of the generator. These four checks exist
+ * so that shape cannot come back unnoticed: the first two are what a revert to `i % 2` trips, the
+ * third is what a probe with nothing in it trips, and the fourth is what a relabelled artifact
+ * keeping an index-shaped `claimHash` would trip — the eval cache keys on `claimHash`, so that
+ * combination is answered from the verdict recorded against the old exam.
+ */
+describe("calibrationSuite", () => {
+  const suite = calibrationSuite();
+  const labels = suite.map((a) => a.expectedVerdict);
+
+  it("reaches all three verdicts, because the axis it teaches is FAIL versus VOID", () => {
+    expect(new Set(labels)).toEqual(new Set(["PASS", "VOID", "FAIL"]));
+    // Absence of evidence has to outnumber certainty about evidence, or the suite teaches
+    // "guess confidently" with a different label on it.
+    expect(labels.filter((l) => l === "VOID").length).toBeGreaterThanOrEqual(
+      labels.filter((l) => l === "PASS").length,
+    );
+  });
+
+  it("is not a function of the index, at any period a loop would produce", () => {
+    for (const p of [1, 2, 3]) {
+      expect(
+        labels.every((l, i) => l === labels[i % p]),
+        `the labels repeat with period ${p}, which is a generator talking to itself`,
+      ).toBe(false);
+    }
+    expect(labels.every((l, i) => l === (i % 2 === 0 ? "PASS" : "VOID"))).toBe(false);
+  });
+
+  it("hands every probe the text a grader has to judge", () => {
+    for (const a of suite) {
+      const p = a.payload as { claim?: string; evidence?: string | null };
+      expect(typeof p.claim, `${a.claimHash} has no claim to grade`).toBe("string");
+      expect((p.claim ?? "").length).toBeGreaterThan(10);
+      // `null` is a real value here, not a missing one: "nothing was shown" is the probe.
+      expect("evidence" in p, `${a.claimHash} omits evidence rather than showing none`).toBe(true);
+    }
+  });
+
+  it("names its artifacts instead of numbering them", () => {
+    const hashes = suite.map((a) => a.claimHash);
+    expect(new Set(hashes).size).toBe(hashes.length);
+    for (const h of hashes) {
+      expect(h, `${h} is index-shaped, so a relabelled probe would reuse a cached verdict`).not.toMatch(
+        /-\d{4}$/,
+      );
+    }
   });
 });
