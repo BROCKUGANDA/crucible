@@ -712,8 +712,12 @@ guards is the decoration it exists to detect.
   field never present on the path that runs it. The gate reads executed lines, not the file's prose,
   and five mutations prove it can fail: trigger restored, dispatch deleted, dispatch moved ahead of
   the probes, `--exit-status` dropped, and the command left only in a comment each turn
-  `packages/argus/test/no-orphan.test.ts` red. **Not yet proven:** the end-to-end path — a real
-  deploy tagging itself — has not run, because proving it means deploying.
+  `packages/argus/test/no-orphan.test.ts` red. **Proven on the next deploy, which is the only way it
+  could be proven:** `deploy` run 40229648339 — itself started by `workflow_dispatch`, the case that
+  used to leave no tag — ran the step at 20:15:12, release run 40229886010 came back `success` at
+  20:15:14, and tag `v0.1.1` points at `905bc43`, main's head, with the GitHub Release published. The
+  deploy is green *because* it watched that run: fire-and-forget would have shown the same green for
+  a tag that never happened.
 
 ## Still open from this pass, by severity
 
