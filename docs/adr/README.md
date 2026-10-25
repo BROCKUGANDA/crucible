@@ -22,6 +22,10 @@ way it does and what would have to change to revisit it.
 | [0009](0009-optional-voice-host.md)             | Frenchy is an optional, server-proxied, muted-by-default TTS host    | Accepted |
 | [0010](0010-index-cursor-semantics.md)          | The index cursor means "next block"; `head + 1` is caught up         | Accepted |
 | [0011](0011-crucible-v2-arena-edition.md)       | The v2 arena sits beside the legacy law; fees become parameters      | Accepted |
+| [0012](0012-identity-epochs.md)                 | What an identity handover may erase, and what it may not              | Accepted |
+| [0013](0013-receipt-replayability-class.md)     | A receipt names what a stranger can re-derive, from the phase not the verdict | Accepted |
+| [0014](0014-challenge-bond-priced-to-verification.md) | A break's bond is priced in reward and its harm is paid in seat compute; the arena carries the floor | Accepted |
+| [0015](0015-funded-test-wallet-its-own-service.md) | A funded test wallet is its own service; the API keeps holding no key | Proposed |
 
 ## Writing a new ADR
 
