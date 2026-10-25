@@ -698,6 +698,22 @@ guards is the decoration it exists to detect.
   idea with no implementation at all, where before they described one that was unreachable. The
   envelope's production home was considered and deliberately not taken: the agent's completion would
   have to become a `Proposal`, which changes the artifact that is EIP-712 hashed and signed.
+- **The ladder's last rung was waiting on an event GitHub never sends (2026-10-25).** `release.yml`
+  promised that every deploy reaching `main` and passing its probes is a release, and listened for
+  `deploy`'s completion with a `workflow_run` trigger. `workflow_dispatch` raises no downstream
+  `workflow_run`, and the promotion starts `deploy` by name — because a `GITHUB_TOKEN` push raises
+  no event — so the promise was true only for deploys that never happen. Confirmed two ways: the
+  run history (the five chained deploys of 2026-10-24 each created a release run, all correctly
+  skipped for a red gate; the deploy that shipped the site on 2026-10-25 created none) and GitHub's
+  own events reference. `v0.1.0` exists because it was dispatched by hand, not because the pipeline
+  produced it. Fixed the way the rung above it was fixed: `deploy.yml` asks for `release.yml` by
+  name after its final probe and watches the run, so a failed tag turns the shipping deploy red;
+  `release.yml` lost the trigger and the `if:` that read `github.event.workflow_run.conclusion`, a
+  field never present on the path that runs it. The gate reads executed lines, not the file's prose,
+  and five mutations prove it can fail: trigger restored, dispatch deleted, dispatch moved ahead of
+  the probes, `--exit-status` dropped, and the command left only in a comment each turn
+  `packages/argus/test/no-orphan.test.ts` red. **Not yet proven:** the end-to-end path — a real
+  deploy tagging itself — has not run, because proving it means deploying.
 
 ## Still open from this pass, by severity
 
@@ -1066,5 +1082,19 @@ much of the product's promise each one costs.
     real and is recorded above — tiers, Standing's 45-day decay, the `+3` prior, soulbound credentials, the
     treasury, both chains — but its citations to item numbers cannot be followed, and its §10 would append
     six rows to the file item 12 already records as unable to fail.
+22. **`npm test` on this Windows box can be red on a durability test that is not broken.** Once, in the
+    whole-repo fan-out, `apps/juror` failed `FileState > survives a close and a re-open with the salt
+    intact` with `EPERM: operation not permitted, rename
+    C:\WINDOWS\TEMP\crucible-juror-state-XXXXXX\seat-state.json.8680.tmp -> seat-state.json` — the
+    atomic-rename write at `apps/juror/src/state.ts:219`. Measured rather than assumed, because "same
+    commit, green then red" is a claim about the instrument: the workspace alone is green 3/3 and the
+    full juror suite is green 2/2, so the failure needs the saturated fan-out (a dozen concurrent vitest
+    processes) and Windows refusing a rename onto a target some other handle still holds in the
+    machine-wide temp. Nothing in that run's diff touched juror. **The check that distinguishes the two
+    stories is to re-run the one workspace before believing a durability regression** — and the residue is
+    a real instrument problem, not an excuse: that test's durable store lives in `os.tmpdir()`, which on
+    Windows is a scanned, shared directory, so a passing full-tree run here is a weaker signal than it
+    looks. Costed last because it costs no promise to a judge; it costs the next agent an hour of
+    believing the product regressed.
 
 Report a vulnerability as described in [`SECURITY.md`](SECURITY.md), not in a public issue.

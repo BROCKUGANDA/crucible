@@ -149,4 +149,53 @@ describe("the verifier has a production caller", () => {
     // `tar xzf` lets the job execute the unverified binary for the length of the comparison.
     expect(lines.indexOf(check!)).toBeLessThan(lines.indexOf(extract!));
   });
+
+  /**
+   * The ship rung, checked as wiring and not as prose.
+   *
+   * `release.yml` opened with "every deploy that reached main and passed its own probes is a
+   * release" and hung itself off a `workflow_run` trigger. A `workflow_dispatch` run raises no
+   * downstream `workflow_run`, and the promotion starts `deploy` by name precisely because a
+   * GITHUB_TOKEN push raises no event — so the ladder's own deploys never tagged a release, and
+   * the only tag that existed was asked for by hand. Measured 2026-10-25: the chained deploys of
+   * 2026-10-24 each created a release run (correctly skipped, their gates were red) while the
+   * deploy that shipped the site created none. The comment held for the case that never ships and
+   * failed for the case that does, which is what a check on the executed statement catches and a
+   * check on the file's explanation cannot.
+   */
+  it("the deploy that ships also asks for the release, and nothing waits on an event that never arrives", () => {
+    // Comments are where these files explain the rule they are coded against — release.yml names
+    // `workflow_run` three times to say why it is gone. Every assertion below runs over the lines
+    // that execute, the same fold that kept the install-tool check from grading its own docs.
+    const commands = (text: string) =>
+      text
+        .split(/\r?\n/)
+        .map((l) => l.trim())
+        .filter((l) => l !== "" && !l.startsWith("#"));
+
+    const release = commands(readFileSync(path.join(ROOT, ".github/workflows/release.yml"), "utf8"));
+    expect(
+      release.find((l) => /^workflow_run:$/.test(l)),
+      "release.yml is triggered by a completed workflow again — a dispatched deploy raises no such event, so main ships untagged",
+    ).toBeUndefined();
+    expect(
+      release.find((l) => l.includes("github.event.workflow_run")),
+      "release.yml reads its triggerer's conclusion again, a field that is never present on the only path that runs it",
+    ).toBeUndefined();
+
+    const deploy = readFileSync(path.join(ROOT, ".github/workflows/deploy.yml"), "utf8");
+    const steps = deploy.split(/\n {6}- name: /);
+    const askAt = steps.findIndex((s) => commands(s).some((l) => l.includes("gh workflow run release.yml")));
+    expect(
+      askAt,
+      "deploy.yml no longer asks for the release by name; the tag is left to an event GitHub does not deliver",
+    ).toBeGreaterThanOrEqual(0);
+    // Last, not merely present: asked for before the probes, a deploy that never shipped would
+    // still publish a release note describing a build nobody is serving.
+    expect(askAt, "the release is asked for before the deployment is probed").toBe(steps.length - 1);
+    expect(
+      commands(steps[askAt]).some((l) => l.startsWith("if ! gh run watch") && l.includes("--exit-status")),
+      "the release is dispatched and forgotten, so a failed tag leaves main serving with a green deploy",
+    ).toBe(true);
+  });
 });
