@@ -718,6 +718,19 @@ guards is the decoration it exists to detect.
   20:15:14, and tag `v0.1.1` points at `905bc43`, main's head, with the GitHub Release published. The
   deploy is green *because* it watched that run: fire-and-forget would have shown the same green for
   a tag that never happened.
+- **`npm run demo` was silently replaying its whole loop onto someone's earlier session
+  (2026-10-25).** The judge-facing path starts its own anvil on `:8545`, spawns it with
+  `stdio: "ignore"`, and then asked only whether *something* answered the RPC — so on a box already
+  holding a node, the new spawn could not bind the port, the probe returned ready against the old
+  one, and the demo deployed onto 401 blocks of existing state. It failed at `Arena.submitRun` with
+  `Transaction Failure` and nothing in the output naming the cause; the same script broadcast clean
+  on a fresh chain (29 s to `the forge is lit`, `--exit` path, exit 0). The fix is a refusal at the
+  boundary — read `eth_blockNumber` *before* spawning, and stop if a non-empty chain already answers
+  — because a demo that runs on a contaminated chain is not a demo, it is a measurement of whatever
+  was on the box. Both branches measured: against the leftover node it now exits 1 naming the block
+  count (`:8545 is already serving a chain at block 401`), and on a free port the full loop still
+  completes. **What this leaves open:** the same silent-spawn-plus-optimistic-probe shape exists in
+  any script that starts a node it does not own; only `demo.mjs` was audited here.
 
 ## Still open from this pass, by severity
 

@@ -195,7 +195,38 @@ async function rpcReady() {
   return false;
 }
 
+/** What already answers on the RPC port, as a block number — or `null` when nothing does. */
+async function chainHead() {
+  try {
+    const res = await fetch(RPC, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_blockNumber", params: [] }),
+    });
+    if (!res.ok) return null;
+    const { result } = await res.json();
+    return typeof result === "string" ? Number.parseInt(result, 16) : null;
+  } catch {
+    return null;
+  }
+}
+
 async function main() {
+  // Ask before spawning, not after: a second anvil cannot bind a port the first one holds, the
+  // spawn below is `stdio: "ignore"`, and `rpcReady()` then answers ready against whatever node
+  // is already living there. Measured 2026-10-25 — `npm run demo` on a box with a leftover anvil
+  // replayed its whole loop onto 401 blocks of existing state and died at `Arena.submitRun` with
+  // `Transaction Failure` and nothing naming the cause, while the identical script broadcast
+  // clean on a fresh chain. A demo that runs on a contaminated chain is not a demo; it is a
+  // measurement of someone's earlier session.
+  const already = await chainHead();
+  if (already !== null && already > 0) {
+    throw new Error(
+      `:8545 is already serving a chain at block ${already}. The demo deploys onto a chain it ` +
+        `assumes is empty, and a second anvil cannot take the port — stop that node first.`,
+    );
+  }
+
   console.log("▸ starting anvil on :%d", ANVIL_PORT);
   const anvil = spawn(ANVIL, ["--port", String(ANVIL_PORT), "--silent"], {
     shell: process.platform === "win32",
