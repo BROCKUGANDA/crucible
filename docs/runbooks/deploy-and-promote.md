@@ -22,6 +22,9 @@ must ask for the next gate explicitly. Do not promote by force-pushing.
    `web` and `api` **before** the swap, then `up -d --no-deps`, and gate on
    `/api/health`.
 5. Verify the public site and `/api/ready`.
+6. `deploy.yml`'s last step asks for `release.yml` by name and watches it, so
+   the deploy that shipped the site is also the thing that tagged it. A tag
+   that fails turns this deploy red.
 
 ## The ladder waits for its gate
 
@@ -31,6 +34,16 @@ the ladder promoted `develop → staging`, staged CI passed, and no
 promotion now dispatches CI, waits for that run by id, and dispatches the next
 step by name when the gate is green. A red gate stops the ladder.
 
+The rule is not a flake and it is not confined to the promotion: GitHub raises
+no `workflow_run` for a run started by `workflow_dispatch`. Because the
+promotion starts `deploy` by name, `deploy`'s own completion raised nothing
+either — and `release.yml` had hung itself off exactly that event. Measured
+2026-10-25: the chained deploys of 2026-10-24 each created a release run, the
+deploy that actually shipped the site created none, and the first tag had to be
+asked for by hand. **Every rung asks for the next by name; none of them waits
+for an event.** `deploy.yml` now dispatches and watches `release.yml` the way
+the promotion does the gate above it.
+
 If that wait times out or a run is cancelled, the fallback is still the two
 idempotent commands:
 
@@ -38,6 +51,11 @@ idempotent commands:
 gh workflow run promote.yml --ref main -f from=staging
 gh workflow run deploy.yml --ref main
 ```
+
+A deploy dispatched by hand tags a release too, and picks `patch` unless told
+otherwise: `gh workflow run deploy.yml --ref main -f bump=minor`. Tagging
+without shipping stays available and stays a deliberate act:
+`gh workflow run release.yml --ref main -f bump=patch`.
 
 Do not assume a green `staging` is live until `main` has the merge and the
 deploy has run. Check `gh run list --workflow promote.yml` and
