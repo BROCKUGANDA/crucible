@@ -1,4 +1,6 @@
 import { serve } from "@hono/node-server";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { foundry } from "viem/chains";
 import { createPublicClient, http, keccak256, toHex, type Address } from "viem";
 import {
@@ -311,6 +313,41 @@ scribe.hydrate();
 void scribe.watch();
 
 /**
+ * Sponsor-published CIDs, from the same disclosure file the seeding path writes.
+ *
+ * The chain holds a digest of the spec and the suite; the readable address that resolves to the
+ * files is published off-chain and recorded here by `ContentBridge`. Nothing fed this into the
+ * snapshot before, so `testsCID` was permanently null and every trial said "suite not disclosed
+ * yet" — a scheduled reveal that never came. An absent file is the honest empty answer. A
+ * malformed one is not: it goes to the dead-letter queue, because silently returning nothing
+ * would restore exactly the fault this wire exists to end.
+ */
+const disclosureFile = join(
+  process.env.CRUSCIBLE_CONTENT_DIR ?? ".crucible-content",
+  "disclosure",
+  "disclosure.json",
+);
+
+function disclosedCids(): { trialId: number; specCID?: string; testsCID?: string }[] {
+  let specs: Record<string, string>;
+  try {
+    specs = (JSON.parse(readFileSync(disclosureFile, "utf8")) as { specs?: Record<string, string> }).specs ?? {};
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+      dlq.push("disclosure.read", err instanceof Error ? err.message : String(err));
+    }
+    return [];
+  }
+  const out: { trialId: number; specCID?: string; testsCID?: string }[] = [];
+  for (const t of scribe.state.trials.values()) {
+    const specCID = specs[t.specDigest];
+    const testsCID = specs[t.testsDigest];
+    if (specCID || testsCID) out.push({ trialId: t.id, specCID, testsCID });
+  }
+  return out;
+}
+
+/**
  * The v2 arena, when this host has one.
  *
  * A second `Scribe` over the same transport: the reader — sharding, bloom cross-check, quiet-tail
@@ -447,6 +484,7 @@ if (security.allowCredentials) {
 
 const app = createApp({
   getModel: () => scribe.state,
+  disclosure: disclosedCids,
   /**
    * Only when a scribe is actually running. Passing the model unconditionally made the route
    * report `projected: true` over an empty Map, which reads as "an arena with no trials" — the

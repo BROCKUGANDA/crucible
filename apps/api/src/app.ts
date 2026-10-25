@@ -353,6 +353,7 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
         alloyState: deps.alloyState,
         feeBps: deps.protocolFeeBps?.() ?? null,
         headTimestamp: deps.indexStatus?.().headTimestamp ?? null,
+        disclosure: deps.disclosure?.(),
       });
       tick = {
         builtAt: now,
