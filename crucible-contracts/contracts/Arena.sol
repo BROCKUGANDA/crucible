@@ -580,7 +580,7 @@ contract Arena {
         if (_breaks[id].length >= MAX_FILING) revert TooManyBreaks();
 
         uint256 stakeMin = (uint256(t.reward) * Params.SKEPTIC_STAKE_MIN_BPS) / BPS;
-        uint256 seatFee = (uint256(t.reward) * Params.SEAT_FEE_BPS) / BPS * Params.ARGUS_SEATS;
+        uint256 seatFee = (uint256(t.reward) * Params.SEAT_FEE_BPS * Params.ARGUS_SEATS) / BPS;
         if (msg.value < stakeMin) revert StakeTooSmall();
         if (msg.value < stakeMin + seatFee) revert SeatFeeWrong();
         // Everything above the floor stake is stake; A is exact, because the seats are paid a
@@ -1166,8 +1166,11 @@ contract Arena {
         return _voteVoid[id][round][seat];
     }
 
+    /// @dev Multiply before divide, for the reason `_seatBondFloor` gives: the per-seat share
+    /// truncates first otherwise and the shortfall is then multiplied by the seat count. Must stay
+    /// the same expression `commitBreak` charges, or the fee quoted and the fee required diverge.
     function seatFeePerBreak(uint256 id) external view returns (uint256) {
-        return (uint256(_trials[id].reward) * Params.SEAT_FEE_BPS) / BPS * Params.ARGUS_SEATS;
+        return (uint256(_trials[id].reward) * Params.SEAT_FEE_BPS * Params.ARGUS_SEATS) / BPS;
     }
 
     function minimumStake(uint256 id) external view returns (uint256) {
