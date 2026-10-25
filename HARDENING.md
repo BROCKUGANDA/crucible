@@ -923,11 +923,20 @@ much of the product's promise each one costs.
     and bond 0.1 ETH. The route's `projected` flag is load-bearing and its first version was wrong:
     passing the model unconditionally made a host with no arena report `projected: true` over an
     empty Map, which reads as "an arena with no trials"; it now reports
-    `projected: false, reason: "no arena address on this host"`. Still absent, and named rather
-    than implied: **no submission, freeze or panel**, so O1–O8 remain proven only in `forge test`;
-    the projection tracks seven of 23 events and names the sixteen it does not (`ARENA_UNTRACKED`),
-    so a settled trial would show its status and none of its breaks or votes; there is **no web
-    page** for `/arena`. `revealHoldout` is not a crank and stays the agent's own act. A reviewer arriving from the v2
+    `projected: false, reason: "no arena address on this host"`. **Submission now runs too:** the
+    demo wires an attestor and both signatures are accepted (`DOMAIN`, `RUN_TYPEHASH` and
+    `ATTEST_TYPEHASH` are public, so the script reproduces the digests the contract verifies rather
+    than guessing at them), and `/arena` reports the trial `submitted`. Still absent, and named
+    rather than implied: **no freeze and no panel**. `freezeDocket` refuses until `windowEnd +
+    BREAK_REVEAL_GRACE_SECONDS` — two hours — and a script cannot move that clock reliably:
+    `vm.rpc("evm_increaseTime")` moves the node while `vm.warp` moves only the simulated EVM the
+    preflight checks, and they do not stay in step against a live chain, so the operator advances
+    the node between runs the way `GoldenPath.s.sol` already documents. And a panel needs a
+    **revealed break** first: with zero revealed breaks `freezeDocket` settles the trial as O1
+    (`_settleNoBreak`) and returns, so `drawPanel` correctly reverts `BadState`. The projection
+    tracks seven of 23 events and names the sixteen it does not (`ARENA_UNTRACKED`), so a settled
+    trial would show its status and none of its breaks or votes; there is **no web page** for
+    `/arena`. `revealHoldout` is not a crank and stays the agent's own act. A reviewer arriving from the v2
     bible still finds gates 734–746 green at the contract layer and the off-chain half missing.
 
 17. **v2.1's showcase layer is now half-built, and the first audit's verdict on it was wrong in

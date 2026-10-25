@@ -36,6 +36,10 @@ contract Demo is Script {
     /// digests — so a synthetic key is the honest choice here.
     uint256 constant RUNNER_KEY = 0xA11CE;
 
+    /// The attestor that vouches a run passed. A local key, wired by `setAttestor` in the arena
+    /// demo frame; the real one is an operator key that never reaches this repository.
+    uint256 constant ATTESTOR_KEY = 0xA77E5;
+
     /// What each demo seat posts. The Arena's per-trial floor is
     /// `reward * SEAT_FEE_BPS/BPS * MAX_DOCKET * SEAT_BOND_MIN_MULTIPLE` — 0.2 × reward for this
     /// parameter set — and that contract number still decides every draw. This is only what the
@@ -276,6 +280,77 @@ contract Demo is Script {
         arena.claimTrial{value: agentBond}(arenaTrial);
         arena.setRunner(arenaTrial, vm.addr(RUNNER_KEY));
         vm.stopBroadcast();
+
+        // The run, signed the way the contract verifies it. `DOMAIN`, `RUN_TYPEHASH` and
+        // `ATTEST_TYPEHASH` are all public, so this reproduces the digest instead of guessing at
+        // it — the same two signatures `Arena.t.sol` builds, over the same fields.
+        vm.startBroadcast(pkDeployer);
+        arena.setAttestor(vm.addr(ATTESTOR_KEY), true);
+        vm.stopBroadcast();
+
+        bytes32 artifact = keccak256("crucible-demo-artifact");
+        bytes32 verdictHash = keccak256("crucible-demo-verdict");
+        bytes32 replayHash = keccak256("crucible-demo-replay");
+        bytes32 harness = keccak256("crucible-demo-harness");
+        uint64 sigDeadline = uint64(block.timestamp + 1 hours);
+        uint64 nonce = 1;
+
+        bytes32 runDigest = keccak256(
+            abi.encodePacked(
+                "\x19\x01",
+                arena.DOMAIN(),
+                keccak256(
+                    abi.encode(
+                        arena.RUN_TYPEHASH(),
+                        bytes32(arenaTrial),
+                        vm.addr(pkOperatorA),
+                        artifact,
+                        verdictHash,
+                        replayHash,
+                        harness,
+                        nonce,
+                        sigDeadline
+                    )
+                )
+            )
+        );
+        (uint8 rv, bytes32 rr, bytes32 rs) = vm.sign(RUNNER_KEY, runDigest);
+        bytes memory runnerSig = abi.encodePacked(rr, rs, rv);
+
+        bytes32 attestDigest = keccak256(
+            abi.encodePacked(
+                "\x19\x01",
+                arena.DOMAIN(),
+                keccak256(
+                    abi.encode(
+                        arena.ATTEST_TYPEHASH(), bytes32(arenaTrial), artifact, verdictHash, replayHash, true, sigDeadline
+                    )
+                )
+            )
+        );
+        (uint8 av, bytes32 ar, bytes32 asig) = vm.sign(ATTESTOR_KEY, attestDigest);
+        bytes memory attestorSig = abi.encodePacked(ar, asig, av);
+
+        vm.startBroadcast(pkOperatorA);
+        arena.submitRun(
+            arenaTrial, artifact, verdictHash, replayHash, harness, nonce, sigDeadline, runnerSig, attestorSig
+        );
+        vm.stopBroadcast();
+
+        // The demo stops here, at `Submitted`, and that is a deliberate boundary rather than a
+        // missing step. `freezeDocket` refuses until `windowEnd + BREAK_REVEAL_GRACE_SECONDS` has
+        // passed — two hours on this parameter set — and a script cannot move that clock reliably:
+        // `vm.rpc("evm_increaseTime")` moves the node while `vm.warp` moves only the simulated EVM
+        // the preflight is checked against, and the two do not stay in step against a live chain.
+        // `GoldenPath.s.sol` has the same shape and answers it the same way: the operator advances
+        // the node between two script runs (`cast rpc anvil_setNextBlockTimestamp` + `anvil_mine`).
+        // Measured on the demo chain, the trial sits `Submitted` with both signatures accepted,
+        // which is the part that could not be tested without an attestor.
+        //
+        // Worth recording for whoever adds the freeze call: with zero revealed breaks,
+        // `freezeDocket` does NOT open a panel. It settles the trial as O1 (`_settleNoBreak`) and
+        // returns, so `drawPanel` reverts `BadState` — correctly, because an undefended trial has
+        // no dispute to judge. A panel needs a revealed break first.
 
         // Both rounds must survive their real exclusion lists. `seatCount() >= 3` does not test
         // that: the pool is only large enough if three seats remain after round 2 excludes the
