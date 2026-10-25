@@ -501,11 +501,28 @@ Two properties it checks that a stub could not:
   their identity with the ERC-8004 Identity registry themselves (`register(agentURI)`
   mints to the caller), and Crucible records the association via `linkIdentity`.
   Verified on mainnet in `ForkTests.test_Fork_OperatorLinksARealIdentityRegistration`.
-- **26 npm advisories remain** (24 moderate, 2 high), all inside the wallet stack —
-  `@walletconnect/*`, `@metamask/sdk`, `@reown/*`, `@base-org/*` — plus the pre-existing
-  `postcss` and `next` pair. The wallet ones have no fix without dropping RainbowKit for
-  wagmi 3, and the Next pair affects every released version through `16.3.0-preview`.
-  CI's audit gate fails only on advisories outside the documented set.
+- **28 npm advisories remain** (15 moderate, 13 high), and CI's audit gate passes them because
+  each one is inside the documented set in `scripts/audit-gate.mjs` with a written ceiling. They
+  reduce to **two leaf advisories**, and both are in the wallet stack:
+  - **`ws` — uninitialized memory disclosure (GHSA-58qx-3vcg-4xpx) and memory-exhaustion DoS
+    (GHSA-96hv-2xvq-fx4p).** Reached through `@walletconnect/ethereum-provider` →
+    `@walletconnect/utils` → `viem@2.23.2` → `ws@8.18.0`, all of them pinned exactly. The
+    vulnerable copy sits under a viem this app never uses for websockets — the chains talk HTTP —
+    but it is installed and importable. **Not fixable by a version bump:** npm `overrides` are
+    inert in this tree (measured three ways, including a full re-resolution with the lockfile
+    deleted), `@wagmi/connectors` 6.x tops out at the pinned version, and `wagmi` 3 does not
+    change the chain. It needs `patch-package` to relax the exact pin, or the connector dropped.
+  - **`zod` — memory exhaustion while validating oversized constrained collections
+    (GHSA-mrhx-c7xc-m3w5).** Reached through `abitype` → `viem`, and through
+    `@coinbase/cdp-sdk` (which `apps/web/next.config.mjs` aliases out of the browser bundle
+    entirely). There is no patched 3.x — the fix is 4.6.6, a major that `abitype` cannot take.
+    The exposure here is low: zod validates ABI and parameter schemas, not attacker-supplied
+    collections, and no request path feeds it one.
+  **The cost of this ceiling, stated rather than implied:** npm scores a package by the worst
+  advisory *anywhere in its chain*, and this gate scores per package, so it cannot tell "this
+  package's own advisory" from "the leaf's advisory it inherits". A **new** high advisory
+  appearing anywhere in the wallet stack would pass CI without a human reading it. That is the
+  price of a leaf we cannot patch; the thing that watches it is this paragraph, not the list.
 
 ## Bugs found in the original spec
 

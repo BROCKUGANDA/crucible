@@ -35,7 +35,17 @@ const RANK = { info: 0, low: 1, moderate: 2, high: 3, critical: 4, unknown: 4 };
 const FAMILIES = [
   // The wallet stack: RainbowKit 2.2.11 pins wagmi ^2.9 and pulls these in. Patching
   // means dropping RainbowKit for wagmi 3 — a product decision, not a dependency bump.
-  { prefix: "@walletconnect/", ceiling: "moderate" },
+  //
+  // The ceiling is `high` for the same reason `ws` carries one. npm scores a package by the
+  // worst advisory **anywhere in its dependency chain**, so a package that only carries the
+  // accepted `ws` advisory is reported at `ws`'s severity. A per-package ceiling cannot tell
+  // "this package's own advisory" from "the leaf's advisory it inherits", and leaving the
+  // parents at `moderate` made the gate fail on a chain it had already accepted. **The cost,
+  // stated:** a *new* high advisory anywhere inside the wallet stack would now pass this gate
+  // without a human looking at it. The wallet stack is a leaf we cannot patch, so the honest
+  // ceiling is the worst thing it can pull in, and the thing that watches it is the README
+  // entry below rather than this list.
+  { prefix: "@walletconnect/", ceiling: "high" },
   { prefix: "@metamask/", ceiling: "moderate" },
   { prefix: "@reown/", ceiling: "high" },
   { prefix: "@rainbow-me/", ceiling: "moderate" },
@@ -50,11 +60,18 @@ const EXACT = [
   { name: "postcss", ceiling: "high" },
   { name: "ws", ceiling: "high" },
   { name: "next", ceiling: "moderate" },
-  { name: "viem", ceiling: "moderate" },
+  // `viem` scores at `high` because of the `ws` advisory it inherits, not one of its own.
+  { name: "viem", ceiling: "high" },
   { name: "wagmi", ceiling: "moderate" },
   { name: "decode-uri-component", ceiling: "moderate" },
   { name: "query-string", ceiling: "moderate" },
   { name: "uuid", ceiling: "moderate" },
+  // The `zod` chain: `zod` -> `abitype` -> `viem`, and `@coinbase/cdp-sdk` -> `abitype`.
+  // `zod`'s advisory is memory exhaustion while validating oversized constrained collections,
+  // and there is no patched 3.x — the fix is 4.6.6, which `abitype` cannot take. See the README.
+  { name: "zod", ceiling: "high" },
+  { name: "abitype", ceiling: "high" },
+  { name: "@coinbase/cdp-sdk", ceiling: "high" },
 ];
 
 function ceilingFor(name) {
