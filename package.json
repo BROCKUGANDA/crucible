@@ -31,7 +31,8 @@
     "cdp:transfer": "node --env-file-if-exists=.env scripts/cdp-transfer.mjs",
     "verify:roundtrip": "node --env-file-if-exists=.env scripts/verify-roundtrip.mjs",
     "seed:content": "node --env-file-if-exists=.env scripts/seed-content.mjs --write",
-    "seed:check": "node --env-file-if-exists=.env scripts/seed-content.mjs --check"
+    "seed:check": "node --env-file-if-exists=.env scripts/seed-content.mjs --check",
+    "arena:grade": "node --env-file-if-exists=.env scripts/grade-arena.mjs"
   },
   "engines": {
     "node": ">=20 <27",

@@ -34,19 +34,15 @@ Open ──claim──> Assigned ──submitRun──> Judging ──fileBreak�
    with the API on `:8787`. Every `up` is a fresh, deterministic chain.
 3. Read the proofs: `/hall` shows the leaderboard where each row quotes the
    settlement transaction and the identity registration that earned it. The
-   contracts are in `crucible-contracts/contracts` with 270 tests (4 of them ERC-8004
+   contracts are in `crucible-contracts/contracts` with 270 tests (266 passed; 4 of them ERC-8004
    fork tests, which skip without an RPC). The workspace suites
-   add 1503 more — web 290, smith-sdk 197, grader 165, agent-security 153, forge-runner 146
-   (6 need Docker; they ran green on the deploy box today at 136 tests, before the ten now in
-   flight), api 142, cidstore 98, indexer 95, juror 74, argus 42, keeper 40, warden 24,
-   harness 13, frame 12, crypto 12 — and `npm test` runs them; the contracts suite
-   itself needs Foundry
+   add 1544 more — web 290, grader 206, smith-sdk 197, agent-security 153, forge-runner 146
+   (6 need Docker and skip without a daemon), api 142, cidstore 98, indexer 95, juror 74,
+   argus 42, keeper 40, warden 24, harness 13, frame 12, crypto 12 — and `npm test` runs them; the
+   contracts suite itself needs Foundry
    (`forge test`), which the seed image runs on a machine without a local
-   forge. The numbers were measured from the suites on 2026-10-24; run `npm test`
-   to reproduce them. One condition on that count, stated rather than smoothed: 8 of the
-   grader's 165 are red in the shared working tree against an in-flight `suiteEpoch` field
-   that is not part of the epoch slice, so the green figure at that moment was 1489 passed
-   and 6 skipped.
+   forge. Measured from one `npm test` on 2026-10-25: 1538 passed and 6 skipped across the
+   TypeScript workspaces. Run `npm test` to reproduce them.
 4. Replay the whole loop against a running chain — register, post, claim,
    runner-signed runs, a break that Argus slashes, and the permissionless quench
    after the window really closes — with `crucible-contracts/script/GoldenPath.s.sol`:

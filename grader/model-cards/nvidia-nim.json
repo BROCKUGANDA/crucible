@@ -1,0 +1,16 @@
+{
+  "id": "z-ai/glm-5.3-flash",
+  "dialect": "openai-compat",
+  "snapshot": "z-ai/glm-5.3-flash",
+  "pinnedAt": "2026-10-24",
+  "roles": ["contestant"],
+  "retention": {
+    "retention": "training-use-allowed",
+    "reviewedAt": "2026-10-24",
+    "source": "NVIDIA API Trial Terms of Service (https://assets.ngc.nvidia.com/products/api-catalog/legal/NVIDIA%20API%20Trial%20Terms%20of%20Service.pdf). Section 2.3 says NVIDIA will not store input or output, but that promise is expressly qualified: 'Except as stated below in Section 2.4 or unless expressly disclosed to you for an API Service'. Section 2.4 permits 30/90-day retention. Section 3.3(iv) permits collecting 'User Content and Generated Content to improve NVIDIA products and services, including AI models'. The posture is therefore training-use-allowed, not zero-retention-api."
+  },
+  "budgetUsd": { "stage": 2, "day": 10 },
+  "costPerCallUsd": 0,
+  "maxCallsPerStage": 64,
+  "latencyP95Ms": 20000
+}

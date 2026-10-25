@@ -2,13 +2,16 @@ import type {
   Artifact,
   EvalResult,
   ModelAdapter,
+  ModelVerdict,
   Scorecard,
   ScorecardRow,
   SmokeThresholds,
+  SuiteEpoch,
   SuiteName,
 } from "./types.js";
 import { buildScorecard, scorecardLine } from "./scorer.js";
-import { MemoryEvalCache, gradeCached, gradeFresh } from "./cache.js";
+import { MemoryEvalCache, gradeCached, gradeFresh, type EvalCache } from "./cache.js";
+import { suiteEpoch } from "./suites.js";
 import type { SpendLedger } from "./frontier.js";
 
 const DEFAULT_THRESHOLDS: SmokeThresholds = {
@@ -45,16 +48,21 @@ const CONSISTENCY_THRESHOLDS: SmokeThresholds = {
  *   3. Adversarial — full BREAK mutant bank, top 2. Winner enters shadow mode.
  */
 export class Arena {
-  private readonly cache: MemoryEvalCache;
+  private readonly cache: EvalCache;
 
   /**
    * When supplied, the scorecard's cost column is measured instead of declared. The ledger is fed
    * by `withFrontierGuard` at the adapter boundary, so the arena reads back what the calls
    * actually cost rather than a number it invented — `avgCostUsd` used to be a literal `0`, which
    * is the same shape as a metric no code path can increment.
+   *
+   * The seam is `EvalCache`, not `MemoryEvalCache`. The hot tier is one process and one run, so a
+   * tournament that was paid for yesterday paid for itself again today; `FileEvalCache` is the warm
+   * tier that stops that, and a parameter typed to the concrete hot class is a warm tier with no
+   * caller. Both implement the same interface and the arena asks for nothing else.
    */
   constructor(
-    cache?: MemoryEvalCache,
+    cache?: EvalCache,
     private readonly spend?: SpendLedger,
   ) {
     this.cache = cache ?? new MemoryEvalCache();
@@ -136,6 +144,7 @@ export class Arena {
       modelId: string;
       promptVersion: string;
       suite: SuiteName;
+      suiteEpoch: SuiteEpoch;
       results: EvalResult[];
       perArtifactConsistency: Map<string, Array<"PASS" | "VOID" | "FAIL">>;
       avgCostUsd: number;
@@ -144,30 +153,37 @@ export class Arena {
     for (const adapter of adapters) {
       for (const [suiteName, suiteFn] of Object.entries(suiteFns)) {
         const artifacts = suiteFn();
+        // Hashed once per suite, from the artifacts the loop is about to grade — not from a
+        // constant, and not from the suite's name. Two runs of the same name over two generations
+        // of `suites.ts` produce two different epochs, which is the whole point of computing it here.
+        const epoch = suiteEpoch(artifacts);
         const results: EvalResult[] = [];
         const perArtifact = new Map<string, Array<"PASS" | "VOID" | "FAIL">>();
 
         for (const artifact of artifacts) {
-          const verdicts: Array<"PASS" | "VOID" | "FAIL"> = [];
+          const draws: Array<ModelVerdict & { cached: boolean }> = [];
           for (let r = 0; r < retests; r++) {
             // Draw 0 may be answered from the cache — it is the same fact a previous run paid
             // for. Every draw after it must reach the model, because agreement is a property of
             // the calls: re-reading a stored verdict twenty times reports 100% stability about
             // the cache, which is a real fact about the cache and a false one about the model.
             const gradeFn = r === 0 ? gradeCached : gradeFresh;
-            const verdict = await gradeFn(
-              this.cache,
-              adapter,
-              artifact,
-              adapter.id.includes(":")
-                ? (adapter.id.split(":")[1] ?? "v1")
-                : "v1",
-              async () => adapter.grade(artifact, "v1"),
+            draws.push(
+              await gradeFn(
+                this.cache,
+                adapter,
+                artifact,
+                adapter.id.includes(":")
+                  ? (adapter.id.split(":")[1] ?? "v1")
+                  : "v1",
+                epoch,
+                async () => adapter.grade(artifact, "v1"),
+              ),
             );
-            verdicts.push(verdict.verdict);
           }
-          const final = verdicts.at(-1) ?? "VOID";
-          perArtifact.set(artifact.claimHash, verdicts);
+          const last = draws.at(-1);
+          const final = last?.verdict ?? "VOID";
+          perArtifact.set(artifact.claimHash, draws.map((d) => d.verdict));
 
           const firstResult = results.find((r) => r.claimHash === artifact.claimHash);
           if (firstResult) {
@@ -179,13 +195,22 @@ export class Arena {
             modelId: adapter.id,
             promptVersion: "v1",
             suite: suiteName,
+            suiteEpoch: epoch,
             expected: artifact.expectedVerdict,
             actual: final,
-            confidence: 0.5,
+            // Both are read off the draw rather than written as literals. Every adapter measures
+            // them — `Date.now() - start` in the three paid dialects, a deterministic figure in
+            // the stub — and the cache files what they returned, so a hardcoded pair here made
+            // the row disagree with the entry stored under the same key. `p95LatencyMs` read 0
+            // for a model whose calls the ledger was billing, which left `maxP95LatencyMs`,
+            // documented as a hard disqualifier, unable to fail. A draw served from the cache
+            // carries the latency measured when that verdict was earned, which is what a hit
+            // means at this layer: the same fact a previous run paid for.
+            confidence: last?.confidence ?? 0,
             correct: final === artifact.expectedVerdict,
             falsePass: final === "PASS" && artifact.expectedVerdict !== "PASS",
             falseFail: final !== "PASS" && artifact.expectedVerdict === "PASS",
-            latencyMs: 0,
+            latencyMs: last?.latencyMs ?? 0,
             killed: false,
           });
         }
@@ -194,6 +219,7 @@ export class Arena {
           modelId: adapter.id,
           promptVersion: "v1",
           suite: suiteName as SuiteName,
+          suiteEpoch: epoch,
           results,
           perArtifactConsistency: perArtifact,
           avgCostUsd: this.spend?.averageUsd(adapter.id) ?? 0,
@@ -209,7 +235,7 @@ export class Arena {
   }
 
   /** Get the underlying cache (for inspection / seeding in tests). */
-  getCache(): MemoryEvalCache {
+  getCache(): EvalCache {
     return this.cache;
   }
 }

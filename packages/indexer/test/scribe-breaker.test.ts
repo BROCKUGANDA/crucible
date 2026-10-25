@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createServer } from "node:http";
 import { foundry } from "viem/chains";
-import { Scribe } from "../src/scribe.js";
+import { Scribe, TRIALS_SOURCE } from "../src/scribe.js";
 
 /**
  * The breaker in `sync()`, driven through a real client against a node that refuses every
@@ -64,7 +64,7 @@ describe("the RPC breaker on the sync path", () => {
     const node = await refusingNode();
     const reported: { kind: string; detail: string }[] = [];
     const scribe = new Scribe({
-      trialsAddress: ADDRESS,
+      source: { ...TRIALS_SOURCE, address: ADDRESS },
       alloyAddress: ADDRESS,
       chain: foundry,
       rpcUrl: node.url,
@@ -93,7 +93,7 @@ describe("the RPC breaker on the sync path", () => {
   it("tails a dead node without either stalling or hammering it", async () => {
     const node = await refusingNode();
     const scribe = new Scribe({
-      trialsAddress: ADDRESS,
+      source: { ...TRIALS_SOURCE, address: ADDRESS },
       alloyAddress: ADDRESS,
       chain: foundry,
       rpcUrl: node.url,

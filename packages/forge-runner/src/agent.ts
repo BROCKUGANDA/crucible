@@ -6,7 +6,12 @@ import {
   type WorkResult,
 } from "@crucible/smith";
 import { withBackoff } from "@crucible/smith";
-import { hasInstructionFinding, scanRetrieved, wrapUntrusted } from "@crucible/agent-security";
+import {
+  hasInstructionFinding,
+  scanRetrieved,
+  wrapUntrusted,
+  type Permission,
+} from "@crucible/agent-security";
 
 /**
  * An LLM-backed agent for ForgeRunner.
@@ -61,7 +66,17 @@ export interface ForgedAgentOptions {
     blocked?: boolean;
     scan?: { action: "accept" | "accept-quarantined" | "reject" };
   };
-  /** an optional guard; when present the agent may only act within it */
+  /**
+   * An optional guard; when present the agent may only act within it.
+   *
+   * Two contracts, and the difference is who performs the model call. A guard that only
+   * *permits* returns `{ ok: true }` and the agent calls `client.complete` itself. A guard
+   * that *performs* the call returns the assistant text as `output`, and then the client is
+   * not called a second time — that is the shape `createToolGuard` returns, so the
+   * completion happens inside the toolbox's allow-list, session ceiling and trace rather
+   * than beside them. A guard that returns a non-string `output` is a wiring fault and the
+   * agent falls back to the client rather than guessing at the text.
+   */
   guard?: {
     call(args: {
       action: string;
@@ -70,6 +85,16 @@ export interface ForgedAgentOptions {
     }): Promise<{ ok: boolean; reason?: string; output?: unknown }>;
   };
 }
+
+/**
+ * The one privileged action the work loop takes, and the permission it demands.
+ *
+ * Exported so the guard factory and the agent agree on the strings by construction: a
+ * toolbox that registers `"llm_complete"` against an agent that asks for `"llm:complete"`
+ * denies every call, and the denial reads like a rate limit rather than a typo.
+ */
+export const MODEL_ACTION = "llm:complete";
+export const MODEL_PERMISSION: Permission = "trial:run";
 
 /**
  * The system prompt.
@@ -180,12 +205,22 @@ export function createForgedAgent(opts: ForgedAgentOptions): SmithAgent {
         }
       }
 
-      // When a guard is present, the call itself is privileged and must pass through it
+      // When a guard is present, the call itself is privileged and must pass through it.
+      // The prompt travels with the request because a guard that cannot see what it is
+      // authorising is authorising nothing; the toolbox's own trace never records input
+      // (`ToolTraceEntry` has no such field), so this does not put the spec in a log.
+      const prompt = parts.join("\n");
+      let raw: string | null = null;
       if (opts.guard) {
         const verdict = await opts.guard.call({
-          action: "llm:complete",
-          input: { trialId: ctx.brief.trialId, iteration: ctx.iteration },
-          permission: "trial:run",
+          action: MODEL_ACTION,
+          input: {
+            trialId: ctx.brief.trialId,
+            iteration: ctx.iteration,
+            system: SYSTEM_PROMPT,
+            prompt,
+          },
+          permission: MODEL_PERMISSION,
         });
         if (!verdict.ok) {
           return {
@@ -194,13 +229,16 @@ export function createForgedAgent(opts: ForgedAgentOptions): SmithAgent {
             done: false,
           };
         }
+        if (typeof verdict.output === "string") raw = verdict.output;
       }
 
-      const raw = await opts.client.complete({
-        system: SYSTEM_PROMPT,
-        prompt: parts.join("\n"),
-        temperature: opts.temperature ?? 0.2,
-      });
+      if (raw === null) {
+        raw = await opts.client.complete({
+          system: SYSTEM_PROMPT,
+          prompt,
+          temperature: opts.temperature ?? 0.2,
+        });
+      }
 
       const patch = extractDiff(raw);
       return {

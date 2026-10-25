@@ -3,4 +3,5 @@ export * from "./status.js";
 export * from "./runner.js";
 export * from "./content.js";
 export * from "./agent.js";
+export * from "./tool-guard.js";
 export * from "./providers.js";

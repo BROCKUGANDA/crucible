@@ -1,8 +1,17 @@
 import { serve } from "@hono/node-server";
 import { foundry } from "viem/chains";
-import { createPublicClient, http, keccak256, toHex } from "viem";
-import { Scribe, UNKNOWN_ALLOY, type AlloyState } from "@crucible/indexer";
-import { ALLOY_ABI, selfSchedulingLoop } from "@crucible/smith";
+import { createPublicClient, http, keccak256, toHex, type Address } from "viem";
+import {
+  ARENA_EVENT_NAMES,
+  emptyArenaModel,
+  replayArena,
+  Scribe,
+  TRIALS_SOURCE,
+  UNKNOWN_ALLOY,
+  type AlloyState,
+  type ArenaModel,
+} from "@crucible/indexer";
+import { ALLOY_ABI, ARENA_ABI, selfSchedulingLoop } from "@crucible/smith";
 import { createApp } from "./app.js";
 import { makeReplaySource } from "./replay.js";
 import { dlq } from "./dlq.js";
@@ -132,7 +141,7 @@ const voice = (() => {
 const publicClient = createPublicClient({ chain: foundry, transport: http(rpcUrl) });
 
 const scribe = new Scribe({
-  trialsAddress,
+  source: { ...TRIALS_SOURCE, address: trialsAddress },
   alloyAddress,
   chain: foundry,
   rpcUrl,
@@ -301,6 +310,36 @@ await scribe.sync();
 scribe.hydrate();
 void scribe.watch();
 
+/**
+ * The v2 arena, when this host has one.
+ *
+ * A second `Scribe` over the same transport: the reader — sharding, bloom cross-check, quiet-tail
+ * proof, reorg replay — is identical, and only the `source` and the reducer differ. `ARENA_ADDRESS`
+ * empty is the documented state of every host today; the route then reports `projected: false`
+ * rather than an empty arena, because those are different facts.
+ *
+ * No `cursorFile`: the arena's log volume is its own, and sharing the trials cursor would make each
+ * index move the other's position.
+ */
+let arenaModel: ArenaModel = emptyArenaModel();
+const arenaAddress = (process.env.ARENA_ADDRESS ?? "").trim();
+if (arenaAddress.length > 0) {
+  const arenaScribe = new Scribe({
+    source: { abi: ARENA_ABI, eventNames: ARENA_EVENT_NAMES, address: arenaAddress as Address },
+    chain: foundry,
+    rpcUrl,
+    fromBlock: optionalBlock("FROM_BLOCK"),
+    pollMs: scribePollMs,
+    onEvents: (events) => {
+      arenaModel = replayArena(events, arenaModel);
+    },
+    onError: (kind, detail) => dlq.push(`scribe.arena.${kind}`, detail),
+  });
+  await arenaScribe.sync();
+  void arenaScribe.watch();
+  console.log(`[crucible] arena ${arenaAddress}`);
+}
+
 // Primed before the first request is served, so `/hall` never opens on an empty cache.
 await sweepAlloy();
 // Scheduled off the previous pass rather than the wall clock: an overlapping sweep doubles the
@@ -408,6 +447,12 @@ if (security.allowCredentials) {
 
 const app = createApp({
   getModel: () => scribe.state,
+  /**
+   * Only when a scribe is actually running. Passing the model unconditionally made the route
+   * report `projected: true` over an empty Map, which reads as "an arena with no trials" — the
+   * exact confusion the route's `projected` flag exists to prevent.
+   */
+  arena: arenaAddress.length > 0 ? () => arenaModel : undefined,
   // The hall's txHashes are only checkable against one chain and one contract, and the
   // read model cannot infer either — this process is the only party that knows them.
   proofSource: { chain: foundry.name, chainId: foundry.id, trialsAddress },
