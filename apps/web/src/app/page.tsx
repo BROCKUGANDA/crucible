@@ -117,11 +117,13 @@ export default function HomePage() {
                 by a credential with no transfer or approval path at all, and "fake" is only
                 testable once the reader knows which addresses mint. */}
             <p className="hint">
-              No transfer or approval path exists on the credential, and the addresses its records
-              come from are published at{" "}
+              You can&apos;t transfer or approve the credential — there is no instruction for it — so
+              it can&apos;t be bought or borrowed. The addresses its records come from are published
+              at{" "}
               <Link href="/.well-known/crucible.json">/.well-known/crucible.json</Link>. Every
-              promise on this page is listed with what enforces it at{" "}
-              <Link href="/claims">the claim matrix</Link> — including the ones nothing enforces yet.
+              promise on this page is listed at{" "}
+              <Link href="/claims">the full list</Link>, next to what enforces it — including the
+              ones nothing enforces yet.
             </p>
             <p className="arena__cta">
               <Link className="btn btn-primary" href="/trials/new">
