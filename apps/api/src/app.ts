@@ -23,6 +23,7 @@ import { TickPump } from "./tick-pump.js";
 import { authRoutes } from "./auth.js";
 import { createVoiceRoutes, type VoiceConfig } from "./voice.js";
 import { createReplayRoutes, type ReplaySourceResult } from "./replay.js";
+import { createFrenchyRoutes, type FrenchyConfig } from "./frenchy.js";
 import {
   bodyLimit,
   corsPolicy,
@@ -274,6 +275,10 @@ export interface ApiOptions {
    */
   voice?: VoiceConfig | null;
   /**
+   * Frenchy's brain. Null or absent means the conversational assistant is off.
+   */
+  frenchy?: FrenchyConfig | null;
+  /**
    * The voice route spends a provider credit per call, so it gets its own bucket
    * rather than sharing the 60/min read allowance. `false` disables it for tests.
    */
@@ -512,6 +517,21 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
     app.use("/voice/*", voiceLimiter);
   }
   app.route("/voice", createVoiceRoutes(opts.voice ?? null));
+
+  /**
+   * Frenchy's brain — the conversational assistant. `/frenchy` for chat, `/frenchy/voice` for premium TTS.
+   * Both spend provider credits, so they get their own bucket.
+   */
+  if (opts.frenchy) {
+    const frenchyLimiter = rateLimit({
+      limit: 20,
+      windowMs: 60_000,
+      burst: 5,
+      trustProxy: opts.trustProxy ?? false,
+    });
+    app.use("/frenchy*", frenchyLimiter);
+  }
+  app.route("/frenchy", createFrenchyRoutes(opts.frenchy ?? null));
 
   /**
    * The replay projector. One request makes the node answer a `getLogs` over the whole look-back

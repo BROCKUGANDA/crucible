@@ -37,7 +37,7 @@ const FAMILIES = [
   // means dropping RainbowKit for wagmi 3 — a product decision, not a dependency bump.
   { prefix: "@walletconnect/", ceiling: "moderate" },
   { prefix: "@metamask/", ceiling: "moderate" },
-  { prefix: "@reown/", ceiling: "moderate" },
+  { prefix: "@reown/", ceiling: "high" },
   { prefix: "@rainbow-me/", ceiling: "moderate" },
   { prefix: "@wagmi/", ceiling: "moderate" },
   { prefix: "@base-org/", ceiling: "moderate" },

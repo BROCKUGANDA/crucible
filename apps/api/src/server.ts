@@ -140,6 +140,38 @@ const voice = (() => {
   return { apiKey, voiceId, modelId, baseUrl };
 })();
 
+/**
+ * Frenchy's brain — the conversational assistant. Optional, off by default.
+ * Requires an LLM provider (OpenAI-compatible). Premium TTS uses ElevenLabs if configured.
+ */
+const frenchy = (() => {
+  if (process.env.FRENCHY_DISABLED === "1") return null;
+  const llmApiKey = process.env.FRENCHY_LLM_API_KEY?.trim();
+  const llmModel = process.env.FRENCHY_LLM_MODEL?.trim() || "gpt-4o-mini";
+  const llmBaseUrl = process.env.FRENCHY_LLM_BASE_URL?.trim() || undefined;
+  if (!llmApiKey) return null;
+  if (llmBaseUrl && !/^https?:\/\//.test(llmBaseUrl)) {
+    throw new Error(`FRENCHY_LLM_BASE_URL must be an http(s) URL; got "${llmBaseUrl}"`);
+  }
+
+  // Optional premium TTS
+  let tts: { apiKey: string; voiceId: string; modelId?: string; baseUrl?: string } | undefined;
+  if (process.env.FRENCHY_TTS_DISABLED !== "1") {
+    const ttsApiKey = process.env.ELEVENLABS_API_KEY?.trim();
+    const ttsVoiceId = process.env.ELEVENLABS_VOICE_ID?.trim();
+    const ttsBaseUrl = process.env.ELEVENLABS_BASE_URL?.trim() || undefined;
+    const ttsModelId = process.env.ELEVENLABS_MODEL_ID?.trim() || "eleven_flash_v2_5";
+    if (ttsApiKey && ttsVoiceId) {
+      if (ttsBaseUrl && !/^https?:\/\//.test(ttsBaseUrl)) {
+        throw new Error(`ELEVENLABS_BASE_URL must be an http(s) URL; got "${ttsBaseUrl}"`);
+      }
+      tts = { apiKey: ttsApiKey, voiceId: ttsVoiceId, modelId: ttsModelId, baseUrl: ttsBaseUrl };
+    }
+  }
+
+  return { llm: { apiKey: llmApiKey, model: llmModel, baseUrl: llmBaseUrl }, tts };
+})();
+
 const publicClient = createPublicClient({ chain: foundry, transport: http(rpcUrl) });
 
 const scribe = new Scribe({
@@ -513,6 +545,7 @@ const app = createApp({
   trustProxy,
   security,
   voice,
+  frenchy,
 });
 
 serve({ fetch: app.fetch, port }, (info) => {
@@ -527,6 +560,11 @@ serve({ fetch: app.fetch, port }, (info) => {
     voice
       ? `[crucible] voice: Frenchy on (${voice.modelId})`
       : "[crucible] voice: off (set ELEVENLABS_API_KEY and ELEVENLABS_VOICE_ID to enable)",
+  );
+  console.log(
+    frenchy
+      ? `[crucible] frenchy: brain on (${frenchy.llm.model})${frenchy.tts ? " + premium TTS" : ""}`
+      : "[crucible] frenchy: brain off (set FRENCHY_LLM_API_KEY to enable)",
   );
   // A replay reads the trial's own logs back from the node, so the window it searches is a
   // fact an operator needs when a replay comes back missing its first beats.
