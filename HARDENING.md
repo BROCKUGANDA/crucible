@@ -887,6 +887,34 @@ guards is the decoration it exists to detect.
   only the address whose signature created the credit, so a payout cannot be redirected mid-flight
   without forging that signature, and the escrow's `withdraw` is covered by the same shape plus the
   conservation fuzzing.
+- **Lighthouse ran against the live site for the first time, and the golden path does not run as
+  documented (2026-10-25).** There was no Lighthouse tooling in the repository at all — no config, no
+  script, no CI job — and the deploy box has Chrome 156 but no `npm`, so the run went: Chrome in
+  headless debug mode on the box, port 9222 over an SSH tunnel, Lighthouse 12.8.2 from this machine
+  driving it. Scores on `https://crucible.svalley.tech/`: **performance 74, accessibility 100,
+  best-practices 93, SEO 100**; LCP 4.1 s, FCP 0.9 s, TBT 480 ms, CLS 0. Nothing was wired to fail on
+  those numbers, so they are a measurement, not a gate.
+- **Three of the four console errors are the CSP doing its job, and that is a decision, not a bug
+  report.** `errors-in-console` scored 0. Its items: the Coinbase Wallet SDK POSTing its analytics
+  beacons to `https://cca-lite.coinbase.com/amp` and `/metrics`, refused by our own
+  `connect-src 'self' …`, plus the resulting "Failed to fetch" from the SDK. The two ways to silence
+  it are not equivalent. Adding `cca-lite.coinbase.com` to `connect-src` makes the audit green by
+  letting a wallet vendor's telemetry fire from a product whose entire claim is verifiable conduct —
+  so it was not done quietly. Suppressing it at the SDK would keep the policy closed, and whether
+  that flag exists on this connector version is unverified here. **Consequence:** the browser pass in
+  this register that reports "zero console errors" is describing a different page set or a different
+  SDK build; on the live landing page today there are four, three of them CSP refusals. Lighthouse
+  will stay red on that audit while the CSP stays tight, and that is the preferred trade.
+- **`GoldenPath.s.sol` cannot be run the way the README says to (2026-10-25).** `:Begin` calls `register()` on the
+  identity registry, and only `Demo.s.sol` deploys and wires one — against a chain built by
+  `Deploy.s.sol` the call hits address zero and the script reverts, which is what it did on a fresh
+  Anvil on 2026-10-25 after a clean deploy. `:Finish` then reads `BROKEN_TRIAL` and `QUIET_TRIAL`
+  (`script/GoldenPath.s.sol:162-163`) — the trial ids `:Begin` picked — which the script's own usage
+  header never mentions. The README now says so instead of implying a two-variable invocation.
+  **Not done, deliberately:** making the script self-sufficient (deploy its own mock registry, derive
+  the two ids from the chain it just wrote) is the actual fix, and it changes what the golden path
+  asserts about a deployment, so it is listed rather than half-implemented.
+- **`npm run demo` was silently replaying its whole loop onto someone's earlier session
   (2026-10-25).** The judge-facing path starts its own anvil on `:8545`, spawns it with
   `stdio: "ignore"`, and then asked only whether *something* answered the RPC — so on a box already
   holding a node, the new spawn could not bind the port, the probe returned ready against the old

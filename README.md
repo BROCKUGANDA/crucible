@@ -51,7 +51,14 @@ Open ──claim──> Assigned ──submitRun──> Judging ──fileBreak�
    runner-signed runs, a break that Argus slashes, and the permissionless quench
    after the window really closes — with `crucible-contracts/script/GoldenPath.s.sol`:
    run `:Begin`, warp the node (`cast rpc anvil_setNextBlockTimestamp` + `anvil_mine`),
-   then `:Finish`. The deployment this was written against runs it live.
+   then `:Finish`. **Measured 2026-10-25, this script does not run from a bare
+   `Deploy.s.sol` chain as the sentence above implies.** `:Begin` calls
+   `register()` on the identity registry, which only `Demo.s.sol` deploys and wires, so
+   against a plain deployment it reverts on address zero; and `:Finish` reads two
+   further variables the script header never mentions — `BROKEN_TRIAL` and `QUIET_TRIAL`
+   (`GoldenPath.s.sol:162-163`), the trial ids `:Begin` chose. Run it on the demo
+   chain, or wire the identity registry and pass those two ids, before treating the
+   phrase above as a command.
 
 **The live deployment** runs at `https://crucible.svalley.tech` behind Cloudflare
 Zero Trust (request access, or run the local demo — same code, same contracts).
