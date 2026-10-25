@@ -224,14 +224,16 @@ contract Demo is Script {
 
         uint256[6] memory keys = _seatKeys();
         address[6] memory seats;
-        for (uint256 i; i < 6; ++i) seats[i] = vm.addr(keys[i]);
+        for (uint256 i; i < 6; ++i) {
+            seats[i] = vm.addr(keys[i]);
+        }
 
         // Seats four to six sit past anvil's ten funded genesis accounts. Fund them from the
         // deployer — a real transfer, because `vm.deal` is a cheatcode and does nothing against
         // an RPC.
         vm.startBroadcast(pkDeployer);
         for (uint256 i = 3; i < 6; ++i) {
-            (bool ok, ) = seats[i].call{value: SEAT_BOND * 2}("");
+            (bool ok,) = seats[i].call{value: SEAT_BOND * 2}("");
             require(ok, "could not fund a seat");
         }
         vm.stopBroadcast();
@@ -323,7 +325,13 @@ contract Demo is Script {
                 arena.DOMAIN(),
                 keccak256(
                     abi.encode(
-                        arena.ATTEST_TYPEHASH(), bytes32(arenaTrial), artifact, verdictHash, replayHash, true, sigDeadline
+                        arena.ATTEST_TYPEHASH(),
+                        bytes32(arenaTrial),
+                        artifact,
+                        verdictHash,
+                        replayHash,
+                        true,
+                        sigDeadline
                     )
                 )
             )
