@@ -1249,8 +1249,7 @@ contract Arena {
     /// three constants multiply to 2,000, so the intermediate tops out near 6.8e41 against a
     /// `uint256` ceiling of 1.15e77.
     function _seatBondFloor(Trial storage t) internal view returns (uint256) {
-        return (uint256(t.reward) * Params.SEAT_FEE_BPS * Params.MAX_DOCKET * Params.SEAT_BOND_MIN_MULTIPLE)
-            / BPS;
+        return (uint256(t.reward) * Params.SEAT_FEE_BPS * Params.MAX_DOCKET * Params.SEAT_BOND_MIN_MULTIPLE) / BPS;
     }
 
     function _recover(bytes32 digest, bytes calldata sig) internal pure returns (address) {
