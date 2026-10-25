@@ -5,3 +5,4 @@ export * from "./content.js";
 export * from "./agent.js";
 export * from "./tool-guard.js";
 export * from "./providers.js";
+export * from "./egress.js";

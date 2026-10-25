@@ -238,16 +238,37 @@ async function main() {
     promptGuard,
     Sandbox,
     DEFAULT_SANDBOX,
+    GROQ_BASE,
+    NIM_BASE,
+    ANTHROPIC_BASE,
     touchesTests,
     filesTouched,
   } = await loadForgeRunner();
 
+  /**
+   * The run may reach the providers it was configured for — the model and the guard — and nothing
+   * else. The container already runs `--network=none`; this is the other way out, and the way a
+   * prompt-injected tool call or a redirected baseUrl would take. A trial that cannot reach the
+   * open internet cannot break into anything that happens to be listening on it.
+   */
+  const PROVIDER_HOSTS = {
+    groq: new URL(GROQ_BASE).host,
+    nvidia: new URL(NIM_BASE).host,
+    anthropic: new URL(ANTHROPIC_BASE).host,
+  };
+  const egressAllowlist = [
+    ...new Set([
+      PROVIDER_HOSTS[provider.kind],
+      PROVIDER_HOSTS[provider.guardShape === "verdict" ? "nvidia" : "groq"],
+    ]),
+  ];
+
   const client =
     provider.kind === "groq"
-      ? groqClient({ apiKey: provider.apiKey, model: provider.model })
+      ? groqClient({ apiKey: provider.apiKey, model: provider.model, egressAllowlist })
       : provider.kind === "nvidia"
-        ? nimClient({ apiKey: provider.apiKey, model: provider.model })
-        : anthropicClient({ apiKey: provider.apiKey, model: provider.model });
+        ? nimClient({ apiKey: provider.apiKey, model: provider.model, egressAllowlist })
+        : anthropicClient({ apiKey: provider.apiKey, model: provider.model, egressAllowlist });
 
   const ceiling = DRY ? 1 : BUDGET;
 
@@ -266,6 +287,7 @@ async function main() {
       apiKey: provider.apiKey,
       shape: provider.guardShape,
       ...(provider.guardModel ? { model: provider.guardModel } : {}),
+      egressAllowlist,
     });
     const score = await guard.score(spec);
     if (score === null) {

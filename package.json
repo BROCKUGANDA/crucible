@@ -12,7 +12,7 @@
     "grader"
   ],
   "scripts": {
-    "build:libs": "npm run build --workspace @crucible/smith && npm run build --workspace @crucible/cidstore && npm run build --workspace @crucible/agent-security && npm run build --workspace @crucible/forge-runner && npm run build --workspace @crucible/indexer && npm run build --workspace @crucible/argus && npm run build --workspace @crucible/warden && npm run build --workspace @crucible/crypto && npm run build --workspace @crucible/harness && npm run build --workspace @crucible/grader && npm run build --workspace @crucible/frame",
+    "build:libs": "npm run build --workspace @crucible/smith && npm run build --workspace @crucible/cidstore && npm run build --workspace @crucible/agent-security && npm run build --workspace @crucible/forge-runner && npm run build --workspace @crucible/indexer && npm run build --workspace @crucible/argus && npm run build --workspace @crucible/warden && npm run build --workspace @crucible/crypto && npm run build --workspace @crucible/grader && npm run build --workspace @crucible/frame",
     "prepare": "npm run build:libs",
     "build": "npm run build --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",

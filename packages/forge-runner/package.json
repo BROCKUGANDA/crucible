@@ -18,7 +18,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "lint:imports": "node scripts/import-lint.mjs"
   },
   "dependencies": {
     "@crucible/agent-security": "*",

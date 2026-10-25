@@ -676,6 +676,28 @@ guards is the decoration it exists to detect.
   **nothing fetches the pinned scorecard yet** — the pin is the sink's write half, and a reader is future
   work. `grader/src/eval/arena.ts` (the model tournament) and `contracts/Arena.sol` (on-chain trials v2)
   share a name and nothing else; a reviewer sent to "the arena" will find both.
+- **The agent could leave the sandbox by one route, and the gate meant to stop it was watching the
+  wrong tree.** The container runs `--network=none`, so a trial's agent cannot reach the internet
+  from inside it — but the *model call* is made by the host on the agent's behalf, and nothing
+  constrained where it could go. A run can now be given an egress allowlist, and every provider
+  client refuses a host outside it before the request is made: `forge-runner/src/egress.ts` is the
+  policy, `assertEgressAllowed` is applied in `openAiCompatibleClient` (and so in the Groq and NIM
+  clients), in `promptGuard`, and in `anthropicClient` — which had **no URL guard at all** while
+  every other provider had one, so a `file://` baseUrl there would have been fetched. The
+  production driver (`scripts/live-agent.mjs`, the sole one) sets the allowlist to the two
+  providers the run was configured for: its model and its guard. A leading dot is a domain suffix
+  and a bare entry is an exact host, so one typo cannot open a domain, and
+  `api.nvidia.com.evil.test` is not covered by `api.nvidia.com`. Nine tests, and a mutation that
+  adds `node:fs` to an agent-side module is caught by the gate.
+  **`@crucible/harness` is deleted.** It was the only package with zero production importers, and
+  its `SandboxSupervisor` was a process-boundary *simulation* of a sandbox production already
+  implements for real — importing it into a live path would have substituted a fake for a
+  container. Its one idea that was not already implemented — the egress allowlist — now lives in
+  the real path. **What that leaves, stated rather than implied:** gates **489** (proposal envelope
+  — agents propose, keeper does) and **492** (fixed toolset — declared tools only) now describe an
+  idea with no implementation at all, where before they described one that was unreachable. The
+  envelope's production home was considered and deliberately not taken: the agent's completion would
+  have to become a `Proposal`, which changes the artifact that is EIP-712 hashed and signed.
 
 ## Still open from this pass, by severity
 

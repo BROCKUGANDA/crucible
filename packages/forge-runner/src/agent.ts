@@ -12,6 +12,8 @@ import {
   wrapUntrusted,
   type Permission,
 } from "@crucible/agent-security";
+import { assertEgressAllowed } from "./egress.js";
+import { ANTHROPIC_BASE, assertProviderUrl } from "./providers.js";
 
 /**
  * An LLM-backed agent for ForgeRunner.
@@ -447,8 +449,15 @@ export function anthropicClient(args: {
   apiKey: string;
   baseUrl?: string;
   model?: string;
+  /** Hosts this run may reach; see `egress.ts`. */
+  egressAllowlist?: string[];
 }): LlmClient {
-  const base = args.baseUrl ?? "https://api.anthropic.com";
+  const base = args.baseUrl ?? ANTHROPIC_BASE;
+  // This client had no URL guard at all, while every other provider had one: a `baseUrl` typed
+  // `file://` here would have been fetched. The scheme check and the allowlist are both applied
+  // before the first request, and the allowlist is what keeps a trial's agent on its own provider.
+  assertProviderUrl(base);
+  assertEgressAllowed(base, args.egressAllowlist);
   return {
     async complete({ system, prompt, temperature, maxTokens }) {
       // The Messages API throttles aggressively during load spikes. Backing off on 429s

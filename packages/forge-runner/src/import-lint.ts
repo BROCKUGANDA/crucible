@@ -2,7 +2,7 @@
  * Gate 502 — CI enforcement of the sandbox seal.
  *
  * Import-graph lint: no `fs` / `child_process` / `net` / `viem-wallet` in the
- * harness module graph. This tool is the enforcer (it may use node:fs itself);
+ * agent module graph. This tool is the enforcer (it may use node:fs itself);
  * the code it scans must not.
  */
 
