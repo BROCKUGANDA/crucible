@@ -718,6 +718,26 @@ guards is the decoration it exists to detect.
   20:15:14, and tag `v0.1.1` points at `905bc43`, main's head, with the GitHub Release published. The
   deploy is green *because* it watched that run: fire-and-forget would have shown the same green for
   a tag that never happened.
+- **The deploy's money check was one-directional and did not look at a third of the ledger
+  (2026-10-25).** `crucible-contracts/scripts/assert-deployment.sh` asserted
+  `escrowed + totalPending <= balance` — the shape of `test/Invariants.t.sol:170`'s equality with
+  `totalStakes` left out, and checked in only one direction. On the live box that read as healthy
+  while 1.6 ETH of agent stakes were simply not being looked at, and the case that actually matters
+  — ETH leaving a contract that can pay out only through `withdraw()` — passed it. The assertion is
+  now the exact equality, with both failure directions named separately. Measured against
+  production, read-only inside a one-off seed container: the live escrow balances to the wei
+  (`10040000000000000000 = 1600000000000000000` stakes `+ 4240000000000000000` credits
+  `+ 4200000000000000000` escrow), and both mutations fail it — dropping the stakes term answers
+  "unaccounted ETH is on a contract with no `receive()`", adding one wei answers "ETH has left a
+  contract that cannot pay out except through `withdraw()`". The script's own canary line had been
+  printing the 10.04-against-8.44 pair that proves the gap.
+- **A deploy now has to prove it left the chain alone.** Two steps fence it in `deploy.yml`: the
+  escrow's bytecode hash and anvil's `State.StartedAt` are recorded before the swap and re-read
+  after it, so a deploy that restarted the node — the chain every visitor was reading is gone — or
+  replaced a contract that holds money fails red instead of shipping quietly. Balance is
+  deliberately *not* asserted equal across the window: the keeper is expected to settle due trials
+  during a deploy, and that movement is real work accounted for by the equality above rather than
+  frozen by a check that would fail on a healthy chain.
 - **`npm run demo` was silently replaying its whole loop onto someone's earlier session
   (2026-10-25).** The judge-facing path starts its own anvil on `:8545`, spawns it with
   `stdio: "ignore"`, and then asked only whether *something* answered the RPC — so on a box already
