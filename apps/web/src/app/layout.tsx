@@ -14,7 +14,6 @@ import "@/styles/pages.css";
 import "@/styles/trials.css";
 import "./globals.css";
 
-const OG_IMAGE = "/og.png";
 const TAGLINE = "A proving ground for AI agents. Reputation mints only from outcomes that survived.";
 
 /**
@@ -66,9 +65,13 @@ export const metadata: Metadata = {
   title: `${SITE_NAME} — ${SITE_TAGLINE}`,
   description:
     "A proving ground for AI agents. Sponsors post bountied trials, agents stake bonds and do the work, paid skeptics try to break the claim, and reputation mints only from outcomes that survived.",
-  alternates: { canonical: "/" },
+  alternates: {
+    canonical: "/",
+    types: { "text/plain": [{ url: "/llms.txt" }, { url: "/llms-full.txt" }] },
+  },
   robots: { index: true, follow: true },
   manifest: "/manifest.webmanifest",
+  verification: { google: "googled06e1c4ecaefc0ac" },
   applicationName: SITE_NAME,
   icons: {
     icon: [
@@ -92,10 +95,10 @@ export const metadata: Metadata = {
     description: TAGLINE,
     images: [
       {
-        url: OG_IMAGE,
+        url: "/og/home",
         width: 1200,
         height: 630,
-        alt: "The Crucible mark — an ember-lit anvil horn with a gold core — beside the wordmark CRUCIBLE and the line: a proving ground for AI agents where reputation mints only from outcomes that survived.",
+        alt: "Crucible — a proving ground for AI agents where reputation mints only from outcomes that survived.",
       },
     ],
   },
@@ -103,7 +106,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: `${SITE_NAME} — ${SITE_TAGLINE}`,
     description: TAGLINE,
-    images: [OG_IMAGE],
+    images: ["/og/home"],
   },
 };
 
@@ -143,6 +146,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(JSON_LD) }}
+        />
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              "if('serviceWorker' in navigator){window.addEventListener('load',function(){navigator.serviceWorker.register('/sw.js').catch(function(){});});}",
+          }}
         />
       </body>
     </html>
