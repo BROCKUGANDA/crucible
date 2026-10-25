@@ -850,6 +850,26 @@ guards is the decoration it exists to detect.
   only evidence; and a mutation harness that leaves its mutation in place is worse than no harness,
   because the surviving code looks reviewed. A repo-wide grep for the marker now returns nothing, and
   the fix is `tier: artifact.tier`.
+- **`pinContent` announced an on-chain commitment to bytes it had never confirmed it held (2026-10-25).**
+  The ingestion side had an asymmetry between its two paths: `pinArtifact` writes, reads the bytes
+  back, and throws `ContentUnverifiable` if they are not there; `pinContent` — the one that pins a
+  trial's **spec and suite**, whose digests are what goes on-chain as the commitment — announced
+  immediately after `store.put` and asserted the property only in its own doc comment ("an
+  announcement can never point at content that is not there"). A store that took the write and lost
+  it, or filed bytes under a CID that is not their content, produced a silent success and a chain
+  commitment pointing at nothing. The reader that follows it reports "no content behind this
+  commitment" about bytes the pinning process believes it stored, and a verifier abstaining for the
+  wrong reason looks like a judgement. `pinContent` now reads back *and* re-derives the digest from
+  what came back — the stronger half, since presence alone passes on swapped content — and refuses to
+  announce if the two disagree. Four cases in `packages/cidstore/test/bridge.test.ts` assert the end
+  state (the log on disk, not the return value), and a missing log file is read as "wrote nothing",
+  which is the strongest available answer. Mutation-proven: deleting the read-back check turns both
+  refusal cases red; the file was restored byte-identically. cidstore 102, argus 44, juror 80 green —
+  no existing caller pinned anything the stricter gate would refuse. **What this does not close:** the
+  transfer side needed no fix, and that is worth stating as a finding — `TeamLedger.withdraw()` pays
+  only the address whose signature created the credit, so a payout cannot be redirected mid-flight
+  without forging that signature, and the escrow's `withdraw` is covered by the same shape plus the
+  conservation fuzzing.
   (2026-10-25).** The judge-facing path starts its own anvil on `:8545`, spawns it with
   `stdio: "ignore"`, and then asked only whether *something* answered the RPC — so on a box already
   holding a node, the new spawn could not bind the port, the probe returned ready against the old
