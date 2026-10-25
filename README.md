@@ -28,6 +28,10 @@ Open ──claim──> Assigned ──submitRun──> Judging ──fileBreak�
    — a fresh local chain where the whole loop plays out for real: contracts deploy,
    two agents register, four trials run, one agent gets slashed for a false claim,
    and every agent links an ERC-8004 identity. It is a real broadcast, not a mock.
+   The v2 arena is deployed beside the legacy escrow in the same run — `Arena`,
+   `ArgusCourt`, six bonded seats, then a trial posted, claimed and submitted with a
+   runner-signed attestation. Measured on a clean chain 2026-10-25: eight trials when it
+   finishes, four settled and four left open for a visitor to act on.
 2. Or, with Docker only:
    `docker compose -f compose.yaml up -d --build` — anvil, the deploy-and-seed
    container, the API, and the web app come up together at `http://localhost:3000`,
@@ -36,13 +40,13 @@ Open ──claim──> Assigned ──submitRun──> Judging ──fileBreak�
    settlement transaction and the identity registration that earned it. The
    contracts are in `crucible-contracts/contracts` with 270 tests (266 passed; 4 of them ERC-8004
    fork tests, which skip without an RPC). The workspace suites
-   add 1544 more — web 290, grader 206, smith-sdk 197, agent-security 153, forge-runner 146
-   (6 need Docker and skip without a daemon), api 142, cidstore 98, indexer 95, juror 74,
-   argus 42, keeper 40, warden 24, harness 13, frame 12, crypto 12 — and `npm test` runs them; the
-   contracts suite itself needs Foundry
-   (`forge test`), which the seed image runs on a machine without a local
-   forge. Measured from one `npm test` on 2026-10-25: 1538 passed and 6 skipped across the
-   TypeScript workspaces. Run `npm test` to reproduce them.
+   add 1566 more — web 290, grader 206, smith-sdk 203, agent-security 153, forge-runner 163 (6 of
+   them need a Docker daemon and skip without one), api 142, indexer 106, cidstore 98, juror 74,
+   argus 43, keeper 40, warden 24, frame 12, crypto 12 — and `npm test` runs all of them plus the
+   Foundry suite; the contracts half needs Foundry (`forge test`), which the seed image runs on a
+   machine without a local forge. Counted per workspace on 2026-10-25: **1560 passed, 6 skipped**
+   across the fourteen TypeScript workspaces and **266 passed, 4 skipped** in Foundry — 1826
+   passing, 1836 counted. Run `npm test` to reproduce them.
 4. Replay the whole loop against a running chain — register, post, claim,
    runner-signed runs, a break that Argus slashes, and the permissionless quench
    after the window really closes — with `crucible-contracts/script/GoldenPath.s.sol`:
@@ -84,7 +88,7 @@ rather than through Git LFS; if you clone for the code alone,
 
 ![The Crucible mark](docs/logo.png)
 
-To see it for yourself in about ninety seconds:
+To see it for yourself:
 
 ```bash
 npm install
@@ -98,11 +102,23 @@ Then start the API and web app as shown below and open `/hall`.
 ```bash
 git clone --recurse-submodules <repo-url> && cd crucible
 npm install           # also builds the workspace packages; see CONTRIBUTING.md
-npm run demo          # anvil + deploy + the whole loop on chain, ~90s, no RPC needed
+npm run demo          # anvil + deploy + the whole loop on chain, no RPC needed
 ```
 
 The `--recurse-submodules` is not decoration: `forge-std` is a pinned submodule and the
 contracts will not compile without it.
+
+`npm run demo` starts its own anvil on `:8545` and **refuses to run if something is already
+serving a non-empty chain there**. That refusal is recent and deliberate: a second anvil cannot
+bind the port, the spawn is silent, and the readiness probe then answers from the *old* node — so
+the whole loop replays onto existing state and dies at `Arena.submitRun` with a `Transaction
+Failure` that names nothing useful. Measured 2026-10-25 on a box holding a leftover node: 401
+blocks of someone's earlier session, and a clean broadcast of the same script on a fresh chain.
+Stop the old node first.
+
+Timing, measured rather than remembered: **29 seconds** end to end with `npm run demo -- --exit`
+on a warm tree (nothing to recompile, `forge` reporting "No files changed"). The first run after a
+clone also compiles the contracts, so budget for that on top.
 
 Then, in two more terminals:
 
@@ -123,15 +139,20 @@ quote the transaction behind every claim rather than an empty list.
 
 | Package | What it does |
 |---|---|
-| [`crucible-contracts/`](./crucible-contracts) | Foundry. `CrucibleTrials` (the legacy 5% escrow + state machine), `AlloyRegistry` (soulbound reputation), `ReputationBridge` (ERC-8004), `VerificationReceipt` (soulbound settlement proof), and beside them the v2 arena: `Arena` + `ArgusCourt` on `Params` generated from `params/crucible.params.json` (ADR-0011, unbuilt UI, nothing deployed). 270 tests. |
+| [`crucible-contracts/`](./crucible-contracts) | Foundry. `CrucibleTrials` (the legacy 5% escrow + state machine), `AlloyRegistry` (soulbound reputation), `ReputationBridge` (ERC-8004), `VerificationReceipt` (soulbound settlement proof), and beside them the v2 arena: `Arena` + `ArgusCourt` on `Params` generated from `params/crucible.params.json` (ADR-0011). The arena has no UI and no public-chain deployment — it is not a paper contract either: `npm run demo` deploys it beside the legacy escrow on Anvil, bonds six Argus seats, posts a trial, claims it and submits a runner-signed run, and 270 Foundry tests cover the mechanism. |
 | [`packages/smith-sdk`](./packages/smith-sdk) | The artifact schema, JCS hashing, EIP-712 signing, and `defineAgent` — so any agent can compete. |
 | [`packages/frame`](./packages/frame) | The replay's two pure halves: the frame reducer (a trial's own logs, folded into ordered beats with the money each one carried) and the moment detector (which beats are worth a caption). No chain, no clock, no model — the hashes it pins are what a stored line can later point at. |
 | [`packages/forge-runner`](./packages/forge-runner) | The work-performing agent, including a real LLM-backed `step()` and an Anthropic client. |
 | [`packages/argus`](./packages/argus) | The verifier. Re-runs the pinned suite deterministically; an LLM rubric only when the suite cannot decide. |
+| [`grader/`](./grader) | Treats every model as a swappable candidate engine behind one adapter, scored by the same corpus and the same gates: false-pass rate, p95 latency, and test–retest agreement, with a disqualification that names every gate that fired. `npm run arena:grade` is its production caller. |
 | [`packages/agent-security`](./packages/agent-security) | 35 controls for running agents that hold keys: credentialing, RBAC, delegation, sandboxing, injection defence, audit, forensics. 153 tests. |
-| [`packages/indexer`](./packages/indexer) | Scribe. Event projection and the JSON-safe API snapshot. |
+| [`packages/indexer`](./packages/indexer) | Scribe. Event projection and the JSON-safe API snapshot — one transport serving both contracts, with a forward-only arena reducer beside the trial read model. No keys, no authority. |
+| [`packages/cidstore`](./packages/cidstore) | Content-addressed storage: real IPFS CIDs computed from the bytes, and the disclosure bridge that ties a keccak digest on-chain to the CID naming the same content off it. |
+| [`packages/crypto`](./packages/crypto) | One crypto door — every hash, encrypt and sign call site routes through it, which is also the seam a post-quantum migration would go through. |
 | [`packages/warden`](./packages/warden) | Notices when a window closes and queues the permissionless `finalize`. |
 | [`apps/api`](./apps/api) | Hono REST API over the read model. No route can move funds; the optional voice proxy is the one route that spends a TTS credit. |
+| [`apps/keeper`](./apps/keeper) | The Warden as a service: sweeps the chain and quenches trials whose windows closed, permissionlessly, one bad trial never stopping the rest. |
+| [`apps/juror`](./apps/juror) | The Argus seat as a service: reads a Challenged trial, fetches the content it committed to, re-runs the pinned suite, and casts this seat's commit and reveal with the salt held in a durable store. |
 | [`apps/web`](./apps/web) | Next.js 15 + the Industrial Forge design system. |
 
 ## The merged workspaces
@@ -163,7 +184,7 @@ Three branches, and only three commits ever move between them:
 |---|---|
 | `develop` | Integration. Everything lands here first; the ladder promotes it forward. |
 | `staging` | What production will be, one gate ahead of it. |
-| `main` | What is live. `deploy.yml` ships it on every push. |
+| `main` | What is live. A green `ci` here ships it (`deploy.yml`) and the ship tags it (`release.yml`). |
 
 The repo runs on two self-hosted runners (`crucible-vps-1`, `crucible-vps-2`)
 that are systemd services on the same VPS that serves the site — `gh api
@@ -175,9 +196,10 @@ self-hosted runners must not execute a fork's code beside production's `.env`.
 
 | Workflow | Trigger | What it proves |
 |---|---|---|
-| `ci.yml` | push to main/develop/staging, PRs from the same repo, and by hand | forge fmt, build, 270 tests and the gas report; slither with every suppression justified in `slither.config.json`; the TypeScript suites for all fifteen workspaces in one job (two runners is two slots, and a matrix is a queue); the web lint job (react-hooks + core rules — type-level linting is `tsc --noEmit` strict, which the typecheck step already runs); `next build`; and a dependency audit that fails only on advisories outside the set the README documents as known-unfixable. **Active again on 2026-10-24**: it had been `disabled_manually` since 2026-10-23 because every run died at job startup (`startup_failure`, 0 jobs) while the repository was private, and the same dispatch queued within seconds of it becoming public. The first full run was green on TypeScript, `next build` and the fork tests, and red on `forge build --sizes` (`Arena` was 26,209 B against EIP-170's 24,576), slither (exit 255) and the dependency audit. The size failure is since fixed (`optimizer_runs = 200`, plus test-only getters moved out of `Arena`), and the newest `ci` on `main` is 5 of 7 green with `Contracts (forge)` among them; slither and the audit are still red, so `ci` on `main` is not yet a thing that finishes green, the deploy gate has refused on every attempt since, and the deploys of 2026-10-24 went out by hand over SSH. |
-| `promote.yml` | a green `ci` on develop or staging | The promotion ladder. A green build on `develop` becomes `staging`; a green build on `staging` becomes `main`. The gate is the `ci` run's completion event — polling the pushed commit's check suites deadlocks on the gate's own pending suite — and the merge is pushed with the default `GITHUB_TOKEN`, which by design does not re-trigger workflows, so the ladder cannot loop. |
-| `deploy.yml` | a green `ci` on main, or by hand | Ships main. It has not fired on its own since 2026-10-23 because `ci` on `main` is red on the three gates above, and a deploy refuses to run on a red gate by design — which is why the 2026-10-24 ships went out by hand over SSH, replicating these steps one at a time. The runner *is* the VPS, so there is no SSH key to rotate: it syncs the tree to `~/crucible` (never the server's `.env`, which holds the build args the browser bundle bakes), builds `web`, `api` and `keeper` **before** the swap, then `up -d --no-deps` so anvil keeps its chain, and gates on `/api/health` answering 200. The 2026-10-24 deploy ran by hand over SSH because Actions was off, and needed a chain reset on top: `createTrial` changed arity, so the escrow at the same address had to be redeployed. |
+| `ci.yml` | push to main/develop/staging, PRs from the same repo, and by hand | forge fmt, build, 270 tests and the gas report; slither, with every suppression justified in `slither.config.json` and the remainder triaged in `docs/slither-triage.md`; the TypeScript suites for all fifteen workspaces in one job (two runners is two slots, and a matrix is a queue); the web lint job (react-hooks + core rules — type-level linting is `tsc --noEmit` strict, which the typecheck step already runs); `next build`; the ERC-8004 fork tests against mainnet as their own job; gitleaks; and a dependency audit that fails only on advisories outside the documented set in `scripts/audit-gate.mjs`. **All seven jobs are green on `main`** (run 40231435578, 2026-10-25) — which is what the ladder now ships on. It was not always so: the workflow sat `disabled_manually` from 2026-10-23 while the repository was private (every run died at job startup with 0 jobs, and the same dispatch queued within seconds of it going public), and its first full run was red on `forge build --sizes` (`Arena` at 26,209 B against EIP-170's 24,576 — since fixed with `optimizer_runs = 200` and test-only getters moved out of the shipped bytecode), on slither, and on the audit. The deploys of 2026-10-24 went out by hand over SSH while those three were still red. |
+| `promote.yml` | a green `ci` on develop or staging | The promotion ladder: a green `develop` becomes `staging`, a green `staging` becomes `main`, and it is a merge each time, never a rewrite. The trigger is the `ci` run's *completion* — polling the pushed commit's check suites deadlocks on the gate's own pending suite. Because the merge is pushed with `GITHUB_TOKEN`, which raises no `push` event, **each rung asks for the next by name and holds until it finishes**: a `workflow_dispatch` run raises no downstream `workflow_run` either, and waiting for an event that never arrives is how the ladder used to stop one rung short with a green build and no ship. A red gate stops it. |
+| `deploy.yml` | a green `ci` on main, or by hand | Ships `main`, then asks for its own release. The runner *is* the VPS, so there is no SSH key to rotate: it syncs the tree to `~/crucible` (never the server's `.env`, which holds the build args the browser bundle bakes), builds `web`, `api` and `keeper` **before** the swap, then `up -d --no-deps` so anvil keeps its chain, gates on `/api/health`, re-seeds and asserts the deployment inside the container, and finally probes the public surface from the host — the site, `/api/ready`, `/api/hall` naming the contract that was actually deployed, and the indexer's `syncError`. Its last step dispatches `release.yml` and **watches** it, so a tag that fails turns the deploy that shipped the site red instead of leaving `main` live and untagged. |
+| `release.yml` | asked for by `deploy.yml`, or by hand | Tags `main`'s tip and publishes the GitHub Release. The number is computed from the highest `vX.Y.Z` in the repository (`scripts/version.mjs`) rather than remembered by anyone, and the job refuses to tag a tree that is no longer `main`'s tip — a tag is a claim about a commit. It used to listen for `deploy`'s completion instead, an event that never arrives for a dispatched deploy: measured on 2026-10-25, no ladder deploy had ever tagged a release. `v0.1.0` was asked for by hand; `v0.1.1` and `v0.1.2` came from the deploy that shipped them. |
 
 Two rules the pipeline learned the hard way, both encoded as steps: the runner
 reclaims its builder cache before building (this box once filled to 100% and
@@ -337,30 +359,35 @@ Alloy tiers: Iron (1) · Bronze (3) · Steel (10 & ≥1 survived) · Damascus (2
 ## Verification
 
 ```bash
-npm run contracts:test      # 270 Foundry tests: the legacy escrow, the arena flow table, 6 invariants, 30 for the bridge
-npm test                    # 1503 TypeScript tests, then the Foundry suite
-npm run verify:all          # typecheck + TypeScript suites + Foundry suite in one command
+npm run contracts:test      # 270 Foundry tests: 85 the legacy escrow, 88 the arena and its flow table, 6 invariants, 30 for the bridge
+npm test                    # the fourteen TypeScript workspaces, then the Foundry suite
+npm run verify:all          # typecheck + every workspace suite in one command
 npm run coverage --workspace crucible-contracts   # line/statement/branch coverage of the contracts
 npm run build               # tsc for packages, next build for the web app
 npm run demo                # anvil + deploy + the whole loop, settles a real verdict
 npm run agent:live          # the real agent against a real model in a real sandbox
 ```
 
-**1773 tests total** (1503 TypeScript + 270 Foundry), counted on 2026-10-24 by hand on the
-shipped tree, while the pipeline that normally counts them was still switched off (it is active
-again the same day — see the
-workflow table). Contract coverage was re-measured on the same 2026-10-24 run, from
-`forge coverage --ir-minimum`: `CrucibleTrials.sol` 97.65% of lines / 96.24% of
-statements / 90.80% of branches, `AlloyRegistry.sol` 97.01% / 97.18% / 92.31%,
-`ReputationBridge.sol` 94.34% / 92.98% / 82.35%, `CrucibleHall.sol` 93.15% / 92.05% /
-72.22%. The last two are the real gaps, not rounding: Hall's branches and
-ReputationBridge's are the lowest numbers among the shipped contracts and are explained in
-`HARDENING.md`.
+**1826 tests pass, 10 skipped** — 1560 TypeScript passed with 6 skipped, and 266 Foundry passed
+with 4 skipped, so 1836 counted. Measured per workspace on 2026-10-25 on the committed tree; the
+six skips are `forge-runner` tests that ask for a Docker daemon, the four are the fork tests below.
+
+Contract coverage, from `forge coverage --ir-minimum` on the same day, with
+`scripts/coverage-gate.mjs` enforcing a floor **per contract rather than the `Total` row**:
+`CrucibleTrials.sol` 97.71% lines / 96.11% statements / 89.89% branches, `AlloyRegistry.sol`
+97.78 / 97.92 / 94.12, `Arena.sol` 98.41 / 93.97 / 73.20, `ReputationBridge.sol` 94.34 / 92.98 /
+82.35, `VerificationReceipt.sol` 100 / 98.28 / 87.50, `Params.sol` 100 / 100 / 100,
+`CrucibleHall.sol` 93.15 / 92.05 / 72.22, `ArgusCourt.sol` 88.14 / 81.46 / 55.56. All eight clear
+their floors, and the gate says so. **Where the real gaps are, named rather than averaged:**
+`ArgusCourt` at 55.56% of branches is the lowest number on any shipped contract — the court's
+draw and challenge paths run in the happy case and not in the corners — then `CrucibleHall`
+(72.22% of branches, and 9 of 12 functions) and `Arena` (73.20%). `HARDENING.md` records the gate
+itself and both of these measurements.
 
 Four of the 270 are the ERC-8004 fork tests, and they are **skipped, not passed**, unless
 the suite runs against a mainnet fork: `isMainnetFork` calls `vm.skip` unless
 `block.chainid == 1`, so a run without `MAINNET_RPC_URL` reports
-`250 passed, 4 skipped` and claims nothing about the live registry. Run them for real with
+`266 passed, 4 skipped` and claims nothing about the live registry. Run them for real with
 `forge test --fork-url $MAINNET_RPC_URL` before believing the registry claims.
 
 On Windows, `npm test` resolves `forge` through `scripts/run-forge.mjs`: it checks
@@ -485,9 +512,11 @@ Two properties it checks that a stub could not:
 
 ## Known limits
 
-- **`forge coverage` does not work** on these contracts. It disables the optimizer,
-  which re-triggers a `stack too deep` limit that `via_ir = true` exists to work
-  around. The test suite is the correctness gate. Do not quote a coverage percentage.
+- **`forge coverage` only runs with `--ir-minimum`.** Plain coverage turns the optimizer off, which
+  re-triggers the `stack too deep` limit that `via_ir = true` exists to work around. With the flag
+  it runs, and `scripts/coverage-gate.mjs` fails the build when a production contract drops below
+  its own floor — so the percentages above are a gate that has to stay green, not a quote someone
+  carried forward. `npm run coverage:gate --workspace crucible-contracts` reproduces them.
 - **The live agent runs unisolated.** `npm run agent:live` sets `forceLocal` because the
   pinned `crucible/verifier:latest` image only exists in the verifier's registry. It
   labels its own output `degraded`, and no artifact from that path may be presented as
@@ -501,11 +530,13 @@ Two properties it checks that a stub could not:
   their identity with the ERC-8004 Identity registry themselves (`register(agentURI)`
   mints to the caller), and Crucible records the association via `linkIdentity`.
   Verified on mainnet in `ForkTests.test_Fork_OperatorLinksARealIdentityRegistration`.
-- **28 npm advisories remain** (15 moderate, 13 high), and CI's audit gate passes them because
-  each one is inside the documented set in `scripts/audit-gate.mjs` with a written ceiling. They
-  reduce to **two leaf advisories**, and both are in the wallet stack:
+- **28 npm advisories remain** (15 moderate, 13 high, 0 critical — the gate reconciles its own walk
+  against npm's summary and fails if the two disagree), and CI's audit passes them because each one
+  is inside the documented set in `scripts/audit-gate.mjs` with a written ceiling. They reduce to
+  **five advisories in four leaf packages, every one of them reached through the wallet connector
+  tree** — not the "two" an earlier version of this list claimed, which missed the last two:
   - **`ws` — uninitialized memory disclosure (GHSA-58qx-3vcg-4xpx) and memory-exhaustion DoS
-    (GHSA-96hv-2xvq-fx4p).** Reached through `@walletconnect/ethereum-provider` →
+    (GHSA-96hv-2xvq-fx4p), high.** Reached through `@walletconnect/ethereum-provider` →
     `@walletconnect/utils` → `viem@2.23.2` → `ws@8.18.0`, all of them pinned exactly. The
     vulnerable copy sits under a viem this app never uses for websockets — the chains talk HTTP —
     but it is installed and importable. **Not fixable by a version bump:** npm `overrides` are
@@ -513,16 +544,29 @@ Two properties it checks that a stub could not:
     deleted), `@wagmi/connectors` 6.x tops out at the pinned version, and `wagmi` 3 does not
     change the chain. It needs `patch-package` to relax the exact pin, or the connector dropped.
   - **`zod` — memory exhaustion while validating oversized constrained collections
-    (GHSA-mrhx-c7xc-m3w5).** Reached through `abitype` → `viem`, and through
+    (GHSA-mrhx-c7xc-m3w5), high.** Reached through `abitype` → `viem`, and through
     `@coinbase/cdp-sdk` (which `apps/web/next.config.mjs` aliases out of the browser bundle
     entirely). There is no patched 3.x — the fix is 4.6.6, a major that `abitype` cannot take.
     The exposure here is low: zod validates ABI and parameter schemas, not attacker-supplied
     collections, and no request path feeds it one.
-  **The cost of this ceiling, stated rather than implied:** npm scores a package by the worst
-  advisory *anywhere in its chain*, and this gate scores per package, so it cannot tell "this
-  package's own advisory" from "the leaf's advisory it inherits". A **new** high advisory
-  appearing anywhere in the wallet stack would pass CI without a human reading it. That is the
-  price of a leaf we cannot patch; the thing that watches it is this paragraph, not the list.
+  - **`uuid@9.0.1` — missing buffer bounds check in v3/v5/v6 when a `buf` is passed, moderate.**
+    Reached through `@wagmi/connectors` → `@gemini-wallet/core` → `@metamask/rpc-errors` →
+    `@metamask/utils@11.12.1`, and again under `@metamask/sdk`. The vulnerable shape needs a caller
+    that passes a `buf` to a namespaced UUID; whether the MetaMask SDK does that has **not** been
+    checked here, and the ceiling admits it unexamined rather than pretending otherwise.
+  - **`decode-uri-component` — DoS by exponential decoding of malformed percent-encoded input,
+    moderate.** Reached through `@walletconnect/ethereum-provider` → `@reown/appkit` →
+    `@walletconnect/universal-provider` → `query-string`. npm reports the vulnerable range as
+    `<=0.4.2`. This one decodes URIs, and a wallet deep-link is exactly the attacker-visible string
+    that reaches a decoder — the input is the connect URI, not a chain response.
+  npm offers the same fix for all four: `wagmi` `3.7.9`, a semver-major. **That was measured, not
+  assumed** — the upgrade was installed, built, typechecked, tested and `next build`ed green on
+  2026-10-25, and it cleared **none** of these five while adding `abitype` and `zod` to the tree as
+  direct names. It was reverted. The thing that watches this set is still this paragraph: npm scores
+  a package by the worst advisory *anywhere in its chain*, and the gate scores per package, so it
+  cannot tell "this package's own advisory" from "the leaf's advisory it inherits". A **new** high
+  advisory anywhere in the wallet stack would pass CI without a human reading it. That is the price
+  of leaves we cannot patch.
 
 ## Bugs found in the original spec
 
