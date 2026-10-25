@@ -133,7 +133,12 @@ async function askLLM(config: FrenchyConfig["llm"], prompt: string, history: { r
     throw new Error("the brain is foggy");
   }
 
-  const data = await res.json();
+  // `Response.json()` is `unknown` under Node's types, and the shape here is known: an
+  // OpenAI-compatible chat completion. Saying so is what lets the compiler check the walk down
+  // to the reply instead of `any`-ing it away.
+  const data = (await res.json()) as {
+    choices?: { message?: { content?: string } }[];
+  };
   const reply = data.choices?.[0]?.message?.content?.trim();
   if (!reply) throw new Error("the brain gave no answer");
   return reply;
