@@ -96,7 +96,9 @@ export const DEFAULT_SECURITY: SecurityConfig = {
   // it exists for the handler that awaits a node.
   timeoutMs: 10_000,
   // `/stream` is one request that stays open for minutes on purpose and caps itself at ten.
-  timeoutExemptPaths: ["/stream"],
+  // `/mcp` is the same shape: its GET stream carries resource-updated notifications and is
+  // bounded by the transport's own keep-alive, not by a request deadline.
+  timeoutExemptPaths: ["/stream", "/mcp"],
   enforceHttps: false,
   trustProxy: false,
   // A year, and no `includeSubDomains`: this host has no subdomains to pin, and pinning

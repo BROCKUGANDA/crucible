@@ -28,7 +28,7 @@ function run(args: string[], env: Record<string, string> = {}): Promise<RunResul
   return new Promise((resolve) => {
     const child = spawn(process.execPath, [SCRIPT, ...args], {
       cwd: ROOT,
-      env: { ...process.env, MAINNET_RPC_URL: "", ...env },
+      env: { ...process.env, MAINNET_RPC_URL: "", MAINNET_RPC_FALLBACK_URL: "", ...env },
     });
     let stdout = "";
     let stderr = "";
@@ -115,6 +115,22 @@ describe("mainnet preflight", () => {
       const res = await run(["--signoffs", dir], { MAINNET_RPC_URL: server.url });
       expect(res.status, res.stderr).toBe(0);
       expect(res.stdout).toContain("all checks pass");
+      expect(res.stdout).toContain("RPC reports chain id 1");
+    } finally {
+      await server.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("falls back to the second endpoint when the first is unreachable", async () => {
+    const dir = signedDir();
+    const server = await rpc("0x1");
+    try {
+      const res = await run(["--signoffs", dir], {
+        MAINNET_RPC_URL: "http://127.0.0.1:1",
+        MAINNET_RPC_FALLBACK_URL: server.url,
+      });
+      expect(res.status, res.stderr).toBe(0);
       expect(res.stdout).toContain("RPC reports chain id 1");
     } finally {
       await server.close();
