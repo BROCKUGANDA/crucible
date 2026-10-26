@@ -208,7 +208,9 @@ contract CrucibleTrialsGuards is Test {
         uint256 id = _assignedTrial();
         bytes32 digest = keccak256(
             abi.encodePacked(
-                "\x19\x01", trials.DOMAIN(), keccak256(abi.encode(trials.RUN_TYPEHASH(), id, 1, RUN, uint64(block.timestamp + 10 minutes)))
+                "\x19\x01",
+                trials.DOMAIN(),
+                keccak256(abi.encode(trials.RUN_TYPEHASH(), id, 1, RUN, uint64(block.timestamp + 10 minutes)))
             )
         );
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(RUNNER_KEY, digest);
