@@ -12,6 +12,14 @@ import {
   type TrialStatus,
   type VerdictKind,
 } from "./model.js";
+import {
+  type MemberWithdrawal,
+  type SharesDistribution,
+  type StageAttestation,
+  type TeamFunding,
+  type TeamLedgerModel,
+  type TeamRow,
+} from "./team.js";
 
 /**
  * REST surface consumed by the frontend.
@@ -469,5 +477,134 @@ export function buildSnapshot(
     hall: hall(model).map((e) => toApiHallEntry(e, alloyById.get(e.agentId)?.tier ?? null)),
     counts,
     economics: buildEconomics(model, opts.feeBps ?? null),
+  };
+}
+
+/** The TeamLedger's public read-surface, serialized for the frontend. */
+
+export interface ApiStageAttestation {
+  stageHash: string;
+  member: string;
+  seq: number;
+  blockNumber: number;
+}
+
+export interface ApiTeamFunding {
+  amount: string; // ETH, exact decimal string
+  heldAfter: string; // ETH, exact decimal string
+  blockNumber: number;
+}
+
+export interface ApiSharesDistribution {
+  amount: string; // ETH, exact decimal string
+  remainderToLead: string; // ETH, exact decimal string
+  blockNumber: number;
+}
+
+export interface ApiMemberWithdrawal {
+  member: string;
+  amount: string; // ETH, exact decimal string
+  blockNumber: number;
+}
+
+export interface ApiTeam {
+  teamKey: string;
+  lead: string;
+  memberCount: number;
+  stageCount: number;
+  distributed: boolean;
+  held: string; // ETH, exact decimal string
+  stages: ApiStageAttestation[];
+  fundings: ApiTeamFunding[];
+  distribution: ApiSharesDistribution | null;
+}
+
+export interface ApiTeamLedger {
+  teams: ApiTeam[];
+  /** Total ETH credited across all members (sum of distributed amounts). */
+  totalCredit: string; // ETH, exact decimal string
+  /** Total ETH held but not yet distributed. */
+  heldTotal: string; // ETH, exact decimal string
+  version: number;
+}
+
+/** The ledger's conservation equation, exposed so a reader can verify it. */
+export interface ApiTeamLedgerConservation {
+  balance: string; // ETH, exact decimal string — read from the contract by the host
+  heldTotal: string; // ETH, exact decimal string — from the projection
+  totalCredit: string; // ETH, exact decimal string — from the projection
+  holds: boolean; // balance === heldTotal + totalCredit
+}
+
+function toApiStageAttestation(s: StageAttestation): ApiStageAttestation {
+  return {
+    stageHash: s.stageHash,
+    member: s.member,
+    seq: s.seq,
+    blockNumber: s.blockNumber,
+  };
+}
+
+function toApiTeamFunding(f: TeamFunding): ApiTeamFunding {
+  return {
+    amount: weiToEth(f.amount),
+    heldAfter: weiToEth(f.heldAfter),
+    blockNumber: f.blockNumber,
+  };
+}
+
+function toApiSharesDistribution(d: SharesDistribution): ApiSharesDistribution {
+  return {
+    amount: weiToEth(d.amount),
+    remainderToLead: weiToEth(d.remainderToLead),
+    blockNumber: d.blockNumber,
+  };
+}
+
+function toApiMemberWithdrawal(w: MemberWithdrawal): ApiMemberWithdrawal {
+  return {
+    member: w.member,
+    amount: weiToEth(w.amount),
+    blockNumber: w.blockNumber,
+  };
+}
+
+function toApiTeam(t: TeamRow): ApiTeam {
+  return {
+    teamKey: t.teamKey,
+    lead: t.lead,
+    memberCount: t.memberCount,
+    stageCount: t.stageCount,
+    distributed: t.distributed,
+    held: weiToEth(t.held),
+    stages: t.stages.map(toApiStageAttestation),
+    fundings: t.fundings.map(toApiTeamFunding),
+    distribution: t.distribution ? toApiSharesDistribution(t.distribution) : null,
+  };
+}
+
+/** Serialize a TeamLedgerModel for the frontend. Wei amounts cross as decimal strings. */
+export function toApiTeamLedger(model: TeamLedgerModel): ApiTeamLedger {
+  return {
+    teams: [...model.teams.values()].map(toApiTeam).sort((a, b) => a.teamKey < b.teamKey ? -1 : 1),
+    totalCredit: weiToEth(model.totalCredit),
+    heldTotal: weiToEth(model.heldTotal),
+    version: model.version,
+  };
+}
+
+/** Serialize the conservation equation. `balance` is read from the contract by the host. */
+export function toApiTeamLedgerConservation(
+  balanceWei: bigint,
+  model: TeamLedgerModel,
+): ApiTeamLedgerConservation {
+  const heldTotal = weiToEth(model.heldTotal);
+  const totalCredit = weiToEth(model.totalCredit);
+  const balance = weiToEth(balanceWei);
+  return {
+    balance,
+    heldTotal,
+    totalCredit,
+    holds: balanceWei === model.heldTotal + model.totalCredit,
   };
 }

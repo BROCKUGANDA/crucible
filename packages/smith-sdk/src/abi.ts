@@ -552,6 +552,168 @@ export const TRIALS_ABI = [
   },
 ] as const;
 
+export const TEAM_LEDGER_ABI = [
+  {
+    type: "event",
+    name: "TeamCreated",
+    inputs: [
+      { indexed: true, name: "teamKey", type: "bytes32" },
+      { indexed: true, name: "lead", type: "address" },
+      { indexed: false, name: "memberCount", type: "uint256" },
+    ],
+  },
+  {
+    type: "event",
+    name: "StageAttested",
+    inputs: [
+      { indexed: true, name: "teamKey", type: "bytes32" },
+      { indexed: true, name: "stageHash", type: "bytes32" },
+      { indexed: false, name: "member", type: "address" },
+      { indexed: false, name: "seq", type: "uint256" },
+    ],
+  },
+  {
+    type: "event",
+    name: "TeamFunded",
+    inputs: [
+      { indexed: true, name: "teamKey", type: "bytes32" },
+      { indexed: false, name: "amount", type: "uint256" },
+      { indexed: false, name: "heldAfter", type: "uint256" },
+    ],
+  },
+  {
+    type: "event",
+    name: "SharesDistributed",
+    inputs: [
+      { indexed: true, name: "teamKey", type: "bytes32" },
+      { indexed: false, name: "amount", type: "uint256" },
+      { indexed: false, name: "remainderToLead", type: "uint256" },
+    ],
+  },
+  {
+    type: "event",
+    name: "Withdrawn",
+    inputs: [
+      { indexed: true, name: "member", type: "address" },
+      { indexed: false, name: "amount", type: "uint256" },
+    ],
+  },
+  {
+    type: "function",
+    name: "createTeam",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "teamKey", type: "bytes32" },
+      { name: "members", type: "address[]" },
+      { name: "sharesBps", type: "uint256[]" },
+      { name: "deadline", type: "uint256" },
+      { name: "sigs", type: "bytes[]" },
+    ],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "attestStage",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "teamKey", type: "bytes32" },
+      { name: "stageHash", type: "bytes32" },
+      { name: "deadline", type: "uint256" },
+      { name: "sig", type: "bytes" },
+    ],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "fund",
+    stateMutability: "payable",
+    inputs: [{ name: "teamKey", type: "bytes32" }],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "distribute",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "teamKey", type: "bytes32" }],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "withdraw",
+    stateMutability: "nonpayable",
+    inputs: [],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "DOMAIN_SEPARATOR",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ type: "bytes32" }],
+  },
+  {
+    type: "function",
+    name: "team",
+    stateMutability: "view",
+    inputs: [{ name: "teamKey", type: "bytes32" }],
+    outputs: [
+      { type: "address" },
+      { type: "uint256" },
+      { type: "uint256" },
+      { type: "bool" },
+      { type: "uint256" },
+    ],
+  },
+  {
+    type: "function",
+    name: "members",
+    stateMutability: "view",
+    inputs: [{ name: "teamKey", type: "bytes32" }],
+    outputs: [{ type: "address[]" }],
+  },
+  {
+    type: "function",
+    name: "shareBpsOf",
+    stateMutability: "view",
+    inputs: [
+      { name: "teamKey", type: "bytes32" },
+      { name: "member", type: "address" },
+    ],
+    outputs: [{ type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "isMember",
+    stateMutability: "view",
+    inputs: [
+      { name: "teamKey", type: "bytes32" },
+      { name: "member", type: "address" },
+    ],
+    outputs: [{ type: "bool" }],
+  },
+  {
+    type: "function",
+    name: "held",
+    stateMutability: "view",
+    inputs: [{ name: "teamKey", type: "bytes32" }],
+    outputs: [{ type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "credit",
+    stateMutability: "view",
+    inputs: [{ name: "member", type: "address" }],
+    outputs: [{ type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "conservationHolds",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ type: "bool" }],
+  },
+] as const;
+
 export const ALLOY_ABI = [
   {
     type: "function",

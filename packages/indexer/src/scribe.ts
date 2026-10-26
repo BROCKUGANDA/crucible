@@ -1,5 +1,5 @@
 import { readFileSync, writeFileSync, existsSync, renameSync } from "node:fs";
-import { TRIALS_ABI } from "@crucible/smith";
+import { TEAM_LEDGER_ABI, TRIALS_ABI } from "@crucible/smith";
 import {
   createPublicClient,
   encodeEventTopics,
@@ -80,6 +80,21 @@ export const TRIALS_EVENTS = [
 
 /** The v1 escrow as a source. A caller spreads it and supplies the address. */
 export const TRIALS_SOURCE = { abi: TRIALS_ABI, eventNames: TRIALS_EVENTS } as const;
+
+/** The TeamLedger's events — the second contract this repository indexes. */
+export const TEAM_LEDGER_EVENTS = [
+  "TeamCreated",
+  "StageAttested",
+  "TeamFunded",
+  "SharesDistributed",
+  "Withdrawn",
+] as const;
+
+/** The TeamLedger as a source. A caller spreads it and supplies the address. */
+export const TEAM_LEDGER_SOURCE = {
+  abi: TEAM_LEDGER_ABI,
+  eventNames: TEAM_LEDGER_EVENTS,
+} as const;
 
 export interface IndexerConfig {
   /** The contract to read, and which of its events to accept. */

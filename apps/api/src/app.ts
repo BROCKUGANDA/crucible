@@ -15,6 +15,7 @@ import {
   type ArenaModel,
   type ReadModel,
   type ScribeStatus,
+  type TeamLedgerModel,
   type TrialStatus,
 } from "@crucible/indexer";
 import { rateLimit } from "./rate-limit.js";
@@ -56,6 +57,13 @@ export interface ApiDeps {
    * rendering an empty list that reads as "an arena with no trials".
    */
   arena?: () => ArenaModel;
+  /**
+   * The TeamLedger's projection, or nothing when this host has no TeamLedger address.
+   *
+   * A second model over the same transport as the trials indexer. `undefined` means no one
+   * is indexing TeamLedger here; the route reports `projected: false` rather than an empty list.
+   */
+  team?: () => TeamLedgerModel;
   /**
    * Alloy facts for one agent — tier, soulbound lock, token URI — sourced from
    * `AlloyRegistry`. Kept synchronous so a snapshot build cannot await the chain: the
@@ -892,6 +900,59 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
     return c.json({
       data: { trials },
       meta: { readModel: "arena", projected: true, count: trials.length, version: model.version },
+    });
+  });
+
+  /**
+   * The TeamLedger, projected from `TeamLedger.sol` logs by the same transport that reads the
+   * v1 escrow.
+   *
+   * `projected: false` is a different answer from an empty list: the first means no one is
+   * reading TeamLedger on this host. Wei crosses as a decimal string because JSON has no bigint.
+   */
+  app.get("/teams", (c) => {
+    const model = deps.team?.();
+    if (!model) {
+      return c.json({
+        data: { teams: [] },
+        meta: { readModel: "team-ledger", projected: false, reason: "no TeamLedger address on this host" },
+      });
+    }
+    const teams = [...model.teams.values()]
+      .sort((a, b) => (a.teamKey < b.teamKey ? -1 : 1))
+      .map((t) => ({
+        teamKey: t.teamKey,
+        lead: t.lead,
+        memberCount: t.memberCount,
+        stageCount: t.stageCount,
+        distributed: t.distributed,
+        held: t.held.toString(),
+        stages: t.stages.map((s) => ({
+          stageHash: s.stageHash,
+          member: s.member,
+          seq: s.seq,
+          blockNumber: s.blockNumber,
+        })),
+        fundings: t.fundings.map((f) => ({
+          amount: f.amount.toString(),
+          heldAfter: f.heldAfter.toString(),
+          blockNumber: f.blockNumber,
+        })),
+        distribution: t.distribution
+          ? {
+              amount: t.distribution.amount.toString(),
+              remainderToLead: t.distribution.remainderToLead.toString(),
+              blockNumber: t.distribution.blockNumber,
+            }
+          : null,
+      }));
+    return c.json({
+      data: {
+        teams,
+        totalCredit: model.totalCredit.toString(),
+        heldTotal: model.heldTotal.toString(),
+      },
+      meta: { readModel: "team-ledger", projected: true, count: teams.length, version: model.version },
     });
   });
 

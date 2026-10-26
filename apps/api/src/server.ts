@@ -5,15 +5,20 @@ import { foundry } from "viem/chains";
 import { createPublicClient, http, keccak256, toHex, type Address } from "viem";
 import {
   ARENA_EVENT_NAMES,
+  TEAM_LEDGER_EVENTS,
+  TEAM_LEDGER_SOURCE,
   emptyArenaModel,
+  emptyTeamLedgerModel,
   replayArena,
+  replayTeamLedger,
   Scribe,
   TRIALS_SOURCE,
   UNKNOWN_ALLOY,
   type AlloyState,
   type ArenaModel,
+  type TeamLedgerModel,
 } from "@crucible/indexer";
-import { ALLOY_ABI, ARENA_ABI, selfSchedulingLoop } from "@crucible/smith";
+import { ALLOY_ABI, ARENA_ABI, TEAM_LEDGER_ABI, selfSchedulingLoop } from "@crucible/smith";
 import { createApp } from "./app.js";
 import { makeReplaySource } from "./replay.js";
 import { dlq } from "./dlq.js";
@@ -97,6 +102,7 @@ const scribePollMs = optionalPollMs("SCRIBE_POLL_MS", 2000);
 const rpcUrl = process.env.RPC_URL ?? "http://127.0.0.1:8545";
 const trialsAddress = requiredAddress("TRIALS_ADDRESS");
 const alloyAddress = requiredAddress("ALLOY_ADDRESS");
+const teamLedgerAddress = (process.env.TEAM_LEDGER_ADDRESS ?? "").trim();
 
 /**
  * How often the alloy sweep runs. A floor, not a guess at a block time: a malformed
@@ -409,6 +415,28 @@ if (arenaAddress.length > 0) {
   console.log(`[crucible] arena ${arenaAddress}`);
 }
 
+/** TeamLedger — second model over the same transport, its own address and cursor. */
+let teamLedgerModel: TeamLedgerModel = emptyTeamLedgerModel();
+if (teamLedgerAddress.length > 0) {
+  const teamLedgerScribe = new Scribe({
+    source: {
+      ...TEAM_LEDGER_SOURCE,
+      address: teamLedgerAddress as Address,
+    },
+    chain: foundry,
+    rpcUrl,
+    fromBlock: optionalBlock("FROM_BLOCK"),
+    pollMs: scribePollMs,
+    onEvents: (events) => {
+      teamLedgerModel = replayTeamLedger(events, teamLedgerModel);
+    },
+    onError: (kind, detail) => dlq.push(`scribe.team-ledger.${kind}`, detail),
+  });
+  await teamLedgerScribe.sync();
+  void teamLedgerScribe.watch();
+  console.log(`[crucible] team-ledger ${teamLedgerAddress}`);
+}
+
 // Primed before the first request is served, so `/hall` never opens on an empty cache.
 await sweepAlloy();
 // Scheduled off the previous pass rather than the wall clock: an overlapping sweep doubles the
@@ -523,6 +551,7 @@ const app = createApp({
    * exact confusion the route's `projected` flag exists to prevent.
    */
   arena: arenaAddress.length > 0 ? () => arenaModel : undefined,
+  team: teamLedgerAddress.length > 0 ? () => teamLedgerModel : undefined,
   // The hall's txHashes are only checkable against one chain and one contract, and the
   // read model cannot infer either — this process is the only party that knows them.
   proofSource: { chain: foundry.name, chainId: foundry.id, trialsAddress },
