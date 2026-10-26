@@ -346,8 +346,14 @@ async function sweepAlloy(): Promise<void> {
 }
 
 // `sync()` is the breaker-guarded pass: a node that is down at boot is the outage the breaker
-// exists for, and the tail below gets the same protection without a second code path.
-await scribe.sync();
+// exists for. A down node must not prevent the API from starting — the watch loop retries on
+// subsequent ticks, and /health reports the sync error so an operator can see what is wrong.
+try {
+  await scribe.sync();
+} catch (err) {
+  const detail = err instanceof Error ? err.message : String(err);
+  console.error(`[crucible] initial sync failed (node may be down): ${detail}`);
+}
 scribe.hydrate();
 void scribe.watch();
 
