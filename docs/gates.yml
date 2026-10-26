@@ -1368,7 +1368,7 @@
   title: PayFi settlement reconciliation domain suite (24 eval artifacts; settled cents against the rounded invoice-minus-fee net; evaluation content, not a payment rail)
   frameworks: [ai-rmf]
 - id: 873
-  title: Sponsor fiat-to-ETH on-ramp (provider URL is configuration; sends ETH to the sponsor's own wallet; mainnet-only; hidden when unset; no custody, token or bridge on the escrow path)
+  title: Sponsor fiat-to-ETH on-ramp (the funder mints one single-use Coinbase Onramp session per request; the API relays it no-store and refuses a non-Coinbase URL; the sponsor's own wallet receives the ETH; no custody, token or bridge on the escrow path)
   frameworks: [scsvs]
 - id: 874
   title: Mainnet RPC primary and fallback (preflight and npm run fork:test try MAINNET_RPC_FALLBACK_URL only after the primary fails; measured drpc archive 4/4 at block 24,846,426 while publicnode pruned it)
@@ -1379,6 +1379,9 @@
 - id: 876
   title: Disclosed bytes are readable (GET /content/:id serves what a CID names or what a trial digest resolves to through the disclosure log; an unmounted store, content nobody pinned here, and content that no longer hashes to its id are three different answers)
   frameworks: [ai-rmf, soc2]
+- id: 877
+  title: Dedicated MCP rate limit (per-IP bucket on /mcp, default 30/min plus 10 burst, env-tunable; /mcp is exempt from the global read limiter so an agent loop and a browser cannot starve each other; 429 carries Retry-After)
+  frameworks: [scsvs]
 
 frameworks:
   owasp-top10: "OWASP Web Top 10 (2021)"

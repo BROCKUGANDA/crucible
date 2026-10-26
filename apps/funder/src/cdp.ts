@@ -137,6 +137,55 @@ export function cdpApi(
   });
 }
 
+/** Only a Coinbase-hosted on-ramp URL is returned to a caller; never an arbitrary redirect. */
+function isCoinbaseOnrampUrl(raw: string): boolean {
+  try {
+    const url = new URL(raw);
+    return url.protocol === "https:" && url.hostname === "pay.coinbase.com";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Mint one Coinbase Onramp session for a destination wallet.
+ *
+ * The returned URL is **single-use** and expires in minutes. It is never cached or logged here:
+ * two callers asking for the same wallet must get two sessions, because the first URL is spent
+ * the moment it is opened. On the sandbox, `partnerUserRef` is prefixed `sandbox-`, which is the
+ * vendor's documented way to exercise the flow without a real transfer.
+ */
+export async function createOnrampSession(
+  cfg: CdpConfig,
+  destinationAddress: string,
+  api = cdpApi,
+): Promise<{ onrampUrl: string }> {
+  const args = [
+    "-X", "POST", "/platform/v2/onramp/sessions",
+    "purchaseCurrency=ETH",
+    "destinationNetwork=ethereum",
+    `destinationAddress=${destinationAddress}`,
+  ];
+  if (cfg.envName === "sandbox") args.push("partnerUserRef=sandbox-crucible");
+
+  const result = await api(cfg, args);
+  if (result.status !== 0) {
+    throw new Error(
+      `CDP onramp session failed: ${result.stderr.trim().split(/\r?\n/).pop() ?? "unknown error"}`,
+    );
+  }
+
+  const json = result.json as Record<string, unknown> | null;
+  const session =
+    (json?.session as Record<string, unknown> | undefined) ??
+    ((json?.data as Record<string, unknown> | undefined)?.session as Record<string, unknown> | undefined);
+  const url = session?.onrampUrl ?? session?.onramp_url;
+  if (typeof url !== "string" || !isCoinbaseOnrampUrl(url)) {
+    throw new Error("CDP returned no Coinbase-hosted onrampUrl");
+  }
+  return { onrampUrl: url };
+}
+
 /**
  * Transfer USDC to a wallet on Base Sepolia via CDP Payments.
  *
