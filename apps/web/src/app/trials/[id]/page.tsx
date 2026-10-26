@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { Chrome, Quenching, SignalLost, TxLink, TxStates } from "@/components/Chrome";
 import { TxSheetStatus } from "@/components/TxSheetStatus";
 import { BreakPanel } from "@/components/BreakPanel";
 import { useSnapshot } from "@/lib/useSnapshot";
+import { API_BASE } from "@/lib/apiBase";
 import {
   formatDuration,
   formatEth,
@@ -152,7 +153,7 @@ export default function TrialDetailPage() {
             label="Suite"
             value={
               trial.testsCID
-                ? trial.testsCID
+                ? <Pinned cid={trial.testsCID} />
                 : `${shortHash(trial.testsDigest)} — fingerprint only`
             }
             mono
@@ -161,7 +162,7 @@ export default function TrialDetailPage() {
             label="Spec"
             value={
               trial.specCID
-                ? trial.specCID
+                ? <Pinned cid={trial.specCID} />
                 : `${shortHash(trial.specDigest)} — fingerprint only`
             }
             mono
@@ -292,12 +293,32 @@ export default function TrialDetailPage() {
   );
 }
 
-function Field({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+function Field({ label, value, mono }: { label: string; value: ReactNode; mono?: boolean }) {
   return (
     <div className="kv">
       <span className="kv__key">{label}</span>
       <span className={mono ? "mono" : undefined}>{value}</span>
     </div>
+  );
+}
+
+/**
+ * A disclosed CID, and the bytes it names.
+ *
+ * The chain only ever held a keccak digest, and this host published the sha256 CID beside it.
+ * Reading the file itself used to need the process that pinned it; `/content/:cid` serves it from
+ * the store, so a stranger can check the claim against the suite rather than against a hash of it.
+ */
+function Pinned({ cid }: { cid: string }) {
+  return (
+    <>
+      <a href={`${API_BASE}/content/${cid}`} className="mono">
+        {cid}
+      </a>{" "}
+      <a href={`${API_BASE}/content/${cid}`} rel="noreferrer">
+        read what it names
+      </a>
+    </>
   );
 }
 

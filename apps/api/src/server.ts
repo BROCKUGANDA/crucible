@@ -18,7 +18,8 @@ import {
 } from "@crucible/indexer";
 import { ALLOY_ABI, ARENA_ABI, TEAM_LEDGER_ABI, selfSchedulingLoop } from "@crucible/smith";
 import { createApp } from "./app.js";
-import { disclosedCids as readDisclosure, type DisclosureEntry } from "./disclosure.js";
+import { disclosureFileIn, disclosedCids as readDisclosure, type DisclosureEntry } from "./disclosure.js";
+import { createContentSource, digestToCidMap } from "./content.js";
 import { makeReplaySource } from "./replay.js";
 import { dlq } from "./dlq.js";
 import { createPassportSource } from "./passport.js";
@@ -390,6 +391,17 @@ function disclosedCids(): DisclosureEntry[] {
 }
 
 /**
+ * Reading the pinned bytes a CID or a trial digest names.
+ *
+ * The disclosure map is re-read per request rather than held: a producer can pin a suite and
+ * announce it at any moment, and a reader who arrived a minute early should not be told the
+ * digest resolves to nothing for the rest of this process's life.
+ */
+const contentLookup = createContentSource(contentDir, () =>
+  digestToCidMap(disclosureFileIn(contentDir), (message) => dlq.push("content.disclosure", message)),
+);
+
+/**
  * The v2 arena, when this host has one.
  *
  * A second `Scribe` over the same transport: the reader — sharding, bloom cross-check, quiet-tail
@@ -658,6 +670,7 @@ if (security.allowCredentials) {
 const app = createApp({
   getModel: () => scribe.state,
   disclosure: disclosedCids,
+  contentLookup,
   /**
    * Only when a scribe is actually running. Passing the model unconditionally made the route
    * report `projected: true` over an empty Map, which reads as "an arena with no trials" — the
