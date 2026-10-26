@@ -540,6 +540,16 @@ async function readTreasuryCredit(): Promise<void> {
   }
 }
 
+/**
+ * Issuers whose signed statement counts as a human attestation. Empty by default: no issuer
+ * exists for this deployment until the owner names one, and the evidence route reports the
+ * source as unconfigured rather than pretending a wallet is unattested-by-choice.
+ */
+const humanAttestors = (process.env.IDENTITY_ATTESTORS ?? "")
+  .split(",")
+  .map((a) => a.trim())
+  .filter((a) => /^0x[0-9a-fA-F]{40}$/.test(a));
+
 const trustProxy = process.env.TRUST_PROXY === "1";
 
 /**
@@ -610,6 +620,7 @@ const app = createApp({
   // The treasury's pull-ledger credit, read on the same clock as the alloy sweep. Null until a
   // read lands, so the page shows "—" rather than the fee dressed up as the whole income.
   treasuryCreditWei: () => treasuryCreditWei,
+  humanAttestors,
   indexStatus: () => scribe.status,
   // The one breaker this process runs: the node the index is read from. Reporting it is what
   // turns "the hall stopped moving" into "the node is tripped, with 12s of cooldown left".

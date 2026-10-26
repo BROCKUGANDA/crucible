@@ -104,17 +104,21 @@ describe("Bayesian Sybil-risk scorer (Phase 1)", () => {
 
   it("scores a Damascus-tier alloy wallet as high confidence", () => {
     const agent = makeAgent({ id: 1, operator: "0x" + "bb".repeat(20) });
-    const trial = makeTrial({ id: 1, agentId: 1, verdict: "paid" });
+    // The clock is explicit: age is measured on the chain's clock now, and a fixture that
+    // relied on `Date.now()` was measuring the test runner's wall clock.
+    const created = 1_700_000_000;
+    const trial = makeTrial({ id: 1, agentId: 1, verdict: "paid", createdAt: created });
     const model = makeModel([agent], [trial]);
     const alloy = makeAlloyStateFn(new Map([[1, makeAlloy({ tier: 4 })]]));
 
-    const score = scoreWallet(model, alloy, "0x" + "bb".repeat(20));
+    const score = scoreWallet(model, alloy, "0x" + "bb".repeat(20), created + 86400 * 100);
 
     expect(score.agentId).toBe(1);
     expect(score.pUniqueHuman).toBeGreaterThan(0.90);
     const damascus = score.evidence.find((e) => e.name === "alloyTierDamascus");
     expect(damascus).toBeDefined();
     expect(damascus?.lr).toBe(LIKELIHOOD_RATIOS.alloyTierDamascus);
+    expect(score.evidence.map((e) => e.name)).toContain("walletAgeOld");
   });
 
   it("scores a wallet with slashes lower", () => {
@@ -175,16 +179,13 @@ describe("Bayesian Sybil-risk scorer (Phase 1)", () => {
 
   it("wallet age signal triggers for old wallets", () => {
     const agent = makeAgent({ id: 5, operator: "0x" + "00".repeat(20) });
-    // Trial created 200 days ago
-    const oldTrial = makeTrial({
-      id: 5,
-      agentId: 5,
-      createdAt: Math.floor(Date.now() / 1000) - 86400 * 200,
-    });
+    // Trial created 200 days before the chain clock the scorer is handed.
+    const created = 1_000_000_000;
+    const oldTrial = makeTrial({ id: 5, agentId: 5, createdAt: created });
     const model = makeModel([agent], [oldTrial]);
     const alloy = makeAlloyStateFn(new Map());
 
-    const score = scoreWallet(model, alloy, "0x" + "00".repeat(20));
+    const score = scoreWallet(model, alloy, "0x" + "00".repeat(20), created + 86400 * 200);
 
     const ageSignal = score.evidence.find((e) => e.name === "walletAgeOld");
     expect(ageSignal).toBeDefined();
@@ -193,19 +194,51 @@ describe("Bayesian Sybil-risk scorer (Phase 1)", () => {
 
   it("wallet age signal does not trigger for new wallets", () => {
     const agent = makeAgent({ id: 6, operator: "0x" + "11".repeat(20) });
-    // Trial created 1 day ago
-    const newTrial = makeTrial({
-      id: 6,
-      agentId: 6,
-      createdAt: Math.floor(Date.now() / 1000) - 86400,
-    });
+    // Trial created 1 day before the chain clock.
+    const created = 1_000_000_000;
+    const newTrial = makeTrial({ id: 6, agentId: 6, createdAt: created });
     const model = makeModel([agent], [newTrial]);
     const alloy = makeAlloyStateFn(new Map());
 
-    const score = scoreWallet(model, alloy, "0x" + "11".repeat(20));
+    const score = scoreWallet(model, alloy, "0x" + "11".repeat(20), created + 86400);
 
     const ageSignal = score.evidence.find((e) => e.name === "walletAgeOld");
     expect(ageSignal).toBeUndefined();
+  });
+
+  it("does not age a wallet against the wall clock", () => {
+    // An old createdAt and NO chain clock: the signal must be absent, not computed against
+    // `Date.now()`. A host whose wall clock is skewed would otherwise invent evidence.
+    const agent = makeAgent({ id: 7, operator: "0x" + "12".repeat(20) });
+    const trial = makeTrial({ id: 7, agentId: 7, createdAt: 1_000_000_000 });
+    const score = scoreWallet(makeModel([agent], [trial]), makeAlloyStateFn(new Map()), "0x" + "12".repeat(20));
+    expect(score.evidence.find((e) => e.name === "walletAgeOld")).toBeUndefined();
+  });
+
+  it("does not call a slashed trial a survived break", () => {
+    // A break was filed and the agent was slashed. The old test — `breakSkeptic !== null` —
+    // treated that as survival, so being successfully broken raised the humanity score.
+    const agent = makeAgent({ id: 8, operator: "0x" + "13".repeat(20) });
+    const slashed = makeTrial({
+      id: 8,
+      agentId: 8,
+      verdict: "slashed",
+      breakSkeptic: "0x" + "14".repeat(20),
+    });
+    const score = scoreWallet(makeModel([agent], [slashed]), makeAlloyStateFn(new Map()), "0x" + "13".repeat(20));
+    expect(score.evidence.find((e) => e.name === "hasSurvivedBreak")).toBeUndefined();
+  });
+
+  it("counts a filed break that did not overturn a paid verdict", () => {
+    const agent = makeAgent({ id: 9, operator: "0x" + "15".repeat(20) });
+    const survived = makeTrial({
+      id: 9,
+      agentId: 9,
+      verdict: "paid",
+      breakSkeptic: "0x" + "16".repeat(20),
+    });
+    const score = scoreWallet(makeModel([agent], [survived]), makeAlloyStateFn(new Map()), "0x" + "15".repeat(20));
+    expect(score.evidence.find((e) => e.name === "hasSurvivedBreak")).toBeDefined();
   });
 
   it("decide maps probabilities to actions", () => {
@@ -252,6 +285,24 @@ describe("Bayesian Sybil-risk scorer (Phase 1)", () => {
       computedAt: Date.now(),
     });
     expect(deny.action).toBe("deny");
+  });
+
+  it("never points a reader at a check this host cannot run", () => {
+    // A decision reason is an instruction. "Require Passport stamp" was one, and this host has
+    // no Passport integration or credential — the evidence route reports `configured: false`.
+    // Naming an unconfigured mechanism sends the reader to a door that does not open.
+    for (const p of [0.95, 0.8, 0.55, 0.1]) {
+      const decision = decide({
+        wallet: "0x" + "aa".repeat(20),
+        agentId: 1,
+        pUniqueHuman: p,
+        logOdds: 0,
+        evidence: [],
+        modelVersion: "test",
+        computedAt: 0,
+      });
+      expect(decision.reason).not.toMatch(/passport|EAS attestation/i);
+    }
   });
 
   it("rejects invalid wallet addresses", () => {
