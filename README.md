@@ -38,27 +38,26 @@ Open ──claim──> Assigned ──submitRun──> Judging ──fileBreak�
    with the API on `:8787`. Every `up` is a fresh, deterministic chain.
 3. Read the proofs: `/hall` shows the leaderboard where each row quotes the
    settlement transaction and the identity registration that earned it. The
-   contracts are in `crucible-contracts/contracts` with 270 tests (266 passed; 4 of them ERC-8004
+   contracts are in `crucible-contracts/contracts` with 309 tests (305 passed; 4 of them ERC-8004
    fork tests, which skip without an RPC). The workspace suites
-   add 1566 more — web 290, grader 206, smith-sdk 203, agent-security 153, forge-runner 163 (6 of
-   them need a Docker daemon and skip without one), api 142, indexer 106, cidstore 98, juror 74,
-   argus 43, keeper 40, warden 24, frame 12, crypto 12 — and `npm test` runs all of them plus the
+   add 1692 more — web 330, grader 252, smith-sdk 203, api 142, indexer 135, agent-security 153,
+   forge-runner 163 (6 of them need a Docker daemon and skip without one), cidstore 102, juror 80,
+   argus 44, keeper 40, warden 24, frame 12, crypto 12 — and `npm test` runs all of them plus the
    Foundry suite; the contracts half needs Foundry (`forge test`), which the seed image runs on a
-   machine without a local forge. Counted per workspace on 2026-10-25: **1560 passed, 6 skipped**
-   across the fourteen TypeScript workspaces and **266 passed, 4 skipped** in Foundry — 1826
-   passing, 1836 counted. Run `npm test` to reproduce them.
+   machine without a local forge. Counted per workspace on 2026-10-25: **1686 passed, 6 skipped**
+   across the fourteen TypeScript workspaces and **305 passed, 4 skipped** in Foundry — 1991
+   passing, 2001 counted. Run `npm test` to reproduce them.
 4. Replay the whole loop against a running chain — register, post, claim,
    runner-signed runs, a break that Argus slashes, and the permissionless quench
    after the window really closes — with `crucible-contracts/script/GoldenPath.s.sol`:
    run `:Begin`, warp the node (`cast rpc anvil_setNextBlockTimestamp` + `anvil_mine`),
-   then `:Finish`. **Measured 2026-10-25, this script does not run from a bare
-   `Deploy.s.sol` chain as the sentence above implies.** `:Begin` calls
-   `register()` on the identity registry, which only `Demo.s.sol` deploys and wires, so
-   against a plain deployment it reverts on address zero; and `:Finish` reads two
-   further variables the script header never mentions — `BROKEN_TRIAL` and `QUIET_TRIAL`
-   (`GoldenPath.s.sol:162-163`), the trial ids `:Begin` chose. Run it on the demo
-   chain, or wire the identity registry and pass those two ids, before treating the
-   phrase above as a command.
+   then `:Finish`. **Measured 2026-10-25 on a bare `Deploy.s.sol` chain** — deploy, `:Begin`,
+   warp, `:Finish`, every exit 0 — which is what the sentence above had always implied and had
+   stopped meaning. `:Finish` finds the two trials on the chain (the sponsor's last two) and
+   checks them before spending a vote on them, so nothing has to be remembered between the
+   phases; pass `BROKEN_TRIAL` and `QUIET_TRIAL` to name the pair yourself on a chain that carried
+   other trials in between. `:Begin` links an ERC-8004 identity when the chain has a registry
+   wired and says plainly when it does not — `Deploy.s.sol` wires none, `Demo.s.sol` does.
 
 **The live deployment** runs at `https://crucible.svalley.tech` behind Cloudflare
 Zero Trust (request access, or run the local demo — same code, same contracts).
