@@ -309,7 +309,10 @@ export function decide(score: RiskScore): Decision {
   if (p >= 0.70) {
     return {
       action: "challenge",
-      reason: "Require Passport stamp or EAS attestation",
+      // Not "require a Passport stamp": this host has no Passport integration and no credential
+      // for one (the evidence route says so in `sources.passport`). Naming a check that cannot
+      // run here would send a reader to a door that does not open.
+      reason: "Partial evidence — more settled trials with the same identity would raise this score",
     };
   }
   if (p >= 0.40) {
