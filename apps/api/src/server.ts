@@ -103,6 +103,7 @@ const rpcUrl = process.env.RPC_URL ?? "http://127.0.0.1:8545";
 const trialsAddress = requiredAddress("TRIALS_ADDRESS");
 const alloyAddress = requiredAddress("ALLOY_ADDRESS");
 const teamLedgerAddress = (process.env.TEAM_LEDGER_ADDRESS ?? "").trim();
+const funderUrl = (process.env.FUNDER_URL ?? "").trim();
 
 /**
  * How often the alloy sweep runs. A floor, not a guess at a block time: a malformed
@@ -552,6 +553,7 @@ const app = createApp({
    */
   arena: arenaAddress.length > 0 ? () => arenaModel : undefined,
   team: teamLedgerAddress.length > 0 ? () => teamLedgerModel : undefined,
+  funderUrl: funderUrl.length > 0 ? funderUrl : undefined,
   // The hall's txHashes are only checkable against one chain and one contract, and the
   // read model cannot infer either — this process is the only party that knows them.
   proofSource: { chain: foundry.name, chainId: foundry.id, trialsAddress },

@@ -65,6 +65,14 @@ export interface ApiDeps {
    */
   team?: () => TeamLedgerModel;
   /**
+   * The funder service's base URL, or nothing when this host has no funder.
+   *
+   * `apps/funder` holds the CDP credential (ADR-0015 §1); this process only asks it for
+   * an allocation over an internal socket. `undefined` means no funder is reachable here,
+   * and `/faucet` reports `fundable: false` rather than pretending.
+   */
+  funderUrl?: string;
+  /**
    * Alloy facts for one agent — tier, soulbound lock, token URI — sourced from
    * `AlloyRegistry`. Kept synchronous so a snapshot build cannot await the chain: the
    * host reads the registry on its own clock and hands this a cached answer, or
@@ -954,6 +962,71 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
       },
       meta: { readModel: "team-ledger", projected: true, count: teams.length, version: model.version },
     });
+  });
+
+  /**
+   * Request test ETH from the funder service.
+   *
+   * The funder holds the CDP credential (ADR-0015 §1); this process only asks it for
+   * an allocation over an internal socket. The request body is a wallet address and
+   * an amount in ETH. The funder validates caps, estimates before spend, and dispenses
+   * USDC on Base Sepolia via CDP Payments.
+   *
+   * `fundable: false` is a different answer from a refused allocation: the first means
+   * no funder is reachable on this host, the second means the funder said no.
+   */
+  app.post("/faucet", async (c) => {
+    const funder = deps.funderUrl;
+    if (!funder) {
+      return c.json({
+        ok: false,
+        fundable: false,
+        reason: "no funder address on this host",
+      });
+    }
+
+    let body: { wallet?: string; amountEth?: number | string };
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "request body must be JSON" }, 400);
+    }
+
+    const wallet = String(body.wallet ?? "").trim();
+    const amount = Number(body.amountEth);
+    if (!/^0x[0-9a-fA-F]{40}$/.test(wallet)) {
+      return c.json({ error: "wallet must be a 0x-prefixed 20-byte Ethereum address" }, 400);
+    }
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return c.json({ error: "amountEth must be a positive number" }, 400);
+    }
+
+    let res: Response;
+    try {
+      res = await fetch(`${funder}/allocate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wallet, amountEth: amount }),
+      });
+    } catch (err) {
+      return c.json(
+        {
+          ok: false,
+          fundable: true,
+          reason: `funder unreachable: ${err instanceof Error ? err.message : String(err)}`,
+        },
+        502,
+      );
+    }
+
+    const json = (await res.json().catch(() => null)) as
+      | { ok: boolean; wallet: string; requestedEth: string; grantedEth: string | null; transferId: string | null; reason: string | null }
+      | null;
+    if (!json) {
+      return c.json({ ok: false, fundable: true, reason: "funder returned an empty response" }, 502);
+    }
+
+    return c.json(json, res.ok ? 200 : 402);
   });
 
   /**
