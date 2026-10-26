@@ -163,6 +163,26 @@ contract ConservationInvariants is Test {
         sels[9] = Handler.withdrawAll.selector;
         sels[10] = Handler.setRunner.selector;
         targetSelector(FuzzSelector({addr: address(handler), selectors: sels}));
+        // The protocol contracts are not actors. Without this the fuzzer can call
+        // registerAgent FROM the escrow itself, paying with its own balance: the ETH
+        // never leaves, yet totalStakes grows, so books read exactly 2x balance. No
+        // real chain can do that: CrucibleTrials has no path that calls itself. A
+        // valued self-call is an instrument artifact, not a protocol state.
+        excludeContract(address(trials));
+        excludeContract(address(alloy));
+        // Targets and senders are different knobs, and the failure was a *sender*: it was
+        // called FROM the escrow, not merely targeted as a contract. Excluding it as a
+        // target leaves it in the sender pool, so both lists are set here — and the
+        // assertion reads the list the campaign actually uses, not this comment.
+        excludeSender(address(trials));
+        excludeSender(address(alloy));
+
+        address[] memory excludedSenders = excludeSenders();
+        bool escrowExcluded;
+        for (uint256 i; i < excludedSenders.length; ++i) {
+            if (excludedSenders[i] == address(trials)) escrowExcluded = true;
+        }
+        assertTrue(escrowExcluded, "the escrow must be excluded as a fuzz sender");
     }
 
     /// forge invariant: Σ(balance) == Σ(stakes) + Σ(credits) + Σ(escrow) — always
