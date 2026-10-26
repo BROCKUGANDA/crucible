@@ -287,6 +287,24 @@ describe("Bayesian Sybil-risk scorer (Phase 1)", () => {
     expect(deny.action).toBe("deny");
   });
 
+  it("never points a reader at a check this host cannot run", () => {
+    // A decision reason is an instruction. "Require Passport stamp" was one, and this host has
+    // no Passport integration or credential — the evidence route reports `configured: false`.
+    // Naming an unconfigured mechanism sends the reader to a door that does not open.
+    for (const p of [0.95, 0.8, 0.55, 0.1]) {
+      const decision = decide({
+        wallet: "0x" + "aa".repeat(20),
+        agentId: 1,
+        pUniqueHuman: p,
+        logOdds: 0,
+        evidence: [],
+        modelVersion: "test",
+        computedAt: 0,
+      });
+      expect(decision.reason).not.toMatch(/passport|EAS attestation/i);
+    }
+  });
+
   it("rejects invalid wallet addresses", () => {
     expect(() => {
       // Just verify the validation logic inline
