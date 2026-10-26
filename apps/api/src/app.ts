@@ -18,8 +18,15 @@ import {
   type TeamLedgerModel,
   type TrialStatus,
 } from "@crucible/indexer";
-import { decide, scoreWallet, type Decision, type RiskScore } from "./identity.js";
+import {
+  decide,
+  scoreWallet,
+  type Decision,
+  type PassportSignal,
+  type RiskScore,
+} from "./identity.js";
 import { parseAttestationProof, verifyAttestation } from "./attestation.js";
+import { createPassportSource, type PassportCheck, type PassportEligibility } from "./passport.js";
 import { rateLimit } from "./rate-limit.js";
 import { dlq } from "./dlq.js";
 import { TickPump } from "./tick-pump.js";
@@ -98,6 +105,11 @@ export interface ApiDeps {
    * the vendor: an issuer holds their own key and this host needs no credential.
    */
   humanAttestors?: string[];
+  /**
+   * Human Passport eligibility, read from the isolated clean.sdk sidecar. Absent means the
+   * source is unconfigured and the evidence route says so; it is never assumed neutral.
+   */
+  passportEligibility?: PassportCheck;
   /**
    * What the hall's tx proofs are against. A transactionHash only means something on
    * one chain and in one contract's logs, and the read model is chain-agnostic — it
@@ -340,8 +352,27 @@ function securityOverrides(opts: ApiOptions): Partial<SecurityConfig> {
   return overrides;
 }
 
+/**
+ * The part of a Passport reading that belongs in the score.
+ *
+ * An unavailable source, an absent source and an ineligible wallet all return `null`: none of
+ * them is a fact about the wallet. Only an eligible credential, or a sanctions match, moves
+ * the posterior.
+ */
+function passportSignal(passport: PassportEligibility | null): PassportSignal | null {
+  if (!passport || !passport.available) return null;
+  if (passport.sanctioned === true) {
+    return { eligible: false, sanctioned: true, score: passport.score, method: passport.method };
+  }
+  if (passport.eligible === true) {
+    return { eligible: true, sanctioned: false, score: passport.score, method: passport.method };
+  }
+  return null;
+}
+
 export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
   const app = new Hono();
+  const passportCheck = deps.passportEligibility ?? createPassportSource(null);
 
   /**
    * Verify an attestation supplied on the query string, if one was.
@@ -1031,7 +1062,15 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
     // The chain clock, not the wall clock: trial timestamps are block timestamps.
     const now = deps.indexStatus?.().headTimestamp ?? null;
     const attestation = await attestedIssuer(c, wallet, now);
-    const score = scoreWallet(model, (id) => deps.alloyState?.(id) ?? null, wallet, now, attestation.issuer);
+    const passport = await passportCheck(wallet);
+    const score = scoreWallet(
+      model,
+      (id) => deps.alloyState?.(id) ?? null,
+      wallet,
+      now,
+      attestation.issuer,
+      passportSignal(passport),
+    );
     const decision = decide(score);
 
     return c.json({ score, decision });
@@ -1046,7 +1085,15 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
     const model = deps.getModel();
     const now = deps.indexStatus?.().headTimestamp ?? null;
     const attestation = await attestedIssuer(c, wallet, now);
-    const score = scoreWallet(model, (id) => deps.alloyState?.(id) ?? null, wallet, now, attestation.issuer);
+    const passport = await passportCheck(wallet);
+    const score = scoreWallet(
+      model,
+      (id) => deps.alloyState?.(id) ?? null,
+      wallet,
+      now,
+      attestation.issuer,
+      passportSignal(passport),
+    );
     const decision = decide(score);
 
     return c.json({ score, decision });
@@ -1059,9 +1106,9 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
    * Both read the same collection, so a reviewer can check the reasoning against the chain
    * facts it names rather than trusting a single posterior.
    *
-   * `sources.passport` is always unconfigured today: this repository has no Gitcoin Passport
-   * integration and no credential for one. Reporting that explicitly is the honest answer —
-   * a source silently missing from the list would read as "checked and neutral".
+   * `sources.passport` distinguishes "not configured" from "asked and unreachable" from
+   * "answered". Reporting a missing source explicitly is the honest answer — a source
+   * silently omitted would read as "checked and neutral".
    */
   app.get("/identity/evidence/:wallet", async (c) => {
     const wallet = c.req.param("wallet");
@@ -1072,7 +1119,15 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
     const model = deps.getModel();
     const now = deps.indexStatus?.().headTimestamp ?? null;
     const attestation = await attestedIssuer(c, wallet, now);
-    const score = scoreWallet(model, (id) => deps.alloyState?.(id) ?? null, wallet, now, attestation.issuer);
+    const passport = await passportCheck(wallet);
+    const score = scoreWallet(
+      model,
+      (id) => deps.alloyState?.(id) ?? null,
+      wallet,
+      now,
+      attestation.issuer,
+      passportSignal(passport),
+    );
     const decision = decide(score);
 
     return c.json({
@@ -1088,10 +1143,7 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
       sources: {
         // Alloy tier, identity linkage and trial history, read from this host's own projection.
         alloy: { configured: true },
-        passport: {
-          configured: false,
-          reason: "No Gitcoin Passport integration or credential is configured on this host",
-        },
+        passport,
         attestation: {
           configured: (deps.humanAttestors ?? []).length > 0,
           present: attestation.issuer !== null,

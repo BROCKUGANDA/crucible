@@ -21,6 +21,7 @@ import { createApp } from "./app.js";
 import { disclosedCids as readDisclosure, type DisclosureEntry } from "./disclosure.js";
 import { makeReplaySource } from "./replay.js";
 import { dlq } from "./dlq.js";
+import { createPassportSource } from "./passport.js";
 import { resolveSecurity } from "./security.js";
 
 /**
@@ -550,6 +551,13 @@ const humanAttestors = (process.env.IDENTITY_ATTESTORS ?? "")
   .map((a) => a.trim())
   .filter((a) => /^0x[0-9a-fA-F]{40}$/.test(a));
 
+/**
+ * The isolated clean.sdk sidecar (`integrations/clean-sdk`). Empty means no Passport source
+ * is configured; the evidence route reports that state rather than omitting the source. The
+ * sidecar is a read-only eligibility check — it never sends a transaction and holds no key.
+ */
+const passportEligibility = createPassportSource(process.env.CLEAN_PASSPORT_URL ?? null);
+
 const trustProxy = process.env.TRUST_PROXY === "1";
 
 /**
@@ -621,6 +629,7 @@ const app = createApp({
   // read lands, so the page shows "—" rather than the fee dressed up as the whole income.
   treasuryCreditWei: () => treasuryCreditWei,
   humanAttestors,
+  passportEligibility,
   indexStatus: () => scribe.status,
   // The one breaker this process runs: the node the index is read from. Reporting it is what
   // turns "the hall stopped moving" into "the node is tripped, with 12s of cooldown left".

@@ -1,0 +1,15 @@
+{
+  "name": "@crucible/clean-bridge",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Isolated home for @human.tech/clean.sdk (Ethereum <-> Aztec). Not a workspace: nothing in Crucible imports it, and it must not reach the settlement path.",
+  "scripts": {
+    "start": "node src/server.mjs",
+    "test": "node --test test/*.test.mjs",
+    "install:scriptless": "npm install --ignore-scripts --no-audit --no-fund"
+  },
+  "dependencies": {
+    "@human.tech/clean.sdk": "0.2.1"
+  }
+}
