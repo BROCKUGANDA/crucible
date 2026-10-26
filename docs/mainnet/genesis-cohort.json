@@ -4,5 +4,5 @@
   "agents": [],
   "epochCapEth": "0",
   "gate": "G-804/G-801",
-  "note": "Genesis sponsors and agents with committed caps. Epoch cap raises only after clean epochs."
+  "note": "Coordination/product cap only: the permissionless CrucibleTrials contract does not enforce cohort membership or epochCapEth. Do not treat this file as an on-chain intake limit. Raise product exposure only after clean epochs."
 }

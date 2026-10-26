@@ -21,8 +21,9 @@ contract Deploy is Script {
         uint256 pk = vm.envOr("PRIVATE_KEY", uint256(DEFAULT_PK));
 
         vm.startBroadcast(pk);
+        address multisig = vm.envAddress("MULTISIG");
         alloy = new AlloyRegistry();
-        trials = new CrucibleTrials(vm.addr(pk), address(alloy), _argusSeats());
+        trials = new CrucibleTrials(multisig, address(alloy), _argusSeats());
         alloy.setForge(address(trials));
 
         // VerificationReceipt (gates 415-418): deploy, wire into CrucibleTrials, enable.
@@ -39,12 +40,12 @@ contract Deploy is Script {
     }
 
     /// v1 fixes exactly three Argus seats; 2-of-3 commit-reveal resolves a dispute.
-    /// Anvil accounts 1-3.
+    /// Mainnet seats must be supplied by independently held keys, never development keys.
     function _argusSeats() internal returns (address[] memory seats) {
         seats = new address[](3);
-        seats[0] = vm.addr(0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d);
-        seats[1] = vm.addr(0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a);
-        seats[2] = vm.addr(0x7c852118294e51e653712a81e05800f419141751be58f605c371e15141b007a6);
+        seats[0] = vm.envAddress("ARGUS_SEAT_1");
+        seats[1] = vm.envAddress("ARGUS_SEAT_2");
+        seats[2] = vm.envAddress("ARGUS_SEAT_3");
     }
 
     /// console.log's string+address overloads get their own frame so `run` stays under
