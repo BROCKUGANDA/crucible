@@ -1,15 +1,18 @@
 "use client";
 
 import { ConnectButton } from "@rainbow-me/rainbowkit";
-import { useAccount, useConnect, useDisconnect, useSwitchChain } from "wagmi";
+import { useAccount, useConnect, useDisconnect } from "wagmi";
 import { useEffect, useState } from "react";
 import {
   activeChain,
+  binanceProvider,
   CHAIN_IDS,
+  chainForWallets,
   deployment,
   rainbowKitProjectId,
   shortAddress,
 } from "@/lib/wagmi";
+import { ensureChain, type Eip1193Provider } from "@/lib/chainSwitch";
 import { haptics, vibrate } from "@/lib/forge";
 
 /**
@@ -38,9 +41,41 @@ function RainbowConnect() {
 
 /** The no-project-id path: raw injected connectors, no modal. */
 function InjectedConnect() {
-  const { connect, connectors, isPending, error } = useConnect();
+  const { connectAsync, connectors, isPending, error } = useConnect();
   const { address } = useAccount();
   const { disconnect } = useDisconnect();
+  const [landing, setLanding] = useState(false);
+  const [landError, setLandError] = useState<string | null>(null);
+  // Detection touches `window`, so it runs after mount: reading it during render would render
+  // the Binance button on the client and not on the server, which React treats as a broken tree.
+  const [binance, setBinance] = useState(false);
+  useEffect(() => setBinance(Boolean(binanceProvider())), []);
+
+  /**
+   * Connect, then land on the chain the contracts live on.
+   *
+   * This deployment runs on a chain no consumer wallet knows, so a visitor who connects is
+   * still on the wrong network until it is added — and `wallet_addEthereumChain` needs a
+   * browser-reachable RPC to do that. Doing it here, rather than leaving the visitor to find
+   * the network menu, is what makes "connect" mean "ready to sign".
+   */
+  const connectAndLand = async (connector: (typeof connectors)[number]) => {
+    setLandError(null);
+    setLanding(true);
+    try {
+      await connectAsync({ connector });
+      const provider = (await connector.getProvider()) as Eip1193Provider;
+      const chain = chainForWallets();
+      const outcome = await ensureChain(provider, chain);
+      if (!outcome.ok) {
+        setLandError(`Connected, but this trial needs ${chain.name}: ${outcome.message}`);
+      }
+    } catch (err) {
+      setLandError(err instanceof Error ? err.message.split("\n")[0]! : String(err));
+    } finally {
+      setLanding(false);
+    }
+  };
 
   if (address) {
     return (
@@ -56,10 +91,11 @@ function InjectedConnect() {
     );
   }
 
-  const injected = connectors.find((c) => c.type === "injected");
+  const injected = connectors.find((c) => c.type === "injected" && c.id !== "wallet.binance.com");
+  const binanceConnector = connectors.find((c) => c.id === "wallet.binance.com");
   const coinbase = connectors.find((c) => c.type === "coinbaseWallet");
 
-  if (!injected && !coinbase) {
+  if (!injected && !coinbase && !(binance && binanceConnector)) {
     return (
       <span className="mono" data-tone="ash">
         No wallet found
@@ -67,20 +103,22 @@ function InjectedConnect() {
     );
   }
 
+  const busy = isPending || landing;
+
   return (
     <span className="wallet-inline">
       {injected ? (
         <button
           className="btn btn-primary"
-          disabled={isPending}
+          disabled={busy}
           aria-label="Connect wallet"
           title="Connect wallet"
           onClick={() => {
             vibrate(haptics.bondStaked, true);
-            connect({ connector: injected });
+            void connectAndLand(injected);
           }}
         >
-          {isPending ? (
+          {busy ? (
             "Connecting…"
           ) : (
             <>
@@ -90,24 +128,39 @@ function InjectedConnect() {
           )}
         </button>
       ) : null}
+      {binance && binanceConnector ? (
+        <button
+          className="btn btn-ghost"
+          disabled={busy}
+          aria-label="Connect Binance Wallet"
+          title="Connect Binance Wallet"
+          onClick={() => {
+            vibrate(haptics.bondStaked, true);
+            void connectAndLand(binanceConnector);
+          }}
+        >
+          <span className="wallet-label-full">Binance Wallet</span>
+          <span className="wallet-label-short">Binance</span>
+        </button>
+      ) : null}
       {coinbase ? (
         <button
           className="btn btn-ghost"
-          disabled={isPending}
+          disabled={busy}
           aria-label="Connect Coinbase Wallet"
           title="Connect Coinbase Wallet"
           onClick={() => {
             vibrate(haptics.bondStaked, true);
-            connect({ connector: coinbase });
+            void connectAndLand(coinbase);
           }}
         >
           <span className="wallet-label-full">Coinbase Wallet</span>
           <span className="wallet-label-short">Coinbase</span>
         </button>
       ) : null}
-      {error ? (
+      {landError ?? error ? (
         <span className="mono" data-tone="sear">
-          {error.message.split("\n")[0]}
+          {(landError ?? error?.message ?? "").split("\n")[0]}
         </span>
       ) : null}
     </span>
@@ -121,9 +174,9 @@ function InjectedConnect() {
  * "contract not deployed" failure. Refusing early with a clear message is kinder.
  */
 export function WrongNetworkNotice({ requiredChainId }: { requiredChainId: number }) {
-  const { chainId } = useAccount();
-  const { switchChain } = useSwitchChain();
+  const { chainId, connector } = useAccount();
   const [switching, setSwitching] = useState(false);
+  const [failure, setFailure] = useState<string | null>(null);
 
   // Nothing to check until a wallet is connected.
   if (chainId === undefined || chainId === requiredChainId) return null;
@@ -144,8 +197,17 @@ export function WrongNetworkNotice({ requiredChainId }: { requiredChainId: numbe
         disabled={switching}
         onClick={async () => {
           setSwitching(true);
+          setFailure(null);
           try {
-            await switchChain({ chainId: requiredChainId });
+            const provider = (await connector?.getProvider()) as Eip1193Provider | undefined;
+            if (!provider) {
+              setFailure("This wallet did not expose a provider to switch.");
+              return;
+            }
+            // Same helper the connect button uses: a wallet that has never seen this chain
+            // has to be offered it (EIP-3085), and `switch` alone dies with 4902.
+            const outcome = await ensureChain(provider, chainForWallets());
+            if (!outcome.ok) setFailure(outcome.message);
           } finally {
             setSwitching(false);
           }
@@ -153,6 +215,11 @@ export function WrongNetworkNotice({ requiredChainId }: { requiredChainId: numbe
       >
         {switching ? "Switching…" : `Switch to ${name}`}
       </button>
+      {failure ? (
+        <p className="mono" data-tone="sear">
+          {failure}
+        </p>
+      ) : null}
     </div>
   );
 }

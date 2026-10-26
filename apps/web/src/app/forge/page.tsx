@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useAccount } from "wagmi";
 import { Chrome, TxStates } from "@/components/Chrome";
 import { PourConfirm } from "@/components/Modal";
-import { WrongNetworkNotice } from "@/components/Wallet";
+import { WrongNetworkNotice, WalletButton } from "@/components/Wallet";
 import { buildClaimTrial, buildRegisterAgent, useTx } from "@/lib/useTx";
 import { deployment } from "@/lib/wagmi";
 import { parseEth } from "@/lib/eth";
@@ -124,6 +124,7 @@ export default function ForgePage() {
 
       {!isConnected ? (
         <p className="mono" data-tone="ash">
+          <WalletButton />
           Connect a wallet to post a bond.
         </p>
       ) : null}

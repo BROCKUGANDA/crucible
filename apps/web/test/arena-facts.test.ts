@@ -145,4 +145,24 @@ describe("arena facts", () => {
   it("renders a measured zero take as zero, distinct from the unmeasured one", () => {
     expect(deriveFacts(snapshot({ economics: economics({ feesEth: "0" }) })).take).toBe("0 ETH");
   });
+
+  it("shows the treasury's on-chain credit beside the fee, and never in place of it", () => {
+    // 0.15 of fees and 0.305 of withdrawable credit are both true on the live chain; a page that
+    // printed only the fee under one heading was the figure a reader could not reconcile.
+    const both = deriveFacts(snapshot({ economics: economics({ feesEth: "0.15", treasuryCreditEth: "0.305" }) }));
+    expect(both.take).toBe("0.15 ETH");
+    expect(both.treasury).toBe("0.305 ETH");
+
+    // The credit was not read. The fee is known and must not be promoted into the treasury cell:
+    // that substitution is exactly the equation the page published by accident.
+    const feeOnly = deriveFacts(snapshot({ economics: economics({ feesEth: "0.15" }) }));
+    expect(feeOnly.treasury).toBeNull();
+    expect(deriveFacts(null).treasury).toBeNull();
+  });
+
+  it("truncates the treasury credit rather than rounding it up", () => {
+    expect(
+      deriveFacts(snapshot({ economics: economics({ treasuryCreditEth: "0.3059999" }) })).treasury,
+    ).toBe("0.305 ETH");
+  });
 });

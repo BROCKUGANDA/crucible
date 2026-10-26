@@ -128,10 +128,19 @@ services:
       # The proxy in front overwrites X-Real-IP and X-Forwarded-For, so the
       # limiter can key on the real client instead of on the proxy's address.
       TRUST_PROXY: ${TRUST_PROXY:-0}
+      # Where the disclosure log lives: `<dir>/disclosure/disclosure.json`, written by the
+      # seat through `DisclosureLog.open(join(dir, "disclosure"))`. Without the mount and this
+      # variable the API cannot see a single announced CID, so every trial says "suite not
+      # disclosed yet" — which is what the live page said until 2026-10-26 even though the
+      # juror had written the file 43 hours earlier.
+      CRUCIBLE_CONTENT_DIR: /content
     ports:
       - "${API_HOST_PORT:-8787}:8787"
     volumes:
       - deployed:/run/crucible:ro
+      # Read-only on purpose: the API resolves digests to CIDs, it never announces one. The
+      # juror remains the only writer, so a reader bug cannot corrupt the log it reads.
+      - content:/content:ro
     depends_on:
       anvil:
         condition: service_healthy

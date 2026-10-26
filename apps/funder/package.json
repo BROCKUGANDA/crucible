@@ -1,0 +1,26 @@
+{
+  "name": "@crucible/funder",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Funded test wallet service — holds CDP credentials, dispenses test ETH on Base Sepolia.",
+  "license": "UNLICENSED",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "start": "node dist/server.js",
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@crucible/smith": "*",
+    "@hono/node-server": "^2.1.5",
+    "hono": "^4.6.14"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "tsx": "^4.19.2",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.5"
+  }
+}

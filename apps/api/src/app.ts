@@ -15,8 +15,10 @@ import {
   type ArenaModel,
   type ReadModel,
   type ScribeStatus,
+  type TeamLedgerModel,
   type TrialStatus,
 } from "@crucible/indexer";
+import { decide, scoreWallet, type Decision, type RiskScore } from "./identity.js";
 import { rateLimit } from "./rate-limit.js";
 import { dlq } from "./dlq.js";
 import { TickPump } from "./tick-pump.js";
@@ -57,6 +59,21 @@ export interface ApiDeps {
    */
   arena?: () => ArenaModel;
   /**
+   * The TeamLedger's projection, or nothing when this host has no TeamLedger address.
+   *
+   * A second model over the same transport as the trials indexer. `undefined` means no one
+   * is indexing TeamLedger here; the route reports `projected: false` rather than an empty list.
+   */
+  team?: () => TeamLedgerModel;
+  /**
+   * The funder service's base URL, or nothing when this host has no funder.
+   *
+   * `apps/funder` holds the CDP credential (ADR-0015 §1); this process only asks it for
+   * an allocation over an internal socket. `undefined` means no funder is reachable here,
+   * and `/faucet` reports `fundable: false` rather than pretending.
+   */
+  funderUrl?: string;
+  /**
    * Alloy facts for one agent — tier, soulbound lock, token URI — sourced from
    * `AlloyRegistry`. Kept synchronous so a snapshot build cannot await the chain: the
    * host reads the registry on its own clock and hands this a cached answer, or
@@ -65,6 +82,15 @@ export interface ApiDeps {
   alloyState?: (agentId: number) => AlloyState;
   /** sponsor-submitted CID text, which never reaches the chain */
   disclosure?: () => { trialId: number; specCID?: string; testsCID?: string }[];
+  /**
+   * `credit[treasury]` in wei, read off the chain by the host.
+   *
+   * The books above count the settlement fee; the treasury also keeps 70% of every slashed
+   * bond, and the landing page published the fee under a heading a reader took for the total.
+   * Null is unknown, never zero: the host that could not read it must not be able to make the
+   * page say the treasury holds nothing.
+   */
+  treasuryCreditWei?: () => bigint | null;
   /**
    * What the hall's tx proofs are against. A transactionHash only means something on
    * one chain and in one contract's logs, and the read model is chain-agnostic — it
@@ -357,6 +383,7 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
         now,
         alloyState: deps.alloyState,
         feeBps: deps.protocolFeeBps?.() ?? null,
+        treasuryCreditWei: deps.treasuryCreditWei?.() ?? null,
         headTimestamp: deps.indexStatus?.().headTimestamp ?? null,
         disclosure: deps.disclosure?.(),
       });
@@ -893,6 +920,168 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
       data: { trials },
       meta: { readModel: "arena", projected: true, count: trials.length, version: model.version },
     });
+  });
+
+  /**
+   * The TeamLedger, projected from `TeamLedger.sol` logs by the same transport that reads the
+   * v1 escrow.
+   *
+   * `projected: false` is a different answer from an empty list: the first means no one is
+   * reading TeamLedger on this host. Wei crosses as a decimal string because JSON has no bigint.
+   */
+  app.get("/teams", (c) => {
+    const model = deps.team?.();
+    if (!model) {
+      return c.json({
+        data: { teams: [] },
+        meta: { readModel: "team-ledger", projected: false, reason: "no TeamLedger address on this host" },
+      });
+    }
+    const teams = [...model.teams.values()]
+      .sort((a, b) => (a.teamKey < b.teamKey ? -1 : 1))
+      .map((t) => ({
+        teamKey: t.teamKey,
+        lead: t.lead,
+        memberCount: t.memberCount,
+        stageCount: t.stageCount,
+        distributed: t.distributed,
+        held: t.held.toString(),
+        stages: t.stages.map((s) => ({
+          stageHash: s.stageHash,
+          member: s.member,
+          seq: s.seq,
+          blockNumber: s.blockNumber,
+        })),
+        fundings: t.fundings.map((f) => ({
+          amount: f.amount.toString(),
+          heldAfter: f.heldAfter.toString(),
+          blockNumber: f.blockNumber,
+        })),
+        distribution: t.distribution
+          ? {
+              amount: t.distribution.amount.toString(),
+              remainderToLead: t.distribution.remainderToLead.toString(),
+              blockNumber: t.distribution.blockNumber,
+            }
+          : null,
+      }));
+    return c.json({
+      data: {
+        teams,
+        totalCredit: model.totalCredit.toString(),
+        heldTotal: model.heldTotal.toString(),
+      },
+      meta: { readModel: "team-ledger", projected: true, count: teams.length, version: model.version },
+    });
+  });
+
+  /**
+   * Sybil-risk score for a wallet address.
+   *
+   * Computes P(unique human | evidence) using a Bayesian logistic model with
+   * hand-tuned priors and likelihood ratios. Evidence comes from the indexer
+   * read model (alloy tier, identity linkage, trial history) — no chain keys
+   * required, all read-only projection.
+   *
+   * Phase 1: hand-tuned coefficients. Phase 3 replaces them with values fit
+   * offline via HMC/leapfrog integration over labeled outcomes.
+   */
+  app.post("/identity/risk", async (c) => {
+    let body: { wallet?: string };
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "request body must be JSON" }, 400);
+    }
+
+    const wallet = String(body.wallet ?? "").trim();
+    if (!/^0x[0-9a-fA-F]{40}$/.test(wallet)) {
+      return c.json({ error: "wallet must be a 0x-prefixed 20-byte Ethereum address" }, 400);
+    }
+
+    const model = deps.getModel();
+    const score = scoreWallet(model, (id) => deps.alloyState?.(id) ?? null, wallet);
+    const decision = decide(score);
+
+    return c.json({ score, decision });
+  });
+
+  app.get("/identity/risk/:wallet", (c) => {
+    const wallet = c.req.param("wallet");
+    if (!/^0x[0-9a-fA-F]{40}$/.test(wallet)) {
+      return c.json({ error: "wallet must be a 0x-prefixed 20-byte Ethereum address" }, 400);
+    }
+
+    const model = deps.getModel();
+    const score = scoreWallet(model, (id) => deps.alloyState?.(id) ?? null, wallet);
+    const decision = decide(score);
+
+    return c.json({ score, decision });
+  });
+
+  /**
+   * Request test ETH from the funder service.
+   *
+   * The funder holds the CDP credential (ADR-0015 §1); this process only asks it for
+   * an allocation over an internal socket. The request body is a wallet address and
+   * an amount in ETH. The funder validates caps, estimates before spend, and dispenses
+   * USDC on Base Sepolia via CDP Payments.
+   *
+   * `fundable: false` is a different answer from a refused allocation: the first means
+   * no funder is reachable on this host, the second means the funder said no.
+   */
+  app.post("/faucet", async (c) => {
+    const funder = deps.funderUrl;
+    if (!funder) {
+      return c.json({
+        ok: false,
+        fundable: false,
+        reason: "no funder address on this host",
+      });
+    }
+
+    let body: { wallet?: string; amountEth?: number | string };
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "request body must be JSON" }, 400);
+    }
+
+    const wallet = String(body.wallet ?? "").trim();
+    const amount = Number(body.amountEth);
+    if (!/^0x[0-9a-fA-F]{40}$/.test(wallet)) {
+      return c.json({ error: "wallet must be a 0x-prefixed 20-byte Ethereum address" }, 400);
+    }
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return c.json({ error: "amountEth must be a positive number" }, 400);
+    }
+
+    let res: Response;
+    try {
+      res = await fetch(`${funder}/allocate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wallet, amountEth: amount }),
+      });
+    } catch (err) {
+      return c.json(
+        {
+          ok: false,
+          fundable: true,
+          reason: `funder unreachable: ${err instanceof Error ? err.message : String(err)}`,
+        },
+        502,
+      );
+    }
+
+    const json = (await res.json().catch(() => null)) as
+      | { ok: boolean; wallet: string; requestedEth: string; grantedEth: string | null; transferId: string | null; reason: string | null }
+      | null;
+    if (!json) {
+      return c.json({ ok: false, fundable: true, reason: "funder returned an empty response" }, 502);
+    }
+
+    return c.json(json, res.ok ? 200 : 402);
   });
 
   /**
