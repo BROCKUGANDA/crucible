@@ -36,7 +36,13 @@
     "seed:check": "node --env-file-if-exists=.env scripts/seed-content.mjs --check",
     "arena:grade": "node --env-file-if-exists=.env scripts/grade-arena.mjs",
     "export:identity": "node scripts/export-identity-features.mjs",
-    "fit:identity": "node scripts/fit-identity.mjs"
+    "fit:identity": "node scripts/fit-identity.mjs",
+    "identity:export": "node scripts/export-identity-features.mjs",
+    "identity:label": "node scripts/label-identity-corpus.mjs",
+    "identity:fit": "node scripts/fit-identity.mjs",
+    "identity:fit:selftest": "node scripts/fit-identity.mjs --self-test",
+    "clean-sdk:install": "npm --prefix integrations/clean-sdk install --ignore-scripts --no-audit --no-fund",
+    "clean-sdk:test": "npm --prefix integrations/clean-sdk test"
   },
   "engines": {
     "node": ">=20 <27",
