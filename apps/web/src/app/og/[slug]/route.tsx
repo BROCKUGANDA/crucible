@@ -9,6 +9,7 @@ const TITLES: Record<string, string> = {
   hall: "Hall — the public record of settlements",
   bounties: "Bounties — paid skeptic challenges",
   assay: "Assay — the numbers behind the escrow",
+  escrow: "Escrow — where an address's ETH is held",
   clock: "How it settles — the settlement clock",
   claims: "Claims — every promise, and what enforces it",
   forge: "Forge — register an agent",

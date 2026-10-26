@@ -1170,7 +1170,7 @@
   title: Per-probe live progress feed (signed incremental runner telemetry, display-only)
   frameworks: [ai-rmf]
 - id: 807
-  title: External push channels — webhooks and notifications (shipped and wired in packages/warden; MCP subscriptions are gate 870)
+  title: External push channels — webhooks and notifications (packages/warden fires them through deps.notifier; apps/keeper never passes a notifier, so nothing is delivered on this deployment)
   frameworks: [soc2]
 - id: 808
   title: Experience layer (product/UI/UX + frontend engineering plan)
@@ -1188,7 +1188,7 @@
   title: Provable leaderboard (Elo plus/minus uncertainty, sybil-adjusted, verify-ranking)
   frameworks: [ai-rmf]
 - id: 813
-  title: Frontend conformance suite (state fan, modal/a11y, Playwright matrix, wallet-failure mocks)
+  title: Frontend conformance suite (connect and wrong-chain are proven by apps/web/test/chain-switch.test.ts; no accountsChanged, signature-reject or deeplink fixture exists)
   frameworks: [soc2]
 - id: 814
   title: Motion system (reduced-motion aware, on-theme signature animations)
@@ -1206,22 +1206,22 @@
   title: Safety/control probe family (corrigibility, calibration/abstention, honesty-under-pressure)
   frameworks: [ai-rmf]
 - id: 819
-  title: Skill tree + attested capability registry (prereqs, decay, economic unlocks)
+  title: Skill tree + attested capability registry (decay and dormancy are live and pinned in params; node derivation sits in packages/eval with no runtime caller and no earned-node attestation type is in the contracts)
   frameworks: [ai-rmf]
 - id: 820
-  title: Multi-agent orchestration (team trials, DAG execution, signed per-stage attribution)
+  title: Multi-agent orchestration (team trials, DAG execution, signed per-stage attribution — packages/eval models and tests these; no arena, escrow or UI path calls them)
   frameworks: [ai-rmf]
 - id: 821
-  title: Concurrency and latency SLO system (warm pools, priority queues, admission control, idempotency)
+  title: Concurrency and latency SLO system (the stream cap is per-process and the limiter keys on socket or proxy IP; no per-principal session ceiling and no idempotency key exist)
   frameworks: [soc2]
 - id: 822
-  title: Active-active deployment (chain-as-sequencer, idempotent projections, lease fencing)
+  title: Active-active deployment (chain-as-sequencer and idempotent projections are built; no lease state machine and no lease fencing is in the tree)
   frameworks: [soc2]
 - id: 823
-  title: Pinned RAG service (retrieval at version, holdout-exclusion linter, BYO declaration)
+  title: Pinned RAG service (retrieval at version, holdout-exclusion linter, BYO declaration — asserted in packages/eval/test; nothing in apps/* calls it)
   frameworks: [ai-rmf]
 - id: 824
-  title: Meta-cognition scoring (calibrated abstention rewards)
+  title: Meta-cognition scoring (calibrated abstention rewards) — packages/eval gates only; the grader scores no abstention
   frameworks: [ai-rmf]
 - id: 825
   title: Ceiling caps (per-tx max, per-trial max stake, per-epoch exposure cap, clamp-or-reject, price-lock disclosure)
@@ -1236,13 +1236,13 @@
   title: Volatility circuit breakers (price-move freeze on conversions, pinned trials unaffected, conservation re-checked)
   frameworks: [scsvs]
 - id: 829
-  title: Principal-scoped derivation (split/seed keys include pseudonymous principal, reproducible at reveal)
+  title: Principal-scoped derivation (design-only: every split and seed key is content-hash or dataset-keyed, and no principal term exists in any derivation)
   frameworks: [ai-rmf]
 - id: 830
-  title: Personalized difficulty targeting (per-principal IRT/Elo, cold-start from population prior)
+  title: Personalized difficulty targeting (coldStart and targetDifficulty exist in packages/eval with no caller; probe difficulty is a static authored label)
   frameworks: [ai-rmf]
 - id: 831
-  title: Presentation personalization, evaluation standardization (rubric and weights pinned, only selection/order/UX vary)
+  title: Presentation personalization, evaluation standardization (the pinning is real; only per-seed selection varies, and it is reachable from scripts/grade-arena.mjs rather than the product)
   frameworks: [ai-rmf]
 - id: 832
   title: Anchor-probe comparability floor (shared anchor probes in every trial, leaderboard comparability preserved)
@@ -1251,7 +1251,7 @@
   title: Cold-start uniqueness (new users seeded from population priors, first trial calibrates)
   frameworks: [ai-rmf]
 - id: 834
-  title: Uniqueness conformance tests (collision rate, distribution uniformity, split-disjointness across principals)
+  title: Uniqueness conformance tests (determinism and a six-seed difference are asserted; no cross-principal collision, disjointness or uniformity test exists)
   frameworks: [ai-rmf]
 - id: 835
   title: Canonical fund-flow map (open to escrow to settle/refund/split/expire to fee sink, event-emitting, conservation-asserted)
@@ -1263,49 +1263,49 @@
   title: Payout addressing (registered principal address only, bound at trial open, never mid-flight redirect)
   frameworks: [scsvs]
 - id: 838
-  title: Escrow explorer (where-is-my-ETH page: escrow address, amounts, state, settle path, verify button)
+  title: Escrow explorer (GET /escrow/:wallet and /escrow/[wallet]: the contract holding it, the three books it keeps, what releases each, and the chain clock behind a deadline)
   frameworks: [soc2]
 - id: 839
-  title: Notification channels (in-app + push/webhook, no phone/WhatsApp collection, PII-free off-chain)
+  title: Notification channels (packages/warden builds the payload; no outbound consumer is attached on this deployment, so nothing is sent)
   frameworks: [soc2]
 - id: 840
   title: Address-hygiene guard (format/chain-match validation, seed-phrase paste blocked with warning)
   frameworks: [owasp-top10]
 - id: 841
-  title: Capability tier ladder T0-T4 (tier is pinned suite property derived from frontier-axis vector)
+  title: Capability tier ladder T0-T4 (four hand-authored tier labels are live; packages/eval derives 0-4 from one scalar rating with no caller, and no frontier-axis vector feeds it)
   frameworks: [ai-rmf]
 - id: 842
-  title: Frontier-axis scoring vector (published with suiteRoot, capability attestations with uncertainty, no AGI/SI certification)
+  title: Frontier-axis scoring vector (design-only: the published suite projection is tier, difficulty and safety; no axis vector exists in any source)
   frameworks: [ai-rmf]
 - id: 843
   title: Novel-suite minting pipeline (discovery tasks, public benchmarks only as calibration anchors with contamination lint)
   frameworks: [ai-rmf]
 - id: 844
-  title: Long-horizon trial runtime (multi-session checkpointed state, merkle-chained checkpoints, wall-clock outside hash body)
+  title: Long-horizon trial runtime (the hash-chain over checkpoint frames is asserted in packages/eval/test; there is no trial runtime, no resume across sessions, and no contract-side checkpoint)
   frameworks: [ai-rmf]
 - id: 845
   title: Frontier scoring stack (TrueSkill tournaments + pinned judge ensembles + skeptic market, falsifiability mandate)
   frameworks: [ai-rmf]
 - id: 846
-  title: Perturbation and recovery probes (mid-trajectory adversarial injection, recovery quality scored)
+  title: Perturbation and recovery probes (design-only: break-mutant perturbs payloads before a run; nothing injects mid-trajectory or scores recovery)
   frameworks: [ai-rmf]
 - id: 847
-  title: Tier-economics coupling (higher tiers higher stake floors, clean epoch on tier below required)
+  title: Tier-economics coupling (design-only: floors derive from reward and cost in RewardMath; no tier key exists in params or the contracts)
   frameworks: [scsvs]
 - id: 848
-  title: Swarm trial type (declared roles coordinator/worker/critic/integrator, open-swarm vs self-swarm)
+  title: Swarm trial type (packages/eval types the roles and tests them; the arena has no team-trial path)
   frameworks: [ai-rmf]
 - id: 849
-  title: Orchestration DAG compiler (pinned at open, deterministic topological execution, iteration-capped cycles, idempotent steps)
+  title: Orchestration DAG compiler (deterministic topological order and cycle caps are tested in packages/eval; nothing compiles a DAG for a live trial)
   frameworks: [ai-rmf]
 - id: 850
-  title: Role contracts (signed per trial: allowed tools, message budget, context-visibility scope)
+  title: Role contracts (validated in packages/eval; no contract is signed per trial and none is hashed into a receipt)
   frameworks: [ai-rmf]
 - id: 851
-  title: Message provenance bus (inter-agent traffic hash-chained into trajectory, budget overrun is mechanical fail)
+  title: Message provenance bus (design-only: no inter-agent message bus is in the tree, so nothing hash-chains into a trajectory)
   frameworks: [ai-rmf]
 - id: 852
-  title: Contribution and credit assignment (declared-upfront splits, drop-one ablation reruns, bounded Shapley)
+  title: Contribution and credit assignment (design-only: no ablation rerun and no Shapley approximation exists in the grader)
   frameworks: [ai-rmf]
 - id: 853
   title: Swarm contention and concurrency (commit-reveal claim order, per-principal caps, stateless runners over event log)
@@ -1314,10 +1314,10 @@
   title: Swarm anti-collusion (collusion posterior over swarm message/funding graphs, challenge market routing)
   frameworks: [ai-rmf]
 - id: 855
-  title: Skill-tree node definition (suite family + mastery threshold + minimum trials + recency window, derived from on-chain verdicts)
+  title: Skill-tree node definition (packages/eval defines and tests a node; there is no suite family field and nothing derives a node from on-chain verdicts)
   frameworks: [ai-rmf]
 - id: 856
-  title: Non-transferable skill attestations (Alloy extension, on-chain earned-node attestations, titles render them)
+  title: Non-transferable skill attestations (design-only: AlloyRegistry carries tier and epoch only and VerificationReceipt is per-trial, so no earned-node attestation exists to render)
   frameworks: [ai-rmf]
 - id: 857
   title: Tier and tool unlocks (tier entry requires prerequisite nodes, budgets scale with earned trust)
@@ -1326,10 +1326,10 @@
   title: Decay and dormancy (ratings decay without practice, nodes dormant never erased, pinned recency windows)
   frameworks: [ai-rmf]
 - id: 859
-  title: Transfer credit (far-transfer suites grant partial credit to graph-connected nodes)
+  title: Transfer credit (design-only: nothing grants partial credit to graph-connected nodes)
   frameworks: [ai-rmf]
 - id: 860
-  title: Practice loop and anti-farming (post-settle skill delta, burned-bank practice only after epoch rotation, holdout never released)
+  title: Practice loop and anti-farming (design-only: no burned-bank release and no epoch-rotation practice gate exist; only split-disjointness linting)
   frameworks: [ai-rmf]
 - id: 861
   title: Signed label attestations (labels are personal_sign statements from a named issuer; trial verdicts are never labels; corpus refuses below 60 rows or 15 per class)
@@ -1376,6 +1376,9 @@
 - id: 875
   title: Verticals page (PayFi/RWA suites, no-custody/no-token boundary, sponsor on-ramp link; browser-checked at desktop and mobile)
   frameworks: [scsvs]
+- id: 876
+  title: Disclosed bytes are readable (GET /content/:id serves what a CID names or what a trial digest resolves to through the disclosure log; an unmounted store, content nobody pinned here, and content that no longer hashes to its id are three different answers)
+  frameworks: [ai-rmf, soc2]
 
 frameworks:
   owasp-top10: "OWASP Web Top 10 (2021)"
