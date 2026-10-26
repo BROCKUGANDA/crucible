@@ -95,6 +95,9 @@ export function sybilAdjust(raw: { agent: string; funder: string; amount: bigint
   return raw.map((r) => ({ agent: r.agent, amount: r.amount / BigInt(clusters.get(r.funder) ?? 1) }));  
 } 
 export interface GatewayEvent { seq: number; kind: string; data: string }  
+// In-memory model of the replay/snapshot contract, exercised by the gate test. It is NOT the
+// live gateway: that is apps/api/src/app.ts `/stream` + `/snapshot` (SSE, one shared tick). Do
+// not wire this beside it; one gateway is the rule.
 export class EventGateway {  
   private events: GatewayEvent[] = [];  
   publish(kind: string, data: string): GatewayEvent {  

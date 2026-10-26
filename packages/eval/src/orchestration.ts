@@ -1,3 +1,6 @@
+// Tested library for the swarm gates (820, 848-854). Nothing in this repository wires it to a
+// live trial yet: the arena has no team-trial path, so these are models with tests, not a
+// running orchestrator. Any status that cites them must say that.
 import { sha256 } from '@crucible/crypto'; 
 export type SwarmRole = 'coordinator' | 'worker' | 'critic' | 'integrator';  
 export interface DagStep { id: string; role: SwarmRole; deps: string[]; maxIterations: number }  

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';  
-import { compileDag, appendMessage, verifyChain, validateSplits, shapley, claimOrder } from '../src/orchestration.js';  
+import { compileDag, validateRoleContract, stepKey, appendMessage, verifyChain, validateSplits, shapley, collusionScore, claimOrder } from '../src/orchestration.js';  
 import { rankBoard, verifyRanking, applyCaps, commissionInBand, circuitFrozen, lintRagDocs, retrieveAt, appendCheckpoint, verifyCheckpoints, leafFor, merkleRoot, merkleProof, verifyMerkle, sybilAdjust, EventGateway, assertPiiFree } from '../src/gates.js'; 
 describe('orchestration gates 820, 848-854', () => {  
   it('DAG compiles deterministically and rejects cycles', () => {  
@@ -20,6 +20,27 @@ describe('orchestration gates 820, 848-854', () => {
     const phi = shapley(2, (m) => (m === 3 ? 10 : 0));  
     expect(phi[0] + phi[1]).toBeCloseTo(10, 6);  
     expect(claimOrder([{ principal: 'z', commitBlock: 2 }, { principal: 'a', commitBlock: 1 }])).toEqual(['a', 'z']);  
+  });  
+  it('role contracts reject an empty tool list, duplicate tools and a zero budget', () => {  
+    const base = { role: 'worker' as const, allowedTools: ['read'], messageBudget: 1, contextScope: 'own' as const };  
+    expect(validateRoleContract(base)).toEqual([]);  
+    expect(validateRoleContract({ ...base, allowedTools: [] })).toContain('allowedTools must be non-empty');  
+    expect(validateRoleContract({ ...base, allowedTools: ['read', 'read'] })).toContain('allowedTools must be unique');  
+    expect(validateRoleContract({ ...base, messageBudget: 0 })).toContain('messageBudget must be positive');  
+  });  
+  it('step keys are deterministic and change with the iteration', () => {  
+    const key = stepKey('t1', 's1', 0);  
+    expect(stepKey('t1', 's1', 0)).toBe(key);  
+    expect(key).toMatch(/^[0-9a-f]{64}$/);  
+    expect(stepKey('t1', 's1', 1)).not.toBe(key);  
+    expect(stepKey('t2', 's1', 0)).not.toBe(key);  
+  });  
+  it('collusion score is bounded and clamps its inputs', () => {  
+    expect(collusionScore(0, 0)).toBe(0);  
+    expect(collusionScore(1, 1)).toBe(1);  
+    expect(collusionScore(0.5, 0.5)).toBe(0.5);  
+    expect(collusionScore(-1, 2)).toBe(0.5);  
+    expect(collusionScore(2, -1)).toBe(0.5);  
   });  
 }); 
 describe('board, caps, rag, checkpoints, airdrop, gateway', () => {  

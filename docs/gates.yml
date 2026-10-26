@@ -1046,7 +1046,7 @@
   title: RLVR export + grader-hacking probes + dataset cards; no holdout ids
   frameworks: [ai-rmf]
 - id: 766
-  title: MCP server — 11 tools, unsigned-transaction pattern
+  title: MCP server — 11 tools, unsigned-transaction pattern (design-only; no MCP server code is in the tree)
   frameworks: [soc2]
 - id: 767
   title: TS SDK, Python SDK, CLI
@@ -1058,7 +1058,7 @@
   title: Injection fixtures — house agents refuse
   frameworks: [ai-rmf]
 - id: 770
-  title: External MCP agent completes a devnet trial with no UI
+  title: External MCP agent completes a devnet trial with no UI (design-only; no MCP client is in the tree)
   frameworks: [ai-rmf]
 - id: 771
   title: App shell, routes, design system, WCAG 2.2 AA
@@ -1170,7 +1170,7 @@
   title: Per-probe live progress feed (signed incremental runner telemetry, display-only)
   frameworks: [ai-rmf]
 - id: 807
-  title: External push channels (webhooks/notifications/MCP subscriptions)
+  title: External push channels — webhooks and notifications (shipped and wired in packages/warden; MCP subscriptions are gate 870)
   frameworks: [soc2]
 - id: 808
   title: Experience layer (product/UI/UX + frontend engineering plan)
@@ -1353,11 +1353,14 @@
   title: External audit gate (preflight refuses an unsigned audit-signoff and names auditor, reportHash and commit; refusal and pass are proven by packages/eval/test/mainnet-preflight.test.ts, not by a manual run)
   frameworks: [scsvs]
 - id: 868
-  title: Adaption MCP (design-only conversation item, no shipped code; the shipped MCP surface is gates 1049 and 1061)
+  title: Adaption MCP (design-only conversation item; no MCP server, client or subscription transport is in the tree — see gates 766, 770 and 870)
   frameworks: [ai-rmf]
 - id: 869
   title: Polymath suites (design-only conversation item, no shipped code; cross-domain suite family is recorded here rather than presented as built)
   frameworks: [ai-rmf]
+- id: 870
+  title: MCP subscriptions (design-only; no subscription transport is in the tree; the shipped push channels are webhooks and notifications in packages/warden)
+  frameworks: [soc2]
 
 frameworks:
   owasp-top10: "OWASP Web Top 10 (2021)"
