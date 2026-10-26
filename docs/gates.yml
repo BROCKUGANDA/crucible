@@ -1046,7 +1046,7 @@
   title: RLVR export + grader-hacking probes + dataset cards; no holdout ids
   frameworks: [ai-rmf]
 - id: 766
-  title: MCP server — 11 tools, unsigned-transaction pattern (design-only; no MCP server code is in the tree)
+  title: MCP server — 11 tools, unsigned-transaction pattern (shipped at /mcp on the API; reads the same snapshot, returns unsigned calldata, holds no key; tested with the SDK client)
   frameworks: [soc2]
 - id: 767
   title: TS SDK, Python SDK, CLI
@@ -1058,7 +1058,7 @@
   title: Injection fixtures — house agents refuse
   frameworks: [ai-rmf]
 - id: 770
-  title: External MCP agent completes a devnet trial with no UI (design-only; no MCP client is in the tree)
+  title: External MCP agent completes a devnet trial with no UI (design-only; the 11-tool surface and subscriptions are shipped and tested, but no end-to-end devnet trial through MCP has been run)
   frameworks: [ai-rmf]
 - id: 771
   title: App shell, routes, design system, WCAG 2.2 AA
@@ -1359,8 +1359,23 @@
   title: Polymath suites (design-only conversation item, no shipped code; cross-domain suite family is recorded here rather than presented as built)
   frameworks: [ai-rmf]
 - id: 870
-  title: MCP subscriptions (design-only; no subscription transport is in the tree; the shipped push channels are webhooks and notifications in packages/warden)
+  title: MCP resource subscriptions (shipped at /mcp; clients subscribe to crucible://snapshot and crucible://hall and receive notifications/resources/updated when the shared tick moves; tested with the SDK client)
   frameworks: [soc2]
+- id: 871
+  title: RWA NAV reconciliation domain suite (24 eval artifacts; PASS/FAIL/VOID derived from units, holdings, prices and tolerance; evaluation content, not custody or settlement)
+  frameworks: [ai-rmf]
+- id: 872
+  title: PayFi settlement reconciliation domain suite (24 eval artifacts; settled cents against the rounded invoice-minus-fee net; evaluation content, not a payment rail)
+  frameworks: [ai-rmf]
+- id: 873
+  title: Sponsor fiat-to-ETH on-ramp (provider URL is configuration; sends ETH to the sponsor's own wallet; mainnet-only; hidden when unset; no custody, token or bridge on the escrow path)
+  frameworks: [scsvs]
+- id: 874
+  title: Mainnet RPC primary and fallback (preflight and npm run fork:test try MAINNET_RPC_FALLBACK_URL only after the primary fails; measured drpc archive 4/4 at block 24,846,426 while publicnode pruned it)
+  frameworks: [scsvs]
+- id: 875
+  title: Verticals page (PayFi/RWA suites, no-custody/no-token boundary, sponsor on-ramp link; browser-checked at desktop and mobile)
+  frameworks: [scsvs]
 
 frameworks:
   owasp-top10: "OWASP Web Top 10 (2021)"

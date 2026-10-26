@@ -287,6 +287,9 @@ services:
         # at the host-published anvil; a server deployment overrides it in .env with
         # the public proxied path (e.g. https://host/anvil).
         NEXT_PUBLIC_ANVIL_RPC: ${NEXT_PUBLIC_ANVIL_RPC:-http://127.0.0.1:${ANVIL_HOST_PORT:-8555}}
+        # Empty hides the sponsor on-ramp. The provider URL is configuration; the escrow
+        # still settles in native ETH and never holds the purchase.
+        NEXT_PUBLIC_ONRAMP_URL: ${NEXT_PUBLIC_ONRAMP_URL:-}
     ports:
       - "${WEB_HOST_PORT:-3000}:3000"
     depends_on:

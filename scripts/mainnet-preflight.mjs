@@ -27,14 +27,24 @@ function checkSignoff(file, fields) {
   for (const f of fields) if (!j[f]) problems.push(file + ' missing field ' + f); 
 } 
 async function checkChain() { 
-  const url = process.env.MAINNET_RPC_URL; 
-  if (!url) { problems.push('MAINNET_RPC_URL not set'); return; } 
-  try { 
-    const res = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_chainId', params: [] }) }); 
-    const j = await res.json(); 
-    if (parseInt(j.result, 16) !== 1) problems.push('RPC chain id is not 1 (mainnet)'); 
-    else notes.push('RPC reports chain id 1'); 
-  } catch (e) { problems.push('RPC unreachable: ' + e.message); } 
+  // Primary first, then the configured fallback. A public endpoint that answers eth_chainId is
+  // not automatically enough for a fork (it may prune), but for this check either one that
+  // reports chain id 1 proves the host has a mainnet path. The host is named in the note so a
+  // reader knows which endpoint answered.
+  const urls = [process.env.MAINNET_RPC_URL, process.env.MAINNET_RPC_FALLBACK_URL].filter(Boolean); 
+  if (!urls.length) { problems.push('MAINNET_RPC_URL not set'); return; } 
+  let last = 'RPC unreachable'; 
+  for (const url of urls) { 
+    let host = 'invalid URL'; 
+    try { host = new URL(url).host; } catch {} 
+    try { 
+      const res = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_chainId', params: [] }) }); 
+      const j = await res.json(); 
+      if (parseInt(j.result, 16) === 1) { notes.push('RPC reports chain id 1 (' + host + ')'); return; } 
+      last = 'RPC chain id is not 1 (' + host + ')'; 
+    } catch (e) { last = 'RPC ' + host + ' unreachable: ' + e.message; } 
+  } 
+  problems.push(last); 
 } 
 checkParams(); 
 checkSignoff(SIGNOFF_DIR + '/audit-signoff.json', ['auditor', 'reportHash', 'commit']); 
