@@ -1349,6 +1349,15 @@
 - id: 866
   title: PayFi and RWA bridge scope (tokenized payments and RWA custody are post-launch and off the settlement path; native ETH escrow and FEE_BPS 500 unchanged per ADR-0001)
   frameworks: [scsvs]
+- id: 867
+  title: External audit gate (preflight refuses an unsigned audit-signoff and names auditor, reportHash and commit; refusal and pass are proven by packages/eval/test/mainnet-preflight.test.ts, not by a manual run)
+  frameworks: [scsvs]
+- id: 868
+  title: Adaption MCP (design-only conversation item, no shipped code; the shipped MCP surface is gates 1049 and 1061)
+  frameworks: [ai-rmf]
+- id: 869
+  title: Polymath suites (design-only conversation item, no shipped code; cross-domain suite family is recorded here rather than presented as built)
+  frameworks: [ai-rmf]
 
 frameworks:
   owasp-top10: "OWASP Web Top 10 (2021)"
