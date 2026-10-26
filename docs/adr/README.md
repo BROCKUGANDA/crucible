@@ -26,6 +26,7 @@ way it does and what would have to change to revisit it.
 | [0013](0013-receipt-replayability-class.md)     | A receipt names what a stranger can re-derive, from the phase not the verdict | Accepted |
 | [0014](0014-challenge-bond-priced-to-verification.md) | A break's bond is priced in reward and its harm is paid in seat compute; the arena carries the floor | Accepted |
 | [0015](0015-funded-test-wallet-its-own-service.md) | A funded test wallet is its own service; the API keeps holding no key | Proposed |
+| [0016](0016-faucet-sizes-by-risk-not-denial.md) | The faucet sizes by risk; absence of evidence is not denial | Accepted |
 
 ## Writing a new ADR
 

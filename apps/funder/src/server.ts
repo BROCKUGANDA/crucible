@@ -18,10 +18,17 @@ import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { cdpConfig, credentialProblem, NETWORK, transferUsdc } from "./cdp.js";
 import { CapTracker, MAX_PER_ALLOCATION_ETH, MAX_PER_DAY_ETH, MAX_PER_WALLET_PER_DAY_ETH } from "./cap.js";
+import { allocationPolicy, consultRisk, FACTOR_UNKNOWN_WALLET } from "./risk.js";
 import type { AllocateResponse, HealthResponse } from "./types.js";
 
 const port = Number(process.env.FUNDER_PORT ?? 8788);
 const host = process.env.FUNDER_HOST ?? "127.0.0.1";
+/**
+ * Where the identity service listens. Loopback by default, because both processes run on the
+ * same host and the score is not a secret worth leaking to the network. Empty disables the
+ * consultation and the funder says so in every allocation rather than pretending a clean read.
+ */
+const identityUrl = (process.env.IDENTITY_API_URL ?? "http://127.0.0.1:8787").trim();
 
 const cfg = cdpConfig();
 const problem = credentialProblem(cfg);
@@ -69,10 +76,49 @@ app.post("/allocate", async (c) => {
     );
   }
 
+  // What the identity service knows about this wallet, before any caps are applied.
+  //
+  // A wallet with no history scores the base rate and the API's decision layer says "deny" —
+  // that wallet is the one a faucet exists for, so absence of evidence sizes the drip down
+  // rather than refusing it. Only a slash refuses. `available: false` is reported, never
+  // papered over: an unreachable service is a different answer from a clean score.
+  const consult = await consultRisk(wallet, { apiUrl: identityUrl });
+  const policy = consult.ok
+    ? allocationPolicy(consult.view)
+    : {
+        factor: FACTOR_UNKNOWN_WALLET,
+        reason: `identity service unavailable (${consult.reason}); base allocation`,
+      };
+  const risk = {
+    pUniqueHuman: consult.ok ? consult.view.pUniqueHuman : null,
+    factor: policy.factor,
+    reason: policy.reason,
+    available: consult.ok,
+  };
+
+  if (policy.factor === 0) {
+    caps.record(wallet, requested, 0, 0, false, policy.reason, risk);
+    const res: AllocateResponse = {
+      ok: false,
+      wallet,
+      requestedEth: requested.toString(),
+      grantedEth: null,
+      transferId: null,
+      reason: policy.reason,
+      risk,
+    };
+    console.log(`[funder] ${wallet} refused by risk policy: ${policy.reason}`);
+    return c.json(res, 403);
+  }
+
+  // Scale the request by the policy, floored to six decimals: rounding up would overstate
+  // what left the wallet, the same rule every ETH figure in this repo follows.
+  const sized = Math.floor(requested * policy.factor * 1e6) / 1e6;
+
   // Estimate before spend: check caps without recording.
-  const estimate = caps.estimate(wallet, requested);
+  const estimate = caps.estimate(wallet, sized);
   if (!estimate.ok) {
-    caps.record(wallet, requested, 0, 0, false, estimate.reason ?? undefined);
+    caps.record(wallet, requested, 0, 0, false, estimate.reason ?? undefined, risk);
     const res: AllocateResponse = {
       ok: false,
       wallet,
@@ -80,6 +126,7 @@ app.post("/allocate", async (c) => {
       grantedEth: null,
       transferId: null,
       reason: estimate.reason,
+      risk,
     };
     return c.json(res, 402);
   }
@@ -99,7 +146,7 @@ app.post("/allocate", async (c) => {
     reason = err instanceof Error ? err.message : String(err);
   }
 
-  caps.record(wallet, requested, estimate.estimated, granted, ok, reason);
+  caps.record(wallet, requested, estimate.estimated, granted, ok, reason, risk);
 
   const res: AllocateResponse = {
     ok,
@@ -108,6 +155,7 @@ app.post("/allocate", async (c) => {
     grantedEth: ok ? granted.toString() : null,
     transferId,
     reason: ok ? null : reason,
+    risk,
   };
   return c.json(res, ok ? 200 : 402);
 });

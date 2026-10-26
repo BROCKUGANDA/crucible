@@ -1,0 +1,8 @@
+{
+  "signed": false,
+  "multisig": "",
+  "timelockHours": 48,
+  "signers": [],
+  "gate": "G-800",
+  "note": "Timelocked multisig owns any upgrade or param path. No single key."
+}

@@ -12,6 +12,16 @@ export interface AllocateResponse {
   grantedEth: string | null;
   transferId: string | null;
   reason: string | null;
+  /**
+   * How the risk reading sized this allocation. `available: false` means the identity service
+   * could not be reached and the base factor was used — a different fact from a clean score.
+   */
+  risk?: {
+    pUniqueHuman: number | null;
+    factor: number;
+    reason: string;
+    available: boolean;
+  };
 }
 
 export interface HealthResponse {

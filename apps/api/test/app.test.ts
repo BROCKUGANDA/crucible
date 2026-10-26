@@ -953,3 +953,45 @@ describe("the chain clock in the payload", () => {
     expect(body.headTimestamp).not.toBe(0);
   });
 });
+
+describe("identity routes", () => {
+  const alloy = () => ({
+    tier: 1,
+    locked: true,
+    tokenUri: null,
+    epoch: null,
+    epochStartedAt: null,
+    lifetimeWins: null,
+    lifetimeSlashes: null,
+    holder: null,
+  });
+  const identityApp = createApp(
+    { getModel: () => hallModel(), alloyState: () => alloy() },
+    { rateLimit: false },
+  );
+
+  it("serves the evidence behind a score and names Passport as unconfigured", async () => {
+    const res = await identityApp.request(`/identity/evidence/${OPERATOR}`);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    // A missing source must be declared. Silence would read as "checked and neutral".
+    expect(body.sources.passport.configured).toBe(false);
+    expect(body.sources.passport.reason).toMatch(/Passport/);
+    expect(body.evidence.map((e: { name: string }) => e.name)).toContain("identityLinked");
+    expect(typeof body.pUniqueHuman).toBe("number");
+    expect(body.chainNow).toBeNull(); // no block read on this harness: unknown, not 1970
+  });
+
+  it("still answers the score route the same way", async () => {
+    const res = await identityApp.request(`/identity/risk/${OPERATOR}`);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.score.wallet).toBe(OPERATOR);
+    expect(body.decision.action).toBeTruthy();
+  });
+
+  it("rejects a malformed wallet on both routes", async () => {
+    expect((await identityApp.request("/identity/evidence/nope")).status).toBe(400);
+    expect((await identityApp.request("/identity/risk/nope")).status).toBe(400);
+  });
+});

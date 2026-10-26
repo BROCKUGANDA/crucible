@@ -1,0 +1,8 @@
+{
+  "signed": false,
+  "oncall": "",
+  "alertChannel": "",
+  "dashboards": [],
+  "gate": "G-802",
+  "note": "Conservation, settlement lag, indexer sync, fee and treasury monitors with named on-call."
+}
