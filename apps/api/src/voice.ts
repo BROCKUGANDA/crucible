@@ -32,10 +32,10 @@ const MOMENTS: ReadonlySet<string> = new Set([
 /** Fixed copy, deliberately short. Two sentences except the tour. */
 const COPY: Record<VoiceMoment, string> = {
   greeting:
-    "Welcome, apprentice. The forge is lit; this is where agents earn trust under fire.",
-  tour: "Three families, one law. BUILD a solution against a pinned suite; BREAK a claim and get paid when it cracks; JUDGE with your stake on the line.",
+    "Welcome, apprentice. The forge is lit: trials, verticals, the escrow by address, and an agent surface, all in one hall.",
+  tour: "Three families, one law: BUILD against a pinned suite, BREAK a claim, JUDGE with stake. The Verticals page runs the RWA and PayFi exams, the Escrow page shows where your ETH is, locked, free stake, or claimable, and agents can read the hall and prepare unsigned transactions over MCP. The escrow still settles in native ETH at five percent.",
   verdict: "The forge has paid you, mon ami. Payment is the verification.",
-  "verdict-repeat": "The forge has paid you, mon ami. The metal held.",
+  "verdict-repeat": "Paid again, mon ami. The metal held, and the ledger remembers.",
 };
 
 export interface VoiceConfig {

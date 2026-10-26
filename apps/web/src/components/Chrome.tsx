@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useAccount, useReadContract } from "wagmi";
 import { TRIALS_ABI } from "@crucible/smith";
 import { WalletButton, WalletNotConfiguredNotice } from "@/components/Wallet";
@@ -14,27 +14,36 @@ import { formatWei } from "@/lib/eth";
 import { buildWithdraw, useTx } from "@/lib/useTx";
 import { activeChain, deployment, environmentBadge, explorerTxUrl, ZERO_ADDRESS } from "@/lib/wagmi";
 
-const NAV = [
+const NAV_PRIMARY = [
   { href: "/trials", label: "Trials" },
   { href: "/verticals", label: "Verticals" },
   { href: "/agents", label: "Agents" },
+  { href: "/hall", label: "Hall" },
+  { href: "/escrow", label: "Escrow" },
+];
+
+const NAV_MORE = [
   { href: "/forge", label: "Forge" },
   { href: "/bounties", label: "The Break" },
-  { href: "/hall", label: "Hall" },
   { href: "/clock", label: "The Clock" },
   { href: "/assay", label: "Assay" },
-  { href: "/escrow", label: "Where is my ETH" },
   { href: "/docs", label: "Docs" },
 ];
 
+const NAV = [...NAV_PRIMARY, ...NAV_MORE];
+
 export function Chrome({ children }: { children: ReactNode }) {
   const [sheet, setSheet] = useState(false);
+  const moreRef = useRef<HTMLDetailsElement | null>(null);
   const pathname = usePathname();
   const env = environmentBadge();
 
   // A route change is an answer to the question the menu was asked. Leaving it open would
-  // strand the next page behind a scrim.
-  useEffect(() => setSheet(false), [pathname]);
+  // strand the next page behind a scrim, or leave a dropdown hanging over the new page.
+  useEffect(() => {
+    setSheet(false);
+    if (moreRef.current) moreRef.current.open = false;
+  }, [pathname]);
 
   return (
     <div className="shell">
@@ -61,7 +70,7 @@ export function Chrome({ children }: { children: ReactNode }) {
           {/* The current page is stated in the markup, not only by colour: a route you
               cannot tell apart from the routes you can is a route you have not visited. */}
           <nav aria-label="Primary" className="chrome__nav">
-            {NAV.map((item) => (
+            {NAV_PRIMARY.map((item) => (
               <Link
                 key={item.href}
                 href={item.href}
@@ -70,6 +79,24 @@ export function Chrome({ children }: { children: ReactNode }) {
                 {item.label}
               </Link>
             ))}
+            {/* Secondary routes stay reachable without making every label fight for the
+                same row. A disclosure is one keyboard stop, and it closes on navigation. */}
+            <details className="chrome__more" ref={moreRef}>
+              <summary className="chrome__more-summary">
+                More <span aria-hidden="true">▾</span>
+              </summary>
+              <div className="chrome__more-panel">
+                {NAV_MORE.map((item) => (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    aria-current={pathname.startsWith(item.href) ? "page" : undefined}
+                  >
+                    {item.label}
+                  </Link>
+                ))}
+              </div>
+            </details>
           </nav>
           <button
             type="button"
