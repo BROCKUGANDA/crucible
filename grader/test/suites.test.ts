@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { allSuites, calibrationSuite, injectionSuite, smokeSet, suiteEpoch } from "../src/eval/suites.js";
+import {
+  allSuites,
+  calibrationSuite,
+  injectionSuite,
+  payfiReconSuite,
+  rwaNavSuite,
+  smokeSet,
+  suiteEpoch,
+} from "../src/eval/suites.js";
 import type { Artifact } from "../src/eval/types.js";
 
 /**
@@ -160,5 +168,74 @@ describe("calibrationSuite", () => {
         /-\d{4}$/,
       );
     }
+  });
+});
+
+/**
+ * The RWA and PayFi suites are domain material, and their gold labels are decided by the
+ * payload rather than the loop index. These tests re-derive every PASS/FAIL from the numbers a
+ * grader would read; a generator edit that moved a label without moving the payload turns red.
+ */
+describe("RWA and PayFi domain suites", () => {
+  it("RWA NAV is 24 domain artifacts with all three labels", () => {
+    const suite = rwaNavSuite();
+    expect(suite).toHaveLength(24);
+    expect(suite.every((a) => a.tier === "domain")).toBe(true);
+    expect(suite.every((a) => a.suite === "rwa-nav")).toBe(true);
+    expect(new Set(suite.map((a) => a.claimHash)).size).toBe(24);
+    expect([...new Set(suite.map((a) => a.expectedVerdict))].sort()).toEqual(["FAIL", "PASS", "VOID"]);
+  });
+
+  it("RWA NAV labels agree with the numbers in the payload", () => {
+    for (const artifact of rwaNavSuite()) {
+      if (artifact.expectedVerdict === "VOID") continue;
+      const p = artifact.payload as {
+        unitsOutstanding: number;
+        holdings: { quantity: number; priceUsd: number | null }[];
+        reportedNavPerUnit: number;
+        toleranceBps: number;
+      };
+      const nav =
+        p.holdings.reduce((sum, h) => sum + h.quantity * (h.priceUsd as number), 0) /
+        p.unitsOutstanding;
+      const drift = Math.abs(p.reportedNavPerUnit - nav) / nav;
+      if (artifact.expectedVerdict === "PASS") {
+        expect(drift, artifact.claimHash).toBeLessThanOrEqual(p.toleranceBps / 10_000);
+      } else {
+        expect(drift, artifact.claimHash).toBeGreaterThan(p.toleranceBps / 10_000);
+      }
+    }
+  });
+
+  it("PayFi reconciliation is 24 domain artifacts with all three labels", () => {
+    const suite = payfiReconSuite();
+    expect(suite).toHaveLength(24);
+    expect(suite.every((a) => a.tier === "domain")).toBe(true);
+    expect(suite.every((a) => a.suite === "payfi-recon")).toBe(true);
+    expect(new Set(suite.map((a) => a.claimHash)).size).toBe(24);
+    expect([...new Set(suite.map((a) => a.expectedVerdict))].sort()).toEqual(["FAIL", "PASS", "VOID"]);
+  });
+
+  it("PayFi labels agree with the rounded net in the payload", () => {
+    for (const artifact of payfiReconSuite()) {
+      if (artifact.expectedVerdict === "VOID") continue;
+      const p = artifact.payload as {
+        invoicedUsdCents: number;
+        processorFeeBps: number;
+        settledUsdCents: number;
+      };
+      const net = Math.round(p.invoicedUsdCents * (1 - p.processorFeeBps / 10_000));
+      if (artifact.expectedVerdict === "PASS") {
+        expect(p.settledUsdCents, artifact.claimHash).toBe(net);
+      } else {
+        expect(p.settledUsdCents, artifact.claimHash).not.toBe(net);
+      }
+    }
+  });
+
+  it("the two themed suites are separate exams, and neither is an anchor", () => {
+    expect(suiteEpoch(rwaNavSuite())).not.toBe(suiteEpoch(payfiReconSuite()));
+    expect(suiteEpoch(rwaNavSuite())).not.toBe(suiteEpoch(smokeSet()));
+    expect(allSuites().length).toBeGreaterThan(rwaNavSuite().length + payfiReconSuite().length);
   });
 });

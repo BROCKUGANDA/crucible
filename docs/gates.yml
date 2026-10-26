@@ -1361,6 +1361,15 @@
 - id: 870
   title: MCP subscriptions (design-only; no subscription transport is in the tree; the shipped push channels are webhooks and notifications in packages/warden)
   frameworks: [soc2]
+- id: 871
+  title: RWA NAV reconciliation domain suite (24 eval artifacts; PASS/FAIL/VOID derived from units, holdings, prices and tolerance; evaluation content, not custody or settlement)
+  frameworks: [ai-rmf]
+- id: 872
+  title: PayFi settlement reconciliation domain suite (24 eval artifacts; settled cents against the rounded invoice-minus-fee net; evaluation content, not a payment rail)
+  frameworks: [ai-rmf]
+- id: 873
+  title: Sponsor fiat-to-ETH on-ramp (provider URL is configuration; sends ETH to the sponsor's own wallet; mainnet-only; hidden when unset; no custody, token or bridge on the escrow path)
+  frameworks: [scsvs]
 
 frameworks:
   owasp-top10: "OWASP Web Top 10 (2021)"

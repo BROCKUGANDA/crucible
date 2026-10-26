@@ -10,6 +10,7 @@ import { buildCreateTrial, useTx } from "@/lib/useTx";
 import { useSnapshot } from "@/lib/useSnapshot";
 import { activeChain, deployment } from "@/lib/wagmi";
 import { parseEth } from "@/lib/eth";
+import { onrampUrl } from "@/lib/onramp";
 
 /**
  * Sponsor wizard — three steps, matching the flow in the PRD.
@@ -25,11 +26,14 @@ export default function NewTrialPage() {
   const [step, setStep] = useState(0);
   const result = validateWizard(values);
 
-  const { isConnected } = useAccount();
+  const { isConnected, address } = useAccount();
   // Read only for the chain clock the deadline is anchored on; the page renders nothing from it.
   const { chainNowMs } = useSnapshot();
   const dep = deployment();
   const tx = useTx();
+  // A fiat provider sells mainnet ETH, so the link is only meaningful on chain 1. The escrow
+  // still takes native ETH; the provider sends it to the sponsor's own wallet.
+  const onramp = dep.chainId === 1 ? onrampUrl({ address, chainId: dep.chainId }) : null;
 
   const set = (k: keyof WizardValues, v: string) => setValues((s) => ({ ...s, [k]: v }));
 
@@ -154,6 +158,16 @@ export default function NewTrialPage() {
           </span>
         ) : null}
       </div>
+
+      {onramp ? (
+        <p className="hint hint--block">
+          Sponsoring on mainnet?{" "}
+          <a href={onramp} target="_blank" rel="noreferrer">
+            Buy ETH into your own wallet
+          </a>{" "}
+          — CRUCIBLE never holds it.
+        </p>
+      ) : null}
 
       <div className="tx-anchor">
         <TxStates state={tx.state} message={tx.message} hash={tx.hash} />
