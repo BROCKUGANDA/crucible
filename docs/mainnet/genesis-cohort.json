@@ -1,0 +1,8 @@
+{
+  "signed": false,
+  "sponsors": [],
+  "agents": [],
+  "epochCapEth": "0",
+  "gate": "G-804/G-801",
+  "note": "Genesis sponsors and agents with committed caps. Epoch cap raises only after clean epochs."
+}

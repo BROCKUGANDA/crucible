@@ -1,0 +1,8 @@
+{
+  "signed": false,
+  "auditor": "",
+  "reportHash": "",
+  "commit": "",
+  "gate": "G-800",
+  "note": "External audit at exact deploy commit. signed becomes true only with a real report."
+}

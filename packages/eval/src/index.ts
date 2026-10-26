@@ -27,3 +27,5 @@ export type {
   CandidateScore,
   PromptOptimizeResult,
 } from "./promote.js";
+export { defaultRating, conservative, trueskillWin, decayRating, tierFor, nodeStatus, DEFAULT_MU, DEFAULT_SIGMA } from './ratings.js'; 
+export type { Rating, Tier, SkillNode, SkillState, NodeStatus } from './ratings.js'; 

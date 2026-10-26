@@ -26,6 +26,7 @@
     "api:dev": "npm run dev --workspace @crucible/api",
     "web:dev": "npm run dev --workspace @crucible/web",
     "demo": "node --env-file-if-exists=.env scripts/demo.mjs",
+    "mainnet:preflight": "node scripts/mainnet-preflight.mjs",
     "agent:live": "node --env-file-if-exists=.env scripts/live-agent.mjs",
     "cdp:sandbox": "node --env-file-if-exists=.env scripts/cdp-sandbox.mjs",
     "cdp:transfer": "node --env-file-if-exists=.env scripts/cdp-transfer.mjs",
