@@ -163,6 +163,13 @@ contract ConservationInvariants is Test {
         sels[9] = Handler.withdrawAll.selector;
         sels[10] = Handler.setRunner.selector;
         targetSelector(FuzzSelector({addr: address(handler), selectors: sels}));
+        // The protocol contracts are not actors. Without this the fuzzer can call
+        // registerAgent FROM the escrow itself, paying with its own balance: the ETH
+        // never leaves, yet totalStakes grows, so books read exactly 2x balance. No
+        // real chain can do that: CrucibleTrials has no path that calls itself. A
+        // valued self-call is an instrument artifact, not a protocol state.
+        excludeContract(address(trials));
+        excludeContract(address(alloy));
     }
 
     /// forge invariant: Σ(balance) == Σ(stakes) + Σ(credits) + Σ(escrow) — always
