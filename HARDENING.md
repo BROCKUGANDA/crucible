@@ -887,8 +887,8 @@ guards is the decoration it exists to detect.
   only the address whose signature created the credit, so a payout cannot be redirected mid-flight
   without forging that signature, and the escrow's `withdraw` is covered by the same shape plus the
   conservation fuzzing.
-- **Lighthouse ran against the live site for the first time, and the golden path does not run as
-  documented (2026-10-25).** There was no Lighthouse tooling in the repository at all — no config, no
+- **Lighthouse ran against the live site for the first time (2026-10-25).** There was no Lighthouse
+  tooling in the repository at all — no config, no
   script, no CI job — and the deploy box has Chrome 156 but no `npm`, so the run went: Chrome in
   headless debug mode on the box, port 9222 over an SSH tunnel, Lighthouse 12.8.2 from this machine
   driving it. Scores on `https://crucible.svalley.tech/`: **performance 74, accessibility 100,
@@ -905,15 +905,32 @@ guards is the decoration it exists to detect.
   this register that reports "zero console errors" is describing a different page set or a different
   SDK build; on the live landing page today there are four, three of them CSP refusals. Lighthouse
   will stay red on that audit while the CSP stays tight, and that is the preferred trade.
-- **`GoldenPath.s.sol` cannot be run the way the README says to (2026-10-25).** `:Begin` calls `register()` on the
-  identity registry, and only `Demo.s.sol` deploys and wires one — against a chain built by
-  `Deploy.s.sol` the call hits address zero and the script reverts, which is what it did on a fresh
-  Anvil on 2026-10-25 after a clean deploy. `:Finish` then reads `BROKEN_TRIAL` and `QUIET_TRIAL`
-  (`script/GoldenPath.s.sol:162-163`) — the trial ids `:Begin` picked — which the script's own usage
-  header never mentions. The README now says so instead of implying a two-variable invocation.
-  **Not done, deliberately:** making the script self-sufficient (deploy its own mock registry, derive
-  the two ids from the chain it just wrote) is the actual fix, and it changes what the golden path
-  asserts about a deployment, so it is listed rather than half-implemented.
+- **`GoldenPath.s.sol` could not be run the way the README said to, and now it can (2026-10-25).**
+  `:Begin` called `register()` on the identity registry, and only `Demo.s.sol` deploys and wires one —
+  against a chain built by `Deploy.s.sol` the call hit address zero and the script reverted, which is
+  what it did on a fresh Anvil after a clean deploy. `:Finish` then read `BROKEN_TRIAL` and
+  `QUIET_TRIAL` — the trial ids `:Begin` chose — which the script's own usage header never mentioned,
+  so the documented two-variable invocation could not work on any chain. **Fixed both halves**
+  (`script/GoldenPath.s.sol`, commit named in `docs/since-submission.md`): `:Begin` reads
+  `trials.identityRegistry()` and links only when one is wired, logging plainly when it is not,
+  because `linkIdentity` is documented at `CrucibleTrials.sol:356` as staying permitted-but-unverifiable
+  without a registry — the contract's own fail-closed shape, not a gap the script papers over. `:Finish`
+  derives the pair from `trialCount` (the sponsor's last two, and the counter is 1-based) and then
+  *checks* the derivation before spending a transaction on it: both trials must belong to this
+  sponsor, the slash target must be `Challenged`, the quench target `Judging`. A `:Finish` that cannot
+  identify its trials reverts `WrongTrials` with the ids and statuses printed, rather than casting four
+  Argus votes and a `finalize` at whoever's trials happen to be last.
+  **Measured, not assumed:** the README sequence verbatim on a bare `Deploy.s.sol` chain — deploy 0,
+  `:Begin` 0, warp, `:Finish` 0, `trial 1 verdict: slashed`, `trial 2 verdict: paid`, tier Iron. Then
+  three refusals each proven to fire: re-running `:Finish` on an already-settled pair (both status 4),
+  `BROKEN_TRIAL=0`, and a **busy chain** — after the demo chain's own trials, a stranger's `createTrial`
+  landed as id 7, the derived pair became (6, 7) and the script named it; the documented override then
+  ran the real pair green. On the golden-path chain the escrow's ETH equalled its books exactly:
+  `2010000000000000000` wei = stakes `9e17` + credits `1.11e18` + escrowed `0`, which is the invariant
+  holding after a slash and a payout rather than before anything happens.
+  **What this does not close:** `:Begin` still links no identity on a `Deploy.s.sol` chain, because that
+  chain has no registry to link to — the ERC-8004 feedback write stays skipped there by design, and only
+  the demo chain exercises it.
 - **`npm run demo` was silently replaying its whole loop onto someone's earlier session
   (2026-10-25).** The judge-facing path starts its own anvil on `:8545`, spawns it with
   `stdio: "ignore"`, and then asked only whether *something* answered the RPC — so on a box already
