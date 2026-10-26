@@ -25,8 +25,6 @@ const EXCLUDED = {
   // Needs forge and solc, which the Contracts (forge) job installs from a pinned tarball. Its
   // tests run there, along with build, fmt, coverage and slither.
   "crucible-contracts": "the Contracts (forge) job",
-  // gitignored workspace, not checked into git; CI checkouts won't have it
-  "@crucible/eval": "gitignored, not checked into git",
 };
 
 // Run from the repository root — which is where the job's working directory already is. Taking the
