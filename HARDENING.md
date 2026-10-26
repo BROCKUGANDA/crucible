@@ -889,11 +889,48 @@ guards is the decoration it exists to detect.
   conservation fuzzing.
 - **Lighthouse ran against the live site for the first time (2026-10-25).** There was no Lighthouse
   tooling in the repository at all — no config, no
-  script, no CI job — and the deploy box has Chrome 156 but no `npm`, so the run went: Chrome in
+  script, no CI job — and the deploy box has no `npm` and no packaged browser (`command -v npm` empty,
+  `dpkg -l | grep -c chrom` = 0, measured again 2026-10-26), only a Playwright-managed Chromium headless
+  shell at `~/.cache/ms-playwright/chromium_headless_shell-1248`, so the run went: that Chrome in
   headless debug mode on the box, port 9222 over an SSH tunnel, Lighthouse 12.8.2 from this machine
   driving it. Scores on `https://crucible.svalley.tech/`: **performance 74, accessibility 100,
   best-practices 93, SEO 100**; LCP 4.1 s, FCP 0.9 s, TBT 480 ms, CLS 0. Nothing was wired to fail on
-  those numbers, so they are a measurement, not a gate.
+  those numbers, so they are a measurement, not a gate. **Its report was deleted after transcription**,
+  so the form factor and throttling behind it are not recoverable — read the next entry before quoting
+  any of these five numbers as the site's.
+- **A second Lighthouse run, from this machine, disagrees with the first — and the disagreement is the
+  instrument, not the site (2026-10-26).** Lighthouse 13.5.0 driving local Edge, default **mobile**
+  emulation (412×823, DPR 1.75, simulated slow-4G + 4× CPU throttle): **performance 83**, LCP 1.8 s,
+  FCP 1.1 s, TBT 330 ms, SI 3.8 s, TTI 5.1 s, root document TTFB 440 ms, **CLS 0.171**. The two runs
+  disagree because the instruments do: different Lighthouse version, different machine, different
+  network path, and this run emulates a 412 px phone at 4× CPU throttle. The first run's JSON was
+  deleted after its numbers were transcribed, so its form factor and throttling are not recoverable
+  from anything in the repository — which is the actual finding: **a Lighthouse number quoted without
+  its config is a rumour, and the register now carries the config with the number.**
+  **What the second run names, and what it does not explain:** two layout shifts, both in the hero —
+  0.169 on `p.arena__lede` and 0.002 on `h1.arena__word` (`header#top > .arena__hero__body`,
+  `apps/web/src/app/page.tsx:107-114`). The paragraph's reported box is 379 × 185 at a 412 px viewport:
+  a block that *re-wraps* rather than one pushed down by a sibling, and this content is server-rendered
+  static text, so it is not data arriving late. The obvious suspect is the font swap — all three
+  `next/font/local` faces use `display: "swap"` — and the easy version of that story was checked and
+  **rejected**: `next/font/local` *does* synthesise metric-adjusted fallbacks by default
+  (`getFallbackMetricsFromFontFile` runs unless `adjustFontFallback === false`, verified in the
+  installed next 16.4.2 local loader, and `layout.tsx` passes no such flag). Size-adjust matches the
+  fallback's box metrics, not its line-break positions, so a swap can still re-wrap a paragraph —
+  consistent with what was measured, but **not demonstrated**: the cause is recorded as unresolved,
+  because naming a mechanism is not the same as watching it fire. Proving it means changing the page
+  and re-measuring the deployed one, which is a deploy, and deploying is asked for, not assumed. The
+  other offenders are sized rather than guessed: 225 KiB of unused JS across five `_next/static/chunks`
+  files (the largest 121 KiB dead of 183 KiB, 66%), 110 ms of render-blocking CSS in three small
+  stylesheets, 12 KiB of legacy-JS polyfill (`Array.prototype.at`), and a 2.8 s main-thread breakdown
+  led by 1.06 s "other" and 815 ms script evaluation. **The standing limit:** neither run is a gate;
+  nothing in CI fails if the landing page gets worse. **How to reproduce this run** — no repo tooling
+  exists for it, so the command lives here rather than nowhere:
+  `CHROME_PATH='C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe' npx lighthouse@13.5.0
+  https://crucible.svalley.tech/ --only-categories=performance --output=json --output-path=lh.json`,
+  then read `configSettings`, `categories`, and `audits['layout-shifts'].details.items`. Keep the JSON
+  until the numbers are transcribed *with* that config — the first run's report was deleted and its
+  settings went with it.
 - **Three of the four console errors are the CSP doing its job, and that is a decision, not a bug
   report.** `errors-in-console` scored 0. Its items: the Coinbase Wallet SDK POSTing its analytics
   beacons to `https://cca-lite.coinbase.com/amp` and `/metrics`, refused by our own
