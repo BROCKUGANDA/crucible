@@ -26,6 +26,18 @@ import {SeedContent} from "./SeedContent.sol";
 ///   TRIALS=0x… ALLOY=0x… forge script script/GoldenPath.s.sol:Finish \
 ///     --rpc-url <anvil> --broadcast
 ///
+/// `:Finish` finds the two trials on the chain — the sponsor's last two, checked against the
+/// shape each edge needs — so the pair does not have to be remembered between the phases.
+/// `BROKEN_TRIAL` and `QUIET_TRIAL` override that when the chain is not quiet; the script
+/// refuses a derived pair it cannot identify rather than voting on someone else's trial.
+///
+/// It runs on a chain from `Deploy.s.sol` as well as the demo chain: the identity registry is
+/// the one wire `Deploy` leaves off, and `linkIdentity` is documented (CrucibleTrials.sol:356)
+/// as staying permitted-but-unverifiable without it, so `:Begin` links when a registry is
+/// wired and says plainly when it is not. The Alloy tier, the slash and the quench all land
+/// either way; only the ERC-8004 feedback write is skipped, which is the contract's own
+/// fail-closed behaviour, not something this script papers over.
+///
 /// Every actor is an Anvil genesis account derived from the published dev mnemonic —
 /// same rule as Demo.s.sol: the events must land in logs a live reader can quote.
 contract GoldenPath is Script {
@@ -58,11 +70,18 @@ contract GoldenPath is Script {
     function _registerAndLink() internal returns (uint256 agentId) {
         vm.broadcast(pkOperator);
         agentId = trials.registerAgent{value: 1 ether}("ipfs://golden-path", vm.addr(RUNNER_KEY));
+        address registry = trials.identityRegistry();
+        if (registry == address(0)) {
+            console.log("agent", agentId, "registered; no identity registry wired on this chain");
+            console.log("  identity left unlinked: Alloy tiers and settlement are unaffected");
+            return agentId;
+        }
+        identity = MockIdentityRegistry(registry);
         vm.broadcast(pkOperator);
         uint256 identityId = identity.register("ipfs://golden-path-identity");
         vm.broadcast(pkOperator);
         trials.linkIdentity(agentId, identityId);
-        console.log("agent", agentId, "registered and linked");
+        console.log("agent", agentId, "registered and linked to identity", identityId);
     }
 
     function _post(string memory tag) internal returns (uint256 id) {
@@ -95,6 +114,39 @@ contract GoldenPath is Script {
     function _fileBreak(uint256 id) internal {
         vm.broadcast(pkSkeptic);
         trials.fileBreak{value: 0.01 ether}(id, keccak256("golden-path-break"));
+    }
+
+    /// Thrown by `_trialPair` when the pair it derived is not the pair `:Begin` lit.
+    error WrongTrials();
+
+    /// The pair `:Begin` lit, read back off the chain instead of remembered by the operator.
+    ///
+    /// `:Finish` is a money action — it casts four Argus transactions and a finalize — so it
+    /// will not act on trials it cannot identify. The derivation is the sponsor's last two
+    /// trials; the check is what the two edges require, namely the slash target sitting in
+    /// `Challenged` (a break was filed) and the quench target in `Judging` (none was), both
+    /// owned by this sponsor. A chain that carried somebody else's trial between the phases
+    /// fails here with the reason named, rather than voting on the wrong trial and settling it.
+    function _trialPair() internal view returns (uint256 broken, uint256 quiet) {
+        uint256 count = trials.trialCount();
+        uint256 derivedBroken = count >= 2 ? count - 1 : 0;
+        uint256 derivedQuiet = count >= 2 ? count : 0;
+        broken = vm.envOr("BROKEN_TRIAL", derivedBroken);
+        quiet = vm.envOr("QUIET_TRIAL", derivedQuiet);
+        CrucibleTrials.Trial memory b = trials.getTrial(broken);
+        CrucibleTrials.Trial memory q = trials.getTrial(quiet);
+        address sponsor = vm.addr(pkSponsor);
+        if (b.sponsor != sponsor || q.sponsor != sponsor) {
+            console.log("trials", broken, "and", quiet);
+            console.log("are not this sponsor's: pass BROKEN_TRIAL and QUIET_TRIAL for the pair :Begin lit");
+            revert WrongTrials();
+        }
+        if (b.status != CrucibleTrials.Status.Challenged || q.status != CrucibleTrials.Status.Judging) {
+            console.log("trial", broken, "status", uint256(uint8(b.status)));
+            console.log("trial", quiet, "status", uint256(uint8(q.status)));
+            console.log("the slash needs a Challenged trial and the quench a Judging one");
+            revert WrongTrials();
+        }
     }
 
     function _vote(uint256 id, bool breakWins) internal {
@@ -159,8 +211,7 @@ contract Begin is GoldenPath {
 contract Finish is GoldenPath {
     function run() external {
         _wire();
-        uint256 broken = uint256(vm.envUint("BROKEN_TRIAL"));
-        uint256 quiet = uint256(vm.envUint("QUIET_TRIAL"));
+        (uint256 broken, uint256 quiet) = _trialPair();
         _vote(broken, true); // 2-of-3: the break lands, the agent is slashed
         vm.broadcast(pkRelayer); // finalize is permissionless; the bystander quenches
         trials.finalize(quiet);
