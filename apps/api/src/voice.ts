@@ -67,7 +67,7 @@ export function voiceCopy(moment: string): string | null {
 }
 
 const DEFAULT_BASE = "https://api.elevenlabs.io";
-const DEFAULT_MODEL = "eleven_flash_v2_5";
+const DEFAULT_MODEL = "eleven_multilingual_v4";
 
 /**
  * The provider request. The voice settings are the PRD's: stability 0.55, style 0.35,

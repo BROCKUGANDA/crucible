@@ -139,7 +139,7 @@ const voice = (() => {
   const apiKey = process.env.ELEVENLABS_API_KEY?.trim();
   const voiceId = process.env.ELEVENLABS_VOICE_ID?.trim();
   const baseUrl = process.env.ELEVENLABS_BASE_URL?.trim() || undefined;
-  const modelId = process.env.ELEVENLABS_MODEL_ID?.trim() || "eleven_flash_v2_5";
+  const modelId = process.env.ELEVENLABS_MODEL_ID?.trim() || "eleven_multilingual_v4";
   if (!apiKey || !voiceId) return null;
   if (baseUrl && !/^https?:\/\//.test(baseUrl)) {
     throw new Error(`ELEVENLABS_BASE_URL must be an http(s) URL; got "${baseUrl}"`);
@@ -167,7 +167,7 @@ const frenchy = (() => {
     const ttsApiKey = process.env.ELEVENLABS_API_KEY?.trim();
     const ttsVoiceId = process.env.ELEVENLABS_VOICE_ID?.trim();
     const ttsBaseUrl = process.env.ELEVENLABS_BASE_URL?.trim() || undefined;
-    const ttsModelId = process.env.ELEVENLABS_MODEL_ID?.trim() || "eleven_flash_v2_5";
+    const ttsModelId = process.env.ELEVENLABS_MODEL_ID?.trim() || "eleven_multilingual_v4";
     if (ttsApiKey && ttsVoiceId) {
       if (ttsBaseUrl && !/^https?:\/\//.test(ttsBaseUrl)) {
         throw new Error(`ELEVENLABS_BASE_URL must be an http(s) URL; got "${ttsBaseUrl}"`);
