@@ -931,6 +931,56 @@ guards is the decoration it exists to detect.
   then read `configSettings`, `categories`, and `audits['layout-shifts'].details.items`. Keep the JSON
   until the numbers are transcribed *with* that config — the first run's report was deleted and its
   settings went with it.
+- **Every trial said "suite not disclosed yet" about a suite that had been disclosed 43 hours
+  earlier (2026-10-26).** The writer and the reader are different containers and the reader was
+  pointed at the wrong directory twice over. `apps/api/src/server.ts` read
+  `CRUSCIBLE_CONTENT_DIR` — no `i` — while `compose.yaml` sets `CRUCIBLE_CONTENT_DIR`, and the
+  `api` service mounted no `content` volume at all; the deployment's own
+  `/content/disclosure/disclosure.json` (written 2026-10-24 19:29 by the seat's
+  `DisclosureLog.open(join(contentDir, "disclosure"))`) was invisible to the process whose job is
+  to publish it. **Measured before the fix, on the live snapshot:** all eight trials returned
+  `specCID: null`, `testsCID: null`, `awaitingDisclosure: true`, including four already settled,
+  while `createTrial` cannot accept a zero `testsCID` — so the chain could not be the reason. The
+  two disclosure keys (`0xcfee…f921`, `0x76ac…bd8aa`) are exactly trial 4's `specDigest` and
+  `testsDigest`, so the mapping was right and nothing was reading it.
+  **Fixed** in `apps/api/src/disclosure.ts` (pure reader, called from the host with the content
+  dir, the trials and a fault sink) plus the api mount (`content:/content:ro`) and the corrected
+  variable. Eight tests, and every branch mutation-proven: removing the fault report, shifting
+  the path one directory, and dropping either digest normalization each turn a test red; the file
+  was restored byte-identically. **What this does not close:** the site publishes the CID, not the
+  suite's text — there is no content route, so a reader can name and compare the address but
+  cannot read the test files from this host. The row and the detail page now print it in full so
+  it can at least be resolved elsewhere.
+- **"Connect wallet" connected to a chain the contracts are not on (2026-10-26).** The demo runs
+  on Anvil, chain 31337, which no consumer wallet knows. `wallet_switchEthereumChain` answers
+  4902, and nothing offered `wallet_addEthereumChain`, so the first signature failed with a
+  network error that reads like a broken site. `apps/web/src/lib/chainSwitch.ts` does the pair in
+  the only order that does not nag: switch first (silent when the chain is known), an add prompt
+  only on 4902, no add after a 4001 refusal, a re-read of the chain the provider actually reports
+  (a wallet can resolve a switch and stay put), and the **deployed** RPC rather than
+  `127.0.0.1`, which would point a remote visitor's wallet at their own machine. Nine tests with a
+  fake provider cover each branch. Binance Wallet gets its own injected target at
+  `window.binancew3w.ethereum`, which does not reliably answer through `window.ethereum`.
+  **What this does not close:** the add prompt is a wallet dialog the visitor must accept — that is
+  the only way a browser wallet learns a chain — and the live box has no WalletConnect project id,
+  so the mobile QR path stays off.
+- **The books now reconcile: the fee and the treasury's credit are two different numbers
+  (2026-10-26).** The HUD published the settlement fee under one heading, so the page said 0.15
+  ETH while `credit(treasury)` on the chain held 0.305 — the treasury also keeps its share of every
+  slashed bond, which the fee arithmetic never sees. Both figures were right and no reader could
+  reconcile them. `credit(treasury)` is now read on the alloy sweep's clock and published as
+  `economics.treasuryCreditEth` beside `feesEth`; a credit nobody read stays null and is never
+  filled with the fee. **Verified on the deployed chain:** `MIN_BOND` 0.01 ETH, `MAX_REWARD` 1000
+  ETH, bond 1/5 = 20%, `BREAK_STAKE_DEN` 1%, `FEE_BPS`/`BPS` 5%, `SLASH_SKEPTIC_NUM`/`BPS` 30% to
+  the skeptic and 70% to the treasury — every figure the books page states, read from the
+  contract — and the escrow's balance `10.04 ETH` equals stakes `1.6` + credits `4.24` + escrow
+  `4.2` to the wei.
+- **The hero printed a JSON path at a first-time reader (2026-10-26).** `/.well-known/crucible.json`
+  appeared in the landing paragraph; it is a machine-readable address and a visitor checking
+  whether the product is honest is not helped by one. The plain sentence stays, the link to
+  `/claims` moved to the footer where the check belongs, and the detail page now prints the full
+  spec and suite CIDs instead of an abbreviation, because that page is where a stranger arrives to
+  check a claim and a truncated address cannot be pasted anywhere.
 - **Three of the four console errors are the CSP doing its job, and that is a decision, not a bug
   report.** `errors-in-console` scored 0. Its items: the Coinbase Wallet SDK POSTing its analytics
   beacons to `https://cca-lite.coinbase.com/amp` and `/metrics`, refused by our own
