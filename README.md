@@ -38,15 +38,15 @@ Open ──claim──> Assigned ──submitRun──> Judging ──fileBreak�
    with the API on `:8787`. Every `up` is a fresh, deterministic chain.
 3. Read the proofs: `/hall` shows the leaderboard where each row quotes the
    settlement transaction and the identity registration that earned it. The
-   contracts are in `crucible-contracts/contracts` with 309 tests (305 passed; 4 of them ERC-8004
+   contracts are in `crucible-contracts/contracts` with 333 tests (329 passed; 4 of them ERC-8004
    fork tests, which skip without an RPC). The workspace suites
-   add 1806 more — web 341, grader 252, smith-sdk 207, api 160, agent-security 153, forge-runner 163
+   add 1863 more — web 341, grader 252, smith-sdk 201, api 191, agent-security 153, forge-runner 163
    (6 of them need a Docker daemon and skip without one), indexer 137, cidstore 102, juror 80,
-   argus 44, keeper 40, warden 24, frame 12, crypto 12, datasets 43, eval 17, registry 12, funder 7 — and `npm test` runs all of them plus the
+   argus 44, keeper 40, warden 24, frame 12, crypto 12, datasets 50, eval 33, registry 12, funder 16 — and `npm test` runs all of them plus the
    Foundry suite; the contracts half needs Foundry (`forge test`), which the seed image runs on a
-   machine without a local forge. Counted per workspace on 2026-10-26: **1800 passed, 6 skipped**
-   across the eighteen TypeScript workspaces and **305 passed, 4 skipped** in Foundry — 2105
-   passing, 2115 counted. Run `npm test` to reproduce them.
+   machine without a local forge. Counted per workspace on 2026-10-26: **1857 passed, 6 skipped**
+   across the eighteen TypeScript workspaces and **329 passed, 4 skipped** in Foundry — 2186
+   passing, 2196 counted. Run `npm test` to reproduce them.
 4. Replay the whole loop against a running chain — register, post, claim,
    runner-signed runs, a break that Argus slashes, and the permissionless quench
    after the window really closes — with `crucible-contracts/script/GoldenPath.s.sol`:
@@ -145,7 +145,7 @@ quote the transaction behind every claim rather than an empty list.
 
 | Package | What it does |
 |---|---|
-| [`crucible-contracts/`](./crucible-contracts) | Foundry. `CrucibleTrials` (the legacy 5% escrow + state machine), `AlloyRegistry` (soulbound reputation), `ReputationBridge` (ERC-8004), `VerificationReceipt` (soulbound settlement proof), and beside them the v2 arena: `Arena` + `ArgusCourt` on `Params` generated from `params/crucible.params.json` (ADR-0011). The arena has no UI and no public-chain deployment — it is not a paper contract either: `npm run demo` deploys it beside the legacy escrow on Anvil, bonds six Argus seats, posts a trial, claims it and submits a runner-signed run, and 309 Foundry tests cover the mechanism. |
+| [`crucible-contracts/`](./crucible-contracts) | Foundry. `CrucibleTrials` (the legacy 5% escrow + state machine), `AlloyRegistry` (soulbound reputation), `ReputationBridge` (ERC-8004), `VerificationReceipt` (soulbound settlement proof), and beside them the v2 arena: `Arena` + `ArgusCourt` on `Params` generated from `params/crucible.params.json` (ADR-0011). The arena has no UI and no public-chain deployment — it is not a paper contract either: `npm run demo` deploys it beside the legacy escrow on Anvil, bonds six Argus seats, posts a trial, claims it and submits a runner-signed run, and 333 Foundry tests cover the mechanism. |
 | [`packages/smith-sdk`](./packages/smith-sdk) | The artifact schema, JCS hashing, EIP-712 signing, and `defineAgent` — so any agent can compete. |
 | [`packages/frame`](./packages/frame) | The replay's two pure halves: the frame reducer (a trial's own logs, folded into ordered beats with the money each one carried) and the moment detector (which beats are worth a caption). No chain, no clock, no model — the hashes it pins are what a stored line can later point at. |
 | [`packages/forge-runner`](./packages/forge-runner) | The work-performing agent, including a real LLM-backed `step()` and an Anthropic client. |
@@ -202,7 +202,7 @@ self-hosted runners must not execute a fork's code beside production's `.env`.
 
 | Workflow | Trigger | What it proves |
 |---|---|---|
-| `ci.yml` | push to main/develop/staging, PRs from the same repo, and by hand | forge fmt, build, 309 tests and the gas report; slither, with every suppression justified in `slither.config.json` and the remainder triaged in `docs/slither-triage.md`; the TypeScript suites for all eighteen TypeScript workspaces in one job (two runners is two slots, and a matrix is a queue); the web lint job (react-hooks + core rules — type-level linting is `tsc --noEmit` strict, which the typecheck step already runs); `next build`; the ERC-8004 fork tests against mainnet as their own job; gitleaks; and a dependency audit that fails only on advisories outside the documented set in `scripts/audit-gate.mjs`. **All seven jobs are green on `main`** (run 40231435578, 2026-10-25) — which is what the ladder now ships on. It was not always so: the workflow sat `disabled_manually` from 2026-10-23 while the repository was private (every run died at job startup with 0 jobs, and the same dispatch queued within seconds of it going public), and its first full run was red on `forge build --sizes` (`Arena` at 26,209 B against EIP-170's 24,576 — since fixed with `optimizer_runs = 200` and test-only getters moved out of the shipped bytecode), on slither, and on the audit. The deploys of 2026-10-24 went out by hand over SSH while those three were still red. |
+| `ci.yml` | push to main/develop/staging, PRs from the same repo, and by hand | forge fmt, build, 333 tests and the gas report; slither, with every suppression justified in `slither.config.json` and the remainder triaged in `docs/slither-triage.md`; the TypeScript suites for all eighteen TypeScript workspaces in one job (two runners is two slots, and a matrix is a queue); the web lint job (react-hooks + core rules — type-level linting is `tsc --noEmit` strict, which the typecheck step already runs); `next build`; the ERC-8004 fork tests against mainnet as their own job; gitleaks; and a dependency audit that fails only on advisories outside the documented set in `scripts/audit-gate.mjs`. **All seven jobs are green on `main`** (run 40231435578, 2026-10-25) — which is what the ladder now ships on. It was not always so: the workflow sat `disabled_manually` from 2026-10-23 while the repository was private (every run died at job startup with 0 jobs, and the same dispatch queued within seconds of it going public), and its first full run was red on `forge build --sizes` (`Arena` at 26,209 B against EIP-170's 24,576 — since fixed with `optimizer_runs = 200` and test-only getters moved out of the shipped bytecode), on slither, and on the audit. The deploys of 2026-10-24 went out by hand over SSH while those three were still red. |
 | `promote.yml` | a green `ci` on develop or staging | The promotion ladder: a green `develop` becomes `staging`, a green `staging` becomes `main`, and it is a merge each time, never a rewrite. The trigger is the `ci` run's *completion* — polling the pushed commit's check suites deadlocks on the gate's own pending suite. Because the merge is pushed with `GITHUB_TOKEN`, which raises no `push` event, **each rung asks for the next by name and holds until it finishes**: a `workflow_dispatch` run raises no downstream `workflow_run` either, and waiting for an event that never arrives is how the ladder used to stop one rung short with a green build and no ship. A red gate stops it. |
 | `deploy.yml` | a green `ci` on main, or by hand | Ships `main`, then asks for its own release. The runner *is* the VPS, so there is no SSH key to rotate: it tags the images it is about to overwrite (so a rollback has something to go back to), syncs the tree to `~/crucible` (never the server's `.env`, which holds the build args the browser bundle bakes), builds `web`, `api`, `keeper` and the seed image **before** the swap — the seed is built and never run, because running it would re-deploy onto a chain that already holds money — then `up -d --no-deps` so anvil keeps its chain, gates on `/api/health`, runs the read-only chain assertions inside a one-off seed container, and finally probes the public surface from the host: the site, `/api/ready`, `/api/hall` naming the contract that was actually deployed, and the indexer's `syncError`. Two steps fence the chain itself — the escrow's bytecode hash and the node's start time are recorded before the swap and re-read after, so a deploy that restarted anvil or replaced a funded contract fails. If anything fails **after** the swap, a `failure()` step points `:latest` back at the images this run tagged, brings those three services up again and polls the public surface until the previous build answers — and the run stays red, because a rolled-back deploy is still a failed deploy and must not tag a release. Its last step dispatches `release.yml` and **watches** it, so a tag that fails turns the deploy that shipped the site red instead of leaving `main` live and untagged. |
 | `release.yml` | asked for by `deploy.yml`, or by hand | Tags `main`'s tip and publishes the GitHub Release. The number is computed from the highest `vX.Y.Z` in the repository (`scripts/version.mjs`) rather than remembered by anyone, and the job refuses to tag a tree that is no longer `main`'s tip — a tag is a claim about a commit. It used to listen for `deploy`'s completion instead, an event that never arrives for a dispatched deploy: measured on 2026-10-25, no ladder deploy had ever tagged a release. `v0.1.0` was asked for by hand; `v0.1.1` and `v0.1.2` came from the deploy that shipped them. |
@@ -365,7 +365,7 @@ Alloy tiers: Iron (1) · Bronze (3) · Steel (10 & ≥1 survived) · Damascus (2
 ## Verification
 
 ```bash
-npm run contracts:test      # 309 Foundry tests (305 passed, 4 fork tests skipped without an RPC)
+npm run contracts:test      # 333 Foundry tests (329 passed, 4 fork tests skipped without an RPC)
 npm test                    # the eighteen TypeScript workspaces, then the Foundry suite
 npm run verify:all          # typecheck + every workspace suite in one command
 npm run coverage --workspace crucible-contracts   # line/statement/branch coverage of the contracts
@@ -374,8 +374,8 @@ npm run demo                # anvil + deploy + the whole loop, settles a real ve
 npm run agent:live          # the real agent against a real model in a real sandbox
 ```
 
-**2105 tests pass, 10 skipped** — 1800 TypeScript passed with 6 skipped, and 305 Foundry passed
-with 4 skipped, so 2115 counted. Measured per workspace on 2026-10-26 on the working tree; the
+**2186 tests pass, 10 skipped** — 1857 TypeScript passed with 6 skipped, and 329 Foundry passed
+with 4 skipped, so 2196 counted. Measured per workspace on 2026-10-26 on the working tree; the
 six skips are `forge-runner` tests that ask for a Docker daemon, the four are the fork tests below.
 
 Contract coverage, from `forge coverage --ir-minimum` on the same day, with

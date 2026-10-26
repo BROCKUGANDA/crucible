@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
+import http from "node:http";
+import type { AddressInfo } from "node:net";
 import { replay, type EventLike } from "@crucible/indexer";
 import { CircuitBreaker } from "@crucible/smith";
 import { createApp } from "../src/app.js";
+import { createPassportSource } from "../src/passport.js";
 
 const SPONSOR = "0x1111111111111111111111111111111111111111";
 const OPERATOR = "0x2222222222222222222222222222222222222222";
@@ -993,5 +996,67 @@ describe("identity routes", () => {
   it("rejects a malformed wallet on both routes", async () => {
     expect((await identityApp.request("/identity/evidence/nope")).status).toBe(400);
     expect((await identityApp.request("/identity/risk/nope")).status).toBe(400);
+  });
+
+  it("reads an eligible Passport credential through a real source", async () => {
+    const server = http.createServer((_req, res) => {
+      res.setHeader("content-type", "application/json");
+      res.end(JSON.stringify({ eligible: true, method: "passport", score: 25, threshold: 20, sanctioned: false }));
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const { port } = server.address() as AddressInfo;
+    const app = createApp(
+      {
+        getModel: () => hallModel(),
+        alloyState: () => alloy(),
+        passportEligibility: createPassportSource(`http://127.0.0.1:${port}`),
+      },
+      { rateLimit: false },
+    );
+    try {
+      const body = await (await app.request(`/identity/evidence/${OPERATOR}`)).json();
+      expect(body.sources.passport.configured).toBe(true);
+      expect(body.sources.passport.available).toBe(true);
+      expect(body.sources.passport.eligible).toBe(true);
+      expect(body.sources.passport.score).toBe(25);
+      expect(body.evidence.map((e: { name: string }) => e.name)).toContain("passportEligible");
+
+      const risk = await (await app.request(`/identity/risk/${OPERATOR}`)).json();
+      expect(risk.score.evidence.map((e: { name: string }) => e.name)).toContain("passportEligible");
+    } finally {
+      await new Promise<void>((resolve) => {
+        server.closeAllConnections();
+        server.close(() => resolve());
+      });
+    }
+  });
+
+  it("an unreachable Passport source contributes no evidence", async () => {
+    const server = http.createServer((_req, res) => {
+      res.statusCode = 503;
+      res.end("down");
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const { port } = server.address() as AddressInfo;
+    const app = createApp(
+      {
+        getModel: () => hallModel(),
+        alloyState: () => alloy(),
+        passportEligibility: createPassportSource(`http://127.0.0.1:${port}`),
+      },
+      { rateLimit: false },
+    );
+    try {
+      const body = await (await app.request(`/identity/evidence/${OPERATOR}`)).json();
+      expect(body.sources.passport.configured).toBe(true);
+      expect(body.sources.passport.available).toBe(false);
+      expect(body.sources.passport.reason).toContain("503");
+      expect(body.evidence.some((e: { name: string }) => e.name.startsWith("passport"))).toBe(false);
+    } finally {
+      await new Promise<void>((resolve) => {
+        server.closeAllConnections();
+        server.close(() => resolve());
+      });
+    }
   });
 });

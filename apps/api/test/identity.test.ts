@@ -241,6 +241,56 @@ describe("Bayesian Sybil-risk scorer (Phase 1)", () => {
     expect(score.evidence.find((e) => e.name === "hasSurvivedBreak")).toBeDefined();
   });
 
+  it("moves the score for an eligible Passport credential", () => {
+    const agent = makeAgent({ id: 10, operator: "0x" + "17".repeat(20) });
+    const model = makeModel([agent], []);
+    const alloy = makeAlloyStateFn(new Map());
+    const plain = scoreWallet(model, alloy, agent.operator);
+    const eligible = scoreWallet(model, alloy, agent.operator, null, null, {
+      eligible: true,
+      sanctioned: false,
+      score: 25,
+      method: "passport",
+    });
+    expect(eligible.pUniqueHuman).toBeGreaterThan(plain.pUniqueHuman);
+    const signal = eligible.evidence.find((e) => e.name === "passportEligible");
+    expect(signal).toBeDefined();
+    expect(signal?.lr).toBe(LIKELIHOOD_RATIOS.passportEligible);
+  });
+
+  it("treats a sanctions match as negative evidence, not an eligible one", () => {
+    const agent = makeAgent({ id: 11, operator: "0x" + "18".repeat(20) });
+    const model = makeModel([agent], []);
+    const alloy = makeAlloyStateFn(new Map());
+    const plain = scoreWallet(model, alloy, agent.operator);
+    const sanctioned = scoreWallet(model, alloy, agent.operator, null, null, {
+      eligible: false,
+      sanctioned: true,
+      score: null,
+      method: null,
+    });
+    expect(sanctioned.pUniqueHuman).toBeLessThan(plain.pUniqueHuman);
+    expect(sanctioned.evidence.find((e) => e.name === "sanctionedAddress")).toBeDefined();
+    expect(sanctioned.evidence.find((e) => e.name === "passportEligible")).toBeUndefined();
+  });
+
+  it("adds nothing when Passport says a wallet is not eligible", () => {
+    // Being below a threshold is not evidence of duplication. If it scored as sybil
+    // evidence, the faucet would punish exactly the wallet that has not been attested yet.
+    const agent = makeAgent({ id: 12, operator: "0x" + "19".repeat(20) });
+    const model = makeModel([agent], []);
+    const alloy = makeAlloyStateFn(new Map());
+    const plain = scoreWallet(model, alloy, agent.operator);
+    const ineligible = scoreWallet(model, alloy, agent.operator, null, null, {
+      eligible: false,
+      sanctioned: false,
+      score: 5,
+      method: "passport",
+    });
+    expect(ineligible.pUniqueHuman).toBe(plain.pUniqueHuman);
+    expect(ineligible.evidence.some((e) => e.name.startsWith("passport"))).toBe(false);
+  });
+
   it("decide maps probabilities to actions", () => {
     const allow: Decision = decide({
       wallet: "0x" + "aa".repeat(20),

@@ -20,6 +20,12 @@ trace/
 coverage-summary.txt
 audit.json
 gas-report.txt
+lcov.info
+cov-*.txt
+
+# Local agent configuration; AGENTS.md is the canonical instructions.
+.claude/
+CLAUDE.md
 
 # env
 .env
