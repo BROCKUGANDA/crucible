@@ -26,8 +26,10 @@ contract TeamLedgerBoundaryTest is Test {
     bytes32 internal teamB = keccak256("team-b");
     uint256 internal deadline = type(uint256).max;
 
-    bytes32 internal constant TEAM_TYPEHASH = keccak256("TeamMember(bytes32 teamKey,address member,uint256 shareBps,uint256 deadline)");
-    bytes32 internal constant STAGE_TYPEHASH = keccak256("Stage(bytes32 teamKey,bytes32 stageHash,uint256 seq,address member,uint256 deadline)");
+    bytes32 internal constant TEAM_TYPEHASH =
+        keccak256("TeamMember(bytes32 teamKey,address member,uint256 shareBps,uint256 deadline)");
+    bytes32 internal constant STAGE_TYPEHASH =
+        keccak256("Stage(bytes32 teamKey,bytes32 stageHash,uint256 seq,address member,uint256 deadline)");
 
     function setUp() public {
         ledger = new TeamLedger();
@@ -39,7 +41,16 @@ contract TeamLedgerBoundaryTest is Test {
     }
 
     function _teamSig(uint256 pk, bytes32 key, address member, uint256 share) internal returns (bytes memory) {
-        return _sig(pk, keccak256(abi.encodePacked("\x19\x01", ledger.DOMAIN_SEPARATOR(), keccak256(abi.encode(TEAM_TYPEHASH, key, member, share, deadline)))));
+        return _sig(
+            pk,
+            keccak256(
+                abi.encodePacked(
+                    "\x19\x01",
+                    ledger.DOMAIN_SEPARATOR(),
+                    keccak256(abi.encode(TEAM_TYPEHASH, key, member, share, deadline))
+                )
+            )
+        );
     }
 
     function _formTwo() internal {
@@ -178,7 +189,16 @@ contract TeamLedgerBoundaryTest is Test {
         bytes32 stage = keccak256("shared-output");
 
         // mid signs an attestation for team A...
-        bytes memory sig = _sig(MID_K, keccak256(abi.encodePacked("\x19\x01", ledger.DOMAIN_SEPARATOR(), keccak256(abi.encode(STAGE_TYPEHASH, teamA, stage, uint256(0), mid, deadline)))));
+        bytes memory sig = _sig(
+            MID_K,
+            keccak256(
+                abi.encodePacked(
+                    "\x19\x01",
+                    ledger.DOMAIN_SEPARATOR(),
+                    keccak256(abi.encode(STAGE_TYPEHASH, teamA, stage, uint256(0), mid, deadline))
+                )
+            )
+        );
 
         // ...and someone presents it as team B's. teamKey is inside the digest, so this recovers a
         // different address than msg.sender and fails closed rather than crediting an attestation
@@ -197,7 +217,16 @@ contract TeamLedgerBoundaryTest is Test {
         bytes32 stageA = keccak256("a-stage");
         bytes32 stageB = keccak256("b-stage");
 
-        bytes memory sigA = _sig(MID_K, keccak256(abi.encodePacked("\x19\x01", ledger.DOMAIN_SEPARATOR(), keccak256(abi.encode(STAGE_TYPEHASH, teamA, stageA, uint256(0), mid, deadline)))));
+        bytes memory sigA = _sig(
+            MID_K,
+            keccak256(
+                abi.encodePacked(
+                    "\x19\x01",
+                    ledger.DOMAIN_SEPARATOR(),
+                    keccak256(abi.encode(STAGE_TYPEHASH, teamA, stageA, uint256(0), mid, deadline))
+                )
+            )
+        );
         vm.prank(mid);
         ledger.attestStage(teamA, stageA, deadline, sigA);
         assertEq(ledger.team(teamA).stageCount, 1);
@@ -205,7 +234,16 @@ contract TeamLedgerBoundaryTest is Test {
 
         // Team B's first attestation must still be valid at seq 0 — a global counter would make one
         // team's activity silently invalidate another's signatures.
-        bytes memory sigB = _sig(OTHER_LEAD_K, keccak256(abi.encodePacked("\x19\x01", ledger.DOMAIN_SEPARATOR(), keccak256(abi.encode(STAGE_TYPEHASH, teamB, stageB, uint256(0), otherLead, deadline)))));
+        bytes memory sigB = _sig(
+            OTHER_LEAD_K,
+            keccak256(
+                abi.encodePacked(
+                    "\x19\x01",
+                    ledger.DOMAIN_SEPARATOR(),
+                    keccak256(abi.encode(STAGE_TYPEHASH, teamB, stageB, uint256(0), otherLead, deadline))
+                )
+            )
+        );
         vm.prank(otherLead);
         ledger.attestStage(teamB, stageB, deadline, sigB);
         assertEq(ledger.team(teamB).stageCount, 1);

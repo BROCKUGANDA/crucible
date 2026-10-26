@@ -34,9 +34,12 @@ contract TeamLedger {
     ///      would carry two different signatures — see `_recover`.
     uint256 private constant _SECP256K1_HALF_N = 0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF5D576E7357A4501DDFE92F46681B20A0;
 
-    bytes32 public constant TEAM_TYPEHASH = keccak256("TeamMember(bytes32 teamKey,address member,uint256 shareBps,uint256 deadline)");
-    bytes32 public constant STAGE_TYPEHASH = keccak256("Stage(bytes32 teamKey,bytes32 stageHash,uint256 seq,address member,uint256 deadline)");
-    bytes32 private constant _DOMAIN_TYPEHASH = keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
+    bytes32 public constant TEAM_TYPEHASH =
+        keccak256("TeamMember(bytes32 teamKey,address member,uint256 shareBps,uint256 deadline)");
+    bytes32 public constant STAGE_TYPEHASH =
+        keccak256("Stage(bytes32 teamKey,bytes32 stageHash,uint256 seq,address member,uint256 deadline)");
+    bytes32 private constant _DOMAIN_TYPEHASH =
+        keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
 
     // ── storage ──────────────────────────────────────────────────────────────────────────────
     struct Team {
@@ -108,7 +111,13 @@ contract TeamLedger {
     ///        be a new team, or the stage attestations of the old one would attach to the new split.
     /// @param deadline Latest block timestamp the signatures remain valid. Past it, formation
     ///        reverts — a signature collected for one arrangement must not fund a later one.
-    function createTeam(bytes32 teamKey, address[] calldata members, uint256[] calldata sharesBps, uint256 deadline, bytes[] calldata sigs) external {
+    function createTeam(
+        bytes32 teamKey,
+        address[] calldata members,
+        uint256[] calldata sharesBps,
+        uint256 deadline,
+        bytes[] calldata sigs
+    ) external {
         if (deadline < block.timestamp) revert DeadlinePassed();
         if (_teams[teamKey].lead != address(0)) revert TeamExists();
         if (members.length == 0) revert EmptyTeam();
@@ -125,7 +134,11 @@ contract TeamLedger {
             if (share == 0) revert ShareMismatch();
             totalBps += share;
 
-            bytes32 digest = keccak256(abi.encodePacked("\x19\x01", _DOMAIN_SEPARATOR, keccak256(abi.encode(TEAM_TYPEHASH, teamKey, m, share, deadline))));
+            bytes32 digest = keccak256(
+                abi.encodePacked(
+                    "\x19\x01", _DOMAIN_SEPARATOR, keccak256(abi.encode(TEAM_TYPEHASH, teamKey, m, share, deadline))
+                )
+            );
             if (_recover(digest, sigs[i]) != m) revert BadSignature();
 
             isMember[teamKey][m] = true;
@@ -151,7 +164,8 @@ contract TeamLedger {
         if (deadline < block.timestamp) revert DeadlinePassed();
         if (stageHash == bytes32(0)) revert BadSignature();
 
-        bytes32 signer = keccak256(abi.encode(STAGE_TYPEHASH, teamKey, stageHash, _teams[teamKey].stageCount, msg.sender, deadline));
+        bytes32 signer =
+            keccak256(abi.encode(STAGE_TYPEHASH, teamKey, stageHash, _teams[teamKey].stageCount, msg.sender, deadline));
         address m = _recover(keccak256(abi.encodePacked("\x19\x01", _DOMAIN_SEPARATOR, signer)), sig);
         if (m != msg.sender) revert BadSignature();
         if (!isMember[teamKey][m]) revert NotMember();

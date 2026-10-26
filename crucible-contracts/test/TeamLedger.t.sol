@@ -25,8 +25,10 @@ contract TeamLedgerTest is Test {
     bytes32 internal teamKey = keccak256("team-one");
     uint256 internal deadline = type(uint256).max;
 
-    bytes32 internal constant TEAM_TYPEHASH = keccak256("TeamMember(bytes32 teamKey,address member,uint256 shareBps,uint256 deadline)");
-    bytes32 internal constant STAGE_TYPEHASH = keccak256("Stage(bytes32 teamKey,bytes32 stageHash,uint256 seq,address member,uint256 deadline)");
+    bytes32 internal constant TEAM_TYPEHASH =
+        keccak256("TeamMember(bytes32 teamKey,address member,uint256 shareBps,uint256 deadline)");
+    bytes32 internal constant STAGE_TYPEHASH =
+        keccak256("Stage(bytes32 teamKey,bytes32 stageHash,uint256 seq,address member,uint256 deadline)");
 
     function setUp() public {
         ledger = new TeamLedger();
@@ -38,11 +40,17 @@ contract TeamLedgerTest is Test {
         return keccak256(abi.encodePacked("\x19\x01", ledger.DOMAIN_SEPARATOR(), structHash));
     }
 
-    function _teamSig(uint256 pk, bytes32 key, address member, uint256 share, uint256 dl) internal returns (bytes memory) {
+    function _teamSig(uint256 pk, bytes32 key, address member, uint256 share, uint256 dl)
+        internal
+        returns (bytes memory)
+    {
         return _sig(pk, _digest(keccak256(abi.encode(TEAM_TYPEHASH, key, member, share, dl))));
     }
 
-    function _stageSig(uint256 pk, bytes32 key, bytes32 stageHash, uint256 seq, address member, uint256 dl) internal returns (bytes memory) {
+    function _stageSig(uint256 pk, bytes32 key, bytes32 stageHash, uint256 seq, address member, uint256 dl)
+        internal
+        returns (bytes memory)
+    {
         return _sig(pk, _digest(keccak256(abi.encode(STAGE_TYPEHASH, key, stageHash, seq, member, dl))));
     }
 
@@ -112,7 +120,8 @@ contract TeamLedgerTest is Test {
     }
 
     function test_rejectsMalleableSignature() public {
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(LEAD_K, _digest(keccak256(abi.encode(TEAM_TYPEHASH, teamKey, lead, 5000, deadline))));
+        (uint8 v, bytes32 r, bytes32 s) =
+            vm.sign(LEAD_K, _digest(keccak256(abi.encode(TEAM_TYPEHASH, teamKey, lead, 5000, deadline))));
         bytes memory flip = abi.encodePacked(r, bytes32(uint256(s) ^ (1 << 255)), v);
         address[] memory m = new address[](1);
         m[0] = lead;
@@ -407,7 +416,9 @@ contract TeamLedgerTest is Test {
         bytes32 mine = ledger.DOMAIN_SEPARATOR();
         vm.chainId(31338);
         TeamLedger forked = new TeamLedger();
-        assertTrue(forked.DOMAIN_SEPARATOR() != mine, "the domain ignored chainid: a signature is replayable across forks");
+        assertTrue(
+            forked.DOMAIN_SEPARATOR() != mine, "the domain ignored chainid: a signature is replayable across forks"
+        );
     }
 
     function test_sigFromAnotherLedgerIsRejected() public {
@@ -425,8 +436,14 @@ contract TeamLedgerTest is Test {
         ledger.createTeam(teamKey, m, s, deadline, sigs);
     }
 
-    function _teamSigAt(TeamLedger at, uint256 pk, bytes32 key, address member, uint256 share, uint256 dl) internal returns (bytes memory) {
+    function _teamSigAt(TeamLedger at, uint256 pk, bytes32 key, address member, uint256 share, uint256 dl)
+        internal
+        returns (bytes memory)
+    {
         bytes32 dom = at.DOMAIN_SEPARATOR();
-        return _sig(pk, keccak256(abi.encodePacked("\x19\x01", dom, keccak256(abi.encode(TEAM_TYPEHASH, key, member, share, dl)))));
+        return _sig(
+            pk,
+            keccak256(abi.encodePacked("\x19\x01", dom, keccak256(abi.encode(TEAM_TYPEHASH, key, member, share, dl))))
+        );
     }
 }
