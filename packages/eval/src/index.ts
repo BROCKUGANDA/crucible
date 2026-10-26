@@ -29,3 +29,7 @@ export type {
 } from "./promote.js";
 export { defaultRating, conservative, trueskillWin, decayRating, tierFor, nodeStatus, DEFAULT_MU, DEFAULT_SIGMA } from './ratings.js'; 
 export type { Rating, Tier, SkillNode, SkillState, NodeStatus } from './ratings.js'; 
+export { compileDag, validateRoleContract, stepKey, appendMessage, verifyChain, validateSplits, shapley, collusionScore, claimOrder } from './orchestration.js';  
+export type { SwarmRole, DagStep, RoleContract, BusMessage } from './orchestration.js';  
+export { rankBoard, verifyRanking, coldStart, targetDifficulty, commissionInBand, applyCaps, circuitFrozen, gasInBand, lintRagDocs, retrieveAt, appendCheckpoint, verifyCheckpoints, abstentionScore, leafFor, merkleRoot, merkleProof, verifyMerkle, sybilAdjust, EventGateway, assertPiiFree, FEE_BPS_CANONICAL } from './gates.js';  
+export type { BoardEntry, RagDoc, Checkpoint, GatewayEvent } from './gates.js'; 
