@@ -18,6 +18,7 @@ import {
   type TeamLedgerModel,
   type TrialStatus,
 } from "@crucible/indexer";
+import { decide, scoreWallet, type Decision, type RiskScore } from "./identity.js";
 import { rateLimit } from "./rate-limit.js";
 import { dlq } from "./dlq.js";
 import { TickPump } from "./tick-pump.js";
@@ -962,6 +963,50 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
       },
       meta: { readModel: "team-ledger", projected: true, count: teams.length, version: model.version },
     });
+  });
+
+  /**
+   * Sybil-risk score for a wallet address.
+   *
+   * Computes P(unique human | evidence) using a Bayesian logistic model with
+   * hand-tuned priors and likelihood ratios. Evidence comes from the indexer
+   * read model (alloy tier, identity linkage, trial history) — no chain keys
+   * required, all read-only projection.
+   *
+   * Phase 1: hand-tuned coefficients. Phase 3 replaces them with values fit
+   * offline via HMC/leapfrog integration over labeled outcomes.
+   */
+  app.post("/identity/risk", async (c) => {
+    let body: { wallet?: string };
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "request body must be JSON" }, 400);
+    }
+
+    const wallet = String(body.wallet ?? "").trim();
+    if (!/^0x[0-9a-fA-F]{40}$/.test(wallet)) {
+      return c.json({ error: "wallet must be a 0x-prefixed 20-byte Ethereum address" }, 400);
+    }
+
+    const model = deps.getModel();
+    const score = scoreWallet(model, (id) => deps.alloyState?.(id) ?? null, wallet);
+    const decision = decide(score);
+
+    return c.json({ score, decision });
+  });
+
+  app.get("/identity/risk/:wallet", (c) => {
+    const wallet = c.req.param("wallet");
+    if (!/^0x[0-9a-fA-F]{40}$/.test(wallet)) {
+      return c.json({ error: "wallet must be a 0x-prefixed 20-byte Ethereum address" }, 400);
+    }
+
+    const model = deps.getModel();
+    const score = scoreWallet(model, (id) => deps.alloyState?.(id) ?? null, wallet);
+    const decision = decide(score);
+
+    return c.json({ score, decision });
   });
 
   /**
