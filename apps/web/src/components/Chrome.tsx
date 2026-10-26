@@ -23,6 +23,7 @@ const NAV = [
   { href: "/hall", label: "Hall" },
   { href: "/clock", label: "The Clock" },
   { href: "/assay", label: "Assay" },
+  { href: "/escrow", label: "Where is my ETH" },
   { href: "/docs", label: "Docs" },
 ];
 

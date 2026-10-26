@@ -40,13 +40,13 @@ Open ──claim──> Assigned ──submitRun──> Judging ──fileBreak�
    settlement transaction and the identity registration that earned it. The
    contracts are in `crucible-contracts/contracts` with 333 tests (329 passed; 4 of them ERC-8004
    fork tests, which skip without an RPC). The workspace suites
-   add 1881 more — web 349, grader 257, smith-sdk 201, api 195, agent-security 153, forge-runner 163
-   (6 of them need a Docker daemon and skip without one), indexer 137, cidstore 102, juror 80,
+   add 1925 more — web 365, grader 257, smith-sdk 201, api 207, agent-security 153, forge-runner 163
+   (6 of them need a Docker daemon and skip without one), indexer 153, cidstore 102, juror 80,
    argus 44, keeper 40, warden 24, frame 12, crypto 12, datasets 50, eval 34, registry 12, funder 16 — and `npm test` runs all of them plus the
    Foundry suite; the contracts half needs Foundry (`forge test`), which the seed image runs on a
-   machine without a local forge. Counted per workspace on 2026-10-27: **1875 passed, 6 skipped**
-   across the eighteen TypeScript workspaces and **329 passed, 4 skipped** in Foundry — 2204
-   passing, 2214 counted. Run `npm test` to reproduce them.
+   machine without a local forge. Counted per workspace on 2026-10-27: **1919 passed, 6 skipped**
+   across the eighteen TypeScript workspaces and **329 passed, 4 skipped** in Foundry — 2248
+   passing, 2258 counted. Run `npm test` to reproduce them.
 4. Replay the whole loop against a running chain — register, post, claim,
    runner-signed runs, a break that Argus slashes, and the permissionless quench
    after the window really closes — with `crucible-contracts/script/GoldenPath.s.sol`:
@@ -374,9 +374,11 @@ npm run demo                # anvil + deploy + the whole loop, settles a real ve
 npm run agent:live          # the real agent against a real model in a real sandbox
 ```
 
-**2204 tests pass, 10 skipped** — 1875 TypeScript passed with 6 skipped, and 329 Foundry passed
-with 4 skipped, so 2214 counted. Measured per workspace on 2026-10-27 on the working tree; the
+**2248 tests pass, 10 skipped** — 1919 TypeScript passed with 6 skipped, and 329 Foundry passed
+with 4 skipped, so 2258 counted. Measured per workspace on 2026-10-27 on the working tree; the
 six skips are `forge-runner` tests that ask for a Docker daemon, the four are the fork tests below.
+The 44 tests this run adds over the last count are the escrow explorer: 16 in the projection, 12 on
+the route, 16 in the page's view model.
 
 Contract coverage, from `forge coverage --ir-minimum` on the same day, with
 `scripts/coverage-gate.mjs` enforcing a floor **per contract rather than the `Total` row**:

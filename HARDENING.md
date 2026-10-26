@@ -1065,6 +1065,34 @@ guards is the decoration it exists to detect.
   completes. **What this leaves open:** the same silent-spawn-plus-optimistic-probe shape exists in
   any script that starts a node it does not own; only `demo.mjs` was audited here.
 
+- **The escrow explorer reads the three books, and unread stays unread (2026-10-27).**
+  `GET /escrow/:wallet` reports, for one address: ETH locked to a live trial (the sponsor's reward,
+  the agent's bond, the skeptic's break stake — each with the transition that releases it and, where
+  one exists, the deadline), free stake on that address's agents, and `credit[wallet]`. Blending them
+  would be a false statement: a locked reward is not a stuck refund, because no path pushes it out
+  (ADR-0003). The credit is read per request and cached 15 s, **successes only** — caching a failure
+  would make the page look deliberately stale, and sweeping every address anyone names would let a
+  `MIN_BOND` registration choose this process's RPC load. Three states are reported separately: host
+  does not read credit, escrow reached and read failed, chain answered — and `—` is printed for the
+  first two, never `0`. 28 tests (16 projection over replayed real events, 12 route). Six mutations,
+  all caught; the fourth caught a *dead* guard instead of a missing test, and the redundant status
+  check beside the agent join was deleted rather than papered over with a case it could not reach.
+- **The gate register was re-audited against code, and 28 titles were reworded (2026-10-27).** The
+  pasted roadmap (G-817–G-877) does not use this repository's numbering: ids 817–873 are already
+  occupied by different gates, `827` in the register is the *canonical 5%* commission and the roadmap
+  asks for `FEE_BPS=1500`, and the claimed "next free gate = 878" is wrong (873 is the last id in
+  `docs/gates.yml`). Auditing by topic rather than number, three reads of the tree found titles that
+  asserted more than the code supports — chiefly that everything in `packages/eval` (orchestration,
+  DAG compiler, role contracts, tier derivation, RAG linter, abstention scoring) is a tested model
+  with **no runtime caller**: `@crucible/eval` is imported only by its own tests and by CI. Also
+  absent, not merely unwired: a principal term in any split/seed derivation, mid-trajectory
+  perturbation, a frontier-axis vector, tier-keyed floors, earned-node attestations, a lease state
+  machine or lease fencing, a per-principal session ceiling, and `(session_id, request_id)`
+  idempotency. Each now says so in the caveat style the file already used on 766, 770 and 868–870, and
+  `/compliance` is regenerated from the same source (`scripts/compliance-matrix.mjs`) rather than
+  maintained as a second copy. **What this does not prove:** that the caveated items are *correctly*
+  implemented where they exist — `packages/eval` was audited for callers, not for arithmetic.
+
 ## Still open from this pass, by severity
 
 These are known and intentional, not claims that the software is safe. Ordered by how
@@ -1476,7 +1504,7 @@ Report a vulnerability as described in [`SECURITY.md`](SECURITY.md), not in a pu
 
 - **The mainnet preflight can be shown to fail and to pass (2026-10-26).** It was a manual script: `npm run mainnet:preflight` exited 1 on the real tree, but nothing in CI ran it, so "the red is the gate working" was a memory rather than a check. `test/mainnet-preflight.test.ts` now runs the real unsigned templates for the refusal (it asserts every one of the five sign-off files is named, plus the missing `MAINNET_RPC_URL`), a fully signed temp directory plus a local chain-id-1 RPC for the pass, a chain-id-5 RPC for the wrong-chain refusal, a 1500-bps params file for the ADR-0001 fee refusal, and a signed-but-incomplete audit for the missing-field message. The script gained `--signoffs`/`--params` test overrides; the defaults still read `docs/mainnet` and `params/crucible.params.json`, so the shipped command is unchanged. **Still open, by design:** the audit, legal entity, timelock multisig, named on-call and genesis cohort are human signatures; no test can supply them.
 
-- **A chain-id-1 endpoint is not a fork endpoint (2026-10-26).** Both `https://eth.drpc.org` and `https://ethereum-rpc.publicnode.com` report chain id 1, and the preflight's chain check passes on both. The ERC-8004 fork suite at pinned block 24,846,426 passed 4/4 through drpc; the same suite through publicnode failed in `setUp` with `historical state ... is not available` because that node prunes. The runbook and `.env.example` now say "archive endpoint", not merely "chain id 1". **Also corrected in the same pass:** the live gateway is the API's `/stream` + `/snapshot`, not the eval `EventGateway` class (an in-memory model used only by its test); push channels are warden's wired `notifications`/`webhookNotifier` (19 policy tests); and the ledger's MCP server, external MCP agent and MCP subscriptions (G-766, G-770, G-870) are design-only, because no MCP code exists in the tree. Orchestration is a tested library (11 tests, including role contracts, step keys and collusion scoring), not wired to a team trial. **Still open:** the fork suite remains opt-in and is not a CI job; no endpoint is committed as a default.
+- **A chain-id-1 endpoint is not a fork endpoint (2026-10-26).** Both `https://eth.drpc.org` and `https://ethereum-rpc.publicnode.com` report chain id 1, and the preflight's chain check passes on both. The ERC-8004 fork suite at pinned block 24,846,426 passed 4/4 through drpc; the same suite through publicnode failed in `setUp` with `historical state ... is not available` because that node prunes. The runbook and `.env.example` now say "archive endpoint", not merely "chain id 1". **Also corrected in the same pass:** the live gateway is the API's `/stream` + `/snapshot`, not the eval `EventGateway` class (an in-memory model used only by its test); push channels are warden's `notifications`/`webhookNotifier` (19 policy tests fire them through `deps.notifier`, but `apps/keeper` attaches no notifier — see the open item above — so nothing is delivered on this deployment, which is what the 2026-10-27 re-audit recorded on gates 807 and 839); and the ledger's MCP server, external MCP agent and MCP subscriptions (G-766, G-770, G-870) are design-only, because no MCP code exists in the tree. Orchestration is a tested library (11 tests, including role contracts, step keys and collusion scoring), not wired to a team trial. **Still open:** the fork suite remains opt-in and is not a CI job; no endpoint is committed as a default.
 
 - **The MCP surface is real, and the on-ramp is in the deploy build (2026-10-27).** `/mcp` on the API serves eleven tools — snapshot reads, risk/evidence, and four **unsigned** transaction builders — plus `resources/subscribe` on `crucible://snapshot` and `crucible://hall`. Subscriptions emit `notifications/resources/updated` when the shared tick's signature moves, so an MCP client and the SSE browser see the same transitions; the SDK's own client proves list, call and update in `apps/api/test/mcp.test.ts`. No tool holds a key or signs. `.env` has `MAINNET_RPC_URL=https://eth.drpc.org` and `MAINNET_RPC_FALLBACK_URL=https://ethereum-rpc.publicnode.com`; the preflight and `npm run fork:test` try the fallback only after the primary fails, and the fork suite passed 4/4 via drpc. `NEXT_PUBLIC_ONRAMP_URL` is wired through `compose.yaml` and the web Dockerfile, and `/verticals` was browser-checked in Edge at 1280 and 390 widths: both suites, the no-custody/no-token boundary, the MCP note and the on-ramp link render. **Still open:** the on-ramp URL is Coinbase's landing page, not a prefilled purchase — a hosted session token is a single-use, five-minute credential and needs a CDP session endpoint; gate 770's full external-agent devnet trial has not been run; and `/mcp` inherits the API's public rate limit with no separate auth. No settlement change: native ETH and FEE_BPS 500 are untouched.
 
