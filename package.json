@@ -34,7 +34,9 @@
     "verify:roundtrip": "node --env-file-if-exists=.env scripts/verify-roundtrip.mjs",
     "seed:content": "node --env-file-if-exists=.env scripts/seed-content.mjs --write",
     "seed:check": "node --env-file-if-exists=.env scripts/seed-content.mjs --check",
-    "arena:grade": "node --env-file-if-exists=.env scripts/grade-arena.mjs"
+    "arena:grade": "node --env-file-if-exists=.env scripts/grade-arena.mjs",
+    "export:identity": "node scripts/export-identity-features.mjs",
+    "fit:identity": "node scripts/fit-identity.mjs"
   },
   "engines": {
     "node": ">=20 <27",
