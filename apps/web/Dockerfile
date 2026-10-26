@@ -16,6 +16,8 @@ COPY packages/argus/package.json packages/argus/
 COPY packages/cidstore/package.json packages/cidstore/
 COPY packages/crypto/package.json packages/crypto/
 COPY packages/datasets/package.json packages/datasets/
+COPY packages/eval/package.json packages/eval/
+COPY packages/registry/package.json packages/registry/
 COPY packages/forge-runner/package.json packages/forge-runner/
 COPY packages/frame/package.json packages/frame/
 COPY packages/forge-runner/package.json packages/forge-runner/
