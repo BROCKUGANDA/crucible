@@ -549,6 +549,52 @@ describe("two processes on one directory", () => {
   });
 });
 
+describe("a reader on a read-only mount", () => {
+  /**
+   * The deployment shape, not a convenience flag: the API container gets the content volume
+   * mounted `:ro` because resolving bytes is not announcing them, and a store that creates its
+   * own directory at open made every deployed content read answer 503 with `mkdir '/content/data'`
+   * before it had looked anything up (measured on crucible.svalley.tech, 2026-10-27).
+   */
+  it("reads what another store wrote, without ever creating a directory", async () => {
+    const dir = await freshDir();
+    const writer = new CidStore({ dir });
+    const cid = writer.put("a suite written by the pinning process");
+
+    const reader = new CidStore({ dir, readonly: true });
+    expect(reader.get(cid)).toBe("a suite written by the pinning process");
+    expect(reader.has(cid)).toBe(true);
+  });
+
+  it("refuses to pin rather than accepting bytes it can never store", async () => {
+    const dir = await freshDir();
+    new CidStore({ dir }).put("seed the directory");
+    const reader = new CidStore({ dir, readonly: true });
+
+    expect(() => reader.put("anything")).toThrow(/read-only/);
+    expect(() => reader.remove(cidV1Raw("anything"))).toThrow(/read-only/);
+  });
+
+  it("says there is no store when the directory was never provisioned", async () => {
+    // Nothing exists under this path — the state of a deployment that forgot the volume, which
+    // must be reported as a missing store and not as "nobody pinned these bytes".
+    const empty = await freshDir();
+    expect(() => new CidStore({ dir: empty, readonly: true })).toThrow(/no content store/);
+  });
+
+  it("leaves a writable store's behaviour untouched", async () => {
+    const dir = await freshDir();
+    const store = new CidStore({ dir });
+    const cid = store.put("default is still a writer");
+    expect(store.get(cid)).toBe("default is still a writer");
+
+    // A writable store on a directory that does not exist yet still creates it — the reader's
+    // refusal must not become the writer's regression.
+    const unprovisioned = await freshDir();
+    expect(() => new CidStore({ dir: unprovisioned })).not.toThrow();
+  });
+});
+
 describe("json content", () => {
   it("writes the canonical text it names, with sorted keys and no insignificant whitespace", () => {
     const store = CidStore.inMemory();
