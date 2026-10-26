@@ -373,7 +373,8 @@ jobs:
             --workspace @crucible/juror \
             --workspace @crucible/api \
             --workspace @crucible/web \
-            --workspace @crucible/datasets
+            --workspace @crucible/datasets \
+            --workspace @crucible/funder
 
       - name: test (every workspace)
         run: |
@@ -393,7 +394,8 @@ jobs:
             --workspace @crucible/juror \
             --workspace @crucible/api \
             --workspace @crucible/web \
-            --workspace @crucible/datasets
+            --workspace @crucible/datasets \
+            --workspace @crucible/funder
 
       # ESLint lives only where the rules it can actually run exist: the web app
       # (react-hooks + core correctness). Type-level linting is `tsc --noEmit`
