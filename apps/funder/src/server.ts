@@ -7,8 +7,9 @@
  * socket; it may not hold the key.
  *
  * Routes:
- *   GET  /health     — liveness
- *   POST /allocate   — request test ETH for a wallet
+ *   GET  /health          — liveness
+ *   POST /allocate        — request test ETH for a wallet
+ *   POST /onramp/session  — mint one single-use Coinbase Onramp session URL
  *
  * The funder is not reachable from the browser: it is bound to loopback on a
  * port the API knows, never exposed to the public network.
@@ -16,7 +17,7 @@
 
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
-import { cdpConfig, credentialProblem, NETWORK, transferUsdc } from "./cdp.js";
+import { cdpConfig, createOnrampSession, credentialProblem, NETWORK, transferUsdc } from "./cdp.js";
 import { CapTracker, MAX_PER_ALLOCATION_ETH, MAX_PER_DAY_ETH, MAX_PER_WALLET_PER_DAY_ETH } from "./cap.js";
 import { allocationPolicy, consultRisk, FACTOR_UNKNOWN_WALLET } from "./risk.js";
 import type { AllocateResponse, HealthResponse } from "./types.js";
@@ -158,6 +159,39 @@ app.post("/allocate", async (c) => {
     risk,
   };
   return c.json(res, ok ? 200 : 402);
+});
+
+/**
+ * Mint one Coinbase Onramp session for a sponsor wallet.
+ *
+ * The URL is single-use and expires in minutes. It is returned with `no-store` and is never
+ * logged: the token in the URL is the credential for that one purchase. The CDP key stays here;
+ * the API only relays the result.
+ */
+app.post("/onramp/session", async (c) => {
+  let body: { wallet?: string };
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: "request body must be JSON" }, 400);
+  }
+
+  const wallet = String(body.wallet ?? "").trim();
+  if (!isEthAddress(wallet)) {
+    return c.json({ error: "wallet must be a 0x-prefixed 20-byte Ethereum address" }, 400);
+  }
+
+  try {
+    const { onrampUrl } = await createOnrampSession(cfg, wallet);
+    c.header("Cache-Control", "no-store");
+    return c.json({ ok: true, url: onrampUrl });
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    // Name the failure, never the URL or token.
+    console.error(`[funder] onramp session failed: ${reason}`);
+    c.header("Cache-Control", "no-store");
+    return c.json({ ok: false, reason }, 502);
+  }
 });
 
 app.notFound((c) => c.json({ error: "not found" }, 404));

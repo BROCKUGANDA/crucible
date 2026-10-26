@@ -38,6 +38,17 @@ function required(name: string): string {
   return v;
 }
 
+/** A positive integer from the environment, or the default; a malformed value stops the boot. */
+function positiveInt(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (raw === undefined || raw.trim() === "") return fallback;
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < 1) {
+    throw new Error(`${name} must be a positive integer, got ${JSON.stringify(raw)}`);
+  }
+  return value;
+}
+
 /**
  * A required address, checked rather than cast.
  *
@@ -707,6 +718,12 @@ const app = createApp({
   // `X-Forwarded-Proto` believable for the TLS check.
   trustProxy,
   security,
+  // `/mcp` has its own bucket; the global read limiter skips that path.
+  mcpRateLimit: {
+    limit: positiveInt("MCP_RATE_LIMIT", 30),
+    windowMs: 60_000,
+    burst: positiveInt("MCP_RATE_BURST", 10),
+  },
   voice,
   frenchy,
 });

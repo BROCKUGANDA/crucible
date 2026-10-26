@@ -308,6 +308,12 @@ const DEFAULT_RATE_LIMIT = { limit: 60, windowMs: 60_000, burst: 20 } as const;
 export interface ApiOptions {
   rateLimit?: { limit: number; windowMs: number; burst?: number; trustProxy?: boolean } | false;
   /**
+   * The dedicated MCP bucket. `/mcp` is exempt from the global read limiter and charged here
+   * instead, so a long-lived agent cannot starve the snapshot reads and a browser cannot make
+   * the agent surface pay for its polling. `false` disables the bucket for a test only.
+   */
+  mcpRateLimit?: { limit: number; windowMs: number; burst?: number; trustProxy?: boolean } | false;
+  /**
    * Honour `X-Forwarded-For` / `cf-connecting-ip` when identifying a client. Off unless set,
    * including for the default limits — those headers are caller-writable, so trusting them
    * by default would let one loop mint a fresh bucket per request.
@@ -388,6 +394,16 @@ function securityOverrides(opts: ApiOptions): Partial<SecurityConfig> {
  * them is a fact about the wallet. Only an eligible credential, or a sanctions match, moves
  * the posterior.
  */
+/** Only a Coinbase-hosted on-ramp URL is relayed; the funder is trusted to choose, not to redirect. */
+function isCoinbaseOnrampUrl(raw: string): boolean {
+  try {
+    const url = new URL(raw);
+    return url.protocol === "https:" && url.hostname === "pay.coinbase.com";
+  } catch {
+    return false;
+  }
+}
+
 function passportSignal(passport: PassportEligibility | null): PassportSignal | null {
   if (!passport || !passport.available) return null;
   if (passport.sanctioned === true) {
@@ -517,7 +533,6 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
     ...(deps.alloyState ? { alloyState: deps.alloyState } : {}),
     now: () => deps.indexStatus?.().headTimestamp ?? null,
   });
-  app.all("/mcp", (c) => mcp(c.req.raw));
 
   /**
    * The single clock every live stream reads from.
@@ -613,7 +628,12 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
       //
       // The exemption is by path, not by method or by header, so it cannot be
       // reached by asking for a stream-shaped URL on a read route.
-      if (c.req.path === "/stream") {
+      //
+      // `/mcp` is exempt because it has its own bucket below. Charging it here
+      // as well would make an agent's long session spend the allowance the
+      // browser needs for `/snapshot`, which is the starvation this limiter
+      // exists to prevent, only in the other direction.
+      if (c.req.path === "/stream" || c.req.path === "/mcp") {
         await next();
         return;
       }
@@ -681,6 +701,26 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
     );
   }
   app.route("/replay", createReplayRoutes(opts.replay, deps.proofSource, (id) => deps.getModel().trials.has(id)));
+
+  /**
+   * The agent surface, with a bucket of its own.
+   *
+   * It is registered here, after the security, body-limit and timeout middleware, so those
+   * apply to it. The global read limiter skips this path; this is the one that counts it.
+   * The cap is deliberately lower than the read allowance: a tool call can be a full snapshot
+   * rebuild, and an agent loop is the workload most likely to make one.
+   */
+  if (opts.mcpRateLimit !== false) {
+    const limits = opts.mcpRateLimit ?? { limit: 30, windowMs: 60_000, burst: 10 };
+    app.use(
+      "/mcp",
+      rateLimit({
+        ...limits,
+        trustProxy: limits.trustProxy ?? opts.trustProxy ?? false,
+      }),
+    );
+  }
+  app.all("/mcp", (c) => mcp(c.req.raw));
 
   /**
    * Liveness, plus the reach of the index. `/ready` is the gate a balancer acts on; this is
@@ -1292,6 +1332,77 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
       case "unresolved":
       default:
         return c.json({ error: "Nothing here names those bytes", id, reason: read.reason }, 404);
+    }
+  });
+
+  /**
+   * Mint one single-use Coinbase Onramp session for a sponsor wallet.
+   *
+   * The funder holds the CDP credential (ADR-0015); this process only relays. `no-store` is
+   * load-bearing: the URL is single-use and expires in minutes, so a cached response would hand
+   * a second visitor a spent session. Each call mints a new one.
+   */
+  if (opts.rateLimit !== false) {
+    app.use(
+      "/onramp/session",
+      rateLimit({
+        limit: 5,
+        windowMs: 60_000,
+        burst: 2,
+        trustProxy: opts.trustProxy ?? false,
+      }),
+    );
+  }
+  app.post("/onramp/session", async (c) => {
+    const funder = deps.funderUrl;
+    if (!funder) {
+      c.header("Cache-Control", "no-store");
+      return c.json({ ok: false, configured: false, reason: "no funder address on this host" }, 503);
+    }
+
+    let body: { wallet?: string };
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "request body must be JSON" }, 400);
+    }
+    const wallet = String(body.wallet ?? "").trim();
+    if (!/^0x[0-9a-fA-F]{40}$/.test(wallet)) {
+      return c.json({ error: "wallet must be a 0x-prefixed 20-byte Ethereum address" }, 400);
+    }
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 20_000);
+    try {
+      const res = await fetch(`${funder}/onramp/session`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wallet }),
+        signal: controller.signal,
+      });
+      const json = (await res.json().catch(() => null)) as
+        | { ok?: boolean; url?: string; reason?: string }
+        | null;
+      c.header("Cache-Control", "no-store");
+      if (!res.ok || !json?.ok || typeof json.url !== "string" || !isCoinbaseOnrampUrl(json.url)) {
+        return c.json(
+          { ok: false, configured: true, reason: json?.reason ?? `funder answered ${res.status}` },
+          502,
+        );
+      }
+      return c.json({ ok: true, url: json.url });
+    } catch (err) {
+      c.header("Cache-Control", "no-store");
+      return c.json(
+        {
+          ok: false,
+          configured: true,
+          reason: `funder unreachable: ${err instanceof Error ? err.message : String(err)}`,
+        },
+        502,
+      );
+    } finally {
+      clearTimeout(timer);
     }
   });
 
