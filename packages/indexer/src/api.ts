@@ -630,3 +630,155 @@ export function toApiTeamLedgerConservation(
     holds: balanceWei === model.heldTotal + model.totalCredit,
   };
 }
+
+// ── Escrow explorer (gate 838) ─────────────────────────────────────────────
+
+export type EscrowRole = "sponsor" | "operator" | "skeptic";
+
+/** One lock this wallet owns inside the escrow contract, and what releases it. */
+export interface EscrowHolding {
+  trialId: number;
+  role: EscrowRole;
+  /** which book of the trial this is: `reward`, `bond` or `break stake` */
+  kind: "reward" | "bond" | "break stake";
+  eth: string;
+  /** plain words, derived from this trial's own state — never a guess about the verdict */
+  release: string;
+  /** unix seconds at which a permissionless call releases it, or null when a verdict does */
+  reclaimableAt: number | null;
+}
+
+/** Free collateral on one of this wallet's agents: in the contract, but not locked to a trial. */
+export interface EscrowStake {
+  agentId: number;
+  eth: string;
+}
+
+export interface ApiEscrow {
+  wallet: string;
+  /**
+   * The contract holding every amount below. Null when the host does not know its own
+   * address: a reader checking "where is my ETH" against the wrong contract is worse than
+   * one who is told the address was not read.
+   */
+  escrowAddress: string | null;
+  held: EscrowHolding[];
+  heldEth: string;
+  stakes: EscrowStake[];
+  stakedEth: string;
+  /**
+   * `credit[wallet]` — what a `withdraw()` pays out today. Supplied by the caller from a
+   * chain read; null means unread, and a page must print `—` rather than 0.
+   */
+  withdrawableEth: string | null;
+  /** settled trials this wallet touched, so a claim can be traced to the row that made it */
+  settledTrialIds: number[];
+}
+
+/**
+ * What one wallet has inside the escrow, split by the three books the contract keeps.
+ *
+ * The question this answers is the one the landing page cannot: not "how much has the
+ * protocol moved" but "where is MY eth, and what do I have to do to get it". The contract
+ * holds the same ETH in three different states — locked to a live trial, free collateral on
+ * an agent, or a settled claim waiting on `withdraw()` — and only the third is one call away.
+ * Conflating them is how a reader concludes the chain lost their money.
+ *
+ * Nothing here re-derives a verdict. Amounts come from the rows the logs wrote, and the
+ * release text names the transition that moves them, so a reader can verify it against
+ * `CrucibleTrials.sol` rather than trusting this projection's arithmetic.
+ */
+export function buildEscrowView(
+  model: ReadModel,
+  wallet: string,
+  opts: { escrowAddress?: string | null; withdrawableWei?: bigint | null } = {},
+): ApiEscrow {
+  const target = wallet.toLowerCase();
+
+  // One wallet may operate several agents across a chain's life; `agentIdOf` is 1-based and
+  // never reuses an id, so the operator is the only join available to a read model.
+  const myAgentIds = new Set<number>();
+  const stakes: EscrowStake[] = [];
+  let stakedWei = 0n;
+  for (const agent of model.agents.values()) {
+    if (agent.operator.toLowerCase() !== target) continue;
+    myAgentIds.add(agent.id);
+    stakes.push({ agentId: agent.id, eth: weiToEth(agent.stakeWei) });
+    stakedWei += agent.stakeWei;
+  }
+  stakes.sort((a, b) => a.agentId - b.agentId);
+
+  const held: EscrowHolding[] = [];
+  const settledTrialIds: number[] = [];
+  let heldWei = 0n;
+
+  for (const row of listTrials(model)) {
+    const isSponsor = row.sponsor.toLowerCase() === target;
+    const isOperator = row.agentId !== null && myAgentIds.has(row.agentId);
+    const isSkeptic = row.breakSkeptic !== null && row.breakSkeptic.toLowerCase() === target;
+    if (!isSponsor && !isOperator && !isSkeptic) continue;
+
+    if (row.status === "settled") {
+      settledTrialIds.push(row.id);
+      // A settled trial holds nothing: the contract moved it to a claim, to free stake, or
+      // to another wallet's claim. Listing it here would double-count the same ETH.
+      continue;
+    }
+
+    if (isSponsor) {
+      const open = row.status === "open" || row.status === "assigned";
+      held.push({
+        trialId: row.id,
+        role: "sponsor",
+        kind: "reward",
+        eth: weiToEth(row.rewardWei),
+        release: open
+          ? "back to you once the deadline passes with no run accepted — anyone can call the reclaim"
+          : "decided by the panel: paid to the agent if the work stands, refunded to you if a break is proven",
+        reclaimableAt: open ? deadlineEndsAt(row) : null,
+      });
+      heldWei += row.rewardWei;
+    }
+    if (isOperator) {
+      held.push({
+        trialId: row.id,
+        role: "operator",
+        kind: "bond",
+        eth: weiToEth(row.bondWei),
+        release:
+          "returns to your free stake when the work stands or the sponsor reclaims after the deadline; split between the skeptic and the treasury if a break is proven",
+        reclaimableAt: null,
+      });
+      heldWei += row.bondWei;
+    }
+    if (isSkeptic && (row.breakStakeWei ?? 0n) > 0n) {
+      held.push({
+        trialId: row.id,
+        role: "skeptic",
+        kind: "break stake",
+        eth: weiToEth(row.breakStakeWei ?? 0n),
+        release:
+          "returned to you with a share of the bond if your break is proven; split between the agent and the treasury if the panel rejects it",
+        reclaimableAt: null,
+      });
+      heldWei += row.breakStakeWei ?? 0n;
+    }
+  }
+
+  // Sorted by trial so the same model always renders the same table — the snapshot gate
+  // compares signatures, and an order that moved would read as a change in the holdings.
+  held.sort((a, b) => a.trialId - b.trialId || (a.role < b.role ? -1 : 1));
+
+  return {
+    wallet,
+    escrowAddress: opts.escrowAddress ?? null,
+    held,
+    heldEth: weiToEth(heldWei),
+    stakes,
+    stakedEth: weiToEth(stakedWei),
+    withdrawableEth: opts.withdrawableWei === null || opts.withdrawableWei === undefined
+      ? null
+      : weiToEth(opts.withdrawableWei),
+    settledTrialIds: settledTrialIds.sort((a, b) => a - b),
+  };
+}
