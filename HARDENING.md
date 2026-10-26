@@ -1103,12 +1103,24 @@ guards is the decoration it exists to detect.
   ways that can fail are three statuses (503 no store mounted here, 404 nobody pinned these bytes
   here, 500 present but corrupt) because each asks a different person to do a different thing, and a
   single 404 for all three would tell a reader their trial had no suite. A CID answer is immutable
-  cache; a digest answer is not. 12 tests run against a real temp store and a real disclosure file.
+  cache; a digest answer is not. 13 tests run against a real temp store and a real disclosure file.
   **Mutation-proven:** unpinned→503, corrupt→absent, no id validation, digest branch skipped,
   immutable-everywhere, and an absent store dereferenced — all six caught, and the fifth was a real
-  defect the test found before the mutation did. **Not proven:** `CidStore`'s own disk layout is
-  assumed by the corruption test's filename lookup; a backend change would break that test, not the
-  route.
+  defect the test found before the mutation did.
+- **The store reads what it cannot write (2026-10-27, found by probing production).** The first
+  deployed content read answered 503 for every CID: `CidStore` called `mkdirSync` when it opened,
+  and compose mounts the volume `:ro` for the API — the container that resolves bytes is not the
+  container that announces them. Local suites stayed green because a temp directory is writable;
+  only the live mount carries the constraint. `CidStore` now takes `readonly: true`: no directory
+  is created, opening a path with nothing under it throws at open (so an unmounted volume answers
+  503 "no content store here" rather than a 404 that would tell a reader nobody pinned their suite),
+  and `put`/`remove` refuse instead of accepting bytes into a store they can never serve. One
+  existing test broke on exactly that distinction — its fixture pinned nothing and expected 404 —
+  which was the fixture being wrong, not the behaviour. 4 store tests and 1 route test added;
+  mutations on the mkdir skip, the open-time refusal and the write refusal, all three caught.
+  **What this does not prove:** the read-only path is exercised against a *writable* directory
+  opened with the flag — this checkout cannot mount a volume read-only, so the mount itself is
+  proven only by the live probe that now returns the bytes.
 
 ## Still open from this pass, by severity
 

@@ -90,12 +90,28 @@ describe("serving what was pinned", () => {
   it("answers a valid CID nobody pinned here with 404, and says the content may exist elsewhere", async () => {
     const elsewhere = new CidStore({ dir: tempDir("crucible-other-") }).put("somewhere else's bytes");
     const { dir } = workspace();
+    // This host does have a store — it just does not hold that entry. Provisioning it is what
+    // separates "not here" from "no store here", and the two answer with different statuses.
+    new CidStore({ dir }).put("something this host pinned earlier");
 
     const res = await appWith(createContentSource(dir, () => new Map())).request(`/content/${elsewhere}`);
     expect(res.status).toBe(404);
     const body = await res.json();
     expect(body.error).toMatch(/not pinned on this host/);
     expect(body.meaning).toBe("the content may exist elsewhere");
+  });
+
+  it("answers 503 for a content directory that was never provisioned, not 404", async () => {
+    // The deployment state this distinguishes: compose mounts `content:/content:ro`, and a stack
+    // that came up without the volume has an empty path where a store should be. Saying "nobody
+    // pinned those bytes" about that would send a reader to ask a sponsor for a suite this host
+    // never had a place to keep.
+    const { dir } = workspace();
+    const res = await appWith(createContentSource(dir, () => new Map())).request(
+      `/content/${cidV1Raw("anything")}`,
+    );
+    expect(res.status).toBe(503);
+    expect((await res.json()).reason).toMatch(/no content store/);
   });
 });
 
