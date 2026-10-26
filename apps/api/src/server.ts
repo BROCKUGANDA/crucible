@@ -542,6 +542,54 @@ async function readTreasuryCredit(): Promise<void> {
 }
 
 /**
+ * `credit[wallet]` for an address the explorer asked about.
+ *
+ * Not swept: the set of wallets a visitor names is unbounded, and `registerAgent` costs
+ * `MIN_BOND` and is never removed, so a per-sweep read keyed on wallet would let anyone
+ * choose this process's RPC load. It is read per request, cached briefly, and the cache
+ * only ever stores a success — a failed read returns null and the route says so, rather
+ * than parking "unknown" behind a TTL that would make the page look stale on purpose.
+ */
+const CREDIT_TTL_MS = 15_000;
+const CREDIT_CACHE_MAX = 256;
+const creditReads = new Map<string, { at: number; wei: bigint }>();
+
+async function readCreditOf(wallet: string): Promise<bigint | null> {
+  const key = wallet.toLowerCase();
+  const hit = creditReads.get(key);
+  if (hit && Date.now() - hit.at < CREDIT_TTL_MS) return hit.wei;
+  try {
+    const wei = (await publicClient.readContract({
+      address: trialsAddress,
+      abi: [
+        {
+          type: "function",
+          name: "credit",
+          stateMutability: "view",
+          inputs: [{ type: "address" }],
+          outputs: [{ type: "uint256" }],
+        },
+      ],
+      functionName: "credit",
+      args: [key as Address],
+    })) as bigint;
+    if (creditReads.size >= CREDIT_CACHE_MAX) {
+      // Map iteration order is insertion order, so this drops the oldest reading.
+      const oldest = creditReads.keys().next().value;
+      if (oldest !== undefined) creditReads.delete(oldest);
+    }
+    creditReads.set(key, { at: Date.now(), wei });
+    return wei;
+  } catch (err) {
+    console.error(
+      `[crucible] could not read credit(${key}): ${err instanceof Error ? err.message : String(err)} — ` +
+        "the explorer reports the claim as unread rather than zero",
+    );
+    return null;
+  }
+}
+
+/**
  * Issuers whose signed statement counts as a human attestation. Empty by default: no issuer
  * exists for this deployment until the owner names one, and the evidence route reports the
  * source as unconfigured rather than pretending a wallet is unattested-by-choice.
@@ -628,6 +676,8 @@ const app = createApp({
   // The treasury's pull-ledger credit, read on the same clock as the alloy sweep. Null until a
   // read lands, so the page shows "—" rather than the fee dressed up as the whole income.
   treasuryCreditWei: () => treasuryCreditWei,
+  // Per-wallet claims for the escrow explorer, read on request rather than swept.
+  creditOf: readCreditOf,
   humanAttestors,
   passportEligibility,
   indexStatus: () => scribe.status,

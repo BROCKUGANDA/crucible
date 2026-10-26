@@ -9,8 +9,10 @@ import {
   type StandingOutcome,
 } from "@crucible/smith";
 import {
+  buildEscrowView,
   buildSnapshot,
   type AlloyState,
+  type ApiEscrow,
   type ApiSnapshot,
   type ArenaModel,
   type ReadModel,
@@ -27,6 +29,7 @@ import {
 } from "./identity.js";
 import { parseAttestationProof, verifyAttestation } from "./attestation.js";
 import { createPassportSource, type PassportCheck, type PassportEligibility } from "./passport.js";
+import { createMcpHandler } from "./mcp.js";
 import { rateLimit } from "./rate-limit.js";
 import { dlq } from "./dlq.js";
 import { TickPump } from "./tick-pump.js";
@@ -55,6 +58,12 @@ import { streamSSE } from "hono/streaming";
  * route that spends something — a text-to-speech credit — and it is a closed set of
  * fixed moments with its own tighter bucket, not a general-purpose synthesizer.
  */
+
+/** The escrow explorer's payload: the projection plus how much of it this host could read. */
+export type ApiEscrowView = ApiEscrow & {
+  chainNow: number | null;
+  creditSource: { configured: boolean; reason: string | null };
+};
 
 export interface ApiDeps {
   getModel: () => ReadModel;
@@ -99,6 +108,15 @@ export interface ApiDeps {
    * page say the treasury holds nothing.
    */
   treasuryCreditWei?: () => bigint | null;
+  /**
+   * `credit[wallet]` for an arbitrary address, read off the chain on demand.
+   *
+   * `/escrow/:wallet` needs a per-address answer the sweep never caches: the book is the
+   * one a visitor asks about, and it changes the moment they call `withdraw()`. Absent
+   * means this host does not read it, which the route reports as an unconfigured source
+   * rather than letting "unread" arrive at the page as a zero balance.
+   */
+  creditOf?: (wallet: string) => Promise<bigint | null>;
   /**
    * Addresses whose signatures count as a human attestation. Empty means the source is
    * unconfigured and the evidence route says so — the same honesty rule as Passport, minus
@@ -473,6 +491,22 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
     }
     return tick;
   }
+
+  /**
+   * The agent surface. It shares this process's read model and the same signature the SSE
+   * stream uses, so an MCP subscriber and a browser see the same transitions. The transaction
+   * tools return unsigned calldata; no key enters this route (ADR-0006).
+   */
+  const mcp = createMcpHandler({
+    trialAddress: deps.proofSource?.trialsAddress ?? null,
+    chainId: deps.proofSource?.chainId ?? null,
+    snapshot: () => sharedTick().snapshot,
+    signature: () => sharedTick().signature,
+    getModel: deps.getModel,
+    ...(deps.alloyState ? { alloyState: deps.alloyState } : {}),
+    now: () => deps.indexStatus?.().headTimestamp ?? null,
+  });
+  app.all("/mcp", (c) => mcp(c.req.raw));
 
   /**
    * The single clock every live stream reads from.
@@ -1152,6 +1186,50 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
         },
       },
     });
+  });
+
+  /**
+   * Where one wallet's ETH is inside the escrow, and what releases it (gate 838).
+   *
+   * Three books, deliberately kept apart: ETH locked to a live trial, ETH sitting as free
+   * collateral on an agent, and ETH that a settlement already turned into a claim. Only the
+   * last is one call from the wallet, and a page that printed a single "your balance" total
+   * would tell a sponsor their refund was stuck when it was never theirs to move yet.
+   *
+   * `creditSource` carries the same three states as the evidence route's sources: unconfigured,
+   * asked-and-unreachable, answered. `withdrawableEth: null` is the first two, and the page
+   * renders `—` because a number nobody read is not a zero.
+   */
+  app.get("/escrow/:wallet", async (c) => {
+    const wallet = c.req.param("wallet");
+    if (!/^0x[0-9a-fA-F]{40}$/.test(wallet)) {
+      return c.json({ error: "wallet must be a 0x-prefixed 20-byte Ethereum address" }, 400);
+    }
+
+    const model = deps.getModel();
+    let withdrawableWei: bigint | null = null;
+    let creditReason: string | null = null;
+    if (deps.creditOf) {
+      try {
+        withdrawableWei = await deps.creditOf(wallet);
+        if (withdrawableWei === null) creditReason = "The escrow was reached but the read failed";
+      } catch (err) {
+        creditReason = `The escrow could not be read: ${err instanceof Error ? err.message : String(err)}`;
+      }
+    } else {
+      creditReason = "This host does not read per-wallet credit from the chain";
+    }
+
+    const view = buildEscrowView(model, wallet, {
+      escrowAddress: deps.proofSource?.trialsAddress ?? null,
+      withdrawableWei,
+    });
+
+    return c.json({
+      ...view,
+      chainNow: deps.indexStatus?.().headTimestamp ?? null,
+      creditSource: { configured: deps.creditOf !== undefined, reason: creditReason },
+    } satisfies ApiEscrowView);
   });
 
   /**

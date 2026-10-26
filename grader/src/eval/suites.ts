@@ -454,7 +454,96 @@ export function canonicalizationVectors(): Artifact[] {
   ];
 }
 
+/**
+ * RWA NAV reconciliation — domain material, twenty-four artifacts.
+ *
+ * The payload is a tokenized-treasury book: units outstanding, two holdings with quantities and
+ * prices, a reported NAV per unit and a tolerance. The gold label is decided by the payload, not
+ * by the index: PASS inside the tolerance, FAIL outside it, VOID when a price is missing (the NAV
+ * cannot be shown, so it is not "wrong"). This is evaluation content for an agent's reading of an
+ * RWA book — it does not custody, price or settle a token.
+ */
+export function rwaNavSuite(): Artifact[] {
+  const artifacts: Artifact[] = [];
+  const unitsOutstanding = 100_000;
+  for (let i = 0; i < 24; i++) {
+    const billQuantity = 50_000 + i * 100;
+    const noteQuantity = 40_000 - i * 50;
+    const billPrice = 1 + (i % 5) * 0.001;
+    const notePrice = 0.98 + (i % 4) * 0.005;
+    const trueNav = (billQuantity * billPrice + noteQuantity * notePrice) / unitsOutstanding;
+    const kind = i % 3; // 0 PASS, 1 FAIL, 2 VOID
+    const missingPrice = kind === 2;
+    const reportedNavPerUnit = kind === 0 ? trueNav : kind === 1 ? trueNav * 1.01 : null;
+    artifacts.push({
+      claimHash: `rwa-nav-${String(i).padStart(4, "0")}`,
+      payload: {
+        kind: "rwa-nav",
+        asOf: "2026-09-30",
+        unitsOutstanding,
+        holdings: [
+          { asset: "T-BILL-3M", quantity: billQuantity, priceUsd: billPrice },
+          { asset: "T-NOTE-2Y", quantity: noteQuantity, priceUsd: missingPrice ? null : notePrice },
+        ],
+        reportedNavPerUnit,
+        toleranceBps: 5,
+      },
+      expectedVerdict: kind === 0 ? PASS : kind === 1 ? FAIL : VOID,
+      suite: "rwa-nav",
+      thresholdBand: "normal",
+      tier: "domain",
+      difficulty: missingPrice ? "stressed" : "routine",
+    });
+  }
+  return artifacts;
+}
+
+/**
+ * PayFi settlement reconciliation — domain material, twenty-four artifacts.
+ *
+ * An invoice, a processor fee and a settled amount. PASS when the settled cents equal the
+ * rounded net of invoice minus fee, FAIL when they do not, VOID when no settlement is shown.
+ * It exercises the arithmetic and the "unshown is not wrong" distinction on payment records;
+ * it is not a payment rail and moves no funds.
+ */
+export function payfiReconSuite(): Artifact[] {
+  const artifacts: Artifact[] = [];
+  for (let i = 0; i < 24; i++) {
+    const invoicedUsdCents = 100_000 + i * 1_000;
+    const processorFeeBps = 50 + (i % 3) * 10;
+    const expectedNet = Math.round(invoicedUsdCents * (1 - processorFeeBps / 10_000));
+    const kind = i % 3; // 0 PASS, 1 FAIL, 2 VOID
+    const settledUsdCents = kind === 0 ? expectedNet : kind === 1 ? expectedNet - 100 : null;
+    artifacts.push({
+      claimHash: `payfi-recon-${String(i).padStart(4, "0")}`,
+      payload: {
+        kind: "payfi-recon",
+        invoiceId: `inv-${String(i).padStart(4, "0")}`,
+        invoicedUsdCents,
+        processorFeeBps,
+        settledUsdCents,
+        rounding: "half-up",
+      },
+      expectedVerdict: kind === 0 ? PASS : kind === 1 ? FAIL : VOID,
+      suite: "payfi-recon",
+      thresholdBand: "normal",
+      tier: "domain",
+      difficulty: kind === 2 ? "stressed" : "routine",
+    });
+  }
+  return artifacts;
+}
+
 /** All suites concatenated (the full corpus). */
 export function allSuites(): Artifact[] {
-  return [...smokeSet(), ...boundarySuite(), ...injectionSuite(), ...consistencySuite(), ...calibrationSuite(), ...canonicalizationVectors()];
+  return [
+    ...smokeSet(),
+    ...boundarySuite(),
+    ...injectionSuite(),
+    ...consistencySuite(),
+    ...calibrationSuite(),
+    ...rwaNavSuite(),
+    ...payfiReconSuite(),
+    ...canonicalizationVectors(),
+  ];
 }

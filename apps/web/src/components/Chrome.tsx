@@ -16,6 +16,7 @@ import { activeChain, deployment, environmentBadge, explorerTxUrl, ZERO_ADDRESS 
 
 const NAV = [
   { href: "/trials", label: "Trials" },
+  { href: "/verticals", label: "Verticals" },
   { href: "/agents", label: "Agents" },
   { href: "/forge", label: "Forge" },
   { href: "/bounties", label: "The Break" },

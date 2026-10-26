@@ -39,7 +39,7 @@ request — it is a product pivot requiring a new ADR and a new contract review.
 
 ```bash
 npm run verify:all          # typecheck + every workspace suite
-npm test                    # all workspaces + Foundry; currently 2186 tests (1857 TS + 329 Foundry)
+npm test                    # all workspaces + Foundry; currently 2204 tests (1875 TS + 329 Foundry)
 cd crucible-contracts && node ../scripts/run-forge.mjs test   # forge is not on PATH; run-forge resolves it
 node ../scripts/run-forge.mjs build --sizes                   # forge test does NOT compile script/ —
 #   a broken deploy script is green under `forge test` and only `forge build` catches it. Measured
