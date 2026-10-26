@@ -153,6 +153,16 @@ describe("settled money is not a lock", () => {
     expect(view.stakedEth).toBe("2");
   });
 
+  it("returns the bond to the agent as stake when a trial expires", () => {
+    // The reclaim path is the one a sponsor hits after a refresh with nothing settled: the
+    // reward becomes a claim and the bond becomes free stake, so neither may still show as a
+    // lock, and the stake must not be counted twice.
+    const view = buildEscrowView(settled(3, 0n), OPERATOR);
+    expect(view.held).toEqual([]);
+    expect(view.settledTrialIds).toEqual([1]);
+    expect(view.stakedEth).toBe("2");
+  });
+
   it("names the trial the claim came from so a reader can trace it", () => {
     const view = buildEscrowView(settled(2, 0n), SPONSOR);
     expect(view.settledTrialIds).toEqual([1]);

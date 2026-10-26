@@ -29,6 +29,7 @@ import {
 } from "./identity.js";
 import { parseAttestationProof, verifyAttestation } from "./attestation.js";
 import { createPassportSource, type PassportCheck, type PassportEligibility } from "./passport.js";
+import { type ContentLookup, type ContentRead } from "./content.js";
 import { createMcpHandler } from "./mcp.js";
 import { rateLimit } from "./rate-limit.js";
 import { dlq } from "./dlq.js";
@@ -117,6 +118,16 @@ export interface ApiDeps {
    * rather than letting "unread" arrive at the page as a zero balance.
    */
   creditOf?: (wallet: string) => Promise<bigint | null>;
+  /**
+   * Reading the bytes a CID names, or the bytes a trial's digest commits to.
+   *
+   * The disclosure half of the pipeline published a digest and its CID; nothing on this host
+   * could hand back the bytes either named, so a reader could prove a trial committed to
+   * *something* and not read it. Absent means no content store is mounted here, and the route
+   * answers 503 — a missing store is this host's condition, not evidence that a suite does not
+   * exist, and a 404 would say otherwise.
+   */
+  contentLookup?: ContentLookup;
   /**
    * Addresses whose signatures count as a human attestation. Empty means the source is
    * unconfigured and the evidence route says so — the same honesty rule as Passport, minus
@@ -1230,6 +1241,58 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
       chainNow: deps.indexStatus?.().headTimestamp ?? null,
       creditSource: { configured: deps.creditOf !== undefined, reason: creditReason },
     } satisfies ApiEscrowView);
+  });
+
+  /**
+   * The bytes behind a CID, or behind a trial's on-chain digest (gate 876).
+   *
+   * A digest is a commitment, not a document. The chain can prove a sponsor committed to a suite
+   * and cannot show you a line of it, and until now neither could this host: it published the CID
+   * and left the pinned bytes to the process that wrote them. Content is immutable and
+   * content-addressed, so a hit is cached as such; a digest lookup is not, because the mapping is
+   * this host's disclosure log and that can gain an entry.
+   */
+  app.get("/content/:id", (c) => {
+    const id = c.req.param("id");
+    if (!deps.contentLookup) {
+      return c.json(
+        { error: "This host has no content store mounted", id, meaning: "no store here, not no such content" },
+        503,
+      );
+    }
+
+    const read: ContentRead = deps.contentLookup(id);
+    // The bytes a CID names can never change; the answer to a digest depends on this host's
+    // disclosure log, which can gain an entry, so only the CID form is cacheable forever.
+    const byCid = !/^0x[0-9a-fA-F]{64}$/.test(id);
+
+    switch (read.kind) {
+      case "text": {
+        const headers: Record<string, string> = { "content-type": "text/plain; charset=utf-8" };
+        if (byCid) headers["cache-control"] = "public, max-age=31536000, immutable";
+        return c.body(read.text, 200, headers);
+      }
+      case "bytes": {
+        const headers: Record<string, string> = { "content-type": "application/octet-stream" };
+        if (byCid) headers["cache-control"] = "public, max-age=31536000, immutable";
+        // A Response rather than `c.body`: Hono's body overloads type a `Uint8Array` away from
+        // the buffer a store hands back, and the bytes are not to be re-encoded on the way out.
+        return new Response(read.bytes, { status: 200, headers });
+      }
+      case "not-pinned":
+        return c.json(
+          { error: "Those bytes are not pinned on this host", id, meaning: "the content may exist elsewhere" },
+          404,
+        );
+      case "corrupt":
+        // Present and damaged: a reader must not conclude the trial had no suite.
+        return c.json({ error: "The stored bytes do not hash to this CID", id, reason: read.reason }, 500);
+      case "unreadable":
+        return c.json({ error: "The content store could not be read", id, reason: read.reason }, 503);
+      case "unresolved":
+      default:
+        return c.json({ error: "Nothing here names those bytes", id, reason: read.reason }, 404);
+    }
   });
 
   /**

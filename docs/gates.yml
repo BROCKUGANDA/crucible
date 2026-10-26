@@ -1376,6 +1376,9 @@
 - id: 875
   title: Verticals page (PayFi/RWA suites, no-custody/no-token boundary, sponsor on-ramp link; browser-checked at desktop and mobile)
   frameworks: [scsvs]
+- id: 876
+  title: Disclosed bytes are readable (GET /content/:id serves what a CID names or what a trial digest resolves to through the disclosure log; an unmounted store, content nobody pinned here, and content that no longer hashes to its id are three different answers)
+  frameworks: [ai-rmf, soc2]
 
 frameworks:
   owasp-top10: "OWASP Web Top 10 (2021)"

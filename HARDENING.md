@@ -1078,8 +1078,10 @@ guards is the decoration it exists to detect.
   all caught; the fourth caught a *dead* guard instead of a missing test, and the redundant status
   check beside the agent join was deleted rather than papered over with a case it could not reach.
 - **The gate register was re-audited against code, and 28 titles were reworded (2026-10-27).** The
-  pasted roadmap (G-817–G-877) does not use this repository's numbering: ids 817–873 are already
-  occupied by different gates, `827` in the register is the *canonical 5%* commission and the roadmap
+  pasted roadmap (G-817–G-877) does not use this repository's numbering: ids 817–875 were already
+  occupied by different gates when this was read (and the register moves under parallel work — re-read
+  it before citing a number), so its "next free gate = 878" is wrong and 876 was the next free id here.
+  `827` in the register is the *canonical 5%* commission and the roadmap
   asks for `FEE_BPS=1500`, and the claimed "next free gate = 878" is wrong (873 is the last id in
   `docs/gates.yml`). Auditing by topic rather than number, three reads of the tree found titles that
   asserted more than the code supports — chiefly that everything in `packages/eval` (orchestration,
@@ -1092,6 +1094,21 @@ guards is the decoration it exists to detect.
   `/compliance` is regenerated from the same source (`scripts/compliance-matrix.mjs`) rather than
   maintained as a second copy. **What this does not prove:** that the caveated items are *correctly*
   implemented where they exist — `packages/eval` was audited for callers, not for arithmetic.
+
+- **A disclosed digest leads to readable bytes (gate 876, 2026-10-27).** `GET /content/:id` takes
+  either form a reader can actually have — a sha256 CID, or the keccak digest a trial carries — and
+  resolves the second through the same `disclosure/disclosure.json` the disclosure reader already
+  uses, re-read per request so an entry announced after the first visit is served on the second. The
+  store re-hashes on every read, so a served entry is proved to be the bytes its id names; the three
+  ways that can fail are three statuses (503 no store mounted here, 404 nobody pinned these bytes
+  here, 500 present but corrupt) because each asks a different person to do a different thing, and a
+  single 404 for all three would tell a reader their trial had no suite. A CID answer is immutable
+  cache; a digest answer is not. 12 tests run against a real temp store and a real disclosure file.
+  **Mutation-proven:** unpinned→503, corrupt→absent, no id validation, digest branch skipped,
+  immutable-everywhere, and an absent store dereferenced — all six caught, and the fifth was a real
+  defect the test found before the mutation did. **Not proven:** `CidStore`'s own disk layout is
+  assumed by the corruption test's filename lookup; a backend change would break that test, not the
+  route.
 
 ## Still open from this pass, by severity
 

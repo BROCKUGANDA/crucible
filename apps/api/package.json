@@ -13,6 +13,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@crucible/cidstore": "*",
     "@crucible/frame": "*",
     "@crucible/indexer": "*",
     "@crucible/smith": "*",
