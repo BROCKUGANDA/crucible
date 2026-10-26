@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { Chrome } from "@/components/Chrome";
-import { onrampUrl } from "@/lib/onramp";
+import { OnrampButton } from "@/components/OnrampButton";
 import { VERTICALS } from "@/lib/verticals";
 
 /**
@@ -14,8 +14,6 @@ import { VERTICALS } from "@/lib/verticals";
  * edge reviewable on the local demo, where no fiat purchase is being invited.
  */
 export default function VerticalsPage() {
-  const onramp = onrampUrl({ chainId: 1 });
-
   return (
     <Chrome>
       <p className="kicker">Verticals</p>
@@ -44,16 +42,7 @@ export default function VerticalsPage() {
         surface at <span className="mono">/mcp</span> on the API. No tool holds a key.
       </p>
 
-      {onramp ? (
-        <p className="hint hint--block">
-          Sponsoring on mainnet?{" "}
-          <a href={onramp} target="_blank" rel="noreferrer">
-            Buy ETH into your own wallet
-          </a>
-          . CRUCIBLE never holds it, and the provider sells mainnet ETH — this demo chain is not
-          mainnet.
-        </p>
-      ) : null}
+      <OnrampButton />
 
       <p>
         <Link className="btn btn-primary" href="/trials">
