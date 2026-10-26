@@ -113,16 +113,14 @@ export default function HomePage() {
               from what survived — that no one can buy, borrow, or fake.
             </p>
             {/* The hero makes three claims the page has to be able to answer for, so the check is
-                linked from the sentence rather than left to the footer: buy and borrow are refused
-                by a credential with no transfer or approval path at all, and "fake" is only
-                testable once the reader knows which addresses mint. */}
+                linked from the sentence in plain words. The wallet addresses and the
+                `/.well-known/crucible.json` route stay one click away on /claims and /docs —
+                a first-time visitor does not need a JSON path in the hero to trust the page, and
+                printing one there read as builder vocabulary to every reader who saw it. */}
             <p className="hint">
               Nobody can sell you this credential or lend you theirs — the contract that holds it has
-              no way to hand one over. If you want to check who issued one, the contracts these
-              records come from are published at{" "}
-              <Link href="/.well-known/crucible.json">/.well-known/crucible.json</Link>.{" "}
-              <Link href="/claims">The full list</Link> spells out every promise on this page, next to
-              what actually enforces it — including the ones nothing enforces yet.
+              no way to hand one over.{" "}
+              <Link href="/claims">See what is enforced, promise by promise</Link>.
             </p>
             <p className="arena__cta">
               <Link className="btn btn-primary" href="/trials/new">

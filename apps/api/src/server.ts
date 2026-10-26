@@ -1,6 +1,4 @@
 import { serve } from "@hono/node-server";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { foundry } from "viem/chains";
 import { createPublicClient, http, keccak256, toHex, type Address } from "viem";
 import {
@@ -20,6 +18,7 @@ import {
 } from "@crucible/indexer";
 import { ALLOY_ABI, ARENA_ABI, TEAM_LEDGER_ABI, selfSchedulingLoop } from "@crucible/smith";
 import { createApp } from "./app.js";
+import { disclosedCids as readDisclosure, type DisclosureEntry } from "./disclosure.js";
 import { makeReplaySource } from "./replay.js";
 import { dlq } from "./dlq.js";
 import { resolveSecurity } from "./security.js";
@@ -309,6 +308,10 @@ async function readAlloy(agentId: number): Promise<AlloyState | null> {
 // the file it sat in its temporal dead zone and the container crash-looped on every boot with
 // "Cannot access protocolFeeBps before initialization".
 let protocolFeeBps: number | null = null;
+// Same rule as the fee above, and the same crash if it is broken: `sweepAlloy` runs at module
+// init and now reads these too, so they cannot sit below it.
+let treasuryCreditWei: bigint | null = null;
+let treasuryAddress: Address | null = null;
 
 /** Concurrent registry reads per sweep. The size of the registry is not allowed to choose this. */
 const ALLOY_SWEEP_BATCH = 8;
@@ -323,6 +326,9 @@ async function sweepAlloy(): Promise<void> {
   // its `catch` only logged, and every snapshot then published `feeBps: null`. `FEE_BPS` is a
   // public constant, so there is nothing to invalidate — retrying until it is read is free.
   if (protocolFeeBps === null) await readProtocolFee();
+  // One extra `eth_call` per sweep. Cheap against the node this process already polls, and the
+  // only way the published treasury figure stays the chain's instead of a copy that drifts.
+  await readTreasuryCredit();
 
   const ids = [...scribe.state.agents.keys()];
   // Bounded fan-out. This used to be one unbounded `Promise.all`, at five `readContract` calls
@@ -366,30 +372,20 @@ void scribe.watch();
  * yet" — a scheduled reveal that never came. An absent file is the honest empty answer. A
  * malformed one is not: it goes to the dead-letter queue, because silently returning nothing
  * would restore exactly the fault this wire exists to end.
+ *
+ * Measured on the deployed stack 2026-10-26, two more reasons the reveal never came: this
+ * variable was read as `CRUSCIBLE_CONTENT_DIR` (no `i`) while compose sets
+ * `CRUCIBLE_CONTENT_DIR`, and the `api` service had no `content` volume at all — so even the
+ * right name would have resolved to a directory the writer never touches. The path shape
+ * (`<dir>/disclosure/disclosure.json`) matches `DisclosureLog.open(join(dir, "disclosure"))`,
+ * which is what every producer uses.
  */
-const disclosureFile = join(
-  process.env.CRUSCIBLE_CONTENT_DIR ?? ".crucible-content",
-  "disclosure",
-  "disclosure.json",
-);
+const contentDir = process.env.CRUCIBLE_CONTENT_DIR ?? ".crucible-content";
 
-function disclosedCids(): { trialId: number; specCID?: string; testsCID?: string }[] {
-  let specs: Record<string, string>;
-  try {
-    specs = (JSON.parse(readFileSync(disclosureFile, "utf8")) as { specs?: Record<string, string> }).specs ?? {};
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
-      dlq.push("disclosure.read", err instanceof Error ? err.message : String(err));
-    }
-    return [];
-  }
-  const out: { trialId: number; specCID?: string; testsCID?: string }[] = [];
-  for (const t of scribe.state.trials.values()) {
-    const specCID = specs[t.specDigest];
-    const testsCID = specs[t.testsDigest];
-    if (specCID || testsCID) out.push({ trialId: t.id, specCID, testsCID });
-  }
-  return out;
+function disclosedCids(): DisclosureEntry[] {
+  return readDisclosure(contentDir, scribe.state.trials.values(), (message) =>
+    dlq.push("disclosure.read", message),
+  );
 }
 
 /**
@@ -500,6 +496,50 @@ async function readProtocolFee(): Promise<void> {
 }
 await readProtocolFee();
 
+/**
+ * `credit[treasury]` — what the treasury can actually withdraw.
+ *
+ * The settlement fee is one income stream; the other is the treasury's share of every slashed
+ * skeptic bond, which the fee arithmetic never sees. The landing page published the fee under a
+ * heading a reader takes for the total, so 0.15 ETH sat beside a chain holding 0.305 and neither
+ * number could be reconciled with the other. Read on the alloy sweep's clock because it moves on
+ * every settlement and every slash (the fee above is a constant and is read once).
+ *
+ * A failed read keeps the last reading rather than publishing null: the number it replaces was a
+ * real chain answer, and flapping the page on a transient RPC error is its own wrong. With no
+ * reading at all it stays null — unknown is not zero, and the page must not price it as one.
+ */
+async function readTreasuryCredit(): Promise<void> {
+  try {
+    if (treasuryAddress === null) {
+      treasuryAddress = (await publicClient.readContract({
+        address: trialsAddress,
+        abi: [{ type: "function", name: "treasury", stateMutability: "view", inputs: [], outputs: [{ type: "address" }] }],
+        functionName: "treasury",
+      })) as Address;
+    }
+    treasuryCreditWei = (await publicClient.readContract({
+      address: trialsAddress,
+      abi: [
+        {
+          type: "function",
+          name: "credit",
+          stateMutability: "view",
+          inputs: [{ type: "address" }],
+          outputs: [{ type: "uint256" }],
+        },
+      ],
+      functionName: "credit",
+      args: [treasuryAddress],
+    })) as bigint;
+  } catch (err) {
+    console.error(
+      `[crucible] could not read credit(treasury): ${err instanceof Error ? err.message : String(err)} — ` +
+        "the treasury credit stays at its last read (or unknown if never read)",
+    );
+  }
+}
+
 const trustProxy = process.env.TRUST_PROXY === "1";
 
 /**
@@ -567,6 +607,9 @@ const app = createApp({
   // The chain's own fee constant, so the published books are the ones the
   // contract charges rather than ones this process keeps a copy of.
   protocolFeeBps: () => protocolFeeBps,
+  // The treasury's pull-ledger credit, read on the same clock as the alloy sweep. Null until a
+  // read lands, so the page shows "—" rather than the fee dressed up as the whole income.
+  treasuryCreditWei: () => treasuryCreditWei,
   indexStatus: () => scribe.status,
   // The one breaker this process runs: the node the index is read from. Reporting it is what
   // turns "the hall stopped moving" into "the node is tripped, with 12s of cooldown left".

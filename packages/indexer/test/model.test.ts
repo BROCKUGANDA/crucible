@@ -646,6 +646,28 @@ describe("economics", () => {
     expect(economics.paidSettlements).toBe(1);
   });
 
+  /**
+   * The treasury's credit is a different number from the fee, and the page used to print the
+   * fee under a heading a reader took for the total: 0.15 ETH beside a chain holding 0.305,
+   * both correct, neither reconcilable. The credit is read off the chain and carried here
+   * unchanged; the fee above is not substituted for it.
+   */
+  it("carries the treasury's on-chain credit beside the fee, not in place of it", () => {
+    const m = replay(fullStory());
+    const snap = buildSnapshot(m, { now: 0, feeBps: 500, treasuryCreditWei: 305_000_000_000_000_000n });
+    expect(snap.economics.feesEth).toBe("0.05");
+    expect(snap.economics.treasuryCreditEth).toBe("0.305");
+  });
+
+  it("reports a treasury credit nobody read as unknown", () => {
+    const m = replay(fullStory());
+    const snap = buildSnapshot(m, { now: 0, feeBps: 500 });
+    // Unknown is not zero, and it is not the fee dressed up as the total: a host that could
+    // not reach `credit(treasury)` must leave the cell empty, not fill it with 0.05.
+    expect(snap.economics.treasuryCreditEth).toBeNull();
+    expect(snap.economics.feesEth).toBe("0.05");
+  });
+
   it("counts only the settlements that paid an agent", () => {
     const m = replay(fullStory());
     const snap = buildSnapshot(m, { now: 0, feeBps: 500 });

@@ -323,6 +323,7 @@ describe("trial counts and the books", () => {
           volumeEth: "12.5",
           paidSettlements: 4,
           feeBps: 500,
+          treasuryCreditEth: null,
         },
       }),
     });
@@ -361,7 +362,7 @@ describe("trial counts and the books", () => {
     // claim the protocol charges nothing. The page has to keep that distinction.
     const view = ops({
       snapshot: snapshot({
-        economics: { paidOutEth: "1", feesEth: "0", volumeEth: "1", paidSettlements: 1, feeBps: null },
+        economics: { paidOutEth: "1", feesEth: "0", volumeEth: "1", paidSettlements: 1, feeBps: null, treasuryCreditEth: null },
       }),
     });
     expect(view.feeRate).toBe(UNKNOWN);

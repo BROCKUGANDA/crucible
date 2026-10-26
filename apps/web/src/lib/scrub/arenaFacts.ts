@@ -36,6 +36,13 @@ export interface ArenaFacts {
    * null is not zero — see the file header.
    */
   take: string | null;
+  /**
+   * What the treasury can withdraw on-chain (`credit[treasury]`): the fee above PLUS its share
+   * of every slashed bond. Shown beside the fee rather than replacing it, because the two are
+   * different entitlements and the page that published only the fee could not be reconciled
+   * with a reader who called the contract. Null when the chain read has not landed.
+   */
+  treasury: string | null;
   /** Block number of the settlement `mark` came from, so the reading is checkable. */
   markBlock: number | null;
 }
@@ -48,6 +55,7 @@ const NO_FACTS: ArenaFacts = {
   smiths: null,
   settled: null,
   take: null,
+  treasury: null,
   markBlock: null,
 };
 
@@ -81,6 +89,10 @@ export function deriveFacts(snapshot: ApiSnapshot | null | undefined): ArenaFact
     smiths,
     settled: snapshot.counts?.settled ?? null,
     take: snapshot.economics?.feesEth == null ? null : formatEth(snapshot.economics.feesEth),
+    treasury:
+      snapshot.economics?.treasuryCreditEth == null
+        ? null
+        : formatEth(snapshot.economics.treasuryCreditEth),
     markBlock: newestBlock < 0 ? null : newestBlock,
   };
 }

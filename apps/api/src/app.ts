@@ -83,6 +83,15 @@ export interface ApiDeps {
   /** sponsor-submitted CID text, which never reaches the chain */
   disclosure?: () => { trialId: number; specCID?: string; testsCID?: string }[];
   /**
+   * `credit[treasury]` in wei, read off the chain by the host.
+   *
+   * The books above count the settlement fee; the treasury also keeps 70% of every slashed
+   * bond, and the landing page published the fee under a heading a reader took for the total.
+   * Null is unknown, never zero: the host that could not read it must not be able to make the
+   * page say the treasury holds nothing.
+   */
+  treasuryCreditWei?: () => bigint | null;
+  /**
    * What the hall's tx proofs are against. A transactionHash only means something on
    * one chain and in one contract's logs, and the read model is chain-agnostic — it
    * cannot infer either. The host that knows them supplies them; anything it does not
@@ -374,6 +383,7 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
         now,
         alloyState: deps.alloyState,
         feeBps: deps.protocolFeeBps?.() ?? null,
+        treasuryCreditWei: deps.treasuryCreditWei?.() ?? null,
         headTimestamp: deps.indexStatus?.().headTimestamp ?? null,
         disclosure: deps.disclosure?.(),
       });
