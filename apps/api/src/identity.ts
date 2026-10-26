@@ -49,6 +49,16 @@ export const LIKELIHOOD_RATIOS = {
 
   // Wallet age (from first trial creation)
   walletAgeOld: 4.0,     // > 90 days since first activity
+
+  // A signature from an attestor this deployment names (apps/api/src/attestation.ts).
+  // Zero credentials needed; the issuer holds their own key. Fitted like the rest in Phase 3.
+  attestedHuman: 8.0,
+
+  // A Human Passport credential read through the isolated clean.sdk sidecar
+  // (apps/api/src/passport.ts). Eligible clears a published threshold; a sanctions match is
+  // separate, negative evidence. Being merely ineligible is not evidence of a sybil.
+  passportEligible: 6.0,
+  sanctionedAddress: 0.05,
 } as const;
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -74,6 +84,14 @@ export interface RiskScore {
 export interface Decision {
   action: "allow" | "challenge" | "rate-limit" | "deny";
   reason: string;
+}
+
+/** The part of a Passport reading that moves the score. Absence is not a signal. */
+export interface PassportSignal {
+  eligible: boolean;
+  sanctioned: boolean;
+  score: number | null;
+  method: "poch" | "passport" | null;
 }
 
 // ── Math ───────────────────────────────────────────────────────────────────
@@ -271,10 +289,46 @@ export function scoreWallet(
   alloyState: (agentId: number) => AlloyState | null,
   wallet: string,
   nowSeconds: number | null = null,
+  /** Set only after a signature from a configured attestor has been verified. */
+  attestedBy: string | null = null,
+  /** Set only after the Passport source answered; `null` means nothing was learned. */
+  passport: PassportSignal | null = null,
 ): RiskScore {
   const agent = findAgentByWallet(model, wallet);
   const alloy = agent ? alloyState(agent.id) : null;
   const evidence = collectEvidence(model, agent, alloy, nowSeconds);
+  if (attestedBy !== null) {
+    evidence.push({
+      name: "attestedHuman",
+      present: true,
+      lr: LIKELIHOOD_RATIOS.attestedHuman,
+      logLr: Math.log(LIKELIHOOD_RATIOS.attestedHuman),
+      description: `Signed by configured attestor ${attestedBy}`,
+    });
+  }
+
+  // A sanctions match is the one negative a Passport credential can assert. Failing the
+  // threshold is not evidence of duplication, so an ineligible reading adds nothing — a
+  // source that is asked and says no must not be scored as if it said yes to sybil.
+  if (passport?.sanctioned) {
+    evidence.push({
+      name: "sanctionedAddress",
+      present: true,
+      lr: LIKELIHOOD_RATIOS.sanctionedAddress,
+      logLr: Math.log(LIKELIHOOD_RATIOS.sanctionedAddress),
+      description: "A sanctions screen matched this address",
+    });
+  } else if (passport?.eligible) {
+    evidence.push({
+      name: "passportEligible",
+      present: true,
+      lr: LIKELIHOOD_RATIOS.passportEligible,
+      logLr: Math.log(LIKELIHOOD_RATIOS.passportEligible),
+      description: `Human Passport eligibility via ${passport.method ?? "credential"}${
+        passport.score !== null ? ` (score ${passport.score})` : ""
+      }`,
+    });
+  }
 
   // Start with base rate log-odds, add each signal's log-LR
   let logOdds = baseLogOdds();
