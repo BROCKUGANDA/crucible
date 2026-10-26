@@ -374,6 +374,8 @@ jobs:
             --workspace @crucible/api \
             --workspace @crucible/web \
             --workspace @crucible/datasets \
+            --workspace @crucible/eval \
+            --workspace @crucible/registry \
             --workspace @crucible/funder
 
       - name: test (every workspace)
@@ -395,6 +397,8 @@ jobs:
             --workspace @crucible/api \
             --workspace @crucible/web \
             --workspace @crucible/datasets \
+            --workspace @crucible/eval \
+            --workspace @crucible/registry \
             --workspace @crucible/funder
 
       # ESLint lives only where the rules it can actually run exist: the web app
