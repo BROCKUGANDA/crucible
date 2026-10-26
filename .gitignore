@@ -65,3 +65,6 @@ crucible-contracts/foundry.lock
 # un-ignored explicitly so it ships deliberately.
 .mimosa/
 
+# datasets is a tracked workspace — un-ignored so CI can typecheck it
+!packages/datasets/
+

@@ -29,22 +29,22 @@ describe("CapTracker", () => {
     // First allocation of 0.05 ETH (at the per-allocation cap)
     const e1 = caps.estimate(w, MAX_PER_ALLOCATION_ETH);
     expect(e1.ok).toBe(true);
-    caps.record(w, MAX_PER_ALLOCATION_ETH, e1.estimated, MAX_PER_ALLOCATION_ETH, true);
+    if (e1.ok) caps.record(w, MAX_PER_ALLOCATION_ETH, e1.estimated, MAX_PER_ALLOCATION_ETH, true);
 
     // Second allocation of 0.05 ETH (total 0.1, under the 0.2 per-wallet daily cap)
     const e2 = caps.estimate(w, MAX_PER_ALLOCATION_ETH);
     expect(e2.ok).toBe(true);
-    caps.record(w, MAX_PER_ALLOCATION_ETH, e2.estimated, MAX_PER_ALLOCATION_ETH, true);
+    if (e2.ok) caps.record(w, MAX_PER_ALLOCATION_ETH, e2.estimated, MAX_PER_ALLOCATION_ETH, true);
 
     // Third allocation of 0.05 ETH would total 0.15, still under 0.2
     const e3 = caps.estimate(w, MAX_PER_ALLOCATION_ETH);
     expect(e3.ok).toBe(true);
-    caps.record(w, MAX_PER_ALLOCATION_ETH, e3.estimated, MAX_PER_ALLOCATION_ETH, true);
+    if (e3.ok) caps.record(w, MAX_PER_ALLOCATION_ETH, e3.estimated, MAX_PER_ALLOCATION_ETH, true);
 
     // Fourth allocation of 0.05 ETH would total 0.2, at the per-wallet cap
     const e4 = caps.estimate(w, MAX_PER_ALLOCATION_ETH);
     expect(e4.ok).toBe(true);
-    caps.record(w, MAX_PER_ALLOCATION_ETH, e4.estimated, MAX_PER_ALLOCATION_ETH, true);
+    if (e4.ok) caps.record(w, MAX_PER_ALLOCATION_ETH, e4.estimated, MAX_PER_ALLOCATION_ETH, true);
 
     // Fifth allocation of 0.01 ETH would total 0.21, exceeding the per-wallet cap
     const e5 = caps.estimate(w, 0.01);
@@ -59,7 +59,7 @@ describe("CapTracker", () => {
       const w = `0x${String(i).padStart(40, "0")}`;
       const e = caps.estimate(w, MAX_PER_ALLOCATION_ETH);
       expect(e.ok).toBe(true);
-      caps.record(w, MAX_PER_ALLOCATION_ETH, e.estimated, MAX_PER_ALLOCATION_ETH, true);
+      if (e.ok) caps.record(w, MAX_PER_ALLOCATION_ETH, e.estimated, MAX_PER_ALLOCATION_ETH, true);
     }
     // The 40th wallet at 0.06 ETH exceeds the per-allocation cap anyway,
     // but even a small amount would push the daily total past 2.0 ETH
@@ -73,11 +73,17 @@ describe("CapTracker", () => {
     const caps = new CapTracker();
     const e = caps.estimate("0x1111111111111111111111111111111111111111", MAX_PER_ALLOCATION_ETH + 1);
     expect(e.ok).toBe(false);
-    caps.record("0x1111111111111111111111111111111111111111", MAX_PER_ALLOCATION_ETH + 1, 0, 0, false, e.reason);
+    let reason: string | undefined;
+    if (!e.ok) {
+      reason = e.reason;
+      caps.record("0x1111111111111111111111111111111111111111", MAX_PER_ALLOCATION_ETH + 1, 0, 0, false, reason);
+    }
     const list = caps.list();
     expect(list.length).toBe(1);
-    expect(list[0].ok).toBe(false);
-    expect(list[0].reason).toBe(e.reason);
+    const first = list[0];
+    expect(first).toBeDefined();
+    expect(first!.ok).toBe(false);
+    expect(first!.reason).toBe(reason);
   });
 
   it("constants are the expected values", () => {
