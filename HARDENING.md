@@ -981,6 +981,39 @@ guards is the decoration it exists to detect.
   `/claims` moved to the footer where the check belongs, and the detail page now prints the full
   spec and suite CIDs instead of an abbreviation, because that page is where a stranger arrives to
   check a claim and a truncated address cannot be pasted anywhere.
+- **Four phases of the Sybil roadmap were audited before any code; two already existed, one was
+  blocked on data, and one would have refused every new visitor (2026-10-26).** The verdicts, with
+  their evidence: the **evidence collector** was real inside `apps/api/src/identity.ts:113-242` but
+  never exposed; the **scorer and both routes** already existed
+  (`identity.ts:250-276`, `app.ts:989/1009`, nine tests); **Passport** appears nowhere but a reason
+  string (`identity.ts:292`) and would be a new third-party dependency with no credential on this
+  host; **HMC training** has no labelled corpus to fit — trial verdicts are not sybil labels, and
+  the demo chain has two agents; **the funder** gates only amounts (`apps/funder/src/cap.ts`) and
+  `decide()` had no caller outside the two routes. Implementing the fourth phase literally would
+  have refused exactly the wallet a faucet exists for: no history scores the 0.10 base rate, and
+  `decide()` maps that to `deny`.
+  **Shipped:** `GET /identity/evidence/:wallet` exposing the existing collection with Passport
+  declared unconfigured rather than omitted; the funder reads the score and **sizes** the drip
+  (ADR-0016: a slash refuses, `p ≥ 0.70` full, `≥ 0.40` half, everything else — including a
+  brand-new wallet — a quarter), recording the factor and `risk.available` on every allocation;
+  `scripts/fit-identity.mjs` (HMC + leapfrog, dual-averaging step size, Gaussian prior) that refuses
+  a thin, imbalanced, duplicated, misspelled or missing corpus; and
+  `scripts/export-identity-features.mjs`, which turns this deployment's agent wallets into an
+  unlabelled sheet so a human can label it.
+  **Measured:** the fitter's self-test — analytic gradient within `7.6e-11` of finite differences,
+  three coefficients recovered inside their 95% credible intervals from 400 synthetic rows
+  (intercept −2.32 [−2.94, −1.77] against a truth of −2.00), 84.3% sampling acceptance, all five
+  refusals firing; the exporter run against a local API indexing the deployed chain produced both
+  agent wallets with every feature computed from chain facts; the fitter then refused that sheet
+  (`label must be 0 or 1 (got null)`) and refused a missing corpus with exit 2.
+  **Two real defects the audit surfaced and fixed:** `hasSurvivedBreak` fired on
+  `breakSkeptic !== null`, which is true for a *slashed* trial — being successfully broken raised
+  the humanity score; and wallet age was measured with `Date.now()` against block timestamps,
+  a second clock. Both now have tests that turn red when reverted.
+  **What this does not close:** the coefficients are still hand-tuned because no labelled corpus
+  exists — the pipeline refuses to pretend otherwise; Passport stays unwired; and the funder is not
+  running on the VPS (`ss` shows nothing on 8788), so the live `/faucet` still answers
+  `fundable: false`. The policy ships enforced wherever a funder runs.
 - **Three of the four console errors are the CSP doing its job, and that is a decision, not a bug
   report.** `errors-in-console` scored 0. Its items: the Coinbase Wallet SDK POSTing its analytics
   beacons to `https://cca-lite.coinbase.com/amp` and `/metrics`, refused by our own
@@ -1429,3 +1462,5 @@ much of the product's promise each one costs.
     believing the product regressed.
 
 Report a vulnerability as described in [`SECURITY.md`](SECURITY.md), not in a public issue.
+ 
+- **Mainnet is gated, not launched (2026-10-26).** scripts/mainnet-preflight.mjs fails closed today: audit, legal, genesis, timelock and monitoring sign-offs in docs/mainnet are unsigned templates, and no MAINNET_RPC_URL is set. That red is the gate working; it was run and it refused, naming all five sign-offs plus the missing RPC. It also reads the fee correctly in both laws: v1 escrow FEE_BPS 500 (5 percent, ADR-0001) and the separate v2 arena fee_bps 1500 (ADR-0011), and refuses if the v1 figure moves. Ratings, tiers and skill-tree derivation shipped in packages/eval/src/ratings.ts (gates 799, 812, 841, 855-858) with 5 tests; flipping the winner update sign turned 2 of them red, restoring it returned all 17 eval tests green, so the direction is proven, not decorative. **Still open, and not closable from this chair:** a real external audit, a formed legal entity with counsel, a funded multisig deployer, named on-call humans, and genesis sponsors with committed ETH. Any of those filled in by an agent would be a fake shape on a runtime path. 

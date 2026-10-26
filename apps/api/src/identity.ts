@@ -21,8 +21,11 @@
 import type { AgentRow, AlloyState, ReadModel, TrialRow } from "@crucible/indexer";
 
 // ── Base rate ──────────────────────────────────────────────────────────────
-// P(unique human) for a fresh wallet with no evidence. Calibrated from the
-// observed base rate of genuine users vs sybils on the demo chain.
+// P(unique human) for a fresh wallet with no evidence. Hand-picked for Phase 1 — an earlier
+// version of this comment called it "calibrated from the observed base rate of genuine users
+// vs sybils on the demo chain", and no such observation exists: there is no labelled corpus
+// in this repository. A prior that claims to be measured and is not is worse than an honest
+// guess, because a reader has no way to tell the difference.
 const BASE_RATE_UNIQUE_HUMAN = 0.10;
 
 // ── Likelihood ratios (human : sybil) ──────────────────────────────────────
@@ -115,6 +118,7 @@ function collectEvidence(
   model: ReadModel,
   agent: AgentRow | null,
   alloy: AlloyState | null,
+  nowSeconds: number | null,
 ): EvidenceSignal[] {
   const signals: EvidenceSignal[] = [];
 
@@ -192,14 +196,21 @@ function collectEvidence(
     });
   }
 
-  const hasSurvived = trials.some((t) => t.breakSkeptic !== null);
+  /**
+   * A break was filed AND the trial still paid out — that is what surviving one means.
+   *
+   * This used to test `breakSkeptic !== null` alone, which is true for a *slashed* trial as
+   * well: an agent that was successfully broken was scored as if it had survived the break,
+   * so the signal rewarded exactly the failure it was meant to detect.
+   */
+  const hasSurvived = trials.some((t) => t.verdict === "paid" && t.breakSkeptic !== null);
   if (hasSurvived) {
     signals.push({
       name: "hasSurvivedBreak",
       present: true,
       lr: LIKELIHOOD_RATIOS.hasSurvivedBreak,
       logLr: Math.log(LIKELIHOOD_RATIOS.hasSurvivedBreak),
-      description: `At least one break survived`,
+      description: `A filed break did not overturn a paid verdict`,
     });
   }
 
@@ -223,10 +234,14 @@ function collectEvidence(
     });
   }
 
-  // Wallet age (from earliest trial creation)
-  if (trials.length > 0) {
+  // Wallet age (from earliest trial creation), measured on the chain's clock.
+  //
+  // This used `Date.now()`, which is a second clock: the trial timestamps come from blocks,
+  // so a host with a skewed wall clock could age a wallet it had never seen a day of. With no
+  // chain timestamp the signal is simply not emitted — unknown is not "old".
+  if (trials.length > 0 && nowSeconds !== null) {
     const oldest = Math.min(...trials.map((t) => t.createdAt));
-    const ageDays = (Date.now() / 1000 - oldest) / 86400;
+    const ageDays = (nowSeconds - oldest) / 86400;
     if (ageDays > 90) {
       signals.push({
         name: "walletAgeOld",
@@ -246,15 +261,20 @@ function collectEvidence(
  *
  * Returns the calibrated posterior P(unique human), the log-odds, and a
  * per-signal breakdown so a judge can see exactly why the score moved.
+ *
+ * `nowSeconds` is the chain clock (the host's head-block timestamp), not the wall clock. It
+ * is optional because a host that has not read a block yet knows nothing about age, and the
+ * age signal must then be absent rather than guessed.
  */
 export function scoreWallet(
   model: ReadModel,
   alloyState: (agentId: number) => AlloyState | null,
   wallet: string,
+  nowSeconds: number | null = null,
 ): RiskScore {
   const agent = findAgentByWallet(model, wallet);
   const alloy = agent ? alloyState(agent.id) : null;
-  const evidence = collectEvidence(model, agent, alloy);
+  const evidence = collectEvidence(model, agent, alloy, nowSeconds);
 
   // Start with base rate log-odds, add each signal's log-LR
   let logOdds = baseLogOdds();

@@ -35,6 +35,11 @@ export interface AllocationRecord {
   ok: boolean;
   /** Failure reason when ok is false. */
   reason?: string | null;
+  /**
+   * The risk reading this allocation was sized by, and why. Kept on the record because "granted
+   * 0.0125 of 0.05" is only explicable next to the factor that produced it.
+   */
+  risk?: { pUniqueHuman: number | null; factor: number; reason: string };
 }
 
 /**
@@ -98,7 +103,15 @@ export class CapTracker {
   }
 
   /** Record a completed allocation. */
-  record(wallet: string, requested: number, estimated: number, granted: number, ok: boolean, reason?: string | null): void {
+  record(
+    wallet: string,
+    requested: number,
+    estimated: number,
+    granted: number,
+    ok: boolean,
+    reason?: string | null,
+    risk?: AllocationRecord["risk"],
+  ): void {
     this.allocations.push({
       wallet: wallet.toLowerCase(),
       requested,
@@ -107,6 +120,7 @@ export class CapTracker {
       at: new Date().toISOString(),
       ok,
       reason,
+      ...(risk ? { risk } : {}),
     });
   }
 

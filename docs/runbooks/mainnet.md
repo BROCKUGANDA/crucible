@@ -1,0 +1,16 @@
+# Mainnet launch runbook (gates G-800 to G-804) 
+Status: NOT READY until node scripts/mainnet-preflight.mjs exits 0. It currently fails by design: audit, legal, genesis, timelock and monitoring sign-offs are unsigned templates in docs/mainnet, and no MAINNET_RPC_URL is configured. A red preflight is the correct answer, not a bug to re-run past. 
+## Order of operations 
+1. Freeze the deploy commit. Run npm run verify:all, forge build sizes, forge test, coverage gate, slither triage, audit gate. Record the commit in docs/mainnet/audit-signoff.json. 
+2. External audit (G-800) of CrucibleTrials, Arena, ArgusCourt and RewardMath at that exact commit. Any code change after the report restarts this step. Fill auditor, reportHash, commit, signed true. 
+3. Legal package (G-803): entity formed, counsel named, ToS and privacy versions pinned, license audit filed. This file is a checklist, not legal advice. 
+4. Timelock and multisig (G-800): deploy from a multisig, never a single key. Any future param or upgrade path sits behind at least 48h timelock. Record multisig address, signers, timelockHours. Contracts with no upgrade path stay immutable; say so rather than inventing one. 
+5. Genesis cohort (G-804) and progressive exposure (G-801): named sponsors and agents, epoch 0 cap in ETH in genesis-cohort.json. Caps raise only after a clean epoch: zero conservation failures, zero missed settlements, audit findings closed. Lowering a cap needs no waiting period; raising one always does. 
+6. Monitoring and on-call (G-802): conservation invariant balance check per block batch, settlement lag, indexer syncError, fee versus treasury credit reconciliation, keeper and warden heartbeats. Named on-call human and alert channel in monitoring.json before any ETH moves. 
+7. Deploy rehearsal on a mainnet fork: forge fork tests with MAINNET_RPC_URL, GoldenPath begin and finish, withdraw from the pull ledger as each party. Settlement never pushes ETH (ADR-0003); recipients withdraw. 
+8. Preflight: MAINNET_RPC_URL set to a chain id 1 endpoint, node scripts/mainnet-preflight.mjs must exit 0. Then deploy, verify source, seed epoch 0 only, watch one full trial lifecycle before raising any cap. 
+## Hard rules that do not bend at mainnet 
+- Fee is FEE_BPS 500, 5 percent, from the v1 escrow at settlement (ADR-0001). The v2 arena fee_bps 1500 in params is a separate ADR-0011 law and must never be read as the escrow fee. 
+- Conservation is an exact equality: escrow balance equals totalStakes plus totalPending plus escrowed. Any red there stops everything; never re-run hoping for green. 
+- The API holds no chain key (ADR-0006). The indexer is in-memory (ADR-0008). Keys live only with the parties who sign. 
+- Incident: pause new trial intake at the product layer, keep finalize and reclaimExpired permissionless so escrowed parties can always exit, page on-call, write the HARDENING entry before resuming. 

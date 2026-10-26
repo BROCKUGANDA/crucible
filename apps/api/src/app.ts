@@ -1000,7 +1000,9 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
     }
 
     const model = deps.getModel();
-    const score = scoreWallet(model, (id) => deps.alloyState?.(id) ?? null, wallet);
+    // The chain clock, not the wall clock: trial timestamps are block timestamps.
+    const now = deps.indexStatus?.().headTimestamp ?? null;
+    const score = scoreWallet(model, (id) => deps.alloyState?.(id) ?? null, wallet, now);
     const decision = decide(score);
 
     return c.json({ score, decision });
@@ -1013,10 +1015,54 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
     }
 
     const model = deps.getModel();
-    const score = scoreWallet(model, (id) => deps.alloyState?.(id) ?? null, wallet);
+    const now = deps.indexStatus?.().headTimestamp ?? null;
+    const score = scoreWallet(model, (id) => deps.alloyState?.(id) ?? null, wallet, now);
     const decision = decide(score);
 
     return c.json({ score, decision });
+  });
+
+  /**
+   * The evidence behind a wallet's score, signal by signal.
+   *
+   * `/identity/risk` answers "how likely is this a unique human"; this answers "on what".
+   * Both read the same collection, so a reviewer can check the reasoning against the chain
+   * facts it names rather than trusting a single posterior.
+   *
+   * `sources.passport` is always unconfigured today: this repository has no Gitcoin Passport
+   * integration and no credential for one. Reporting that explicitly is the honest answer —
+   * a source silently missing from the list would read as "checked and neutral".
+   */
+  app.get("/identity/evidence/:wallet", (c) => {
+    const wallet = c.req.param("wallet");
+    if (!/^0x[0-9a-fA-F]{40}$/.test(wallet)) {
+      return c.json({ error: "wallet must be a 0x-prefixed 20-byte Ethereum address" }, 400);
+    }
+
+    const model = deps.getModel();
+    const now = deps.indexStatus?.().headTimestamp ?? null;
+    const score = scoreWallet(model, (id) => deps.alloyState?.(id) ?? null, wallet, now);
+    const decision = decide(score);
+
+    return c.json({
+      wallet: score.wallet,
+      agentId: score.agentId,
+      evidence: score.evidence,
+      pUniqueHuman: score.pUniqueHuman,
+      logOdds: score.logOdds,
+      modelVersion: score.modelVersion,
+      computedAt: score.computedAt,
+      chainNow: now,
+      decision,
+      sources: {
+        // Alloy tier, identity linkage and trial history, read from this host's own projection.
+        alloy: { configured: true },
+        passport: {
+          configured: false,
+          reason: "No Gitcoin Passport integration or credential is configured on this host",
+        },
+      },
+    });
   });
 
   /**
@@ -1075,7 +1121,21 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
     }
 
     const json = (await res.json().catch(() => null)) as
-      | { ok: boolean; wallet: string; requestedEth: string; grantedEth: string | null; transferId: string | null; reason: string | null }
+      | {
+          ok: boolean;
+          wallet: string;
+          requestedEth: string;
+          grantedEth: string | null;
+          transferId: string | null;
+          reason: string | null;
+          /** the risk reading that sized the allocation; forwarded unchanged */
+          risk?: {
+            pUniqueHuman: number | null;
+            factor: number;
+            reason: string;
+            available: boolean;
+          };
+        }
       | null;
     if (!json) {
       return c.json({ ok: false, fundable: true, reason: "funder returned an empty response" }, 502);
