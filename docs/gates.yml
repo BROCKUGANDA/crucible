@@ -1331,6 +1331,24 @@
 - id: 860
   title: Practice loop and anti-farming (post-settle skill delta, burned-bank practice only after epoch rotation, holdout never released)
   frameworks: [ai-rmf]
+- id: 861
+  title: Signed label attestations (labels are personal_sign statements from a named issuer; trial verdicts are never labels; corpus refuses below 60 rows or 15 per class)
+  frameworks: [ai-rmf]
+- id: 862
+  title: Human Passport eligibility source (clean.sdk L1 eligibility through a loopback sidecar; configured, unreachable and answered are reported separately)
+  frameworks: [ai-rmf, scsvs]
+- id: 863
+  title: Clean SDK isolation (pinned package under integrations/, never a workspace or a settlement dependency; bridge methods unused; scriptless install on Windows)
+  frameworks: [scsvs]
+- id: 864
+  title: Sybil evidence independence (an ineligible Passport reading contributes no signal; only eligibility or a sanctions match moves the posterior)
+  frameworks: [ai-rmf]
+- id: 865
+  title: Human attestation fallback (a locally verified signature from a deployment-named issuer needs no vendor credential)
+  frameworks: [ai-rmf]
+- id: 866
+  title: PayFi and RWA bridge scope (tokenized payments and RWA custody are post-launch and off the settlement path; native ETH escrow and FEE_BPS 500 unchanged per ADR-0001)
+  frameworks: [scsvs]
 
 frameworks:
   owasp-top10: "OWASP Web Top 10 (2021)"
