@@ -12,8 +12,11 @@ describe('ratings (gates 799, 812, 841, 855-858)', () => {
     const strong = { mu: 35, sigma: 3 }; 
     const weak = { mu: 15, sigma: 3 }; 
     const [w1] = trueskillWin(strong, weak); 
-    const [w2] = trueskillWin(weak, strong); 
-    expect(w2.mu - 15).toBeGreaterThan(w1.mu - 35); 
+    const [w2, l2] = trueskillWin(weak, strong);
+    expect(w2.mu - 15).toBeGreaterThan(w1.mu - 35);
+    expect(w2.mu).toBeCloseTo(16.2, 1);
+    expect(w2.sigma).toBeLessThan(3);
+    expect(l2.sigma).toBeLessThan(3); 
   }); 
   it('decay pulls mu to prior and sigma up, never past default', () => { 
     const d = decayRating({ mu: 45, sigma: 2 }, 10, 10); 
