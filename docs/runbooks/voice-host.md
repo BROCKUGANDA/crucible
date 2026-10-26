@@ -21,7 +21,7 @@ On the host, in `/home/ubuntu/crucible/.env` (or the local `.env` for dev):
 ```bash
 ELEVENLABS_API_KEY=...
 ELEVENLABS_VOICE_ID=...          # the id from the ElevenLabs dashboard, not the name
-ELEVENLABS_MODEL_ID=eleven_flash_v2_5
+ELEVENLABS_MODEL_ID=eleven_multilingual_v4
 # VOICE_DISABLED=1               # optional kill switch
 ```
 
@@ -40,7 +40,7 @@ prints the key.
 
 ```bash
 curl -sS https://crucible.svalley.tech/api/voice/status
-# {"configured":true,"model":"eleven_flash_v2_5"}
+# {"configured":true,"model":"eleven_multilingual_v4"}
 ```
 
 In the browser, the header should show `Frenchy off`. Click it and allow audio.

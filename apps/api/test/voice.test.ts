@@ -23,7 +23,7 @@ function config(over: Partial<VoiceConfig> = {}): VoiceConfig {
   return {
     apiKey: fixtureKey,
     voiceId: "voice-123",
-    modelId: "eleven_flash_v2_5",
+    modelId: "eleven_multilingual_v4",
     baseUrl: "https://voice.example",
     ...over,
   };
@@ -70,7 +70,7 @@ describe("voice host", () => {
     const headers = new Headers(seen!.init!.headers);
     expect(headers.get("xi-api-key")).toBe(fixtureKey);
     const body = JSON.parse(String(seen!.init!.body));
-    expect(body.model_id).toBe("eleven_flash_v2_5");
+    expect(body.model_id).toBe("eleven_multilingual_v4");
     expect(body.text).toContain("Payment is the verification.");
     expect(body.voice_settings).toEqual({ stability: 0.55, style: 0.35, speed: 0.95 });
   });

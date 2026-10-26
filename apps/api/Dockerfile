@@ -16,6 +16,7 @@ COPY packages/argus/package.json packages/argus/
 # TypeScript job now fails on that omission rather than the deploy discovering it.
 COPY packages/cidstore/package.json packages/cidstore/
 COPY packages/crypto/package.json packages/crypto/
+COPY packages/datasets/package.json packages/datasets/
 COPY packages/forge-runner/package.json packages/forge-runner/
 COPY packages/frame/package.json packages/frame/
 COPY packages/forge-runner/package.json packages/forge-runner/
@@ -26,6 +27,7 @@ COPY grader/package.json grader/
 COPY apps/api/package.json apps/api/
 COPY apps/keeper/package.json apps/keeper/
 COPY apps/juror/package.json apps/juror/
+COPY apps/funder/package.json apps/funder/
 COPY apps/web/package.json apps/web/
 RUN npm ci --ignore-scripts
 

@@ -160,7 +160,7 @@ async function speakTTS(config: NonNullable<FrenchyConfig["tts"]>, text: string)
     },
     body: JSON.stringify({
       text,
-      model_id: config.modelId ?? "eleven_flash_v2_5",
+      model_id: config.modelId ?? "eleven_multilingual_v4",
       voice_settings: { stability: 0.55, style: 0.35, speed: 0.95 },
     }),
     signal: AbortSignal.timeout(15_000),

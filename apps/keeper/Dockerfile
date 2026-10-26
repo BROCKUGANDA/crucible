@@ -11,6 +11,7 @@ COPY packages/argus/package.json packages/argus/
 # cidstore as a workspace dependency.
 COPY packages/cidstore/package.json packages/cidstore/
 COPY packages/crypto/package.json packages/crypto/
+COPY packages/datasets/package.json packages/datasets/
 COPY packages/forge-runner/package.json packages/forge-runner/
 COPY packages/frame/package.json packages/frame/
 COPY packages/forge-runner/package.json packages/forge-runner/
@@ -22,6 +23,7 @@ COPY apps/api/package.json apps/api/
 COPY apps/web/package.json apps/web/
 COPY apps/keeper/package.json apps/keeper/
 COPY apps/juror/package.json apps/juror/
+COPY apps/funder/package.json apps/funder/
 RUN npm ci --ignore-scripts
 
 COPY . .

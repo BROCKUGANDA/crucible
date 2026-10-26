@@ -10,7 +10,6 @@ import { useSnapshot } from "@/lib/useSnapshot";
 import {
   formatDuration,
   formatEth,
-  shortCid,
   shortHash,
   statusMeta,
   verdictMeta,
@@ -146,11 +145,14 @@ export default function TrialDetailPage() {
         >
           <Field label="Sponsor" value={trial.sponsor} mono />
           <Field label="Bond" value={formatEth(trial.bondEth)} mono />
+          {/* The full address, not an abbreviation. This is the page a stranger arrives on to
+              check a claim, and a truncated CID cannot be pasted into a gateway or compared
+              against anything — the row in the list can stay short, this one has to be usable. */}
           <Field
             label="Suite"
             value={
               trial.testsCID
-                ? shortCid(trial.testsCID)
+                ? trial.testsCID
                 : `${shortHash(trial.testsDigest)} — fingerprint only`
             }
             mono
@@ -159,7 +161,7 @@ export default function TrialDetailPage() {
             label="Spec"
             value={
               trial.specCID
-                ? shortCid(trial.specCID)
+                ? trial.specCID
                 : `${shortHash(trial.specDigest)} — fingerprint only`
             }
             mono

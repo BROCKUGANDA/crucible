@@ -22,6 +22,7 @@ export function ScrubHud({
   settled,
   lastBlock,
   take,
+  treasury,
   showCrowdKey,
 }: {
   trials: number | null;
@@ -35,6 +36,12 @@ export function ScrubHud({
    * arrives, and never zero-for-zero.
    */
   take: string | null;
+  /**
+   * `credit[treasury]` as read from the chain: the fee above plus the treasury's share of
+   * every slashed bond. Two cells because they are two different entitlements — the page
+   * that printed only the fee under one heading could not be reconciled with the contract.
+   */
+  treasury: string | null;
   /** Only when the crowd is actually being drawn from smiths, so the key never lies. */
   showCrowdKey: boolean;
 }) {
@@ -84,8 +91,12 @@ export function ScrubHud({
           <dd>{lastBlock ?? "—"}</dd>
         </div>
         <div>
-          <dt>Take</dt>
+          <dt>Fees</dt>
           <dd>{take ?? "—"}</dd>
+        </div>
+        <div title="What the treasury can withdraw: settlement fees plus its share of slashed bonds">
+          <dt>Treasury</dt>
+          <dd>{treasury ?? "—"}</dd>
         </div>
       </dl>
 

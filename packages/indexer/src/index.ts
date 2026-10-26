@@ -5,3 +5,4 @@ export * from "./arena.js";
 export * from "./api.js";
 export * from "./hall.js";
 export * from "./replica.js";
+export * from "./team.js";

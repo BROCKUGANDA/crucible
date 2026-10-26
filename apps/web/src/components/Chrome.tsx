@@ -109,6 +109,9 @@ export function Chrome({ children }: { children: ReactNode }) {
       <footer className="chrome__foot">
         <span>Forged at the Colosseum Crypto World&apos;s Fair.</span>
         <span>Alloy is non-transferable. Trust should be too.</span>
+        {/* Kept here, not in the hero: /claims is where a reader checks a promise against what
+            enforces it, and it must stay reachable now that the hero speaks in plain words. */}
+        <Link href="/claims">What is enforced, promise by promise</Link>
         <SeedPhrasePromise />
       </footer>
     </div>

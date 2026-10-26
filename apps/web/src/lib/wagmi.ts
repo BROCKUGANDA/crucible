@@ -4,6 +4,7 @@ import { coinbaseWallet, walletConnect, injected as injectedConnector } from "wa
 import { getDefaultConfig } from "@rainbow-me/rainbowkit";
 import type { Address, Transport } from "viem";
 import type { Chain } from "viem/chains";
+import type { ChainDescription } from "./chainSwitch";
 
 /**
  * Wallet configuration: injected wallets (MetaMask, Rabby, Brave, and anything
@@ -121,6 +122,35 @@ export function rainbowKitProjectId(): string {
   return process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID ?? "";
 }
 
+/**
+ * Binance Wallet injects an EIP-1193 provider at `window.binancew3w.ethereum` and does not
+ * always answer through `window.ethereum`, so it gets its own connector target instead of
+ * relying on generic injection (the vendor's own integration notes say the same).
+ */
+export function binanceProvider(): unknown {
+  if (typeof window === "undefined") return undefined;
+  return (window as unknown as { binancew3w?: { ethereum?: unknown } }).binancew3w?.ethereum;
+}
+
+/**
+ * The chain, described the way a wallet needs to hear it before it can sign here.
+ *
+ * No consumer wallet knows chain 31337, so the app has to be able to *add* it, and the RPC it
+ * registers must be the deployed one — `127.0.0.1` would point a remote visitor's wallet at
+ * their own machine, producing an empty account that looks like a broken site.
+ */
+export function chainForWallets(): ChainDescription {
+  const chain = activeChainDef();
+  const explorer = chain.blockExplorers?.default?.url;
+  return {
+    chainId: chain.id,
+    name: activeChain() === "foundry" ? "Anvil" : chain.name,
+    rpcUrl: rpcUrl(),
+    nativeCurrency: chain.nativeCurrency,
+    ...(explorer ? { explorerUrl: explorer } : {}),
+  };
+}
+
 export function walletConnectEnabled(): boolean {
   return rainbowKitProjectId().length > 0;
 }
@@ -165,6 +195,16 @@ export function buildConfig() {
     chains: [chain],
     connectors: [
       injectedConnector({ shimDisconnect: true }),
+      // Binance Wallet is named explicitly because it does not reliably answer through
+      // `window.ethereum`; the connector is dormant until the wallet's own provider exists.
+      injectedConnector({
+        shimDisconnect: true,
+        target: {
+          id: "wallet.binance.com",
+          name: "Binance Wallet",
+          provider: () => binanceProvider() as never,
+        },
+      }),
       // Coinbase Wallet is explicit, not left to the injected fallback: its extension
       // and mobile app are a real path for the Base audience, and the classic SDK
       // connector does not need a WalletConnect project id.

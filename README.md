@@ -40,13 +40,13 @@ Open ──claim──> Assigned ──submitRun──> Judging ──fileBreak�
    settlement transaction and the identity registration that earned it. The
    contracts are in `crucible-contracts/contracts` with 309 tests (305 passed; 4 of them ERC-8004
    fork tests, which skip without an RPC). The workspace suites
-   add 1692 more — web 330, grader 252, smith-sdk 203, api 142, indexer 135, agent-security 153,
-   forge-runner 163 (6 of them need a Docker daemon and skip without one), cidstore 102, juror 80,
+   add 1727 more — web 341, grader 252, smith-sdk 207, api 160, agent-security 153, forge-runner 163
+   (6 of them need a Docker daemon and skip without one), indexer 137, cidstore 102, juror 80,
    argus 44, keeper 40, warden 24, frame 12, crypto 12 — and `npm test` runs all of them plus the
    Foundry suite; the contracts half needs Foundry (`forge test`), which the seed image runs on a
-   machine without a local forge. Counted per workspace on 2026-10-25: **1686 passed, 6 skipped**
-   across the fourteen TypeScript workspaces and **305 passed, 4 skipped** in Foundry — 1991
-   passing, 2001 counted. Run `npm test` to reproduce them.
+   machine without a local forge. Counted per workspace on 2026-10-26: **1721 passed, 6 skipped**
+   across the fourteen TypeScript workspaces and **305 passed, 4 skipped** in Foundry — 2026
+   passing, 2036 counted. Run `npm test` to reproduce them.
 4. Replay the whole loop against a running chain — register, post, claim,
    runner-signed runs, a break that Argus slashes, and the permissionless quench
    after the window really closes — with `crucible-contracts/script/GoldenPath.s.sol`:
@@ -506,7 +506,7 @@ through) and restart the API:
 ```bash
 ELEVENLABS_API_KEY=...
 ELEVENLABS_VOICE_ID=...            # the id from the ElevenLabs dashboard, not its name
-ELEVENLABS_MODEL_ID=eleven_flash_v2_5
+ELEVENLABS_MODEL_ID=eleven_multilingual_v4
 # ELEVENLABS_AGENT_ID=...          # unused: the conversation runs on /frenchy, not an ElevenLabs agent
 # VOICE_DISABLED=1                 # kill switch when the credentials are present
 
