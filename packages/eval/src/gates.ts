@@ -4,7 +4,7 @@ export interface BoardEntry { agent: string; rating: Rating; funder: string }
 export function rankBoard(entries: BoardEntry[]): { agent: string; score: number; weight: number }[] {  
   const clusters = new Map();  
   for (const e of entries) clusters.set(e.funder, (clusters.get(e.funder) ?? 0) + 1);  
-  return entries.map((e) => ({ agent: e.agent, score: conservative(e.rating), weight: 1 / (clusters.get(e.funder) ?? 1) })).sort((a, b) => b.score - a.score || a.agent.localeCompare(b.agent));  
+  return entries.map((e) => { const weight = 1 / (clusters.get(e.funder) ?? 1); return { agent: e.agent, score: conservative(e.rating) * weight, weight }; }).sort((a, b) => b.score - a.score || a.agent.localeCompare(b.agent));  
 } 
 export function verifyRanking(entries: BoardEntry[], claimed: string[]): boolean {  
   const actual = rankBoard(entries).map((r) => r.agent);  
@@ -13,7 +13,8 @@ export function verifyRanking(entries: BoardEntry[], claimed: string[]): boolean
 export function coldStart(): Rating { return defaultRating(); }  
 export function targetDifficulty(r: Rating, accuracy = 0.7): number {  
   const theta = conservative(r) / 10;  
-  return theta + Math.log(accuracy / (1 - accuracy));  
+  if (!(accuracy > 0 && accuracy < 1)) throw new Error('accuracy must be between 0 and 1');
+  return theta - Math.log(accuracy / (1 - accuracy));  
 } 
 export const FEE_BPS_CANONICAL = 500;  
 export const FEE_BAND_MIN = 100;  
@@ -26,21 +27,27 @@ export function applyCaps(amount: bigint, caps: { perTx: bigint; perTrial: bigin
   return cap;  
 } 
 export function circuitFrozen(pinnedPrice: number, currentPrice: number, threshold = 0.2): boolean {  
-  if (pinnedPrice <= 0) throw new Error('pinned price must be positive');  
+  if (!Number.isFinite(pinnedPrice) || pinnedPrice <= 0) throw new Error('pinned price must be positive');  
+  if (!Number.isFinite(currentPrice) || currentPrice <= 0) return true;
+  if (!Number.isFinite(threshold) || threshold < 0) throw new Error('threshold must be finite and non-negative');
   return Math.abs(currentPrice - pinnedPrice) / pinnedPrice > threshold;  
 }  
 export function gasInBand(gas: number, ceiling: number): boolean { return gas > 0 && gas <= ceiling; } 
-export interface RagDoc { id: string; version: string; text: string; byo: boolean }  
-export function lintRagDocs(docs: RagDoc[], holdoutIds: ReadonlySet<string>): void {  
-  for (const d of docs) {  
-    if (holdoutIds.has(d.id)) throw new Error('holdout doc in retrieval corpus: ' + d.id);  
-    if (!d.byo) throw new Error('BYO declaration missing: ' + d.id);  
-    if (!d.version) throw new Error('unpinned doc version: ' + d.id);  
-  }  
-}  
-export function retrieveAt(docs: RagDoc[], version: string, query: string): RagDoc[] {  
-  const q = query.toLowerCase();  
-  return docs.filter((d) => d.version === version && d.text.toLowerCase().includes(q));  
+export interface RagDoc { id: string; version: string; text: string; byo: boolean }
+const rejectedRagDocs = new WeakMap<RagDoc[], Set<string>>();
+export function lintRagDocs(docs: RagDoc[], holdoutIds: ReadonlySet<string>): void {
+  const rejected = new Set(docs.filter((d) => holdoutIds.has(d.id)).map((d) => d.id));
+  rejectedRagDocs.set(docs, rejected);
+  for (const d of docs) {
+    if (holdoutIds.has(d.id)) { rejected.add(d.id); throw new Error('holdout doc in retrieval corpus: ' + d.id); }
+    if (!d.byo) { rejected.add(d.id); throw new Error('BYO declaration missing: ' + d.id); }
+    if (!d.version) { rejected.add(d.id); throw new Error('unpinned doc version: ' + d.id); }
+  }
+}
+export function retrieveAt(docs: RagDoc[], version: string, query: string, holdoutIds: ReadonlySet<string> = new Set()): RagDoc[] {
+  const q = query.toLowerCase();
+  const rejected = rejectedRagDocs.get(docs) ?? new Set<string>();
+  return docs.filter((d) => !holdoutIds.has(d.id) && !rejected.has(d.id) && d.byo && Boolean(d.version) && d.version === version && d.text.toLowerCase().includes(q));
 } 
 export interface Checkpoint { state: string; prev: string; hash: string; wallClock: number }  
 export function appendCheckpoint(chain: Checkpoint[], state: string, wallClock: number): Checkpoint[] {  
@@ -98,6 +105,7 @@ export interface GatewayEvent { seq: number; kind: string; data: string }
 export class EventGateway {  
   private events: GatewayEvent[] = [];  
   publish(kind: string, data: string): GatewayEvent {  
+    assertPiiFree({ data });
     const ev = { seq: this.events.length + 1, kind, data };  
     this.events.push(ev); return ev;  
   }  
@@ -105,9 +113,22 @@ export class EventGateway {
   snapshot(): { seq: number; events: GatewayEvent[] } { return { seq: this.events.length, events: [...this.events] }; }  
   diff(sinceSeq: number): GatewayEvent[] { return this.replay(sinceSeq + 1); }  
 } 
-export function assertPiiFree(payload: Record<string, unknown>): void {  
-  for (const k of Object.keys(payload)) {  
-    const key = k.toLowerCase();  
-    if (key.includes('phone') || key.includes('whatsapp') || key.includes('email')) throw new Error('PII field not allowed: ' + k);  
-  }  
+export function assertPiiFree(payload: Record<string, unknown>): void {
+  const visit = (value: unknown, path: string): void => {
+    if (Array.isArray(value)) { value.forEach((item, i) => visit(item, `${path}[${i}]`)); return; }
+    if (value !== null && typeof value === 'object') {
+      for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+        const normalized = key.toLowerCase();
+        if (normalized.includes('phone') || normalized.includes('whatsapp') || normalized.includes('email')) {
+          throw new Error('PII field not allowed: ' + key);
+        }
+        visit(child, path ? `${path}.${key}` : key);
+      }
+      return;
+    }
+    if (typeof value === 'string' && (/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i.test(value) || /(?:phone|whatsapp)\s*[:=]?\s*\+?[0-9][0-9 ()-]{6,}/i.test(value))) {
+      throw new Error('PII value not allowed: ' + path);
+    }
+  };
+  visit(payload, 'payload');
 }  
