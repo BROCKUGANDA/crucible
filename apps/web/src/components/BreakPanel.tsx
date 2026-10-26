@@ -5,7 +5,7 @@ import { useAccount } from "wagmi";
 import { keccak256, stringToHex, type Hex } from "viem";
 import { buildFileBreak, useTx } from "@/lib/useTx";
 import { formatWei, parseEth } from "@/lib/eth";
-import { WrongNetworkNotice } from "@/components/Wallet";
+import { WrongNetworkNotice, WalletButton } from "@/components/Wallet";
 import { PourConfirm } from "@/components/Modal";
 import { TxStates } from "@/components/Chrome";
 import { deployment } from "@/lib/wagmi";
@@ -155,6 +155,7 @@ export function BreakPanel({
 
           {!isConnected ? (
             <span className="mono" data-tone="ash">
+              <WalletButton />
               Connect a wallet to stake
             </span>
           ) : null}

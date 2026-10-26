@@ -4,7 +4,7 @@ import { useState } from "react";
 import { keccak256, stringToHex, type Hex } from "viem";
 import { useAccount } from "wagmi";
 import { Chrome, TxStates } from "@/components/Chrome";
-import { WrongNetworkNotice } from "@/components/Wallet";
+import { WalletButton, WrongNetworkNotice } from "@/components/Wallet";
 import { EMPTY_WIZARD, validateWizard, type WizardValues } from "@/lib/wizard";
 import { buildCreateTrial, useTx } from "@/lib/useTx";
 import { useSnapshot } from "@/lib/useSnapshot";
@@ -103,7 +103,7 @@ export default function NewTrialPage() {
         ) : null}
         <button
           className={tx.state === "heating" ? "btn btn-primary heating" : "btn btn-primary"}
-          disabled={!result.ok || tx.state === "heating"}
+          disabled={!result.ok || !isConnected || tx.state === "heating"}
           onClick={() => {
             if (step < 2) {
               setStep((s) => s + 1);
@@ -149,6 +149,7 @@ export default function NewTrialPage() {
         ) : null}
         {!isConnected ? (
           <span className="mono" data-tone="ash">
+            <WalletButton />
             Connect a wallet to light a trial
           </span>
         ) : null}
