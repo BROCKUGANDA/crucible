@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useAccount, useConnect } from "wagmi";
 import { WalletButton } from "@/components/Wallet";
+import { SeedPhrasePromise } from "@/components/SeedPhrasePromise";
 import { activeChain } from "@/lib/wagmi";
 
 /**
@@ -88,6 +89,10 @@ export function ForgeAuth({ mode }: { mode: "sign-in" | "sign-up" }) {
             do on this page can spend anything real. Your wallet is still your wallet: we
             ask it to sign, and we never hold a key for it.
           </p>
+          {/* The gate hides the chrome, so the standing sentence has to be said here as well:
+              this is the one screen that asks a stranger to connect a wallet, and it is the
+              screen a page imitating this one would be copied from. */}
+          <SeedPhrasePromise />
         </div>
 
         <p className="forge-auth__switch" data-stage="4">

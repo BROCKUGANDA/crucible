@@ -193,9 +193,18 @@ describe("the verifier has a production caller", () => {
     // Last, not merely present: asked for before the probes, a deploy that never shipped would
     // still publish a release note describing a build nobody is serving.
     expect(askAt, "the release is asked for before the deployment is probed").toBe(steps.length - 1);
+    // The wait must be bounded AND still able to fail the deploy. The bound is what stops a job that
+    // holds a runner while waiting for a job from the same two-slot pool from jamming the pipeline
+    // (measured 2026-10-25: two hours, nothing failing); the `completed/*` branch is what stops the
+    // bound from quietly turning a failed tag into a green deploy.
+    const ask = commands(steps[askAt]).join("\n");
     expect(
-      commands(steps[askAt]).some((l) => l.startsWith("if ! gh run watch") && l.includes("--exit-status")),
-      "the release is dispatched and forgotten, so a failed tag leaves main serving with a green deploy",
+      /deadline=\$\(\(SECONDS \+ \d+\)\)/.test(ask),
+      "the release wait is unbounded again — a queued release and a busy runner deadlock the pool",
+    ).toBe(true);
+    expect(
+      ask.includes("completed/*") && /exit 1/.test(ask),
+      "a release that started and failed no longer turns the deploy that shipped the site red",
     ).toBe(true);
   });
 

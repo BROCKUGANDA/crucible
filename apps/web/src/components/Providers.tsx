@@ -4,6 +4,7 @@ import { type ReactNode } from "react";
 import { WagmiProvider } from "wagmi";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RainbowKitProvider, darkTheme } from "@rainbow-me/rainbowkit";
+import { FrenchyProvider } from "@/lib/frenchy/provider";
 import { rainbowKitProjectId, wagmiConfig } from "@/lib/wagmi";
 import { forge } from "@/lib/forge";
 
@@ -19,6 +20,12 @@ import { forge } from "@/lib/forge";
  * RainbowKit's provider is genuinely conditional: without a WalletConnect project id
  * its modal has nothing to connect through, so the app falls back to plain injected
  * connectors (see Wallet.tsx).
+ *
+ * `FrenchyProvider` sits inside `WagmiProvider` and outside the RainbowKit branch, because it
+ * reads the connected account through `useAccount` to put a real wallet in what the brain is
+ * told — so it must be under the one that answers that hook, and above a provider that may or
+ * may not be there. Nothing here changes the root `loading.tsx` or `global-error.tsx`, which
+ * render outside this component and must keep importing nothing that touches the wallet.
  */
 
 const queryClient = new QueryClient({
@@ -47,13 +54,15 @@ export function Providers({ children }: { children: ReactNode }) {
   return (
     <WagmiProvider config={wagmiConfig()}>
       <QueryClientProvider client={queryClient}>
-        {withRainbowKit ? (
-          <RainbowKitProvider modalSize="compact" theme={rainbowTheme}>
-            {children}
-          </RainbowKitProvider>
-        ) : (
-          children
-        )}
+        <FrenchyProvider>
+          {withRainbowKit ? (
+            <RainbowKitProvider modalSize="compact" theme={rainbowTheme}>
+              {children}
+            </RainbowKitProvider>
+          ) : (
+            children
+          )}
+        </FrenchyProvider>
       </QueryClientProvider>
     </WagmiProvider>
   );

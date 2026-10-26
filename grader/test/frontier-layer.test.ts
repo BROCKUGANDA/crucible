@@ -38,7 +38,15 @@ function card(over: Partial<ModelCard> = {}): ModelCard {
 }
 
 function artifact(payload: unknown): Artifact {
-  return { claimHash: "0xclaim", payload, expectedVerdict: "PASS", suite: "smoke" };
+  return {
+    claimHash: "0xclaim",
+    payload,
+    expectedVerdict: "PASS",
+    suite: "smoke",
+    // The tier `smokeSet` gives this payload shape: see `tiers.test.ts`.
+    tier: "competence",
+    difficulty: "routine",
+  };
 }
 
 describe("the card refuses to be a guess", () => {

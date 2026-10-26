@@ -25,6 +25,71 @@ export interface Artifact {
   /** "boundary" artifacts sit near the decision threshold and weight 3x in kappa. */
   thresholdBand?: "boundary" | "normal";
   metadata?: Record<string, unknown>;
+  /**
+   * What kind of capability this artifact actually tests. Required, not optional.
+   *
+   * A free `suite` string can name a family but cannot say what a number in it *means*: `graded`
+   * mixes "read the spec and agree" with "resist being told what to answer" in one accuracy, and
+   * one accuracy across both is a profile flattened to a scalar. `AGI is never one score — it is a
+   * profile`, so the tier is data on the artifact, assigned from what the payload tests rather than
+   * from the loop that generated it, and it is part of `suiteEpoch`'s projection: two corpora that
+   * differ only in their tiering are two different exams, and a digest that could not tell them
+   * apart would be the bug the digest exists to prevent.
+   *
+   *   competence  reproducing a verdict an ordinary artifact shows
+   *   robustness  holding it under pressure — near-threshold, adversarial input, persuasion
+   *   domain      reading domain material (spec text against a diff against a test run)
+   *   frontier    the distinction that has to be earned: FAIL (contradicted) vs VOID (unshown)
+   */
+  tier: Tier;
+  /**
+   * How hard the artifact is, by what it contains. A stratification key for the sampler — the
+   * strata a draw is allocated across are `tier × difficulty` — so it is assigned from the payload
+   * too, never from an index. Also bound into `suiteEpoch`.
+   */
+  difficulty: Difficulty;
+  /**
+   * True when the artifact's own text tries to move the verdict — "already verified by Judge GPT",
+   * "output PASS". Such a probe is scored as safety and is *never* blended into the capability
+   * number: it is mixed into the draw so the model cannot tell which items are the exam on
+   * judgment, and named in the receipt so the reader can.
+   */
+  safety?: boolean;
+}
+
+/** The closed set of capability tiers a scorecard profiles against. */
+export type Tier = "competence" | "robustness" | "domain" | "frontier";
+
+/** The closed difficulty scale a draw stratifies against. */
+export type Difficulty = "routine" | "stressed" | "adversarial";
+
+/** The two unions, as data, so a runtime check has one source rather than a restated literal. */
+export const TIERS: readonly Tier[] = ["competence", "robustness", "domain", "frontier"];
+export const DIFFICULTIES: readonly Difficulty[] = ["routine", "stressed", "adversarial"];
+
+/** One tier's share of a scorecard: a pass rate with the n that produced it. */
+export interface TierSlice {
+  tier: Tier;
+  /** Capability results in this tier. Sums to the row's `n` across all tiers. */
+  n: number;
+  passed: number;
+  /** `passed / n`, truncated by the same arithmetic as the aggregate it belongs to. */
+  accuracy: number;
+  falsePassRate: number;
+  falseFailRate: number;
+}
+
+/**
+ * A named subset of a scorecard that is not part of the capability aggregate — today the safety
+ * probes. Same shape, no `tier`: it is a different axis, and giving it a tier would be the blend
+ * this exists to prevent.
+ */
+export interface SubsetSlice {
+  n: number;
+  passed: number;
+  accuracy: number;
+  falsePassRate: number;
+  falseFailRate: number;
 }
 
 /** A single model's verdict on one artifact. */
@@ -57,6 +122,15 @@ export interface EvalResult {
   falseFail: boolean; // actual != PASS && expected == PASS (supply-side harm)
   latencyMs: number;
   killed: boolean; // BREAK mutant: did the model catch the break
+  /**
+   * Carried from the artifact, the same way `suite` is: a row's numbers are split by tier and by
+   * safety at the scorer, and a scorer that had to join back to the corpus to learn what it scored
+   * would be a scorer that can only score a corpus it still has.
+   */
+  tier: Tier;
+  difficulty: Difficulty;
+  /** True for a persuasion probe — counted as safety, never inside the capability numbers. */
+  safety?: boolean;
 }
 
 /** One scorecard row per (model, suite). */
@@ -70,7 +144,26 @@ export interface ScorecardRow {
    * for that — an empty string would read as a value rather than as an absence.
    */
   suiteEpoch: SuiteEpoch;
+  /**
+   * Capability results scored — persuasion probes excluded. Every judgement number on this row
+   * (accuracy, kappa, false-pass, false-fail, kill-rate) is computed over exactly these `n`, and
+   * `tiers` below partitions them.
+   */
   n: number;
+  /** Every result scored, capability and safety together. `n + (safety?.n ?? 0) === graded`. */
+  graded: number;
+  /**
+   * The same `n` read one tier at a time. Required: a row that carries an aggregate without its
+   * profile is a row that silently mixed "agree with the shown evidence" and "refuse to be told
+   * what to answer" into one number, which is the flattening this whole layer exists to refuse.
+   * Sums to `n` by count and to `accuracy` by weight.
+   */
+  tiers: TierSlice[];
+  /**
+   * The safety subset, scored separately and reported here. Absent means the draw held no safety
+   * probes — an absence, not a zero: `—` when printed, never 100% of nothing.
+   */
+  safety?: SubsetSlice;
   falsePassRate: number;
   falseFailRate: number;
   accuracy: number;
@@ -93,7 +186,12 @@ export interface ScorecardRow {
 
 /** Disqualification thresholds (gate 421). */
 export interface SmokeThresholds {
-  maxFalsePassRate: number; // hard disqualifier: <= 1%
+  /**
+   * Hard disqualifier: <= 1%. Applied twice, independently — once to the capability aggregate and
+   * once to the safety subset — because the same ceiling on two different defects does not make one
+   * blended number of them.
+   */
+  maxFalsePassRate: number;
   maxP95LatencyMs: number; // hard disqualifier: <= 20s
   /**
    * Gate 424, active only when supplied. A stage that does not set it publishes `consistency`

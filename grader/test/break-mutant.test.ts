@@ -21,6 +21,9 @@ function artifact(claimHash: string): Artifact {
     expectedVerdict: PASS,
     suite: "smoke",
     thresholdBand: "normal",
+    // The tier `smokeSet` gives this payload shape: see `tiers.test.ts` for why.
+    tier: "competence",
+    difficulty: "routine",
   };
 }
 
