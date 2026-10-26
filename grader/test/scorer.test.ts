@@ -44,6 +44,9 @@ function result(
     falseFail: actual !== "PASS" && expected === "PASS",
     latencyMs,
     killed,
+    // Every result says what it tested, or the scorer refuses to profile it — see `tiers.test.ts`.
+    tier: "competence",
+    difficulty: "routine",
   };
 }
 

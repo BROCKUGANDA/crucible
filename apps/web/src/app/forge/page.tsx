@@ -6,8 +6,9 @@ import { Chrome, TxStates } from "@/components/Chrome";
 import { PourConfirm } from "@/components/Modal";
 import { WrongNetworkNotice } from "@/components/Wallet";
 import { buildClaimTrial, buildRegisterAgent, useTx } from "@/lib/useTx";
-import { deployment, ZERO_ADDRESS } from "@/lib/wagmi";
-import { isEthAddress, parseEth } from "@/lib/eth";
+import { deployment } from "@/lib/wagmi";
+import { parseEth } from "@/lib/eth";
+import { checkAddressTarget, guardPastedText } from "@/lib/safety";
 
 /**
  * The operator console.
@@ -26,7 +27,7 @@ const RUNNER_HINT = "0x…";
 
 export default function ForgePage() {
   const dep = deployment();
-  const { isConnected } = useAccount();
+  const { isConnected, chainId: accountChainId } = useAccount();
   const tx = useTx();
 
   const [metadataURI, setMetadataURI] = useState("");
@@ -35,12 +36,35 @@ export default function ForgePage() {
   const [trialId, setTrialId] = useState("");
   // Which pour is being confirmed. `null` means the dialog is not part of the flow.
   const [confirm, setConfirm] = useState<null | "register" | "claim">(null);
+  // The paste guard's answer, said at the field it belongs to rather than dropped silently.
+  const [seedWarning, setSeedWarning] = useState<string | null>(null);
 
   const stakeWei = parseEth(stake);
-  const runnerValid = isEthAddress(runner) && runner.trim().toLowerCase() !== ZERO_ADDRESS;
+  /**
+   * One check, two questions.
+   *
+   * The format rule lived in `eth.ts` and the network rule lived in `Wallet.tsx`'s banner, and
+   * this form consulted only the first — so a runner key shaped perfectly and pasted from
+   * another chain passed, opened the confirm dialog, and asked the wallet to sign for a machine
+   * that does not exist here. The validator is called before the action because after it there
+   * is nothing left to warn about.
+   */
+  const runnerCheck = checkAddressTarget({
+    value: runner,
+    connectedChainId: accountChainId,
+    expectedChainId: dep.chainId,
+  });
+  const runnerValid = runnerCheck.ok;
   const uriValid = metadataURI.trim().length > 0;
-  const canRegister = uriValid && runnerValid && stakeWei !== null && stakeWei > 0n;
+  const canRegister = uriValid && runnerValid && stakeWei !== null && stakeWei > 0n && !seedWarning;
   const trialValid = /^\d+$/.test(trialId.trim());
+
+  function refuseSeedPaste(event: React.ClipboardEvent<HTMLInputElement>) {
+    const decision = guardPastedText(event.clipboardData?.getData("text") ?? "");
+    if (!decision.refuse) return;
+    event.preventDefault();
+    setSeedWarning(decision.warning);
+  }
 
   const busy = tx.busy;
 
@@ -112,7 +136,11 @@ export default function ForgePage() {
             <input
               className="input mono"
               value={metadataURI}
-              onChange={(e) => setMetadataURI(e.target.value)}
+              onChange={(e) => {
+                setMetadataURI(e.target.value);
+                setSeedWarning(null);
+              }}
+              onPaste={refuseSeedPaste}
               placeholder="ipfs://… or https://…"
               aria-describedby="metadata-help"
             />
@@ -127,7 +155,11 @@ export default function ForgePage() {
             <input
               className="input mono"
               value={runner}
-              onChange={(e) => setRunner(e.target.value)}
+              onChange={(e) => {
+                setRunner(e.target.value);
+                setSeedWarning(null);
+              }}
+              onPaste={refuseSeedPaste}
               placeholder={RUNNER_HINT}
               spellCheck={false}
               aria-invalid={runner.length > 0 && !runnerValid}
@@ -136,6 +168,18 @@ export default function ForgePage() {
               The only key allowed to sign this agent&apos;s claims. Keep it off the machine
               that holds the bond.
             </span>
+            {runner.length > 0
+              ? runnerCheck.problems.map((problem) => (
+                  <span
+                    key={problem.check}
+                    className="mono"
+                    data-tone="sear"
+                    role={problem.kind === "error" ? "alert" : "status"}
+                  >
+                    {problem.message}
+                  </span>
+                ))
+              : null}
           </label>
 
           <label className="field field--narrow">
@@ -151,6 +195,12 @@ export default function ForgePage() {
               Slashed if a run you claimed turns out to be falsified.
             </span>
           </label>
+
+          {seedWarning ? (
+            <span className="mono" data-tone="sear" role="alert">
+              {seedWarning}
+            </span>
+          ) : null}
 
           <div>
             <button

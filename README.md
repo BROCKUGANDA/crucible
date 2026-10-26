@@ -51,7 +51,14 @@ Open ──claim──> Assigned ──submitRun──> Judging ──fileBreak�
    runner-signed runs, a break that Argus slashes, and the permissionless quench
    after the window really closes — with `crucible-contracts/script/GoldenPath.s.sol`:
    run `:Begin`, warp the node (`cast rpc anvil_setNextBlockTimestamp` + `anvil_mine`),
-   then `:Finish`. The deployment this was written against runs it live.
+   then `:Finish`. **Measured 2026-10-25, this script does not run from a bare
+   `Deploy.s.sol` chain as the sentence above implies.** `:Begin` calls
+   `register()` on the identity registry, which only `Demo.s.sol` deploys and wires, so
+   against a plain deployment it reverts on address zero; and `:Finish` reads two
+   further variables the script header never mentions — `BROKEN_TRIAL` and `QUIET_TRIAL`
+   (`GoldenPath.s.sol:162-163`), the trial ids `:Begin` chose. Run it on the demo
+   chain, or wire the identity registry and pass those two ids, before treating the
+   phrase above as a command.
 
 **The live deployment** runs at `https://crucible.svalley.tech` behind Cloudflare
 Zero Trust (request access, or run the local demo — same code, same contracts).
@@ -447,11 +454,24 @@ Two things are worth knowing about the dependency choices:
 
 ## The voice host (optional)
 
-Frenchy is a one-way ElevenLabs text-to-speech host, not a conversational agent:
-there is no microphone and no speech-to-text. It is off by default, and the header
-shows a single control only when the server is configured.
+Frenchy has two halves, and the site shows each only when its own server side is configured.
 
-The policy lives in [`apps/web/src/lib/voice.ts`](./apps/web/src/lib/voice.ts) and
+- **One-way speech** — an ElevenLabs text-to-speech host that reads fixed lines: the greeting,
+  the tour, a paid verdict. `VoiceControl` in the header.
+- **A conversation** — `Ask Frenchy (AI)`, which takes a question by microphone or typed and
+  sends it to the LLM behind `POST /frenchy`. The microphone and the speech-to-text are here, in
+  this half, and they were added deliberately: the site asks a visitor for the microphone.
+
+Both are **off by default, and both are invisible until the API proves it can answer.** The TTS
+half reads `GET /voice/status`. The conversational half has no status route, so the control asks
+the brain itself with an empty body: `/frenchy` checks its configuration before it reads the
+request, so a host with no key answers `503 "Frenchy's brain is not configured"` and a host with
+one answers `400 "prompt is required"`. Neither path reaches a vendor, so the question that asks
+whether the LLM exists never calls the LLM. A `404` or an unreachable host hides the control too
+— the probe can only ever remove a button, never invent one.
+
+The policy lives in [`apps/web/src/lib/voice.ts`](./apps/web/src/lib/voice.ts),
+[`apps/web/src/lib/frenchy/status.ts`](./apps/web/src/lib/frenchy/status.ts) and
 [`apps/web/src/components/VoiceControl.tsx`](./apps/web/src/components/VoiceControl.tsx):
 
 - **Muted by default.** The first click is the greeting; a Tour button appears once on.
@@ -463,27 +483,52 @@ The policy lives in [`apps/web/src/lib/voice.ts`](./apps/web/src/lib/voice.ts) a
 - The copy is fixed on the server; it contains no amounts, deadlines, addresses or
   CIDs. Those stay on screen, and the page works identically if audio fails.
 
-The key never reaches the browser. Set these on the host (the API's `env_file` passes
-them through) and restart the API:
+What the conversational half adds, in [`provider.tsx`](./apps/web/src/lib/frenchy/provider.tsx)
+and [`FrenchyAsk.tsx`](./apps/web/src/components/FrenchyAsk.tsx):
+
+- **Nothing is recorded before it is asked for.** The browser's microphone prompt fires on the
+  first press of Listen, never on page load.
+- **Mute interrupts.** `mute()`, a new question and leaving the page all fire the `AbortController`
+  the request was made with, so an answer still being composed stops instead of arriving a second
+  later and speaking anyway. Unmount runs one teardown: every media track, `speechSynthesis.cancel()`,
+  the aborted fetch, the recognizer, and the clip element.
+- **The wallet it is told about is the visitor's own.** The provider reads `useAccount`, and the
+  brain's context is built server-side from the read model — the API still holds no chain key
+  (ADR-0006) and signs nothing.
+- **A wallet backup is never accepted.** Every free-text field on the money paths — the ask box,
+  the agent manifest, the runner key, the proof of a break — refuses a paste shaped like a
+  12-, 15-, 18-, 21- or 24-word BIP-39 phrase, and says so at the field. The sentence
+  *CRUCIBLE will never ask for your seed phrase.* is on screen permanently: in the chrome footer
+  and at the wallet gate.
+
+The keys never reach the browser. Set these on the host (the API's `env_file` passes them
+through) and restart the API:
 
 ```bash
 ELEVENLABS_API_KEY=...
 ELEVENLABS_VOICE_ID=...            # the id from the ElevenLabs dashboard, not its name
 ELEVENLABS_MODEL_ID=eleven_flash_v2_5
-# ELEVENLABS_AGENT_ID=...          # reserved for a conversational Agents integration
+# ELEVENLABS_AGENT_ID=...          # unused: the conversation runs on /frenchy, not an ElevenLabs agent
 # VOICE_DISABLED=1                 # kill switch when the credentials are present
+
+# The conversation. Without the key the brain is off and the control is not drawn.
+FRENCHY_LLM_API_KEY=...            # any OpenAI-compatible provider
+FRENCHY_LLM_MODEL=gpt-4o-mini
+# FRENCHY_LLM_BASE_URL=...         # the provider's own base URL, if not api.openai.com
+# FRENCHY_DISABLED=1               # kill switch with the credentials present
+# FRENCHY_TTS_DISABLED=1           # answer in words only, never in the premium voice
 ```
 
-The current host is one-way TTS: it uses the voice id, not an agent id. The
-agent id is recorded for a future conversational integration, which would add a
-microphone/WebSocket path and is a separate decision.
+Both voice routes spend a vendor credit, so `/frenchy*` carries its own bucket once a brain is
+configured — 20 requests a minute, burst 5 — on top of the global one. A host with no brain has
+nothing to bill and no bucket.
 
-Leave the key or the voice id blank and `GET /voice/status` reports `configured:false`;
-the web hides the control and the rest of the product is unchanged. The API holds this
-vendor key and no chain key: a leak spends TTS credits and cannot move escrow. The
-"hear the spec" moment in the PRD is not wired because the web app carries only the
-spec CID, not its text; the `spec` moment exists for a future spec viewer and is capped
-at 600 characters.
+Leave the key or the voice id blank and `GET /voice/status` reports `configured:false`, while
+`POST /frenchy` reports 503; the web hides both controls and the rest of the product is
+unchanged. The API holds these vendor keys and no chain key: a leak spends TTS and inference
+credits and cannot move escrow. The "hear the spec" moment in the PRD is not wired because the
+web app carries only the spec CID, not its text; the `spec` moment exists for a future spec
+viewer and is capped at 600 characters.
 
 ## Running the agent against a real model
 

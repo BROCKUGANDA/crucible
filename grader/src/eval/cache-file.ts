@@ -143,6 +143,11 @@ function isResult(value: unknown): value is EvalResult {
     // The record has to carry its own epoch, or `keyOfResult` cannot reconstruct the key it is
     // filed under — and a key that cannot be checked is a key that can be wrong silently.
     typeof r.suiteEpoch === "string"
+    // `tier` and `difficulty` are deliberately *not* required here. A line written before the
+    // corpus was tiered is still the verdict it claims to be, and refusing it would count a whole
+    // warm cache corrupt for a field the reader never uses: cached records come back through
+    // `gradeCached`, which maps them to a `ModelVerdict`, and the row's profile is built from the
+    // results the arena constructs from the artifacts it actually graded.
   );
 }
 

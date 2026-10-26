@@ -4,6 +4,7 @@ import {
   NO_COMMIT,
   STATUS_CHALLENGED,
   ballotFor,
+  replayabilityOf,
   gateCommit,
   gateReveal,
   windowStillOpen,
@@ -184,5 +185,37 @@ describe("ballotFor", () => {
     // coercible into a ballot with a `breakWins` on it.
     const ballot = ballotFor(rep("abstain", "abstain"));
     expect("breakWins" in ballot).toBe(false);
+  });
+});
+
+/**
+ * ADR-0013's rule, as three cases.
+ *
+ * The point of the class is that it says something a verdict cannot: whether a stranger holding the
+ * same bytes would land on the same answer. So it is keyed on which phase decided, and these tests
+ * exist to keep it that way — the tempting wrong implementation derives it from the outcome, which
+ * would label a rubric's "the agent was right" as reproducible and a deterministic hash mismatch as
+ * someone's opinion.
+ */
+describe("replayabilityOf", () => {
+  it("calls a deterministic verdict replayable, because the same bytes give the same answer", () => {
+    expect(replayabilityOf(rep("agent-wins", "deterministic"))).toBe("artifact-replayable");
+  });
+
+  it("calls a rubric verdict attested, not replayable, even when it agreed with the suite", () => {
+    expect(replayabilityOf(rep("break-wins", "rubric"))).toBe("generation-attested");
+  });
+
+  it("classifies nothing when the seat abstained", () => {
+    expect(replayabilityOf(rep("abstain", "abstain"))).toBe("undecided");
+  });
+
+  it("is decided by the phase and not by the verdict", () => {
+    // Two pairs, same verdicts, opposite classes. If these ever agree, the class has quietly
+    // become a restatement of the outcome and carries no information a buyer could use.
+    expect(replayabilityOf(rep("break-wins", "deterministic"))).toBe("artifact-replayable");
+    expect(replayabilityOf(rep("break-wins", "rubric"))).toBe("generation-attested");
+    expect(replayabilityOf(rep("agent-wins", "deterministic"))).toBe("artifact-replayable");
+    expect(replayabilityOf(rep("agent-wins", "rubric"))).toBe("generation-attested");
   });
 });

@@ -214,6 +214,36 @@ describe("the seat operator's pass", () => {
     expect(abstained?.phase).toBe("abstain");
   });
 
+  /**
+   * The class has to be on the line something reads, not just in a type.
+   *
+   * Two cases with opposite phases, because the failure this guards against is the label being
+   * written once beside a literal and never re-derived: a commitment that says
+   * `artifact-replayable` for a verdict only a rubric could reach is the exact dishonesty ADR-0013
+   * exists to prevent, and a single-case test would pass it happily.
+   */
+  it("names the commitment artifact-replayable when the deterministic phase decided it", async () => {
+    const f = await harness();
+    const first = await f.operator.pass();
+    expect(first.actions.find((a) => a.trialId === 7 && a.action === "commit")?.detail).toContain(
+      "[artifact-replayable]",
+    );
+  });
+
+  it("names the same commitment generation-attested when only the rubric could decide", async () => {
+    const f = await harness({
+      initial: report({
+        verdict: "break-wins",
+        phase: "rubric",
+        reason: "the suite could not decide; the rubric did",
+      }),
+    });
+    const first = await f.operator.pass();
+    const detail = first.actions.find((a) => a.trialId === 7 && a.action === "commit")?.detail;
+    expect(detail).toContain("[generation-attested]");
+    expect(detail).not.toContain("[artifact-replayable]");
+  });
+
   it("seals a break-wins verdict as true, then reveals once two seats have sealed", async () => {
     const f = await harness();
 

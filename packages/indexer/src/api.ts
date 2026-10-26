@@ -385,6 +385,34 @@ export function buildEconomics(model: ReadModel, feeBps: number | null): ApiEcon
   };
 }
 
+/**
+ * The SSE frame gate, in one place.
+ *
+ * A subscriber compares this against its last write and only takes a new frame when it moved, so
+ * the signature has to name everything the payload can change. It used to be the trial counts and
+ * the length: a registry tier that moved, or a settlement fee that changed, did not move it, so no
+ * frame was sent and the live view showed a stale tier indefinitely while a refresh showed the new
+ * one. A replica disagreeing about *this* string is a subscriber getting a duplicate frame or
+ * missing one, which is why `replica.ts` compares it alongside the read model.
+ *
+ * `apps/api` currently inlines the same list; adopting this function is a one-line change there,
+ * in a workspace this package does not own. Until then the field list below is the one the gate is
+ * asserted against (`test/convergence.test.ts`), and a drift between the two is the API's to catch.
+ */
+export function snapshotSignature(snap: ApiSnapshot): string {
+  return [
+    snap.counts.open,
+    snap.counts.assigned,
+    snap.counts.judging,
+    snap.counts.challenged,
+    snap.counts.settled,
+    snap.trials.length,
+    snap.economics.feesEth,
+    snap.economics.paidOutEth,
+    snap.agents.map((a) => `${a.id}:${a.tier ?? "?"}`).join(","),
+  ].join(":");
+}
+
 export function buildSnapshot(
   model: ReadModel,
   opts: {

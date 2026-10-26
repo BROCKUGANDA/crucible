@@ -54,10 +54,31 @@ export class ContentBridge {
    * Order matters: the bytes go in the store first, so an announcement can never point at
    * content that is not there. A reader that found a mapping and no bytes would have to
    * abstain for the wrong reason.
+   *
+   * That sentence was a promise until 2026-10-25. `pinArtifact` below has always read the bytes
+   * back before announcing them; this path — the one that commits a trial's spec and suite to an
+   * on-chain digest — asserted the property in prose and never checked it. So a store that took
+   * the write and lost it, or filed bytes under a CID that is not their content, left an
+   * announcement pointing at nothing, and the digest published to the chain would name content no
+   * cold verifier can fetch. The check is now the same one the artifact path makes, plus the
+   * stronger half: re-derive the digest from what came back and refuse to announce a mapping
+   * between two values that do not agree.
    */
   async pinContent(content: Content): Promise<Pinned> {
     const cid = this.opts.store.put(content);
     const digest = this.opts.digestOf(content);
+
+    const back = this.opts.store.getBytes(cid);
+    if (back === null) {
+      throw new ContentUnverifiable(`content ${cid} was written and cannot be read back`);
+    }
+    const readBack = this.opts.digestOf(back);
+    if (readBack !== digest) {
+      throw new ContentUnverifiable(
+        `content ${cid} reads back under ${readBack}, not the ${digest} about to be announced`,
+      );
+    }
+
     await this.opts.disclosure.announceSpec(digest, cid);
     return { cid, digest, bytes: byteLength(content) };
   }

@@ -24,6 +24,7 @@ import {
   type EventLike,
   type ReadModel,
 } from "./model.js";
+import { canonicalOrder } from "./replica.js";
 import { RpcThrottler, withBackoff, BreakerOpen, CircuitBreaker } from "@crucible/smith";
 
 /**
@@ -724,11 +725,11 @@ export class Scribe {
       windows.map(([f, t]) => this.fetchLogsWindow(f, t)),
     );
 
-    const merged = groups
-      .flat()
-      .sort((a, b) => (a.blockNumber < b.blockNumber ? -1 : a.blockNumber > b.blockNumber ? 1 : a.logIndex - b.logIndex));
-
-    return merged;
+    // One ordering rule, shared with every replica (`replica.ts`), rather than a second comparator
+    // beside the first. Shards are read in parallel, so the merged array is in whatever order the
+    // promises settled: without this, the fold would see the same chain as a different sequence on
+    // every run, and two indexers of one chain would not converge.
+    return canonicalOrder(groups.flat());
   }
 
   private async fetchLogsWindow(from: bigint, to: bigint): Promise<EventLike[]> {
@@ -744,7 +745,10 @@ export class Scribe {
         { operation: "scribe.getLogs" },
       ),
     )) as Log[];
-    return logs.map(toEventLike);
+    // The chain id travels with the log, because a log's identity is its chain *and* its position:
+    // the digest the fold dedupes on has to differ between two chains that both have a height 100.
+    // Spreading `toEventLike` straight into `map` would hand it the array index instead.
+    return logs.map((log) => toEventLike(log, this.cfg.chain.id));
   }
 
   /**
@@ -854,8 +858,12 @@ export class Scribe {
  * chain indexed through the old path produced a plausible-looking, entirely empty
  * projection — which is why this is asserted against a decoded fixture rather than
  * left to the replay tests, which build `args` by hand.
+ *
+ * `chainId` is the second argument rather than a read of the log because a node's log does not carry
+ * one — the reader knows it, and only the reader can say which chain it just asked. A caller that
+ * cannot say leaves it off, and the fold treats the event as chain-unscoped instead of guessing.
  */
-export function toEventLike(log: Log): EventLike {
+export function toEventLike(log: Log, chainId?: number): EventLike {
   const l = log as Log & { eventName?: string; args?: Record<string, unknown> };
   const args: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(l.args ?? {})) args[k] = v;
@@ -866,5 +874,8 @@ export function toEventLike(log: Log): EventLike {
     address: getAddress(l.address),
     eventName: l.eventName ?? "",
     args,
+    // Only when the reader actually has a chain in hand. A fixture that invents one would make the
+    // log digest describe a chain nobody read.
+    ...(chainId === undefined ? {} : { chainId }),
   };
 }

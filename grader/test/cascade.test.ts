@@ -10,6 +10,9 @@ function artifact(claimHash: string): Artifact {
     expectedVerdict: "PASS",
     suite: "smoke",
     thresholdBand: "normal",
+    // The tier `smokeSet` gives this payload shape: see `tiers.test.ts`.
+    tier: "competence",
+    difficulty: "routine",
   };
 }
 
