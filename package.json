@@ -39,6 +39,8 @@
     "fit:identity": "node scripts/fit-identity.mjs",
     "identity:export": "node scripts/export-identity-features.mjs",
     "identity:label": "node scripts/label-identity-corpus.mjs",
+    "identity:fixtures": "node scripts/generate-sybil-label-fixtures.mjs",
+    "identity:fixtures:check": "node scripts/generate-sybil-label-fixtures.mjs --check",
     "identity:fit": "node scripts/fit-identity.mjs",
     "identity:fit:selftest": "node scripts/fit-identity.mjs --self-test",
     "clean-sdk:install": "npm --prefix integrations/clean-sdk install --ignore-scripts --no-audit --no-fund",

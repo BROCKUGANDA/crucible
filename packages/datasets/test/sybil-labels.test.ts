@@ -9,6 +9,8 @@ import { privateKeyToAccount } from "viem/accounts";
 
 const FIXTURES = fileURLToPath(new URL("../fixtures/sybil-labels/", import.meta.url));
 const LABELER = fileURLToPath(new URL("../../../scripts/label-identity-corpus.mjs", import.meta.url));
+const ROOT = fileURLToPath(new URL("../../../", import.meta.url));
+const GENERATOR = fileURLToPath(new URL("../../../scripts/generate-sybil-label-fixtures.mjs", import.meta.url));
 const CHAIN_NOW = 1_800_000_000;
 
 function readJsonl(name: string): Record<string, any>[] {
@@ -45,6 +47,12 @@ const proofs = new Map(readJsonl("proofs.jsonl").map((p) => [String(p.wallet).to
 const sheet = readJsonl("sheet.jsonl");
 
 describe("signed sybil labels", () => {
+  it("the fixture is reproducible from the public test seed", () => {
+    const res = spawnSync(process.execPath, [GENERATOR, "--check"], { cwd: ROOT, encoding: "utf8" });
+    expect(res.status, res.stderr).toBe(0);
+    expect(res.stdout).toMatch(/fixture matches/);
+  });
+
   it("every label is a signature from the named issuer", async () => {
     expect(corpus).toHaveLength(80);
     expect(corpus.filter((r) => r.label === 1)).toHaveLength(40);

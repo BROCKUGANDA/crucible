@@ -59,9 +59,12 @@ export function createPassportSource(
   const base = (url ?? "").trim().replace(/\/+$/, "");
   if (!base) return async () => UNCONFIGURED;
 
-  // Short on purpose: this runs inside `/identity/risk`, which the funder reads with a 1.5s
-  // deadline. The sidecar is loopback, so a second is already generous.
-  const timeoutMs = opts.timeoutMs ?? 1000;
+  // Measured live on 2026-10-26: a cold vendor call took 3.04s, a cached one 5.9ms. Four
+  // seconds lets the evidence route use the first answer; the sidecar caches it for five
+  // minutes. The funder reads `/identity/risk` with its own 1.5s deadline, so a cold address
+  // falls back to the base allocation and reports `risk.available: false` rather than
+  // guessing. No provider of this hop is local-only, so the deadline is not zero.
+  const timeoutMs = opts.timeoutMs ?? 4000;
   const fetchImpl = opts.fetchImpl ?? fetch;
 
   return async (wallet: string): Promise<PassportEligibility> => {

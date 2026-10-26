@@ -58,6 +58,91 @@ test("reads eligibility through the SDK and maps the Passport fields", async () 
   }
 });
 
+test("caches a successful reading and reuses it for a checksummed spelling", async () => {
+  let calls = 0;
+  const upstream = await listen((_req, res) => {
+    calls += 1;
+    res.setHeader("content-type", "application/json");
+    res.end(JSON.stringify({ address: WALLET, eligible: true, method: "passport", passportScore: 25, passportThreshold: 20 }));
+  });
+  try {
+    const source = sourceFor(upstream.url);
+    const first = await source.check(WALLET);
+    const second = await source.check("0x" + "AB".repeat(20));
+    assert.equal(calls, 1, "the second check must be served from the cache");
+    assert.deepEqual(second, first);
+  } finally {
+    await upstream.close();
+  }
+});
+
+test("the cache expires after its TTL", async () => {
+  let calls = 0;
+  let clock = 0;
+  const upstream = await listen((_req, res) => {
+    calls += 1;
+    res.setHeader("content-type", "application/json");
+    res.end(JSON.stringify({ address: WALLET, eligible: true }));
+  });
+  try {
+    const source = createEligibilitySource({
+      apiUrl: upstream.url,
+      l1RpcUrl: "http://127.0.0.1:1",
+      domain: "localhost",
+      ttlMs: 1000,
+      now: () => clock,
+    });
+    await source.check(WALLET);
+    clock = 1001;
+    await source.check(WALLET);
+    assert.equal(calls, 2, "a check after the TTL must reach the vendor again");
+  } finally {
+    await upstream.close();
+  }
+});
+
+test("concurrent checks for one address share one in-flight call", async () => {
+  let calls = 0;
+  const upstream = await listen((_req, res) => {
+    calls += 1;
+    setTimeout(() => {
+      res.setHeader("content-type", "application/json");
+      res.end(JSON.stringify({ address: WALLET, eligible: true }));
+    }, 50);
+  });
+  try {
+    const source = sourceFor(upstream.url);
+    const [a, b] = await Promise.all([source.check(WALLET), source.check(WALLET)]);
+    assert.equal(calls, 1, "two concurrent requests must not double the vendor load");
+    assert.deepEqual(a, b);
+  } finally {
+    await upstream.close();
+  }
+});
+
+test("a transport failure is not cached", async () => {
+  let calls = 0;
+  const upstream = await listen((_req, res) => {
+    calls += 1;
+    if (calls === 1) {
+      res.statusCode = 503;
+      res.end("down");
+      return;
+    }
+    res.setHeader("content-type", "application/json");
+    res.end(JSON.stringify({ address: WALLET, eligible: true }));
+  });
+  try {
+    const source = sourceFor(upstream.url);
+    await assert.rejects(() => source.check(WALLET));
+    const second = await source.check(WALLET);
+    assert.equal(calls, 2, "a failed call must be retried, not remembered as a result");
+    assert.equal(second.eligible, true);
+  } finally {
+    await upstream.close();
+  }
+});
+
 test("carries a sanctions match as its own fact", async () => {
   const upstream = await listen((_req, res) => {
     res.setHeader("content-type", "application/json");

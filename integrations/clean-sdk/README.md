@@ -42,6 +42,7 @@ CLEAN_PASSPORT_URL=http://127.0.0.1:8789
 | `CLEAN_API_URL` | `https://shield.human.tech` | Vendor API base |
 | `L1_RPC_URL` | `http://127.0.0.1:1` | Constructor requirement; eligibility never dials it |
 | `CLEAN_DOMAIN` | `localhost` | Constructor requirement in Node |
+| `CLEAN_LIVE_TIMEOUT_MS` | `30000` | `check:live` only; the server uses the 20s source deadline |
 
 ## Test
 
@@ -52,6 +53,23 @@ npm test
 The tests stand up a local upstream and drive the real SDK through it. No vendor key, no live
 network, and the unreachable `l1RpcUrl` is deliberate: if eligibility ever started dialling an
 L1 node, the tests would hang rather than pass.
+
+### Live check (opt-in)
+
+```bash
+npm run check:live -- 0x0000000000000000000000000000000000000001
+```
+
+This is the only path that calls `shield.human.tech`, and it is deliberately not part of
+`npm test`. Measured on 2026-10-26: that address returned `eligible:true`, `method:"passport"`,
+`score:44`, `threshold:20`, `maxAmount:"1000000000"`; `vitalik.eth` returned `eligible:false`,
+`score:0`, threshold 20. A cold call took **3.04s** and the next call was served from the
+sidecar's five-minute cache in **5.9ms**. The API's deadline is four seconds for exactly that
+measurement; the funder's own 1.5s deadline falls back to its base allocation on a cold address
+and says `risk.available:false` rather than guessing.
+
+The cache is per-process and address-keyed; concurrent checks share one in-flight vendor call,
+and a transport failure is never cached.
 
 ## What this is not
 

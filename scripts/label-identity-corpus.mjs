@@ -159,7 +159,10 @@ async function main() {
   console.log(`next: node scripts/fit-identity.mjs --corpus ${outPath}`);
 }
 
-main().catch((err) => {
-  console.error(`labeling failed: ${err instanceof Error ? err.message : String(err)}`);
-  process.exit(1);
-});
+const invoked = (process.argv[1] ?? "").replace(/\\/g, "/");
+if (invoked.endsWith("/scripts/label-identity-corpus.mjs") || invoked.endsWith("label-identity-corpus.mjs")) {
+  main().catch((err) => {
+    console.error(`labeling failed: ${err instanceof Error ? err.message : String(err)}`);
+    process.exit(1);
+  });
+}

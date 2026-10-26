@@ -12,9 +12,11 @@ expiry: N
 ```
 
 `proofs.jsonl` holds those signatures; `corpus.jsonl` is the labeler's output; `sheet.jsonl` is
-the unlabelled feature half a human would fill in. The private key is deliberately **not**
-committed — the fixture is verifiable, not regenerable, and no production labeler key belongs
-in this repository.
+the unlabelled feature half a human would fill in. The issuer is derived from a public,
+worthless test seed in `scripts/generate-sybil-label-fixtures.mjs`, so the fixture is
+reproducible without committing a key: `npm run identity:fixtures` regenerates it, and
+`npm run identity:fixtures:check` (run by the dataset tests) fails on drift. No production
+labeler key belongs in this repository.
 
 These wallets are synthetic (`0x000…000`, `0x000…001`, …). This is a fixture for the label
 pipeline, not a claim about any real address.
