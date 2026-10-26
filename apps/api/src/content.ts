@@ -62,7 +62,10 @@ export function createContentSource(
     if (store !== null) return store;
     if (storeFault !== null) return null;
     try {
-      store = new CidStore({ dir: contentDir });
+      // Read-only on purpose, and the mount says so too: compose gives the API `content` read-only
+      // because resolving is not announcing. Opening the store as a writer called `mkdir` on that
+      // mount and every read answered 503 before anything was looked up.
+      store = new CidStore({ dir: contentDir, readonly: true });
       return store;
     } catch (err) {
       storeFault = err instanceof Error ? err.message : String(err);

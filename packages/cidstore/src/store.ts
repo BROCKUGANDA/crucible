@@ -28,6 +28,7 @@
  */
 
 import {
+  existsSync,
   mkdirSync,
   readdirSync,
   readFileSync,
@@ -68,6 +69,11 @@ export interface CidStoreOptions {
   maxEntryBytes?: number;
   /** which textual form `put` returns. Both forms resolve on `get` either way. */
   cidVersion?: CidVersion;
+  /**
+   * Open without creating or writing. For a reader on a read-only mount: the directory must
+   * already exist (a producer created it), and `put`/`remove` refuse instead of half-working.
+   */
+  readonly?: boolean;
 }
 
 export interface CidStoreStats {
@@ -177,9 +183,20 @@ const STAMP_STEP_MS = 1000;
 class DiskBackend implements Backend {
   private readonly dataDir: string;
 
-  constructor(dir: string) {
+  /**
+   * `readonly` exists because the API mounts the content volume read-only and must still be able
+   * to answer. Without it the constructor calls `mkdirSync` on a mount that forbids writing, and a
+   * pure reader crashes with EROFS/ENOENT before it has read anything — which is what it did on the
+   * deployed box on 2026-10-27: every content read answered 503 quoting `mkdir '/content/data'`.
+   */
+  constructor(dir: string, readonly = false) {
     this.dataDir = join(dir, "data");
+    if (readonly) return;
     mkdirSync(this.dataDir, { recursive: true });
+  }
+
+  get directory(): string {
+    return this.dataDir;
   }
 
   entries(): Entry[] {
@@ -247,6 +264,7 @@ export class CidStore {
   private readonly maxEntries: number;
   private readonly maxEntryBytes: number;
   private readonly cidVersion: CidVersion;
+  private readonly readonly: boolean;
   /** the stamp last used here, so a busy process keeps a strict order */
   private lastAt = 0;
 
@@ -268,8 +286,19 @@ export class CidStore {
     this.maxEntries = maxEntries;
     this.maxEntryBytes = maxEntryBytes;
     this.cidVersion = options.cidVersion ?? "v1";
+    this.readonly = options.readonly ?? false;
     this.dir = options.dir ?? null;
-    this.backend = this.dir === null ? new MemoryBackend() : new DiskBackend(this.dir);
+    this.backend =
+      this.dir === null ? new MemoryBackend() : new DiskBackend(this.dir, this.readonly);
+    if (this.readonly && this.dir !== null && !existsSync(this.backendDirectory())) {
+      // A reader that finds no store must say so at open time. Waiting until a lookup returns
+      // nothing would report "nobody pinned these bytes" about a deployment that mounted nothing.
+      throw new CidStoreError(`no content store at ${this.backendDirectory()}`);
+    }
+  }
+
+  private backendDirectory(): string {
+    return this.backend instanceof DiskBackend ? this.backend.directory : "";
   }
 
   /** Reads better than `new CidStore({})` in a test, and cannot be mistaken for disk-backed. */
@@ -279,6 +308,11 @@ export class CidStore {
 
   /** Store the content and return the id that fetches it back. */
   put(content: Content): string {
+    if (this.readonly) {
+      // Loud rather than silent: a writer on a read-only mount has misconfigured a container,
+      // and pinning into a memory store it will never serve from would look like success.
+      throw new CidStoreError("this store is opened read-only");
+    }
     const bytes = toBytes(content);
     // Ceiling first: content larger than the whole store could not be made to fit by
     // evicting everything, so "you will never have room for this" is the true refusal.
@@ -338,6 +372,7 @@ export class CidStore {
   }
 
   remove(cid: string): boolean {
+    if (this.readonly) throw new CidStoreError("this store is opened read-only");
     const parts = tryDecodeCid(cid);
     if (parts === null) return false;
     const key = toHex(parts.digest);
