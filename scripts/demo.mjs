@@ -281,6 +281,23 @@ async function main() {
   console.log("✓ CrucibleTrials", trials);
   console.log("✓ AlloyRegistry", alloy);
 
+  // The team ledger is deployed and driven here rather than in a test because every consumer of
+  // it — the indexer's second Scribe, GET /teams, the page under it — was wired to a contract
+  // nothing ever put on a chain. A demo chain without one can only answer `projected: false`,
+  // which is a true statement about the host and a useless thing to show a visitor.
+  console.log("▸ deploying the team ledger and running one team through it");
+  const teams = await capture(
+    FORGE,
+    ["script", "script/Teams.s.sol:Teams", "--rpc-url", RPC, "--broadcast"],
+    { cwd: `${ROOT}crucible-contracts`, env: { TRIALS_ADDRESS: trials } },
+  );
+  const teamLedger = teams.match(/TeamLedger (0x[0-9a-fA-F]{40})/)?.[1];
+  if (!teamLedger) throw new Error(`could not parse the TeamLedger address:\n${teams}`);
+  if (!(await hasCode(teamLedger))) {
+    throw new Error(`the parsed TeamLedger holds no code on ${RPC}:\n${teamLedger}`);
+  }
+  console.log("✓ TeamLedger", teamLedger);
+
   // The loop leaves four settled trials: a hall worth reading, and nothing to do.
   // Two more make the chain something a visitor can act on — one open for claim,
   // one claimed and waiting for a run.
@@ -306,7 +323,7 @@ async function main() {
   // read where the contracts really are instead of parsing this output.
   const outPath = process.env.DEPLOYED_ENV_PATH;
   if (outPath) {
-    await fs.writeFile(outPath, `TRIALS_ADDRESS=${trials}\nALLOY_ADDRESS=${alloy}\n`);
+    await fs.writeFile(outPath, `TRIALS_ADDRESS=${trials}\nALLOY_ADDRESS=${alloy}\nTEAM_LEDGER_ADDRESS=${teamLedger}\n`);
     console.log("  published %s", outPath);
   }
 

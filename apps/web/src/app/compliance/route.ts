@@ -339,7 +339,7 @@ const GATES = [
     { id: 745, title: "Argus seats, draw, votes, tally, rounds, slashing", frameworks: ["scsvs"] },
     { id: 746, title: "Exits never close — every state times out to a permissionless exit", frameworks: ["scsvs"] },
     { id: 747, title: "Standing library — TS equals Rust on golden vectors", frameworks: ["ai-rmf"] },
-    { id: 748, title: "Soulbound credential both chains; epochs on identity transfer", frameworks: ["scsvs"] },
+    { id: 748, title: "Non-transferable credential both chains; epochs on identity transfer", frameworks: ["scsvs"] },
     { id: 749, title: "ERC-8004 publish in try/catch + republish; one-call getSummary", frameworks: ["ai-rmf"] },
     { id: 750, title: "Solana Agent Registry adapter; anti-wash weighting", frameworks: ["ai-rmf"] },
     { id: 751, title: "Validation Registry behind a flag — soft then hard responses", frameworks: ["ai-rmf"] },

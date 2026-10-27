@@ -27,6 +27,7 @@ const NAV_MORE = [
   { href: "/bounties", label: "Challenges" },
   { href: "/clock", label: "How it settles" },
   { href: "/assay", label: "Status" },
+  { href: "/teams", label: "Teams" },
   { href: "/docs", label: "Docs" },
 ];
 

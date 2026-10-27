@@ -992,7 +992,7 @@
   title: Standing library — TS equals Rust on golden vectors
   frameworks: [ai-rmf]
 - id: 748
-  title: Soulbound credential both chains; epochs on identity transfer
+  title: Non-transferable credential both chains; epochs on identity transfer
   frameworks: [scsvs]
 - id: 749
   title: ERC-8004 publish in try/catch + republish; one-call getSummary

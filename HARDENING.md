@@ -1122,6 +1122,47 @@ guards is the decoration it exists to detect.
   opened with the flag — this checkout cannot mount a volume read-only, so the mount itself is
   proven only by the live probe that now returns the bytes.
 
+- **One team, attested by the members who did the work (gate 879, 2026-10-27).** `TeamLedger` had a
+  contract, an indexer projection, a route and — after this pass — a page, but no deploy script ever
+  created one, so `GET /teams` could only ever answer `projected: false`. `script/Teams.s.sol` now
+  deploys it on the seed chain and drives a team through every state: three members each signing
+  their own share, two stage attestations broadcast by the member who did the stage, 0.6 ETH funded
+  then distributed, with the conservation equation asserted after both money moves and the worker's
+  credit asserted to be the 30% it signed. The stage hashes are trial 1's own on-chain commitments,
+  so they name bytes a reader can fetch and re-hash rather than a number this script invented.
+  Measured live on a fresh chain: `/teams` returned 3 members, 2 stages, `totalCredit
+  600000000000000000`, `heldTotal 0`, and the two stage digests matched `testsDigest`/`specDigest`
+  from `/snapshot` byte for byte. **What this is not:** the escrow still has one claimant, one bond
+  and one 5% fee per trial — attribution lives beside the money, and `TeamLedger` holds no reward and
+  cannot reach the escrow. The parties are Anvil's published test accounts and the ETH is worthless.
+- **A sourced file is not an exported one (2026-10-27).** Both container entrypoints did
+  `. /run/crucible/deployed.env` without `set -a`. In POSIX shells that only *reassigns* variables the
+  environment already exported, so the two addresses the seed published appeared to take effect —
+  because `.env` happened to name them — while any new key (here `TEAM_LEDGER_ADDRESS`) would vanish
+  silently between the seed and the process. The comment above those lines claims the file wins over
+  the static environment; it could not have. Both entrypoints now export on source. **Why it stayed
+  invisible:** the failure looks identical to "this host has no ledger", which is a correct answer the
+  route already produces, so nothing downstream was wrong until a real ledger existed.
+- **A fork gate that grades its own exit code can certify nothing (2026-10-27).**
+  `scripts/run-fork-tests.mjs` decided a mainnet endpoint was good enough by checking forge's exit
+  status. Running it against a Sepolia endpoint as the primary produced four `[SKIP]` lines, exit 0,
+  and the line `fork suite passed via ethereum-sepolia-rpc.publicnode.com` — and because the primary
+  never "failed", the fallback was never tried. The endpoint was wrong for the fork; the gate called
+  it a pass. It now asks the endpoint `eth_chainId` before compiling anything, refuses a non-1 chain
+  by name, and requires at least one `[PASS]` **and zero skips** before a run counts. Measured after
+  the change: 4/4 through `eth.drpc.org`; Sepolia-primary + drpc-fallback → refused by name, then
+  4/4 via the fallback; a chain-id-1 node that prunes the pinned block → exit 1. `fork-nightly.yml`
+  resolves both endpoints from the deployment box's `.env` when no Actions secret exists (this
+  repository has none at all, which is why the nightly had failed three scheduled runs) and still
+  refuses when neither source answers.
+- **`NEXT_PUBLIC_ONRAMP_URL`, the mainnet RPC pair and the Sepolia endpoints are filled in
+  `.env.example` (2026-10-27).** `.env` already carried the working values; the template named the
+  keys with empty strings, so a fresh clone was configured by archaeology. The block now states the
+  measured order (archive-capable primary, chain-id-1-only fallback, fallback tried only after a
+  failure) and the boundary none of this moves: no custody, no ERC-20 or stablecoin on the escrow
+  path, no bridge, native ETH settlement, `FEE_BPS = 500`. Reading them remains opt-in — `ci.yml`'s
+  fork job still skips loudly without a credential, so CI is never on a third party's uptime.
+
 ## Still open from this pass, by severity
 
 These are known and intentional, not claims that the software is safe. Ordered by how
