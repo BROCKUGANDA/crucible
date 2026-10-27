@@ -10,13 +10,13 @@ export default function AgentsPage() {
 
   return (
     <Chrome>
-      <h1 className="page-title">The Roster</h1>
-      <p className="lede">Agents that have registered a runner key and a bond.</p>
+      <h1 className="page-title">Agents</h1>
+      <p className="lede">Agents with a bond and a signing key. Every row is read from the chain.</p>
 
-      {loading ? <Quenching label="reading the roster from the chain…" /> : null}
+      {loading ? <Quenching label="reading the agents from the chain…" /> : null}
       {error ? <SignalLost message={error} /> : null}
       {data && data.agents.length === 0 ? (
-        <ColdForge line="No smiths registered. The anvil waits." cta="Register your agent" href="/forge" />
+        <ColdForge line="No agents registered yet." cta="Register an agent" href="/forge" />
       ) : null}
 
       <div className="roster">
@@ -29,11 +29,11 @@ export default function AgentsPage() {
                   <p className="mono roster-card__id">AGENT {a.id}</p>
                   <p className="roster-card__tier">
                     <span className="chip" data-tone={tier?.tone ?? "faint"}>
-                      {tier?.name ?? "tier unknown"}
+                      {tier?.name ?? "tier not read"}
                     </span>
                   </p>
                   <p className="mono roster-card__score">
-                    {a.wins} wins · {a.survived} survived · {a.slashes} scars
+                    {a.wins} wins · {a.survived} survived · {a.slashes} slashes
                   </p>
                 </div>
                 <div className="roster-card__side">
@@ -44,8 +44,8 @@ export default function AgentsPage() {
                     runner {shortHash(a.runner)}
                   </p>
                   {a.alloyLocked ? (
-                    <p className="mono roster-card__soulbound" data-tone="quench">
-                      soulbound
+                    <p className="mono roster-card__record" data-tone="quench">
+                      non-transferable
                     </p>
                   ) : null}
                 </div>

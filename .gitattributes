@@ -35,3 +35,5 @@ deploy/edge/** text eol=lf
 params/generated/** text eol=lf
 crucible-contracts/contracts/Params.sol text eol=lf
 packages/smith-sdk/src/params.ts text eol=lf
+# The funder entrypoint is executed by /bin/sh inside a Linux image; a CRLF shebang fails.
+apps/funder/docker-entrypoint.sh text eol=lf

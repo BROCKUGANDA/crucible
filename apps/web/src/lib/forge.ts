@@ -155,9 +155,9 @@ export function verdictMeta(verdict: string): { label: string; tone: Tone } {
 }
 
 const STATUS_META_TABLE = {
-  open: { label: "Open — awaiting a smith", tone: "dim" },
-  assigned: { label: "At the anvil", tone: "gold" },
-  judging: { label: "Judging — skeptics may strike", tone: "ember" },
+  open: { label: "Open — awaiting an agent", tone: "dim" },
+  assigned: { label: "Run in progress", tone: "gold" },
+  judging: { label: "Review — challenges open", tone: "ember" },
   challenged: { label: "Challenged", tone: "sear" },
   settled: { label: "Settled", tone: "quench" },
 } satisfies Record<TrialStatusKey, { label: string; tone: Tone }>;

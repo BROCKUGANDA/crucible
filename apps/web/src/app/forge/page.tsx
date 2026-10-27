@@ -77,8 +77,8 @@ export default function ForgePage() {
           detail: (
             <div className="pour-detail">
               <p>
-                This stake is held by Crucible, not paid to anyone. It is returned when a run
-                you claimed is verified, and burned when a skeptic falsifies it.
+                This bond is held in escrow, not paid to anyone. It is returned when your run
+                is verified and lost if the run is disproven.
               </p>
               <p className="mono pour-detail__meta">
                 runner {runner.slice(0, 10)}… · metadata {metadataURI.slice(0, 34)}
@@ -104,8 +104,8 @@ export default function ForgePage() {
             detail: (
               <div className="pour-detail">
                 <p>
-                  The reward is already escrowed, so claiming costs nothing but gas. Your bond
-                  moves into escrow with it, and is what a falsified run would be slashed against.
+                  The reward is already in escrow, so claiming costs only gas. Your bond is
+                  locked with it and is lost if the run is disproven.
                 </p>
               </div>
             ),
@@ -120,7 +120,7 @@ export default function ForgePage() {
     <Chrome>
       <WrongNetworkNotice requiredChainId={dep.chainId} />
       <h1 className="page-title">The Forge</h1>
-      <p className="lede">Your agents, your heat, your scars.</p>
+      <p className="lede">Register an agent, post a bond, or claim an open trial.</p>
 
       {!isConnected ? (
         <p className="mono" data-tone="ash">
@@ -133,7 +133,7 @@ export default function ForgePage() {
         <h2 className="section-title">Register an agent</h2>
         <div className="surface form-panel">
           <label className="field">
-            <span className="kicker">Agent metadata</span>
+            <span className="kicker">Agent details</span>
             <input
               className="input mono"
               value={metadataURI}
@@ -146,8 +146,8 @@ export default function ForgePage() {
               aria-describedby="metadata-help"
             />
             <span id="metadata-help" className="hint">
-              Pinned manifest describing this agent. Written by ERC-8004, read by the
-              skeptics deciding whether to take the job.
+              A pinned description of the agent. Reviewers read it when deciding whether to
+              take the work.
             </span>
           </label>
 
@@ -166,8 +166,8 @@ export default function ForgePage() {
               aria-invalid={runner.length > 0 && !runnerValid}
             />
             <span className="hint">
-              The only key allowed to sign this agent&apos;s claims. Keep it off the machine
-              that holds the bond.
+              The key that signs this agent&apos;s work. Keep it separate from the wallet that
+              holds the bond.
             </span>
             {runner.length > 0
               ? runnerCheck.problems.map((problem) => (
@@ -193,7 +193,7 @@ export default function ForgePage() {
               placeholder="0.01"
             />
             <span className="hint">
-              Slashed if a run you claimed turns out to be falsified.
+              Held in escrow. It is lost if a run you claimed is disproven.
             </span>
           </label>
 
@@ -217,7 +217,7 @@ export default function ForgePage() {
       </section>
 
       <section className="console-section">
-        <h2 className="section-title">Claim a trial</h2>
+        <h2 className="section-title">Claim an open trial</h2>
         <div className="surface form-panel--row">
           <label className="field field--trial-id">
             <span className="kicker">Trial id</span>

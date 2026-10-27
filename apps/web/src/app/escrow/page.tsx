@@ -41,9 +41,9 @@ export default function EscrowLandingPage() {
       <p className="kicker">Where is my ETH</p>
       <h1 className="page-title">The escrow, by address</h1>
       <p className="hint hint--block">
-        Enter an address to see what the escrow contract is holding for it: the reward it funded,
-        the bond it posted as an agent, the stake it put on a break, and what it can already
-        withdraw. This is a read. It asks for no signature and never asks for a seed phrase.
+        Enter an address to see what the escrow holds for it: rewards it funded, bonds it posted,
+        challenge stakes, and anything it can withdraw. This is a read-only check — no signature
+        and no seed phrase.
       </p>
 
       <label className="field">
@@ -80,8 +80,8 @@ export default function EscrowLandingPage() {
       </div>
 
       <p className="clock-prose">
-        Settled money is never pushed to a wallet — the contract credits a ledger and the owner
-        withdraws it, so an address can be owed ETH and still show nothing in its balance.{" "}
+        Settled funds are never sent automatically. The contract records a credit, and the owner
+        withdraws it, so an address can be owed ETH and still show a zero balance.{" "}
         <Link href="/clock">How a trial settles</Link>.
       </p>
     </Chrome>

@@ -214,7 +214,7 @@ jobs:
         run: |
           set -euo pipefail
           stamp="rollback-${GITHUB_RUN_ID}"
-          for s in web api keeper; do
+          for s in web api keeper funder; do
             if docker image inspect "crucible-$s:latest" >/dev/null 2>&1; then
               docker tag "crucible-$s:latest" "crucible-$s:$stamp"
               echo "kept crucible-$s:latest as crucible-$s:$stamp"
@@ -241,7 +241,7 @@ jobs:
         # daemon moving money on the demo box was the hackathon build, two weeks of
         # its own hardening short (trace spine, gas ledger, sweep kill switch,
         # acting-hop breaker). A service the deploy never recreates ages silently.
-        run: docker compose -f compose.yaml -f compose.vps.yaml build web api keeper seed
+        run: docker compose -f compose.yaml -f compose.vps.yaml build web api keeper seed funder
 
       # Validate the addresses BEFORE the swap, not after it.
       #
@@ -330,7 +330,7 @@ jobs:
         # moves (ADR-0003), so a mid-swap death leaves a credit, not a loss.
         run: |
           set -euo pipefail
-          docker compose -f compose.yaml -f compose.vps.yaml up -d --no-deps web api keeper
+          docker compose -f compose.yaml -f compose.vps.yaml up -d --no-deps web api keeper funder
           # The rollback step below must know whether the swap actually happened. Most of this job's
           # refusals fire before it — a red gate, an address the seed never published, a keeper with
           # no signing key — and re-pointing `:latest` plus recreating three healthy containers after
@@ -388,6 +388,49 @@ jobs:
             sleep 5
           done
           echo "::error::the keeper did not become healthy within 180s (last: $state)"
+          exit 1
+
+      # The funder is new to the swap. It has no chain state and no signing key, but a container
+      # that starts and then dies would leave the API answering "funder unreachable" while every
+      # other probe was green. Its healthcheck reports `configured:false` as healthy on purpose:
+      # the process is up, and the money paths say why they refuse.
+      - name: wait for the funder that was just started to become healthy
+        working-directory: /home/ubuntu/crucible
+        run: |
+          set -euo pipefail
+          id=""
+          for _ in $(seq 1 10); do
+            id="$(docker compose -f compose.yaml -f compose.vps.yaml ps -a -q funder)"
+            [ -n "$id" ] && break
+            sleep 1
+          done
+          if [ -z "$id" ]; then
+            echo "::error::the funder container is not there after the swap"
+            exit 1
+          fi
+          deadline=$((SECONDS + 120))
+          while [ "$SECONDS" -lt "$deadline" ]; do
+            state="$(docker inspect -f '{{.State.Status}}|{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$id" 2>/dev/null || echo gone)"
+            case "$state" in
+              running\|healthy)
+                echo "the funder is healthy"
+                exit 0
+                ;;
+              running\|starting)
+                ;;
+              gone)
+                echo "::error::the funder container disappeared during the swap"
+                exit 1
+                ;;
+              *)
+                echo "::error::the funder is not healthy after the swap ($state)"
+                docker logs --tail 40 "$id" 2>&1 || true
+                exit 1
+                ;;
+            esac
+            sleep 5
+          done
+          echo "::error::the funder did not become healthy within 120s (last: $state)"
           exit 1
 
       - name: prove it serves
@@ -543,7 +586,7 @@ jobs:
           fi
           stamp="rollback-${GITHUB_RUN_ID}"
           restored=""
-          for s in web api keeper; do
+          for s in web api keeper funder; do
             if docker image inspect "crucible-$s:$stamp" >/dev/null 2>&1; then
               docker tag "crucible-$s:$stamp" "crucible-$s:latest"
               restored="$restored $s"

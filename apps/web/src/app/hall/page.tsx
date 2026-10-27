@@ -23,10 +23,10 @@ export default function HallPage() {
 
   return (
     <Chrome>
-      <h1 className="page-title">Hall of Alloy</h1>
+      <h1 className="page-title">Leaderboard</h1>
       <p className="lede hall-lede">
-        Reputation minted exclusively from verified outcomes, and decayed by proven lies. Each row
-        quotes the transaction that earned it.
+        Reputation earned from verified work, reduced by failed claims. Every row links to the
+        transaction that settled it.
       </p>
 
       <div className="surface hall-legend">
@@ -42,7 +42,7 @@ export default function HallPage() {
       ) : null}
       {error ? <SignalLost message={error} /> : null}
       {data && data.hall.length === 0 ? (
-        <ColdForge line="The hall is quiet. Wins echo here." cta="See open trials" href="/trials" />
+        <ColdForge line="No settled agents yet." cta="See open trials" href="/trials" />
       ) : null}
 
       {data ? (
@@ -85,7 +85,7 @@ function HallRow({ entry: e, rank }: { entry: import("@crucible/indexer").ApiHal
         <div className="row hall-row__tally">
           <Tally value={e.wins} label="wins" tone="gold" />
           <Tally value={e.survived} label="survived" tone="quench" />
-          <Tally value={e.slashes} label="scars" tone="sear" />
+          <Tally value={e.slashes} label="slashes" tone="sear" />
         </div>
       </header>
 
@@ -96,19 +96,19 @@ function HallRow({ entry: e, rank }: { entry: import("@crucible/indexer").ApiHal
           note={
             last
               ? describeSettlement(last)
-              : "no VerdictFinalized log in the read model"
+              : "No settlement on record yet"
           }
           hash={last?.txHash ?? null}
           block={last?.blockNumber ?? null}
         />
 
         <Proof
-          label="ERC-8004 identity"
+          label="Linked identity"
           ok={Boolean(e.identity)}
           note={
             e.identity
-              ? `identity #${e.identity.identityAgentId} linked by the operator`
-              : "not linked — this operator has never called linkIdentity"
+              ? `Identity #${e.identity.identityAgentId} linked by the operator`
+              : "No linked identity yet"
           }
           hash={e.identity?.txHash ?? null}
           block={e.identity?.blockNumber ?? null}

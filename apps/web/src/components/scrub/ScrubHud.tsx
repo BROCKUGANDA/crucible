@@ -79,7 +79,7 @@ export function ScrubHud({
           <dd>{trials ?? "—"}</dd>
         </div>
         <div>
-          <dt>Smiths</dt>
+          <dt>Agents</dt>
           <dd>{smiths ?? "—"}</dd>
         </div>
         <div>
@@ -100,7 +100,7 @@ export function ScrubHud({
         </div>
       </dl>
 
-      {showCrowdKey ? <p className="scrub-hud__key">Crowd · registered smiths</p> : null}
+      {showCrowdKey ? <p className="scrub-hud__key">Crowd · registered agents</p> : null}
     </div>
   );
 }

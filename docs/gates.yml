@@ -1382,6 +1382,9 @@
 - id: 877
   title: Dedicated MCP rate limit (per-IP bucket on /mcp, default 30/min plus 10 burst, env-tunable; /mcp is exempt from the global read limiter so an agent loop and a browser cannot starve each other; 429 carries Retry-After)
   frameworks: [scsvs]
+- id: 878
+  title: Funder container starts without CDP credentials (health reports configured:false; allocate and on-ramp return 503 with the reason; entrypoint configures the CDP CLI from inline keys or a key file; compose and deploy build, swap and health-wait it)
+  frameworks: [scsvs]
 
 frameworks:
   owasp-top10: "OWASP Web Top 10 (2021)"

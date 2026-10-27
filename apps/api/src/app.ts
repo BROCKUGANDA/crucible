@@ -1381,14 +1381,17 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
         signal: controller.signal,
       });
       const json = (await res.json().catch(() => null)) as
-        | { ok?: boolean; url?: string; reason?: string }
+        | { ok?: boolean; url?: string; reason?: string; configured?: boolean }
         | null;
       c.header("Cache-Control", "no-store");
       if (!res.ok || !json?.ok || typeof json.url !== "string" || !isCoinbaseOnrampUrl(json.url)) {
-        return c.json(
-          { ok: false, configured: true, reason: json?.reason ?? `funder answered ${res.status}` },
-          502,
-        );
+        const reason = json?.reason ?? `funder answered ${res.status}`;
+        // A reachable funder with no credential is still an unconfigured source. Reporting
+        // `configured:true` there would tell the reader the host has a credential it does not.
+        if (res.status === 503 && json?.configured === false) {
+          return c.json({ ok: false, configured: false, reason }, 503);
+        }
+        return c.json({ ok: false, configured: true, reason }, 502);
       }
       return c.json({ ok: true, url: json.url });
     } catch (err) {

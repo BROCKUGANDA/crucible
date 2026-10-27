@@ -134,6 +134,8 @@ services:
       # disclosed yet" — which is what the live page said until 2026-10-26 even though the
       # juror had written the file 43 hours earlier.
       CRUCIBLE_CONTENT_DIR: /content
+      # The funder is a compose service; the host's FUNDER_URL is for host-run scripts.
+      FUNDER_URL: http://funder:8788
     ports:
       - "${API_HOST_PORT:-8787}:8787"
     volumes:
@@ -222,6 +224,48 @@ services:
   # trial committed to, re-runs the pinned suite, and commits a verdict — then reveals it once a
   # second seat has sealed (ADR-0004's anti-collusion rule, which is why the count comes from the
   # `VoteCommitted` logs rather than from the seat's own eagerness).
+  # The funder holds the CDP credential (ADR-0015). It starts even with none: `/health` says
+  # `configured:false`, and `/allocate` and `/onramp/session` refuse with that reason instead
+  # of the container crash-looping. To enable it, set `CDP_ENV` plus the matching `_API_KEY_ID`
+  # and `_API_KEY_SECRET` (or a mounted `_API_KEY_FILE`) in the host `.env`; the entrypoint
+  # configures the CDP CLI profile from them. No host port: only the API reaches it.
+  funder:
+    build:
+      context: .
+      dockerfile: apps/funder/Dockerfile
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      NODE_ENV: production
+      FUNDER_HOST: 0.0.0.0
+      FUNDER_PORT: 8788
+      IDENTITY_API_URL: http://api:8787
+      CDP_ENV: ${CDP_ENV:-sandbox}
+      CDP_SANDBOX_API_KEY_ID: ${CDP_SANDBOX_API_KEY_ID:-}
+      CDP_SANDBOX_API_KEY_SECRET: ${CDP_SANDBOX_API_KEY_SECRET:-}
+      CDP_SANDBOX_API_KEY_FILE: ${CDP_SANDBOX_API_KEY_FILE:-}
+      CDP_LIVE_API_KEY_ID: ${CDP_LIVE_API_KEY_ID:-}
+      CDP_LIVE_API_KEY_SECRET: ${CDP_LIVE_API_KEY_SECRET:-}
+      CDP_LIVE_API_KEY_FILE: ${CDP_LIVE_API_KEY_FILE:-}
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      # node:22-slim has node, not wget; the healthcheck uses the runtime it has.
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:8788/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+    logging: *log-rotation
+
   juror:
     build:
       context: .

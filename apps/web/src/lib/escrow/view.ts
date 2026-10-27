@@ -58,7 +58,7 @@ export function roleWords(role: EscrowHoldingJson["role"]): string {
 export function columnsOf(escrow: EscrowJson): EscrowColumn[] {
   const claimNote =
     escrow.withdrawableEth !== null
-      ? "withdraw it in one call from your wallet — the contract never sends it to you"
+      ? "Call withdraw from your wallet — the contract never pushes ETH to you"
       : escrow.creditSource.configured
         ? (escrow.creditSource.reason ?? "the escrow was reached but this figure was not read")
         : (escrow.creditSource.reason ?? "this host does not read claims from the chain");
@@ -78,7 +78,7 @@ export function columnsOf(escrow: EscrowJson): EscrowColumn[] {
       note:
         escrow.stakes.length === 0
           ? "no agent registered to this address"
-          : "not locked to any trial — release it with unstake, then withdraw it",
+          : "Not tied to a trial — unstake it, then withdraw",
     },
     { label: "Claimable now", value: formatEth(escrow.withdrawableEth), note: claimNote },
   ];
@@ -115,16 +115,16 @@ export function rowsOf(escrow: EscrowJson): EscrowRow[] {
 }
 
 export function timingNote(reclaimableAt: number | null, chainNow: number | null): string {
-  if (reclaimableAt === null) return "released by the verdict, not the clock";
+  if (reclaimableAt === null) return "Released when the verdict lands, not by a timer";
   if (chainNow === null) return `past the deadline at ${UNKNOWN} — this host has no chain clock`;
   const remaining = reclaimableAt - chainNow;
-  if (remaining <= 0) return "past its deadline — reclaimable now, by anyone";
+  if (remaining <= 0) return "Past its deadline — anyone can release it now";
   return `deadline in ${formatDuration(remaining)}`;
 }
 
 /** A settled trial is where a claim came from; the row links out rather than restating a number. */
 export function settledNote(escrow: EscrowJson): string {
   const n = escrow.settledTrialIds.length;
-  if (n === 0) return "no settled trial has named this address";
-  return `${n} settled ${n === 1 ? "trial" : "trials"} have already moved this address's money into a claim or a stake`;
+  if (n === 0) return "No settled trial has involved this address yet";
+  return `${n} settled ${n === 1 ? "trial has" : "trials have"} already moved this address's money into a claim or a stake`;
 }
