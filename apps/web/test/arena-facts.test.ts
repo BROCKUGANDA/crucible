@@ -48,7 +48,7 @@ describe("arena facts", () => {
     expect(facts.settled).toBeNull();
     expect(facts.seal).toBeNull();
     expect(facts.markBlock).toBeNull();
-    expect(facts.take).toBeNull();
+    expect(facts.feeRate).toBeNull();
     expect(facts.mark).toBe("none");
     expect(facts.crowd).toBe(0);
   });
@@ -119,50 +119,35 @@ describe("arena facts", () => {
     expect(deriveFacts(snapshot({ agents: [] })).smiths).toBe(0);
   });
 
-  it("names the metal on the treasury's take, not a bare decimal among counts", () => {
-    // Every other HUD cell is a count. A take that prints as "0.05" is read as one more tally
-    // for something nobody can say the unit of.
-    const facts = deriveFacts(snapshot({ economics: economics({ feesEth: "0.05" }) }));
-    expect(facts.take).toBe("0.05 ETH");
+  it("publishes the fee as a rate, not as anybody's balance", () => {
+    const facts = deriveFacts(snapshot({ economics: economics({ feeBps: 500 }) }));
+    expect(facts.feeRate).toBe("5% · 500 bps");
   });
 
-  it("truncates the take instead of rounding it up", () => {
-    // The same rule `api.ts` states for stakes: a figure the reader is shown must not exceed
-    // the figure the chain holds.
+  it("leaves the fee unmeasured when no economics came back", () => {
+    // The HUD renders null as an em dash. "0%" would claim the protocol charges nothing, on the
+    // authority of a snapshot that never said so.
+    expect(deriveFacts(snapshot({})).feeRate).toBeNull();
+    expect(deriveFacts(snapshot({ economics: economics({}) })).feeRate).toBeNull();
+    expect(deriveFacts(null).feeRate).toBeNull();
+  });
+
+  it("derives no ETH amount for the operator from a snapshot that carries them", () => {
+    // The landing HUD used to render two operator figures — the cumulative `feesEth` and
+    // `credit[treasury]`. The owner asked for them off the site on 2026-10-27, and the payload
+    // still publishes both, because they are chain data the read model reports. So the boundary
+    // has to be enforced where the landing gets its numbers, and this test is that boundary:
+    // if a money field reappears in `ArenaFacts`, the landing can render it and this goes red.
     const facts = deriveFacts(
-      snapshot({ economics: economics({ feesEth: "0.999999999999999999" }) }),
+      snapshot({
+        economics: economics({ feesEth: "0.15", treasuryCreditEth: "0.305", paidOutEth: "1.4", volumeEth: "12.5" }),
+      }),
     );
-    expect(facts.take).toBe("0.999 ETH");
-  });
-
-  it("leaves the take unmeasured when no economics came back", () => {
-    // A HUD that renders "0 ETH" here is claiming the forge kept nothing, on the authority of a
-    // snapshot that never said so. Null reaches the em dash; zero does not.
-    expect(deriveFacts(snapshot({})).take).toBeNull();
-    expect(deriveFacts(snapshot({ economics: economics({}) })).take).toBeNull();
-  });
-
-  it("renders a measured zero take as zero, distinct from the unmeasured one", () => {
-    expect(deriveFacts(snapshot({ economics: economics({ feesEth: "0" }) })).take).toBe("0 ETH");
-  });
-
-  it("shows the treasury's on-chain credit beside the fee, and never in place of it", () => {
-    // 0.15 of fees and 0.305 of withdrawable credit are both true on the live chain; a page that
-    // printed only the fee under one heading was the figure a reader could not reconcile.
-    const both = deriveFacts(snapshot({ economics: economics({ feesEth: "0.15", treasuryCreditEth: "0.305" }) }));
-    expect(both.take).toBe("0.15 ETH");
-    expect(both.treasury).toBe("0.305 ETH");
-
-    // The credit was not read. The fee is known and must not be promoted into the treasury cell:
-    // that substitution is exactly the equation the page published by accident.
-    const feeOnly = deriveFacts(snapshot({ economics: economics({ feesEth: "0.15" }) }));
-    expect(feeOnly.treasury).toBeNull();
-    expect(deriveFacts(null).treasury).toBeNull();
-  });
-
-  it("truncates the treasury credit rather than rounding it up", () => {
-    expect(
-      deriveFacts(snapshot({ economics: economics({ treasuryCreditEth: "0.3059999" }) })).treasury,
-    ).toBe("0.305 ETH");
+    expect(facts).not.toHaveProperty("take");
+    expect(facts).not.toHaveProperty("treasury");
+    expect(facts).not.toHaveProperty("fees");
+    for (const value of Object.values(facts)) {
+      expect(typeof value === "string" && /\sETH$/.test(value)).toBe(false);
+    }
   });
 });

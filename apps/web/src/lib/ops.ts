@@ -134,7 +134,6 @@ export interface OpsView {
   total: string;
 
   volume: string;
-  fees: string;
   paidOut: string;
   paidSettlements: string;
   feeRate: string;
@@ -353,7 +352,6 @@ export function deriveOps(input: {
     total: num(counts?.all ?? null),
 
     volume: formatEth(economics?.volumeEth ?? null),
-    fees: formatEth(economics?.feesEth ?? null),
     paidOut: formatEth(economics?.paidOutEth ?? null),
     paidSettlements: num(economics?.paidSettlements ?? null),
     // The rate is a chain read, and the API publishes null when that read failed. Zero here

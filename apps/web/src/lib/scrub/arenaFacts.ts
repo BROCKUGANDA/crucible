@@ -1,6 +1,6 @@
 import type { ApiSnapshot } from "@crucible/indexer";
 import { tierNumeral } from "@/lib/theme/roman";
-import { formatEth } from "@/lib/forge";
+import { formatFeeRate } from "@/lib/ops";
 import type { SettlementMark } from "./palette";
 
 /**
@@ -30,19 +30,15 @@ export interface ArenaFacts {
   smiths: number | null;
   settled: number | null;
   /**
-   * The protocol's settlement fee, display-ready: an ETH figure carrying its own unit, because
-   * a bare decimal in a HUD of counts reads as one more tally. The platform's revenue, shown
-   * because the reader is entitled to know whose it is. Null until the snapshot arrives, and
-   * null is not zero — see the file header.
+   * What the chain charges to settle, as a rate ("5% · 500 bps"), read off the chain.
+   *
+   * This replaced two ETH cells — the protocol's cumulative fee and `credit[treasury]`. Both were
+   * the operator's own takings, and the owner asked on 2026-10-27 for the site to stop advertising
+   * them. The rate stays because it is a promise to the visitor: what they will be charged, and
+   * whose money a settlement moves. `apps/web/test/scrub-hud.test.ts` is what keeps an amount out
+   * of this type, because the snapshot still publishes both figures.
    */
-  take: string | null;
-  /**
-   * What the treasury can withdraw on-chain (`credit[treasury]`): the fee above PLUS its share
-   * of every slashed bond. Shown beside the fee rather than replacing it, because the two are
-   * different entitlements and the page that published only the fee could not be reconciled
-   * with a reader who called the contract. Null when the chain read has not landed.
-   */
-  treasury: string | null;
+  feeRate: string | null;
   /** Block number of the settlement `mark` came from, so the reading is checkable. */
   markBlock: number | null;
 }
@@ -54,8 +50,7 @@ const NO_FACTS: ArenaFacts = {
   trials: null,
   smiths: null,
   settled: null,
-  take: null,
-  treasury: null,
+  feeRate: null,
   markBlock: null,
 };
 
@@ -88,11 +83,7 @@ export function deriveFacts(snapshot: ApiSnapshot | null | undefined): ArenaFact
     trials: snapshot.counts?.all ?? null,
     smiths,
     settled: snapshot.counts?.settled ?? null,
-    take: snapshot.economics?.feesEth == null ? null : formatEth(snapshot.economics.feesEth),
-    treasury:
-      snapshot.economics?.treasuryCreditEth == null
-        ? null
-        : formatEth(snapshot.economics.treasuryCreditEth),
+    feeRate: snapshot.economics?.feeBps == null ? null : formatFeeRate(snapshot.economics.feeBps),
     markBlock: newestBlock < 0 ? null : newestBlock,
   };
 }

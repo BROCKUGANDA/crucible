@@ -975,6 +975,15 @@ guards is the decoration it exists to detect.
   the skeptic and 70% to the treasury — every figure the books page states, read from the
   contract — and the escrow's balance `10.04 ETH` equals stakes `1.6` + credits `4.24` + escrow
   `4.2` to the wei.
+  **Superseded on 2026-10-27 by the owner's instruction, not by a defect.** The two HUD cells that
+  made those numbers reconcilable — `Fees` and `Treasury` — were taken off the landing page, along
+  with `/assay`'s "Fees kept", because the site should not advertise what the operator holds. The
+  landing now states the **rate** (`5% · 500 bps`, read from `FEE_BPS`) which answers the same
+  question — whose money, how much does it cost — without publishing a balance. The read model
+  still emits `economics.feesEth` and `economics.treasuryCreditEth`: they are chain facts anyone can
+  call on the contract, and the reconciliation this bullet recorded remains checkable there.
+  `apps/web/test/scrub-hud.test.ts` is the gate, and it is a scan of the executed markup, not of
+  prose — the two files still *explain* the removed figures in their comments.
 - **The hero printed a JSON path at a first-time reader (2026-10-26).** `/.well-known/crucible.json`
   appeared in the landing paragraph; it is a machine-readable address and a visitor checking
   whether the product is honest is not helped by one. The plain sentence stays, the link to

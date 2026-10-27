@@ -217,7 +217,6 @@ export default function AssayPage() {
 
         <Panel title="The books" source="/snapshot · economics">
           <Row label="Escrowed by sponsors" value={view.volume} loading={snapshot.loading} />
-          <Row label="Fees kept" value={view.fees} loading={snapshot.loading} />
           <Row label="Paid to agents" value={view.paidOut} loading={snapshot.loading} />
           <Row label="Settled in an agent's favour" value={view.paidSettlements} loading={snapshot.loading} />
           <Row label="The fee the chain charges" value={view.feeRate} loading={snapshot.loading} />
