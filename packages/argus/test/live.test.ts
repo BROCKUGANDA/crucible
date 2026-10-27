@@ -38,7 +38,7 @@ const RUNNER_KEY = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4
 const OTHER_KEY = "0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a";
 const CONTRACT = "0x5fbdb2315678afecb367f032d93f642f63180aa3" as const;
 
-async function harness(rerunNames: string[]) {
+async function harness(rerunNames: string[], opts: { tier?: 0 | 1 | 2 | 3 | 4 } = {}) {
   const root = path.join(dir, Math.random().toString(36).slice(2));
   const content = new ContentService({
     bridge: new ContentBridge({
@@ -66,8 +66,9 @@ async function harness(rerunNames: string[]) {
     async cleanup() {},
   };
 
-  const verifier = new LiveVerifier({ content, makeBench: async () => bench });
-  return { content, verifier, written };
+  let seenSpec: import("@crucible/forge-runner").SandboxSpec | undefined;
+  const verifier = new LiveVerifier({ content, tier: opts.tier, makeBench: async (spec) => { seenSpec = spec; return bench; } });
+  return { content, verifier, written, benchSpec: () => seenSpec };
 }
 
 function artifactOf(runner: string, names: string[]): RunArtifact {
@@ -176,6 +177,27 @@ describe("verifying a run through the content layer", () => {
     expect(written).toContain("test/Suite.t.sol");
     expect(written).toContain("src/Forge.sol");
   });
+  it("re-executes a frontier-tier claim in the tier sandbox envelope", async () => {
+    const runner = privateKeyToAccount(RUNNER_KEY).address;
+    const names = ["test_A"];
+    const { content, verifier, benchSpec } = await harness(names, { tier: 4 });
+    const artifact = await publish(content, artifactOf(runner, names));
+    const facts: RunFacts = {
+      trialId: 1,
+      agentId: 7,
+      runHash: computeRunHash(artifact),
+      sigDeadline: 1_800_000_000n,
+      chainId: 31337,
+      verifyingContract: CONTRACT,
+      runner,
+    };
+    await signAndAnnounce(content, verifier, facts, artifact, RUNNER_KEY);
+    const report = await verifier.verify(facts);
+    expect(report.verdict).toBe("agent-wins");
+    expect(benchSpec()?.timeoutSec).toBe(3600);
+    expect(benchSpec()?.memory).toBe("8192m");
+  });
+
 
   it("calls a claim the bench cannot reproduce a lie", async () => {
     const runner = privateKeyToAccount(RUNNER_KEY).address;

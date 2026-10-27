@@ -1452,6 +1452,9 @@
 - id: 900
   title: Judge pin and replayability class carried into live verdicts (the seat verifier resolves the digest-pinned image via resolveVerifierImage instead of overriding with the mutable default spec, and every seal records its replayability class - artifact-replayable or generation-attested - in the durable vote record and the pass report, not only in a log line)
   frameworks: [ai-rmf, soc2]
+- id: 901
+  title: Tier-scaled sandbox strictness (a trial tier T0-T4 derives from its frontier-axis vector, never self-declared; strictSandboxFor raises - never lowers - the sandbox floor for the tier at both live verdict callers, ForgeRunner and the Argus LiveVerifier; mayEarnAtTier refuses frontier payouts to below-tier Alloy holders; the Arena on-chain tier field remains open while v2 is dormant)
+  frameworks: [ai-rmf, soc2]
 
 frameworks:
   owasp-top10: "OWASP Web Top 10 (2021)"

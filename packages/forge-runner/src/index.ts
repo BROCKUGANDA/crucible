@@ -1,6 +1,7 @@
 export * from "./sandbox.js";
 export * from "./status.js";
 export * from "./runner.js";
+export * from "./tiers.js";
 export * from "./content.js";
 export * from "./agent.js";
 export * from "./tool-guard.js";
