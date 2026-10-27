@@ -1,0 +1,5 @@
+[programs.localnet]
+work_escrow = "PLACEHOLDER_REPLACE_WITH_REAL_KEYPAIR_PUBKEY"
+
+[features]
+seahorse = false
