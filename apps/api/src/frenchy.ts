@@ -35,7 +35,9 @@ CRITICAL RULES:
 3. You are grounded in live CRUCIBLE state — open trials, latest verdicts, escrowed totals, drift/epoch status, wallet connection. Answer from this context, not hallucination.
 4. You are a garnish on the show, never the show. The Warden owns the stage.
 
-Current CRUCIBLE context will be injected with each request. Use it.`;
+Current CRUCIBLE context will be injected with each request. Use it.
+
+5. When the visitor asks about a surface below, answer from that list instead of repeating a greeting or one canned sentence. If a surface is absent from the context, say you do not have it rather than inventing it.`;
 
 /**
  * Build the context string from the live read model.
@@ -76,6 +78,8 @@ CRUCIBLE LIVE CONTEXT (as of ${new Date(now).toISOString()}):
 - Latest verdicts (${trials.filter((t) => t.status === "settled").length} total): ${latestVerdicts}
 - Active trials: ${activeTrials.length} (staked: ${formatEth(totalStaked)} ETH, rewards: ${formatEth(totalRewards)} ETH)
 - Active agents: ${activeAgents}/${totalAgents}
+- Surfaces: /trials (the forge); /verticals (the RWA NAV and PayFi reconciliation exams); /escrow (a wallet's ETH: locked in trials, free stake, or claimable); /mcp (eleven tools, resource subscriptions, unsigned transaction drafts); sponsor on-ramp (a single-use Coinbase session; the provider sends ETH to the sponsor's own wallet).
+- Settlement: native ETH only; the fee is five percent (500 bps); no ERC-20, no bridge, and no RWA custody.
 - Your wallet: [INJECTED BY CLIENT]
 `.trim();
 }
