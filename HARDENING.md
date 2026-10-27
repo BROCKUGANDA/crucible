@@ -1208,6 +1208,59 @@ guards is the decoration it exists to detect.
   note:** the 818/824 register titles were swept into sibling commit `43d6834` while this slice was
   uncommitted; `git show HEAD:docs/gates.yml` carries them, and `a8572b6` is the code.
 
+- **The public RPC gate was code, not deployment (2026-10-27, gate 903, commit `dafca1a`).** The
+  row "public `/anvil` RPC proxy exposed" was closed once already — gate 898 shipped the method
+  gate, its compose service and the Caddyfile route, and its six tests passed. Measured on the
+  live endpoint they described a route that did not exist: `eth_accounts` answered with the node's
+  ten unlocked dev signers, and `anvil_setBalance` came back as `{"error":{"code":-32602,"message":
+  "invalid length 0, expected tuple variant EthRequest::SetBalance with 2 elements"}}` — text only
+  anvil can produce, so the request had reached the node. Three causes, all measured on the box:
+  **(1)** `/home/ubuntu/crucible-edge/Caddyfile`, installed 2026-10-22, still said
+  `reverse_proxy anvil:8545` while the repository said `rpc-gate:8791`, and the edge runs with
+  `admin off`, so a bind-mounted Caddyfile is not reloaded — copying it changes nothing until the
+  container is recreated; **(2)** `provision.sh` copied `Caddyfile`, `compose.yaml` and the two
+  front-door maps and **never copied `rpc-gate/`**, so re-running the installer as written would
+  have mounted an empty directory, crash-looped the gate and turned a security fix into a `/anvil`
+  502 for every wallet; **(3)** `crucible-edge` was running one container — there was no gate
+  service at all — and nothing in CI or in any workspace script ran `deploy/edge/rpc-gate/gate.test.mjs`,
+  which is how six green tests coexisted with the bypass.
+  **Shipped:** `rpc-gate/probe.mjs` asks an endpoint for `eth_accounts`, `anvil_setBalance` **with
+  real arguments**, `anvil_impersonateAccount`, `anvil_setNextBlockTimestamp`, `anvil_mine`,
+  `evm_mine`, `personal_sign`, `eth_sendTransaction` and one batch-smuggled cheat call, and accepts
+  exactly one answer — HTTP 403 carrying JSON-RPC `-32601`. A node-side `-32602` counts as a
+  failure, because it proves the call arrived; that distinction is the whole content of the bug.
+  `provision.sh` now installs the gate directory (and its own copy, guarded so it cannot overwrite
+  the file it is executing), measures config drift **before** the copy and recreates caddy when the
+  two differ, and ends with the probe on both certificate branches so a missing certificate cannot
+  skip the check. `deploy.yml` reconciles the edge from the synced tree before the container swap —
+  a refusal there leaves the application untouched, which is why the position matters — and re-asks
+  the public hostname in the post-swap surface assertion. `npm run test:edge` (15 tests) is a CI
+  step and part of `verify:all`.
+  **Mutation-proven:** disabling the gate allowlist reddened 3 tests; loosening `isRefusal` to
+  "any HTTP answer" reddened the negative control and the code test; deleting each of the installer's
+  `cp rpc-gate`, `--force-recreate`, route and mount statements reddened its own wiring test. One
+  mutation **survived**: my first deploy.yml assertion matched the string `deploy/edge/provision.sh`,
+  which the step's existence check also contains, so deleting the run line kept it green — rewritten
+  to match the invocation as an executed line, and the ordering assertion then needed its mutation
+  re-anchored past the swap before it would fail, which is a second way the same instrument was soft.
+  **Measured on the live host:** installed through the edge's own TLS listener and then over the
+  public name — `10/10 probes as expected`, every control method refused with `-32601`, `eth_chainId`
+  still served (`0x7a69`), `eth_getBalance`/`eth_blockNumber`/`eth_call` still forwarded (the node
+  answered my deliberately wrong params, which is proof of forwarding, not of a refusal). Site,
+  `/api/ready`, `/api/health`, `/api/escrow/:wallet` and `/api/teams` all 200 after the recreate;
+  anvil was not touched — same container, started 2026-10-24T20:03, block still `0x44`. The web's
+  wallet transport is `http(rpcUrl())` for reads only (`apps/web/src/lib/wagmi.ts:164-175`);
+  accounts come from the connector, so refusing `eth_accounts` on the RPC removes the leak without
+  removing a call the app makes.
+  **Corrected in the register:** gate 898's title claimed the edge proxies `/anvil` through the
+  gate — a deployment fact the repository could not see — and carried **two** `frameworks:` keys,
+  so YAML's last-key-wins had silently dropped `owasp-top10` and `soc2` from the compliance matrix;
+  the claim is now scoped to the code, 903 owns the deployment proof, and `/compliance` regenerated
+  at 485 gates. **What this does not close:** the gate still authenticates nobody, which is the
+  stated design while the chain holds worthless ETH — on a chain holding real funds the endpoint
+  must sit behind auth or not exist (mainnet runbook), and `eth_sendRawTransaction` passing means
+  anyone can still submit transactions to the demo chain from the browser's own accounts.
+
 ## Unresolved from the 2026-10-27 pass (continues the open list)
 
 23. **`apps/api` reported one failing test once, inside a saturated fan-out, and it has not been
