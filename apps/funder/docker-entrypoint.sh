@@ -19,6 +19,11 @@ else
   key_file="${CDP_SANDBOX_API_KEY_FILE:-}"
 fi
 
+# `cdpConfig` (apps/funder/src/cdp.ts) accepts the generic CDP_API_KEY_FILE when the
+# per-environment name is empty. The entrypoint has to read the same variables, or the
+# process reports `configured:true` and then calls a CLI with no profile.
+[ -n "$key_file" ] || key_file="${CDP_API_KEY_FILE:-}"
+
 if [ -n "$key_file" ] && [ -f "$key_file" ]; then
   cdp env "$env_name" --key-file "$key_file" --plaintext >/dev/null 2>&1 \
     || echo "[funder] could not configure CDP from $key_file; money paths will refuse" >&2
