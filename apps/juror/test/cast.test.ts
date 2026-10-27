@@ -73,9 +73,16 @@ function harness() {
 }
 
 describe("DurableSeat.seal", () => {
+  it("records the verdict replayability class with the seal, and a re-seal keeps the first", async () => {
+    const h = harness();
+    await h.cast.seal(7, true, "artifact-replayable");
+    expect((await h.store.get(7))?.replayability).toBe("artifact-replayable");
+    await h.cast.seal(7, true, "generation-attested");
+    expect((await h.store.get(7))?.replayability).toBe("artifact-replayable");
+  });
   it("writes the salt to the store before the transaction is sent", async () => {
     const h = harness();
-    await h.cast.seal(7, true);
+    await h.cast.seal(7, true, "artifact-replayable");
 
     // The ordering, in the trace itself. Written first means a crash between the two leaves a
     // salt for a commitment nobody posted — recoverable, the seat just re-verifies and seals.
@@ -88,16 +95,16 @@ describe("DurableSeat.seal", () => {
     const h = harness();
     h.fail(true);
 
-    await expect(h.cast.seal(7, true)).rejects.toThrow("AlreadyCommitted");
+    await expect(h.cast.seal(7, true, "artifact-replayable")).rejects.toThrow("AlreadyCommitted");
     expect(h.trace).toEqual(["state.put", "commitVote"]);
     expect(await h.cast.holds(7)).toBe(true);
   });
 
   it("re-posts the SAME commitment rather than drawing a second salt", async () => {
     const h = harness();
-    await h.cast.seal(7, true);
+    await h.cast.seal(7, true, "artifact-replayable");
     h.fail(false);
-    await h.cast.seal(7, true);
+    await h.cast.seal(7, true, "artifact-replayable");
 
     expect(h.commits).toHaveLength(2);
     expect(h.commits[0]!.commit).toBe(h.commits[1]!.commit);
@@ -108,7 +115,7 @@ describe("DurableSeat.seal", () => {
 
   it("seals what the contract will be able to check", async () => {
     const h = harness();
-    await h.cast.seal(7, true);
+    await h.cast.seal(7, true, "artifact-replayable");
 
     // The commitment must be `keccak256(abi.encodePacked(uint256 id, bool breakWins, bytes32
     // salt))`. Getting the encoding wrong (decimal text for the id, a 32-byte bool) produces a
@@ -123,7 +130,7 @@ describe("DurableSeat.seal", () => {
 describe("DurableSeat.unseal", () => {
   it("posts the stored salt and KEEPS it, because a hash is not a block", async () => {
     const h = harness();
-    await h.cast.seal(7, true);
+    await h.cast.seal(7, true, "artifact-replayable");
     const salt = await peek(h);
 
     await h.cast.unseal(7);
@@ -141,7 +148,7 @@ describe("DurableSeat.unseal", () => {
     // The shape of the crash this whole module exists for: the transaction is out, the process dies
     // before anybody has seen it mined.
     const h = harness();
-    await h.cast.seal(7, true);
+    await h.cast.seal(7, true, "artifact-replayable");
     const before = await peek(h);
     await h.cast.unseal(7);
 

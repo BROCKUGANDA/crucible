@@ -244,6 +244,19 @@ describe("the seat operator's pass", () => {
     expect(detail).not.toContain("[artifact-replayable]");
   });
 
+  it("carries the replayability class on the commit action and the stored seal", async () => {
+    const f = await harness();
+    const first = await f.operator.pass();
+    const commit = first.actions.find((a) => a.trialId === 7 && a.action === "commit");
+    expect(commit?.replayability).toBe("artifact-replayable");
+    expect((await f.state.get(7))?.replayability).toBe("artifact-replayable");
+  });
+
+  it("classes a rubric-phase verdict as generation-attested", async () => {
+    const f = await harness({ initial: report({ verdict: "agent-wins", phase: "rubric", reason: "2/3 voted that the run survives" }) });
+    const first = await f.operator.pass();
+    expect(first.actions.find((a) => a.trialId === 7 && a.action === "commit")?.replayability).toBe("generation-attested");
+  });
   it("seals a break-wins verdict as true, then reveals once two seats have sealed", async () => {
     const f = await harness();
 

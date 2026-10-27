@@ -10,7 +10,7 @@ import {
   type DisputeView,
   type SeatConstants,
 } from "./policy.js";
-import type { VoteState } from "./state.js";
+import type { ReplayabilityClass, VoteState } from "./state.js";
 
 /**
  * The seat operator's pass: one sweep over the disputes this seat could still act on.
@@ -59,6 +59,8 @@ export interface PassAction {
   /** the reason the rule produced, or the error message — never a salt, never a key */
   detail: string;
   txHash: Hex | null;
+  /** the verdict's replayability class, on commit actions (ADR-0013 carried into the record) */
+  replayability?: ReplayabilityClass;
 }
 
 export interface PassReport {
@@ -127,9 +129,9 @@ export function createOperator(deps: OperatorDeps): JurorOperator {
     /** Benches actually run this pass, against `maxVerifies`. */
     let verified = 0;
 
-    const record = (trialId: number, action: ActionKind, detail: string, txHash: Hex | null = null): void => {
+    const record = (trialId: number, action: ActionKind, detail: string, txHash: Hex | null = null, replayability?: ReplayabilityClass): void => {
       counts[action] += 1;
-      actions.push({ trialId, action, detail, txHash });
+      actions.push({ trialId, action, detail, txHash, replayability });
       // `hold` is the only outcome that repeats every pass by design (waiting for peers to
       // seal), so it is counted and reported but not printed. Everything else is either an
       // action taken or a decision reached, and an operator reads those in the log.
@@ -145,7 +147,7 @@ export function createOperator(deps: OperatorDeps): JurorOperator {
         switch (gate.act) {
           case "reveal": {
             const tx = await deps.cast.unseal(seal.trialId);
-            record(seal.trialId, "reveal", `breakWins=${seal.breakWins} after ${view.committed.length} seals`, tx);
+            record(seal.trialId, "reveal", `breakWins=${seal.breakWins} after ${view.committed.length} seals` + (seal.replayability ? ` [${seal.replayability}]` : ""), tx);
             break;
           }
           case "drop": {
@@ -270,7 +272,7 @@ export function createOperator(deps: OperatorDeps): JurorOperator {
           continue;
         }
 
-        const tx = await deps.cast.seal(trialId, ballot.breakWins);
+        const tx = await deps.cast.seal(trialId, ballot.breakWins, replayabilityOf(report));
         // Named in the log line because it is the fact a later reader of this receipt actually
         // needs: two `breakWins=true` commits look identical here and mean different things — one
         // anyone can re-derive from the pinned suite, one that stands on this seat's rubric pass.
@@ -280,6 +282,7 @@ export function createOperator(deps: OperatorDeps): JurorOperator {
           `breakWins=${ballot.breakWins} because ${report.reason} ` +
             `[${replayabilityOf(report)}] — ${view.committed.length + 1} seat(s) sealed once this lands`,
           tx,
+          replayabilityOf(report),
         );
       } catch (err) {
         record(trialId, "error", `pass failed: ${(err as Error).message}`);
