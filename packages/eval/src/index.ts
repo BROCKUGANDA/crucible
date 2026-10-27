@@ -32,4 +32,4 @@ export type { Rating, Tier, SkillNode, SkillState, NodeStatus } from './ratings.
 export { compileDag, validateRoleContract, stepKey, appendMessage, verifyChain, validateSplits, shapley, collusionScore, claimOrder } from './orchestration.js';  
 export type { SwarmRole, DagStep, RoleContract, BusMessage } from './orchestration.js';  
 export { rankBoard, verifyRanking, coldStart, targetDifficulty, commissionInBand, applyCaps, circuitFrozen, gasInBand, lintRagDocs, retrieveAt, appendCheckpoint, verifyCheckpoints, abstentionScore, leafFor, merkleRoot, merkleProof, verifyMerkle, sybilAdjust, EventGateway, assertPiiFree, FEE_BPS_CANONICAL } from './gates.js';  
-export type { BoardEntry, RagDoc, Checkpoint, GatewayEvent } from './gates.js'; 
+export type { BoardEntry, RagDoc, HoldoutFingerprint, Checkpoint, GatewayEvent } from './gates.js'; 

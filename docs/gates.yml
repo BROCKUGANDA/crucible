@@ -1446,6 +1446,9 @@
   title: Public chain RPC method gate (the edge proxies /anvil through deploy/edge/rpc-gate: wallet methods pass, anvil_/evm_/debug_/personal_/admin_ control namespaces are refused before the node, with per-IP rate limiting; the gate holds no key and authenticates nobody, which is sufficient only while the chain is valueless)
   frameworks: [owasp-top10, soc2]
   frameworks: [ai-rmf]
+- id: 899
+  title: Holdout content sequester (the contamination rule made executable at the retrieval door: lintRagDocs screens RAG corpora against holdout probe prompts by 8-word shingle and whole-prompt containment, not doc ids alone, and retrieveAt refuses an unlinted corpus when holdout fingerprints are supplied; paraphrase-level detection needs an embedding gate and stays open)
+  frameworks: [llm-top10, ai-rmf]
 
 frameworks:
   owasp-top10: "OWASP Web Top 10 (2021)"
