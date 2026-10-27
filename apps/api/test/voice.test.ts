@@ -164,4 +164,11 @@ describe("voice host", () => {
       expect(text.length).toBeGreaterThan(0);
     }
   });
+
+  it("the tour names the surfaces added after the first script", () => {
+    const text = voiceCopy("tour")!;
+    expect(text).toContain("Verticals");
+    expect(text).toContain("Escrow");
+    expect(text).toContain("MCP");
+  });
 });

@@ -398,20 +398,23 @@
 .chrome__right {
   display: flex;
   align-items: center;
-  gap: 20px;
+  gap: 14px;
   min-width: 0;
 }
 
 .chrome__nav {
   display: flex;
-  gap: 20px;
+  align-items: center;
+  gap: 18px;
   font-size: 0.85rem;
+  white-space: nowrap;
 }
 
 .chrome__nav a {
   position: relative;
   color: var(--dim);
   padding-block: 4px;
+  white-space: nowrap;
   transition: color var(--t-state) var(--ease-ignite);
 }
 
@@ -419,8 +422,9 @@
   color: var(--text);
 }
 
-/* The tab indicator heats up instead of underlining: same language as the rest. */
-.chrome__nav a::after {
+/* The tab indicator heats up instead of underlining: same language as the rest.
+   Scoped to the direct links so the disclosure panel does not inherit a tab stripe. */
+.chrome__nav > a::after {
   content: "";
   position: absolute;
   left: 0;
@@ -434,13 +438,68 @@
   transition: transform var(--t-state) var(--ease-ignite);
 }
 
-.chrome__nav a:hover::after,
-.chrome__nav a[aria-current="page"]::after {
+.chrome__nav > a:hover::after,
+.chrome__nav > a[aria-current="page"]::after {
   transform: scaleX(1);
 }
 
-.chrome__nav a[aria-current="page"] {
+.chrome__nav > a[aria-current="page"] {
   color: var(--hot);
+}
+
+/* Secondary routes, one keyboard stop away. */
+.chrome__more {
+  position: relative;
+}
+
+.chrome__more-summary {
+  list-style: none;
+  cursor: pointer;
+  color: var(--dim);
+  padding-block: 4px;
+  user-select: none;
+  transition: color var(--t-state) var(--ease-ignite);
+}
+
+.chrome__more-summary::-webkit-details-marker {
+  display: none;
+}
+
+.chrome__more-summary:hover,
+.chrome__more[open] .chrome__more-summary {
+  color: var(--text);
+}
+
+.chrome__more-panel {
+  position: absolute;
+  top: calc(100% + 12px);
+  right: 0;
+  z-index: 60;
+  min-width: 190px;
+  display: grid;
+  gap: 2px;
+  padding: 8px;
+  background: var(--bg0);
+  border: 1px solid var(--bg2);
+  border-radius: 12px;
+  box-shadow: 0 18px 40px rgb(0 0 0 / 45%);
+}
+
+.chrome__more-panel a {
+  padding: 9px 12px;
+  border-radius: 8px;
+  color: var(--dim);
+  white-space: nowrap;
+}
+
+.chrome__more-panel a:hover,
+.chrome__more-panel a[aria-current="page"] {
+  color: var(--text);
+  background: var(--bg2);
+}
+
+.voice-control .btn {
+  white-space: nowrap;
 }
 
 /* The menu button and the inline nav are the same control at two widths. */
@@ -504,7 +563,9 @@
   display: none;
 }
 
-@media (max-width: 860px) {
+@media (max-width: 1320px) {
+  /* Below a wide desktop the inline row cannot hold five routes, the disclosure and four
+     controls without shrinking labels into two-line stubs. The sheet carries all of them. */
   .chrome__nav {
     display: none;
   }
