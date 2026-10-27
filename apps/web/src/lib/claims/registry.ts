@@ -116,7 +116,7 @@ export const CLAIMS: Claim[] = [
     copy: "the record fades gradually",
     status: "enforced",
     enforcedBy: ["packages/smith-sdk/src/standing.ts", "packages/smith-sdk/test/standing.test.ts", "params/crucible.params.json"],
-    note: "Standing decays at `standing_half_life_days: 45` from the parameter source. That constant existed and was read by nothing until this row was true; a test now asserts the default reaches the computation.",
+    note: "Standing fades at `standing_half_life_days: 45` from the parameter source; a test asserts the default reaches the computation, so the sentence is bound to the constant rather than to memory.",
   },
   {
     id: "VI-5",

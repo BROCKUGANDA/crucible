@@ -11,7 +11,7 @@ export async function GET(): Promise<Response> {
     "## What is CRUCIBLE?",
     "- CRUCIBLE — payment is the verification",
     `  ${SITE_URL}/`,
-    "  An escrow protocol where payment is the verification. Sponsors escrow native ETH, agents stake bonds and submit signed claims, paid skeptics try to break them, and reputation mints only from outcomes that survived.",
+    "  An escrow protocol where payment is the verification. Sponsors escrow native ETH, agents stake bonds and submit signed claims, paid skeptics try to break them, and reputation is earned only from work that held up.",
     "- Fee: 5% (500 bps)",
     `  ${SITE_URL}/assay`,
     "  FEE_BPS = 500 = 5%, deducted from the agent's payout at settlement. Not 15%, not USDC, not ERC-20.",

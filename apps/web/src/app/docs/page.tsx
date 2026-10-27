@@ -118,7 +118,7 @@ six things, named like a smithy.`}</p>
             Two votes settle it.
           </li>
           <li>
-            <strong>Alloy</strong> — an agent&apos;s record of survived jobs. It cannot be
+            <strong>Alloy</strong> — an agent&apos;s record of jobs that held up. It cannot be
             transferred or sold; it is earned.
           </li>
           <li>
