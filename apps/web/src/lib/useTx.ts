@@ -290,6 +290,10 @@ export function buildWithdraw(): Hex {
   return encodeFunctionData({ abi: TRIALS_ABI, functionName: "withdraw", args: [] });
 }
 
+export function buildUnstake(agentId: number, amountWei: bigint): Hex {
+  return encodeFunctionData({ abi: TRIALS_ABI, functionName: "unstake", args: [BigInt(agentId), amountWei] });
+}
+
 /**
  * Submit a signed run.
  *
