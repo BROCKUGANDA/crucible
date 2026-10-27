@@ -1186,6 +1186,27 @@ guards is the decoration it exists to detect.
   warns about, in the opposite direction. Restored from HEAD and re-applied with a byte-preserving
   edit; the register's diff is now 6/0 and the generated matrix 4/2. Check `git diff --numstat` on
   every file touched by a script that rewrites it.
+- **Abstention is scored, and the guess has an interval (gate 824, 2026-10-27, `a8572b6`).** The
+  register said the grader scored no abstention, and the tree agreed: `packages/eval` exported a
+  per-probe reward shape with no caller, and no suite produced an unanswerable probe.
+  `grader/src/eval/abstention.ts` now authors 40 content-labelled probes — 30 whose evidence does
+  not settle the claim (missing, truncated, contradictory, ambiguous, stale or unverifiable) and 10
+  controls whose arithmetic or clause reading does settle it (5 PASS, 5 FAIL) — and
+  `abstentionMetrics` computes the two rates that either one alone would let a model game:
+  abstention on the unanswerable half and false abstention on the answerable half. Scorecard rows
+  carry both with 95% Wilson intervals, the share of unanswerable probes guessed at confidence
+  >= 0.8, a Brier score over every probe, and the failures themselves;
+  `npm run arena:grade -- --suite abstention --seed pilot-003` prints and pins them, joining each
+  failure to its claim/evidence payload. **Measured:** grader 282 tests (was 257), eval 35 (was 34),
+  `verify:all` green; the seeded stub run pinned a record whose 20 trajectories each carry their
+  payload. **Mutation-proven:** the Wilson count boundary and default quantile, the
+  overconfidence `>=`, the gold split, the Brier outcome, the n=0 null, the confidence range, the
+  failure kind, the scorer attachment, the `allSuites` inclusion and a flipped suite label each
+  turned the suite red; the trajectory join was proven by removing it and watching the pinned
+  record fall from 20 to 0. **What this does not prove:** the stub is code, not a model — no live
+  frontier panel has been run here, so no failure rate is a claim about any provider. **Commit
+  note:** the 818/824 register titles were swept into sibling commit `43d6834` while this slice was
+  uncommitted; `git show HEAD:docs/gates.yml` carries them, and `a8572b6` is the code.
 
 ## Still open from this pass, by severity
 

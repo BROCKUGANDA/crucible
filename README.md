@@ -40,13 +40,13 @@ Open ──claim──> Assigned ──submitRun──> Judging ──fileBreak�
    settlement transaction and the identity registration that earned it. The
    contracts are in `crucible-contracts/contracts` with 333 tests (329 passed; 4 of them ERC-8004
    fork tests, which skip without an RPC). The workspace suites
-   add 1959 more — web 368, grader 257, api 229, smith-sdk 201, agent-security 153, forge-runner 163
+   add 2009 more — web 381, grader 282, api 240, smith-sdk 201, agent-security 153, forge-runner 163
    (6 of them need a Docker daemon and skip without one), indexer 154, cidstore 106, juror 80,
-   argus 44, keeper 40, warden 24, frame 12, crypto 12, datasets 50, eval 34, registry 12, funder 20 — and `npm test` runs all of them plus the
+   argus 44, keeper 40, warden 24, frame 12, crypto 12, datasets 50, eval 35, registry 12, funder 20 — and `npm test` runs all of them plus the
    Foundry suite; the contracts half needs Foundry (`forge test`), which the seed image runs on a
-   machine without a local forge. Counted per workspace on 2026-10-27: **1953 passed, 6 skipped**
-   across the eighteen TypeScript workspaces and **329 passed, 4 skipped** in Foundry — 2282
-   passing, 2292 counted. Run `npm test` to reproduce them.
+   machine without a local forge. Counted per workspace on 2026-10-27: **2003 passed, 6 skipped**
+   across the eighteen TypeScript workspaces and **329 passed, 4 skipped** in Foundry — 2332
+   passing, 2342 counted. Run `npm test` to reproduce them.
 4. Replay the whole loop against a running chain — register, post, claim,
    runner-signed runs, a break that Argus slashes, and the permissionless quench
    after the window really closes — with `crucible-contracts/script/GoldenPath.s.sol`:
@@ -374,8 +374,8 @@ npm run demo                # anvil + deploy + the whole loop, settles a real ve
 npm run agent:live          # the real agent against a real model in a real sandbox
 ```
 
-**2282 tests pass, 10 skipped** — 1953 TypeScript passed with 6 skipped, and 329 Foundry passed
-with 4 skipped, so 2292 counted. Measured per workspace on 2026-10-27 on the working tree; the
+**2332 tests pass, 10 skipped** — 2003 TypeScript passed with 6 skipped, and 329 Foundry passed
+with 4 skipped, so 2342 counted. Measured per workspace on 2026-10-27 on the working tree; the
 six skips are `forge-runner` tests that ask for a Docker daemon, the four are the fork tests below.
 The 62 tests the escrow and disclosure work adds over the previous count are 17 in the escrow
 projection, 12 on `/escrow/:wallet`, 13 on `/content/:id`, 4 on reading a store the mount will not
