@@ -25,6 +25,7 @@ pub fn handler(
         worker: ctx.accounts.worker.key(),
         funder: ctx.accounts.funder.key(),
         resolver: ctx.accounts.resolver.key(),
+        treasury: ctx.accounts.treasury.key(),
         work_id,
         mint: ctx.accounts.mint.key(),
         stake_floor: math::stake_floor(estimated_verification_cost),

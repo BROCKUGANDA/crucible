@@ -1455,6 +1455,9 @@
 - id: 901
   title: Tier-scaled sandbox strictness (a trial tier T0-T4 derives from its frontier-axis vector, never self-declared; strictSandboxFor raises - never lowers - the sandbox floor for the tier at both live verdict callers, ForgeRunner and the Argus LiveVerifier; mayEarnAtTier refuses frontier payouts to below-tier Alloy holders; the Arena on-chain tier field remains open while v2 is dormant)
   frameworks: [ai-rmf, soc2]
+- id: 902
+  title: Solana payout binding (settle, resolve and expire pay only token accounts owned by the worker, funder and treasury recorded at open - PayoutAccountMismatch otherwise; settle stays permissionless because the bound accounts are the authorization; ESCROW_VERSION 2 records the treasury key; e2e redirection tests are committed but not yet run - no validator on the build host)
+  frameworks: [scsvs, soc2]
 
 frameworks:
   owasp-top10: "OWASP Web Top 10 (2021)"
