@@ -34,7 +34,7 @@ export const CLAIMS: Claim[] = [
   {
     id: "H-2",
     onSite: true,
-    copy: "Crucible puts their bond where their output is",
+    copy: "Crucible makes them stake a bond",
     status: "enforced",
     enforcedBy: ["crucible-contracts/contracts/CrucibleTrials.sol", "crucible-contracts/test/CrucibleTrials.t.sol"],
     note: "`BOND_DEN = 5` — a claim needs a bond of at least a fifth of the reward, and the escrow holds it.",
@@ -42,7 +42,7 @@ export const CLAIMS: Claim[] = [
   {
     id: "H-4",
     onSite: true,
-    copy: "one credential — minted only from what survived",
+    copy: "one non-transferable record",
     status: "enforced",
     enforcedBy: ["crucible-contracts/contracts/AlloyRegistry.sol", "crucible-contracts/test/AlloyRegistry.t.sol"],
     note: "The only mint is a lazy `_ensure` reached from `recordWin`/`recordSlash`, both `onlyForge`; the forge is this escrow, and a test asserts the owner cannot call it.",
@@ -50,7 +50,7 @@ export const CLAIMS: Claim[] = [
   {
     id: "H-5",
     onSite: true,
-    copy: "no one can buy, borrow, or fake",
+    copy: "cannot be sold or lent",
     status: "enforced",
     enforcedBy: ["crucible-contracts/contracts/AlloyRegistry.sol", "crucible-contracts/test/AlloyRegistry.t.sol"],
     note: "ERC-5192 `locked()` is true for a minted credential and the contract declares no `transferFrom`, `approve` or `setApprovalForAll` at all — non-transferability rests on there being no path, which the test pins.",
@@ -58,7 +58,7 @@ export const CLAIMS: Claim[] = [
   {
     id: "H-6",
     onSite: true,
-    copy: "no one can buy, borrow, or fake",
+    copy: "cannot be sold or lent",
     status: "enforced",
     enforcedBy: ["crucible-contracts/contracts/AlloyRegistry.sol", "apps/api/src/server.ts"],
     note: "No approval surface to lend, and the tier an application reads comes from the registry keyed to the agent's own id, not from a token sitting in a wallet.",
@@ -81,7 +81,7 @@ export const CLAIMS: Claim[] = [
   {
     id: "IV-3",
     onSite: true,
-    copy: "a falsification that lands takes three-tenths of the bond",
+    copy: "a challenge that succeeds pays",
     status: "enforced",
     enforcedBy: ["crucible-contracts/contracts/CrucibleTrials.sol", "apps/web/test/landing-claims.test.ts"],
     note: "`SLASH_SKEPTIC_NUM = 3_000` over `BPS`; the remainder goes to the treasury, and the sponsor is refunded the reward. The landing sentence and the contract constant are compared by test.",
@@ -97,7 +97,7 @@ export const CLAIMS: Claim[] = [
   {
     id: "V-6",
     onSite: true,
-    copy: "a panel that never forms does not hold the money",
+    copy: "if the panel never forms",
     status: "enforced",
     enforcedBy: ["crucible-contracts/contracts/CrucibleTrials.sol", "apps/web/test/landing-claims.test.ts"],
     note: "After `DISPUTE_TIMEOUT = 3 days`, `finalize` settles a challenged trial for the agent. This is not a refund path — the arena's no-quorum outcome is a different contract that nothing here routes to.",
@@ -105,7 +105,7 @@ export const CLAIMS: Claim[] = [
   {
     id: "VI-3",
     onSite: true,
-    copy: "The tier, the wins, the survivals and the slashes all read straight off the contract",
+    copy: "you can read the tier",
     status: "enforced",
     enforcedBy: ["apps/api/src/app.ts", "apps/api/test/standing.test.ts", "crucible-contracts/contracts/AlloyRegistry.sol"],
     note: "`GET /api/standing/:id` returns the registry tier, the book, the settled outcomes, the computed standing and the addresses to check them against. The chain's own one-call read is `records(agentId)`, which returns wins, survivals, slashes and tier together.",
@@ -113,7 +113,7 @@ export const CLAIMS: Claim[] = [
   {
     id: "VI-4",
     onSite: true,
-    copy: "it fades with the age of what it is made of",
+    copy: "the record fades gradually",
     status: "enforced",
     enforcedBy: ["packages/smith-sdk/src/standing.ts", "packages/smith-sdk/test/standing.test.ts", "params/crucible.params.json"],
     note: "Standing decays at `standing_half_life_days: 45` from the parameter source. That constant existed and was read by nothing until this row was true; a test now asserts the default reaches the computation.",

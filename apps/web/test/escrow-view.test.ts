@@ -124,7 +124,7 @@ describe("the rows", () => {
 
 describe("the clock", () => {
   it("says a verdict releases what no deadline does", () => {
-    expect(timingNote(null, 1_700_000_000)).toBe("released by the verdict, not the clock");
+    expect(timingNote(null, 1_700_000_000)).toBe("Released when the verdict lands, not by a timer");
   });
 
   it("refuses to count down without a chain clock", () => {
@@ -137,19 +137,19 @@ describe("the clock", () => {
   });
 
   it("says reclaimable now once the deadline has passed", () => {
-    expect(timingNote(1_700_000_000, 1_700_000_001)).toMatch(/reclaimable now/);
+    expect(timingNote(1_700_000_000, 1_700_000_001)).toMatch(/Past its deadline/);
   });
 });
 
 describe("settled trials", () => {
   it("says nothing settled when the list is empty", () => {
     expect(settledNote(payload({ settledTrialIds: [] }))).toBe(
-      "no settled trial has named this address",
+      "No settled trial has involved this address yet",
     );
   });
 
   it("agrees with itself on one and many", () => {
-    expect(settledNote(payload({ settledTrialIds: [7] }))).toMatch(/1 settled trial have/);
+    expect(settledNote(payload({ settledTrialIds: [7] }))).toMatch(/1 settled trial has/);
     expect(settledNote(payload({ settledTrialIds: [7, 8] }))).toMatch(/2 settled trials have/);
   });
 });

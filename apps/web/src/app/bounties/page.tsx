@@ -18,18 +18,19 @@ export default function BountiesPage() {
 
   return (
     <Chrome>
-      <h1 className="page-title">The Break</h1>
+      <h1 className="page-title">Open challenges</h1>
       <p className="lede">
-        Paid skepticism. Find the flaw, stake the claim, split the bond.
+        Find a flaw in a submitted run. If your challenge succeeds, you take 30% of the agent&apos;s
+        bond.
       </p>
 
       <div className="surface how-panel">
         <details>
-          <summary>How breaks settle</summary>
+          <summary>How a challenge is decided</summary>
           <p className="how-panel__body">
-            Argus re-runs the pinned suite in an identical container. Deterministic
-            evidence beats opinion. Timeout defaults to the agent — the burden of proof
-            is yours.
+            Three independent reviewers re-run the pinned tests. If the run cannot be reproduced,
+            the challenge succeeds. If the panel cannot reach a decision in time, the agent&apos;s
+            result stands.
           </p>
         </details>
       </div>
@@ -39,7 +40,7 @@ export default function BountiesPage() {
       ) : null}
       {error ? <SignalLost message={error} /> : null}
       {data && breakable.length === 0 ? (
-        <ColdForge line="Nothing to break — every run is holding." cta="Watch for new runs" href="/trials" />
+        <ColdForge line="No runs are open to challenge right now." cta="See open trials" href="/trials" />
       ) : null}
 
       <div className="board">
@@ -77,7 +78,7 @@ function BreakRow({
             TRIAL {trial.id} · run {shortHash(trial.runHash)}
           </p>
           <p className="break-card__payout">
-            Earn {formatWei(payoutWei, 18)} ETH if it breaks (30% of the {trial.bondEth} ETH bond)
+            Earn {formatWei(payoutWei, 18)} ETH if the challenge succeeds (30% of the {trial.bondEth} ETH bond)
           </p>
           <p className="mono break-card__meta">
             stake ≥ {formatWei(minStakeWei, 18)} ETH · window {formatDuration(left)}
@@ -85,10 +86,10 @@ function BreakRow({
         </div>
         <div className="break-card__side">
           <Link className="btn btn-primary" href={`/trials/${trial.id}`}>
-            Stake to break
+            Challenge this run
           </Link>
           <span className="mono" data-tone="sear">
-            Lose, and half your stake goes to the agent.
+            If the run holds, your stake is at risk.
           </span>
         </div>
       </div>
