@@ -12,7 +12,7 @@ import {
   type WorkResult,
 } from "@crucible/smith";
 import { touchesTests } from "./agent.js";
-import { Sandbox, SandboxUnavailable, DEFAULT_SANDBOX, type SandboxSpec } from "./sandbox.js";
+import { Sandbox, SandboxUnavailable, DEFAULT_SANDBOX, resolveVerifierImage, type SandboxSpec } from "./sandbox.js";
 import {
   FAILURE_COPY,
   ForgeFailure,
@@ -342,7 +342,9 @@ export class ForgeRunner {
 
   private async openSandbox(): Promise<Sandbox> {
     try {
-      return await Sandbox.create(this.deps.sandbox ?? DEFAULT_SANDBOX);
+      return await Sandbox.create(
+        this.deps.sandbox ?? { ...DEFAULT_SANDBOX, image: resolveVerifierImage() },
+      );
     } catch (err) {
       if (err instanceof SandboxUnavailable) {
         throw new ForgeFailure("sandbox-unavailable", err.message, err);
