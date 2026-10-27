@@ -39,6 +39,7 @@
  *   --scope <stage>    stage the calls are billed against, default smoke
  *   --timeout-ms <n>   per-call deadline, default 300000
  *   --content-dir <d>  default $CRUCIBLE_CONTENT_DIR or .crucible-content
+ *   --ledger <file>    append one JSONL scorecard row for the tracker/leaderboard after a pin
  *   --require-survivor exit 1 when every row was disqualified
  *   --no-pin           score the run without writing to the content store
  *
@@ -48,12 +49,13 @@
  * failure, and is reported as one; --require-survivor is what turns it into a red build.
  */
 
-import { existsSync, readFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { CidStore, ContentBridge, DisclosureLog } from "@crucible/cidstore";
 import { ContentService } from "@crucible/forge-runner";
 import { digestOfContent } from "@crucible/smith";
+import { countRate, percent } from "./panel-format.mjs";
 import {
   Arena,
   CONSISTENCY_THRESHOLDS,
@@ -104,6 +106,7 @@ const MODEL = arg("model");
 const API_KEY_ENV = arg("api-key-env", "OPENAI_API_KEY");
 const API_KEY_FILE = arg("api-key-file");
 const KEYS_FILE = arg("keys-file");
+const LEDGER = arg("ledger");
 
 const dirFlag = arg("dir", arg("content-dir"));
 const CONTENT_DIR =
@@ -322,22 +325,6 @@ const RETENTION_IN_PLAIN_WORDS = {
   "training-use-allowed": "the provider may keep these prompts and use them to train its models",
   unknown: "nobody has established what the provider keeps",
 };
-
-function percent(x, digits = 2) {
-  return `${(x * 100).toFixed(digits)}%`;
-}
-
-/**
- * A count, its denominator, the rate and its 95% interval. A null rate means no probe was asked;
- * it prints as an em dash, never as 0%, which would be a measurement.
- */
-function countRate(count, n, rate, interval, digits = 1) {
-  if (rate === null) return "— (no probe asked)";
-  const ci = interval
-    ? ` (95% CI ${percent(interval.low, digits)}–${percent(interval.high, digits)})`
-    : "";
-  return `${count}/${n} ${percent(rate, digits)}${ci}`;
-}
 
 async function main() {
   const corpus = CORPORA[SUITE];
@@ -740,6 +727,34 @@ async function main() {
   console.log(`  read back by digest: yes, byte-identical`);
   console.log(`  store    ${path.relative(ROOT, path.join(CONTENT_DIR, "store"))}`);
   console.log(`  warm cache entries now ${cache.size}\n`);
+
+  if (LEDGER) {
+    const ledgerPath = path.resolve(LEDGER);
+    mkdirSync(path.dirname(ledgerPath), { recursive: true });
+    for (const row of scorecard.rows) {
+      const ledgerRow = {
+        kind: "crucible/arena-ledger",
+        generatedAt: scorecard.generatedAt,
+        suite: row.suite,
+        stage: SCOPE,
+        provider: provider.kind,
+        model: row.modelId,
+        snapshot: provider.card?.snapshot ?? null,
+        pinnedAt: provider.card?.pinnedAt ?? null,
+        seed: draw?.seed ?? null,
+        seedCommitment: draw?.seedCommitment ?? null,
+        drawHash: draw?.drawHash ?? null,
+        corpusEpoch: scorecard.corpusEpoch,
+        suiteEpoch: row.suiteEpoch,
+        row,
+        pinned: { cid: pinned.cid, digest: pinned.digest },
+      };
+      appendFileSync(ledgerPath, `${JSON.stringify(ledgerRow)}\n`);
+    }
+    console.log(
+      `  ledger     ${path.relative(ROOT, ledgerPath)} — ${scorecard.rows.length} row${scorecard.rows.length === 1 ? "" : "s"} appended\n`,
+    );
+  }
 
   return REQUIRE_SURVIVOR && survivors.length === 0 ? 1 : 0;
 }
