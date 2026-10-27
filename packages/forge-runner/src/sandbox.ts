@@ -51,6 +51,22 @@ export const DEFAULT_SANDBOX: SandboxSpec = {
   allowLocalFallback: false,
 };
 
+/**
+ * The verifier image a run actually uses. `CRUCIBLE_VERIFIER_IMAGE` overrides
+ * the `:latest` default so an operator can pin the published digest
+ * (`crucible/verifier@sha256:…`) without a code change — the default stays
+ * mutable because local development rebuilds the image constantly, and a
+ * digest baked into source would be stale the day it landed.
+ */
+export function resolveVerifierImage(env: NodeJS.ProcessEnv = process.env): string {
+  return env.CRUCIBLE_VERIFIER_IMAGE?.trim() || DEFAULT_SANDBOX.image;
+}
+
+/** True when `image` names an immutable digest rather than a moving tag. */
+export function isDigestPinned(image: string): boolean {
+  return /@sha256:[0-9a-f]{64}$/.test(image.trim());
+}
+
 export interface CommandResult {
   stdout: string;
   stderr: string;

@@ -77,6 +77,32 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # The public RPC's method gate (gate 898). Sits between Caddy and the
+  # node: wallet methods pass, the node's control namespaces are refused.
+  # Holds no key, signs nothing, publishes no host port.
+  rpc-gate:
+    image: node:22-alpine
+    command: ["node", "/gate/gate.mjs"]
+    restart: unless-stopped
+    environment:
+      RPC_GATE_UPSTREAM: http://anvil:8545
+      RPC_GATE_PORT: "8791"
+    volumes:
+      - ./rpc-gate:/gate:ro
+    networks:
+      - crucible_default
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8791/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
 networks:
   crucible_default:
     # EXTERNAL, and it is THIS project's. The application stack is in it, and
