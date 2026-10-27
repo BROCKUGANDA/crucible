@@ -18,11 +18,21 @@ Start with the question you have, not the folder.
 - [`docs/pipeline-ledger.md`](pipeline-ledger.md) — the CI/promotion/deploy
   history and the failures that shaped it.
 
+## I want the business case
+
+- [`docs/business/plan.md`](business/plan.md) — problem, money loop, model,
+  moat, traction, honest limits. The Ask section is blank for the founder.
+- [`docs/business/roadmap.md`](business/roadmap.md) — phases, not gate
+  numbers (817–875 are taken); mainnet exit criterion is a green preflight.
+- [`docs/business/investor-faq.md`](business/investor-faq.md) — the
+  60-second answers: why on-chain, revenue, no token, risks, how to verify.
+
 ## I have to operate it
 
 - [`docs/runbooks/`](runbooks/) — site down, indexer, deploy, voice host,
   contracts, incident response.
 - [`docs/setup.md`](setup.md) — local development and the shared edge.
+- [`docs/runbooks/credentials-and-deploy.md`](runbooks/credentials-and-deploy.md) — where every credential comes from, box steps, and the mainnet checklist.
 - [`docs/key-inventory.md`](key-inventory.md) — every key, what it can reach,
   and what a leak costs.
 - [`docs/crucible-deploy-day-gates.pdf`](crucible-deploy-day-gates.pdf) — the

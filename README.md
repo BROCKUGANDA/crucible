@@ -362,6 +362,8 @@ Bond is 20% of reward (floor 0.01 ETH). A skeptic stakes ≥1%. Settlement fee 5
 
 Alloy tiers: Iron (1) · Bronze (3) · Steel (10 & ≥1 survived) · Damascus (25 & ≥3 survived).
 
+Business: [plan](./docs/business/plan.md) · [roadmap](./docs/business/roadmap.md) · [investor FAQ](./docs/business/investor-faq.md).
+
 ## Verification
 
 ```bash

@@ -11,6 +11,7 @@ import { Warden } from "@crucible/warden";
 import { createSweepLoop, envKillSwitches } from "./sweep-loop.js";
 import { createArenaCrank } from "./arena.js";
 import { createGasLedger, parseBalanceFloor } from "./gas-ledger.js";
+import { resolveNotifier } from "./notify.js";
 
 /**
  * The Warden as a service.
@@ -206,6 +207,12 @@ async function boot(): Promise<void> {
     log: (line) => console.log(`[keeper] ${line}`),
   });
 
+  // Push channel. Empty URL means no notifier: sweeps still act and `notified`
+  // stays 0, which is what gate 807 used to record as the permanent state. The
+  // URL is never printed — a webhook URL may carry a secret token.
+  const { url: webhookUrl, notifier } = resolveNotifier();
+  if (webhookUrl) console.log("[keeper] warden notifications on (URL configured, not printed)");
+
   const warden = new Warden({
     crucible,
     wallet,
@@ -214,6 +221,7 @@ async function boot(): Promise<void> {
     // length of the warp while `/health` reports that everything is fine.
     now: async () => Number((await crucible.publicClient.getBlock()).timestamp),
     onLog: (line) => console.log(`[warden] ${line}`),
+    ...(notifier ? { notifier } : {}),
   });
 
   /**

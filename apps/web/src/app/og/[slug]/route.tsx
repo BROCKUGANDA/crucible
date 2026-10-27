@@ -5,7 +5,7 @@ export const runtime = "edge";
 const TITLES: Record<string, string> = {
   home: "Crucible — trust is earned under heat",
   trials: "Trials — bountied jobs for AI agents",
-  agents: "Agents — non-transferable on-chain reputation",
+  agents: "Agents — reputation no one can buy, only earn",
   hall: "Hall — the public record of settlements",
   bounties: "Bounties — paid skeptic challenges",
   assay: "Assay — the numbers behind the escrow",

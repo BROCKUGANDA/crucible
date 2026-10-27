@@ -824,7 +824,7 @@
   title: Eval spine — replay verification: NONDETERMINISTIC_OUTPUT and TRUNCATED_RUN fail the run
   frameworks: [ai-rmf]
 - id: 692
-  title: Eval spine — probes.jsonl: one schema offline and online; checkers referenced by checkerId only
+  title: Eval spine — probe bank: one schema offline and online; checkers referenced by checkerId only (ships as the TypeScript CHECKERS map in grader/src/eval/probes.ts; no probes.jsonl file exists)
   frameworks: [ai-rmf]
 - id: 693
   title: Eval spine — bank floors at load: DUP_ID / DUP_PROMPT / UNKNOWN_CHECKER / TOO_FEW_PROBES / TOO_FEW_FAMILIES
@@ -1170,7 +1170,7 @@
   title: Per-probe live progress feed (signed incremental runner telemetry, display-only)
   frameworks: [ai-rmf]
 - id: 807
-  title: External push channels — webhooks and notifications (packages/warden fires them through deps.notifier; apps/keeper never passes a notifier, so nothing is delivered on this deployment)
+  title: External push channels — webhooks and notifications (packages/warden fires them through deps.notifier; apps/keeper attaches webhookNotifier only when WARDEN_WEBHOOK_URL is set, and the demo ships it empty, so nothing is delivered until an operator configures one)
   frameworks: [soc2]
 - id: 808
   title: Experience layer (product/UI/UX + frontend engineering plan)
@@ -1391,6 +1391,58 @@
 - id: 880
   title: External MCP agent completes a devnet trial with no UI (the read, the four unsigned builders, the runner's own EIP-712 signature and the chain's answer, end to end; prepare_create_trial refuses a window outside the contract's bounds before calldata exists, and refuses to build at all when the host has not read its chain id)
   frameworks: [ai-rmf, soc2]
+
+- id: 881
+  title: Session lease state machine (design-only: CONNECTING/ACTIVE/DRAINING/CLOSED/EXPIRED with heartbeat TTL is unimplemented; trials carry no session binding, so disconnect semantics are unwritten)
+  frameworks: [soc2]
+- id: 882
+  title: Idempotent reconnect and resume (design-only: auth session tokens exist in apps/api/src/auth.ts but no trial-work resume binds to them; no (session_id, request_id) dedupe)
+  frameworks: [soc2]
+- id: 883
+  title: Frontend teardown contract (design-only: no teardown() orchestrator; mic tracks, speech synthesis, SSE unsubscribe, storage clear and token revocation are not one unit)
+  frameworks: [soc2]
+- id: 884
+  title: Zombie sweeper (design-only: no server-side lease reaper; expired-lease trial routing and VerdictPending-past-SLA alarms are unimplemented)
+  frameworks: [soc2]
+- id: 885
+  title: Per-session resource ceilings (design-only: per-IP buckets exist on reads and /mcp; no per-principal session caps and no stake-weighted throttling)
+  frameworks: [soc2]
+- id: 886
+  title: Price oracle layer (design-only proposal: no oracle in the tree; economics are wei-native, and USD denomination needs an ADR before any median-of-feeds code)
+  frameworks: [scsvs]
+- id: 887
+  title: Denomination and pinning (design-only: no USD-terms economics; all-pins-frozen covers spec, suite and version pins, not a price pin)
+  frameworks: [scsvs]
+- id: 888
+  title: USD floor caps (design-only: floors exist as K_FLOOR and the stake floor in wei; no USD floors converted at execution price)
+  frameworks: [scsvs]
+- id: 889
+  title: Privacy-rail scope boundary (design-only: no Aztec route exists; the rule recorded here is egress-only post-settlement, never wrapping escrow, verdicts or stake flows)
+  frameworks: [soc2]
+- id: 890
+  title: Screening-gated participation (design-only: no Clean SDK screening gate on campaigns or payouts; Passport evidence feeds exist at 862 and 864)
+  frameworks: [soc2]
+- id: 891
+  title: SIWE session handshake (ships in apps/api/src/auth.ts: EIP-4361 challenge text, stored single-use nonces, session tokens; no WaaP embedded-wallet path)
+  frameworks: [soc2]
+- id: 892
+  title: Pluggable connector registry (design-only proposal, conflicts with the one-wallet law: no EIP-6963 discovery and no adapter registry; the wallet surface stays Privy embedded until an RFC overturns it)
+  frameworks: [soc2]
+- id: 893
+  title: Principal binding and namespacing (design-only: principals are raw addresses; no CAIP-10 ids, no accountsChanged re-key, no chainChanged read-only guard)
+  frameworks: [soc2]
+- id: 894
+  title: Wallet signing lifecycle (design-only: no connector lifecycle with gas bands and price-lock disclosure pre-sign; voice-never-signs holds by absence)
+  frameworks: [soc2]
+- id: 895
+  title: Gap-hunt pilot protocol (design-only: no 20-50 probe pilot with pinned panel, pinned seeds, contamination lint and Wilson CIs has been run)
+  frameworks: [ai-rmf]
+- id: 896
+  title: Showcase suite minting and reproducibility pages (design-only: no external-suite minting with provenance, no case-study pages, no expert funnel)
+  frameworks: [ai-rmf]
+- id: 897
+  title: Grader fairness standard (ships in part: falseFail tracked in grader/src/eval/scorer.ts with tests, JCS and dataset canonicalization exist; no per-grader false-fail regression suite in CI)
+  frameworks: [ai-rmf]
 
 frameworks:
   owasp-top10: "OWASP Web Top 10 (2021)"

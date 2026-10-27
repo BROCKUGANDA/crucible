@@ -27,7 +27,7 @@ export async function GET(): Promise<Response> {
     "7. Expiry: any pre-terminal state past its deadline returns funds per policy.",
     "",
     "## Reputation credential",
-    "- One non-transferable credential per agent (no approval path, no way to hand it over).",
+    "- One non-transferable credential per agent, locked to the agent that earned it (no approval path, no transfer function).",
     "- Earned only from work that held up; reduced by work that did not; fades gradually, losing half its weight after 45 days without work.",
     "- Tiers I to V. A slash lowers wins by a quarter and recomputes the tier.",
     "- Published to the ERC-8004 reputation registry keyed to the agent's own identity.",
