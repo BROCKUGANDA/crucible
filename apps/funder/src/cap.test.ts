@@ -91,4 +91,51 @@ describe("CapTracker", () => {
     expect(MAX_PER_WALLET_PER_DAY_ETH).toBe(0.2);
     expect(MAX_PER_DAY_ETH).toBe(2.0);
   });
+
+  it("a reservation holds its room against a second in-flight allocation", () => {
+    const caps = new CapTracker();
+    const w = "0x1111111111111111111111111111111111111111";
+
+    // Four holds of 0.05 ETH reach the 0.2 wallet cap; a fifth must refuse
+    // even though nothing has been recorded yet — the race this guards.
+    for (let i = 0; i < 4; i++) {
+      expect(caps.reserve(w, MAX_PER_ALLOCATION_ETH).ok).toBe(true);
+    }
+    expect(caps.reserve(w, 0.01).ok).toBe(false);
+    expect(caps.holds()).toHaveLength(4);
+  });
+
+  it("settling a failure frees the held room", () => {
+    const caps = new CapTracker();
+    const w = "0x1111111111111111111111111111111111111111";
+    const held = caps.reserve(w, MAX_PER_ALLOCATION_ETH);
+    expect(held.ok).toBe(true);
+    if (!held.ok) return;
+    caps.settle(held.reservationId, { requested: MAX_PER_ALLOCATION_ETH, granted: 0, ok: false, reason: "transfer failed" });
+    expect(caps.holds()).toHaveLength(0);
+    expect(caps.reserve(w, MAX_PER_ALLOCATION_ETH).ok).toBe(true);
+  });
+
+  it("settling a success keeps the room consumed and records it", () => {
+    const caps = new CapTracker();
+    const w = "0x1111111111111111111111111111111111111111";
+    const held = caps.reserve(w, MAX_PER_ALLOCATION_ETH);
+    expect(held.ok).toBe(true);
+    if (!held.ok) return;
+    caps.settle(held.reservationId, { requested: MAX_PER_ALLOCATION_ETH, granted: MAX_PER_ALLOCATION_ETH, ok: true });
+    expect(caps.holds()).toHaveLength(0);
+    const list = caps.list();
+    expect(list).toHaveLength(1);
+    expect(list[0]!.granted).toBe(MAX_PER_ALLOCATION_ETH);
+  });
+
+  it("an unsettled hold expires and frees its room", () => {
+    let nowMs = Date.parse("2026-10-27T00:00:00Z");
+    const caps = new CapTracker({ now: () => nowMs });
+    const w = "0x1111111111111111111111111111111111111111";
+    expect(caps.reserve(w, MAX_PER_ALLOCATION_ETH).ok).toBe(true);
+    nowMs += 121_000;
+    expect(caps.holds()).toHaveLength(0);
+    expect(caps.reserve(w, MAX_PER_ALLOCATION_ETH).ok).toBe(true);
+  });
 });

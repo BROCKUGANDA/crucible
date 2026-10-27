@@ -1,6 +1,7 @@
 import {
   ContentService,
   DEFAULT_SANDBOX,
+  resolveVerifierImage,
   Sandbox,
   type FileTree,
   type SandboxSpec,
@@ -63,7 +64,10 @@ export interface LiveVerifierOptions {
   makeBench?: (spec: SandboxSpec) => Promise<Pick<Sandbox, "repoDir" | "runSuite" | "writeFile" | "cleanup">>;
 }
 
-const DEFAULT_SPEC = DEFAULT_SANDBOX;
+// Re-runs are the reproducibility claim, so this path honours the digest
+// override: `CRUCIBLE_VERIFIER_IMAGE=crucible/verifier@sha256:…` pins the
+// exact environment every re-run executes in.
+const DEFAULT_SPEC: SandboxSpec = { ...DEFAULT_SANDBOX, image: resolveVerifierImage() };
 
 export class LiveVerifier {
   private readonly argus = new Argus();

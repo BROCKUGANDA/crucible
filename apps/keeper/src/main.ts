@@ -2,6 +2,7 @@ import { createServer } from "node:http";
 import { resolve as resolvePath } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createPublicClient, createWalletClient, http } from "viem";
+import { createNonceManager, jsonRpc } from "viem/nonce";
 import { privateKeyToAccount } from "viem/accounts";
 import { foundry } from "viem/chains";
 import { Scribe, TRIALS_SOURCE } from "@crucible/indexer";
@@ -12,6 +13,7 @@ import { createSweepLoop, envKillSwitches } from "./sweep-loop.js";
 import { createArenaCrank } from "./arena.js";
 import { createGasLedger, parseBalanceFloor } from "./gas-ledger.js";
 import { resolveNotifier } from "./notify.js";
+import { createWriteQueue } from "./write-queue.js";
 
 /**
  * The Warden as a service.
@@ -102,8 +104,15 @@ export async function resolveKeeperAccount(opts: {
   const key = opts.privateKey?.trim() ?? "";
 
   // Rule 1: a key was configured — honour it, no chain interrogation.
+  // Both accounts carry a nonce manager: the sweep and arena loops share this signer, and
+  // explicit nonce sequencing is what keeps two sends in flight from colliding.
   if (key) {
-    return { account: privateKeyToAccount(key as `0x${string}`), mode: CONFIGURED_MODE };
+    return {
+      account: privateKeyToAccount(key as `0x${string}`, {
+        nonceManager: createNonceManager({ source: jsonRpc() }),
+      }),
+      mode: CONFIGURED_MODE,
+    };
   }
 
   // Rule 3 is checked before rule 2's expensive half: if the host is not loopback this is
@@ -140,7 +149,12 @@ export async function resolveKeeperAccount(opts: {
 
   // Rule 2 satisfied: loopback host, Anvil chain. The published key is public against a
   // worthless local chain, so it is the right choice here — and only here.
-  return { account: privateKeyToAccount(DEMO_RELAYER_KEY as `0x${string}`), mode: DEV_MODE };
+  return {
+    account: privateKeyToAccount(DEMO_RELAYER_KEY as `0x${string}`, {
+      nonceManager: createNonceManager({ source: jsonRpc() }),
+    }),
+    mode: DEV_MODE,
+  };
 }
 
 /**
@@ -200,6 +214,10 @@ async function boot(): Promise<void> {
    * read the receipt back — so the operating cost was unmeasured and a drained wallet arrived as a
    * silent stall rather than a number on `/health`.
    */
+  // One writer. The sweep and the arena crank share this account; the queue keeps their
+  // acting passes from overlapping in time, which the nonce manager alone cannot do.
+  const writes = createWriteQueue();
+
   const gas = createGasLedger({
     reader: crucible.publicClient,
     signer: account.address,
@@ -289,7 +307,7 @@ async function boot(): Promise<void> {
     // wall-clock time would sit on its hands for the two hours a test warp put between them.
     chainNow: async () => Number((await crucible.publicClient.getBlock()).timestamp),
     act: async (nowSeconds) => {
-      const result = await warden.sweep(scribe.state, nowSeconds);
+      const result = await writes.run(() => warden.sweep(scribe.state, nowSeconds));
       // Only a sweep that did something is recorded. A span every fifteen seconds saying
       // "nothing happened" is not evidence, it is noise: it would bury the one sweep that
       // mattered and grow the file by thousands of lines a day on an idle demo. The trace is
@@ -359,7 +377,7 @@ async function boot(): Promise<void> {
         breaker: arenaBreaker,
         flags,
         chainNow: async () => Number((await crucible.publicClient.getBlock()).timestamp),
-        act: async (nowSeconds) => arenaCrank.act(BigInt(nowSeconds)),
+        act: async (nowSeconds) => writes.run(() => arenaCrank.act(BigInt(nowSeconds))),
         onLog: (line) => console.log(`[keeper] ${line}`),
       })
     : null;

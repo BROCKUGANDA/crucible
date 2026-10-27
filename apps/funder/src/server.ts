@@ -144,8 +144,9 @@ app.post("/allocate", async (c) => {
   // what left the wallet, the same rule every ETH figure in this repo follows.
   const sized = Math.floor(requested * policy.factor * 1e6) / 1e6;
 
-  // Estimate before spend: check caps without recording.
-  const estimate = caps.estimate(wallet, sized);
+  // Reserve before spend: check the caps and hold the amount in one step, so a
+  // second allocation in flight cannot pass against the same remaining room.
+  const estimate = caps.reserve(wallet, sized);
   if (!estimate.ok) {
     caps.record(wallet, requested, 0, 0, false, estimate.reason ?? undefined, risk);
     const res: AllocateResponse = {
@@ -175,7 +176,7 @@ app.post("/allocate", async (c) => {
     reason = err instanceof Error ? err.message : String(err);
   }
 
-  caps.record(wallet, requested, estimate.estimated, granted, ok, reason, risk);
+  caps.settle(estimate.reservationId, { requested, granted, ok, reason, risk });
 
   const res: AllocateResponse = {
     ok,

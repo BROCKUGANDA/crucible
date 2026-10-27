@@ -92,15 +92,12 @@ services:
     # reached the process. The API ran with the defaults, which for the
     # limiter is "every visitor behind the proxy shares one bucket".
     #
-    # `env_file` passes the whole file, so a variable the `.env` gains later
-    # reaches the process without another edit here. The explicit
-    # `environment` block still wins for the values compose owns.
-    env_file:
-      - path: .env
-        # Not required: a fresh clone without a `.env` should still come up,
-        # with the API's own defaults. `required: false` says so explicitly
-        # rather than failing the whole stack on a missing file.
-        required: false
+    # No `env_file`: the process receives exactly the variables its code
+    # reads, named in the `environment` block below. The whole `.env` used
+    # to reach it, so a key belonging to another service (the CDP secret,
+    # the keeper signing key) was one `process.env` read away from the API.
+    # Values still come from `.env` by interpolation; only the pass-through
+    # is gone. If you add a `process.env.X` read to the API, name it here.
     environment:
       NODE_ENV: production
       PORT: 8787
@@ -136,6 +133,26 @@ services:
       CRUCIBLE_CONTENT_DIR: /content
       # The funder is a compose service; the host's FUNDER_URL is for host-run scripts.
       FUNDER_URL: http://funder:8788
+      # The remaining names the API's code reads (voice, Frenchy, passport,
+      # replay, cursor). Interpolated from `.env` like the rest; a name the
+      # code does not read does not belong here.
+      ALLOY_TTL_MS: ${ALLOY_TTL_MS:-}
+      ARENA_ADDRESS: ${ARENA_ADDRESS:-}
+      CLEAN_PASSPORT_URL: ${CLEAN_PASSPORT_URL:-}
+      CRUSIBLE_CURSOR_FILE: ${CRUSIBLE_CURSOR_FILE:-}
+      ELEVENLABS_API_KEY: ${ELEVENLABS_API_KEY:-}
+      ELEVENLABS_BASE_URL: ${ELEVENLABS_BASE_URL:-}
+      ELEVENLABS_MODEL_ID: ${ELEVENLABS_MODEL_ID:-}
+      ELEVENLABS_VOICE_ID: ${ELEVENLABS_VOICE_ID:-}
+      FRENCHY_DISABLED: ${FRENCHY_DISABLED:-}
+      FRENCHY_LLM_API_KEY: ${FRENCHY_LLM_API_KEY:-}
+      FRENCHY_LLM_BASE_URL: ${FRENCHY_LLM_BASE_URL:-}
+      FRENCHY_LLM_MODEL: ${FRENCHY_LLM_MODEL:-}
+      FRENCHY_TTS_DISABLED: ${FRENCHY_TTS_DISABLED:-}
+      IDENTITY_ATTESTORS: ${IDENTITY_ATTESTORS:-}
+      REPLAY_WINDOW_BLOCKS: ${REPLAY_WINDOW_BLOCKS:-}
+      TEAM_LEDGER_ADDRESS: ${TEAM_LEDGER_ADDRESS:-}
+      VOICE_DISABLED: ${VOICE_DISABLED:-}
     ports:
       - "${API_HOST_PORT:-8787}:8787"
     volumes:
@@ -236,9 +253,9 @@ services:
     build:
       context: .
       dockerfile: apps/funder/Dockerfile
-    env_file:
-      - path: .env
-        required: false
+    # No `env_file` here either: the funder holds the CDP credential, and
+    # it needs the CDP_* names below plus the entrypoint's base URLs —
+    # nothing else the host `.env` carries.
     environment:
       NODE_ENV: production
       FUNDER_HOST: 0.0.0.0
@@ -251,6 +268,14 @@ services:
       CDP_LIVE_API_KEY_ID: ${CDP_LIVE_API_KEY_ID:-}
       CDP_LIVE_API_KEY_SECRET: ${CDP_LIVE_API_KEY_SECRET:-}
       CDP_LIVE_API_KEY_FILE: ${CDP_LIVE_API_KEY_FILE:-}
+      # The generic fallback pair and the entrypoint's own reads (base URLs,
+      # plaintext opt-in). Without these the entrypoint cannot configure the
+      # CLI profile even though `cdpConfig` reports the process configured.
+      CDP_API_KEY_FILE: ${CDP_API_KEY_FILE:-}
+      CDP_SANDBOX_BASE_URL: ${CDP_SANDBOX_BASE_URL:-}
+      CDP_LIVE_BASE_URL: ${CDP_LIVE_BASE_URL:-}
+      CDP_ENABLE_LIVE: ${CDP_ENABLE_LIVE:-0}
+      CDP_ALLOW_PLAINTEXT_SECRETS: ${CDP_ALLOW_PLAINTEXT_SECRETS:-}
     depends_on:
       api:
         condition: service_healthy
