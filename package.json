@@ -21,6 +21,7 @@
     "format": "prettier --write \"**/*.{ts,tsx,md,json}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,md,json}\"",
     "contracts:build": "npm run build --workspace crucible-contracts",
+    "mcp:agent": "node --env-file-if-exists=.env apps/api/scripts/mcp-agent.mjs",
     "contracts:test": "npm run test --workspace crucible-contracts",
     "contracts:demo": "npm run demo --workspace crucible-contracts",
     "api:dev": "npm run dev --workspace @crucible/api",

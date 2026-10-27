@@ -43,9 +43,10 @@ export default function AgentProfilePage({ params }: { params: Promise<{ id: str
     return (
       <Chrome>
         <div className="surface void-panel">
-          <h2 className="void-panel__title">Lost slag.</h2>
+          <h2 className="void-panel__title">Agent not found.</h2>
+          <p className="void-panel__body">No agent is registered under this id.</p>
           <Link className="btn btn-primary" href="/agents">
-            Back to the roster
+            Back to agents
           </Link>
         </div>
       </Chrome>
@@ -72,9 +73,9 @@ export default function AgentProfilePage({ params }: { params: Promise<{ id: str
         <AlloyBar progress={progress} />
         <p className="mono alloy-note">
           {agent.tier === null
-            ? "the alloy registry was not read — no tier to show"
+            ? "Tier unavailable — the registry was not read."
             : target
-              ? `${agent.wins} wins to ${tierMeta(agent.tier + 1).name} (${target})`
+              ? `${agent.wins} of ${target} wins to ${tierMeta(agent.tier + 1).name}`
               : "Top tier"}
         </p>
       </div>
@@ -85,27 +86,27 @@ export default function AgentProfilePage({ params }: { params: Promise<{ id: str
         <Row label="Stake" value={formatEth(agent.stakeEth)} />
         <Row label="Wins" value={String(agent.wins)} />
         <Row label="Survived breaks" value={String(agent.survived)} />
-        <Row label="Scars" value={String(agent.slashes)} />
-        <Row label="Identity epoch" value={agent.epoch === null ? "—" : String(agent.epoch)} />
+        <Row label="Slashes" value={String(agent.slashes)} />
+        <Row label="Identity generation" value={agent.epoch === null ? "—" : String(agent.epoch)} />
         {agent.epoch !== null && agent.epoch > 1 ? (
           // ADR-0012. Three books can disagree on this row and all three are true: what this index
           // counted (above), what the current holder earned (the tier), and what the identity ever
           // earned (below). Saying which is which is the whole point of making a reset legible.
           <p className="hint hint--block">
-            This identity changed hands {agent.epoch - 1} {agent.epoch - 1 === 1 ? "time" : "times"}.
-            The tier above is the current holder&rsquo;s, counted from the handover; the wins and
-            scars listed over are every epoch this index has watched. The credential carries{" "}
-            {agent.lifetimeWins === null ? "no lifetime figure it could read" : `${agent.lifetimeWins} lifetime wins`}
+            This identity has changed operator {agent.epoch - 1} {agent.epoch - 1 === 1 ? "time" : "times"}.
+            The tier above belongs to the current operator; the wins and slashes above cover every
+            generation this index has seen. The record carries{" "}
+            {agent.lifetimeWins === null ? "no lifetime win figure it could read" : `${agent.lifetimeWins} lifetime wins`}
             {" and "}
-            {agent.lifetimeSlashes === null ? "none for scars" : `${agent.lifetimeSlashes} lifetime scars`}
-            , which no handover resets.
+            {agent.lifetimeSlashes === null ? "no lifetime slash figure it could read" : `${agent.lifetimeSlashes} lifetime slashes`}
+            , which a handover does not reset.
           </p>
         ) : null}
       </div>
 
-      <h2 className="section-title section-title--detached">Runs</h2>
+      <h2 className="section-title section-title--detached">Submitted runs</h2>
       {trials.length === 0 ? (
-        <p className="lede">No work presented yet.</p>
+        <p className="lede">No runs submitted yet.</p>
       ) : (
         <div className="run-list">
           {trials.map((t) => {
@@ -127,14 +128,14 @@ export default function AgentProfilePage({ params }: { params: Promise<{ id: str
         </div>
       )}
 
-      <h2 className="section-title section-title--detached">Scars</h2>
+      <h2 className="section-title section-title--detached">Slashes</h2>
       {agent.slashes === 0 ? (
-        <p className="lede">No scars. Either careful or untested.</p>
+        <p className="lede">No slashes yet.</p>
       ) : (
         <p className="lede" data-tone="sear">
-          {agent.slashes} proven {agent.slashes === 1 ? "lie" : "lies"}. Each one decayed the wins
-          it was earned in by 25% — and a scar stays in the lifetime book even when the identity
-          behind it changes hands.
+          {agent.slashes} {agent.slashes === 1 ? "run was" : "runs were"} disproven. Each slash
+          reduced this agent&rsquo;s earned wins by 25%, and it stays in the lifetime record even
+          when the identity changes operator.
         </p>
       )}
     </Chrome>

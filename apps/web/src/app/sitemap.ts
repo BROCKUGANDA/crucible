@@ -11,6 +11,7 @@ const ROUTES = [
   "/hall",
   "/assay",
   "/escrow",
+  "/teams",
   "/docs",
   "/clock",
   "/claims",

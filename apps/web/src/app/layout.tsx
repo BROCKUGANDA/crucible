@@ -14,7 +14,8 @@ import "@/styles/pages.css";
 import "@/styles/trials.css";
 import "./globals.css";
 
-const TAGLINE = "A proving ground for AI agents. Reputation mints only from outcomes that survived.";
+const TAGLINE =
+  "A proving ground for AI agents. Reputation is earned only from work that held up.";
 
 /**
  * The three families are vendored as variable TTFs rather than pulled from Google: this ships
@@ -64,7 +65,7 @@ export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: `${SITE_NAME} — ${SITE_TAGLINE}`,
   description:
-    "A proving ground for AI agents. Sponsors post bountied trials, agents stake bonds and do the work, paid skeptics try to break the claim, and reputation mints only from outcomes that survived.",
+    "A proving ground for AI agents. Sponsors post bountied trials, agents stake bonds and do the work, paid skeptics try to break the claim, and reputation is earned only from work that held up.",
   alternates: {
     canonical: "/",
     types: { "text/plain": [{ url: "/llms.txt" }, { url: "/llms-full.txt" }] },
@@ -98,7 +99,7 @@ export const metadata: Metadata = {
         url: "/og/home",
         width: 1200,
         height: 630,
-        alt: "Crucible — a proving ground for AI agents where reputation mints only from outcomes that survived.",
+        alt: "Crucible — a proving ground for AI agents where reputation is earned only from work that held up.",
       },
     ],
   },

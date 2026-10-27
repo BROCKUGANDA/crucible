@@ -321,6 +321,18 @@ async function readAlloy(agentId: number): Promise<AlloyState | null> {
 // the file it sat in its temporal dead zone and the container crash-looped on every boot with
 // "Cannot access protocolFeeBps before initialization".
 let protocolFeeBps: number | null = null;
+/**
+ * The escrow's own trial bounds, read once at boot. They are `public constant`s — they cannot move
+ * under a running deployment — so one read per process is enough and no sweep is needed. The MCP
+ * `prepare_create_trial` refuses calldata the contract would reject using these, not a copy typed
+ * into this repository.
+ */
+let trialLimits: {
+  minRunWindowSec: number;
+  minBreakWindowSec: number;
+  maxBreakWindowSec: number;
+  maxRewardWei: bigint;
+} | null = null;
 // Same rule as the fee above, and the same crash if it is broken: `sweepAlloy` runs at module
 // init and now reads these too, so they cannot sit below it.
 let treasuryCreditWei: bigint | null = null;
@@ -521,6 +533,48 @@ async function readProtocolFee(): Promise<void> {
 await readProtocolFee();
 
 /**
+ * Read the escrow's trial bounds: `MIN_RUN_WINDOW`, `MIN_BREAK_WINDOW`, `MAX_BREAK_WINDOW` and
+ * `MAX_REWARD`. Four `eth_call`s, once, because they are public constants.
+ *
+ * The MCP `prepare_create_trial` builder needs them: without a bound it will encode a `breakWindow`
+ * the contract reverts on, and the caller finds that out from a failed transaction rather than from
+ * the tool that was supposed to help. Null on failure is allowed and is reported to the agent as
+ * `limitsChecked: false` — the tool says which checks it actually did.
+ */
+async function readTrialLimits(): Promise<void> {
+  const constant = (name: string) =>
+    publicClient.readContract({
+      address: trialsAddress,
+      abi: [{ type: "function", name, stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] }],
+      functionName: name,
+    }) as Promise<bigint>;
+  try {
+    const [minRun, minBreak, maxBreak, maxReward] = await Promise.all([
+      constant("MIN_RUN_WINDOW"),
+      constant("MIN_BREAK_WINDOW"),
+      constant("MAX_BREAK_WINDOW"),
+      constant("MAX_REWARD"),
+    ]);
+    trialLimits = {
+      minRunWindowSec: Number(minRun),
+      minBreakWindowSec: Number(minBreak),
+      maxBreakWindowSec: Number(maxBreak),
+      maxRewardWei: maxReward,
+    };
+    console.log(
+      `[crucible] trial bounds: run window >= ${trialLimits.minRunWindowSec}s, break window ` +
+        `${trialLimits.minBreakWindowSec}…${trialLimits.maxBreakWindowSec}s, reward <= ${trialLimits.maxRewardWei} wei`,
+    );
+  } catch (err) {
+    console.error(
+      `[crucible] could not read the trial bounds: ${err instanceof Error ? err.message : String(err)} — ` +
+        "MCP will build createTrial without checking them and will say limitsChecked:false",
+    );
+  }
+}
+await readTrialLimits();
+
+/**
  * `credit[treasury]` — what the treasury can actually withdraw.
  *
  * The settlement fee is one income stream; the other is the treasury's share of every slashed
@@ -702,6 +756,8 @@ const app = createApp({
   treasuryCreditWei: () => treasuryCreditWei,
   // Per-wallet claims for the escrow explorer, read on request rather than swept.
   creditOf: readCreditOf,
+  // The bounds the MCP builders check against, read once from the contract.
+  trialLimits,
   humanAttestors,
   passportEligibility,
   indexStatus: () => scribe.status,

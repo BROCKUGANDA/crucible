@@ -53,8 +53,8 @@ describe("the landing page's money claims, bound to the escrow", () => {
     expect(den).toBe(10_000);
     // 3000/10000 is what _settleSlash:738 computes, and the page says it in words.
     expect(num / den).toBeCloseTo(0.3, 10);
-    expect(page).toContain("three-tenths of the agent's bond");
-    expect(page).toContain("takes three-tenths of the bond");
+    expect(page).toContain("30% of the agent's bond");
+    expect(page).toContain("challenger takes 30% of the bond");
     // The sentence the v2.2 audit found live: the skeptic does not take the bond.
     expect(page).not.toMatch(/skeptic takes the (whole )?bond/i);
   });
@@ -121,7 +121,7 @@ describe("the landing page's money claims, bound to the escrow", () => {
     const decayImplemented =
       readFileSync(STANDING, "utf8").includes("DEFAULT_HALF_LIFE_DAYS") &&
       readFileSync(API_APP, "utf8").includes("computeStanding");
-    const promisesFade = /fades with the age|half-life/i.test(page);
+    const promisesFade = /fades gradually|half its weight every 45 days/i.test(page);
     expect(promisesFade).toBe(decayImplemented);
   });
 

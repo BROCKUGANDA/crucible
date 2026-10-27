@@ -93,6 +93,28 @@ describe("onramp session proxy", () => {
     expect((await res.json()).configured).toBe(false);
   });
 
+  it("reports an unconfigured funder as unconfigured, not as a broken one", async () => {
+    const f = await fakeFunder(503, {
+      ok: false,
+      configured: false,
+      reason: "No CDP credentials are configured on this host",
+    });
+    try {
+      const app = createApp({ getModel: () => emptyModel(), funderUrl: f.url }, { rateLimit: false });
+      const res = await app.request("/onramp/session", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ wallet: WALLET }),
+      });
+      expect(res.status).toBe(503);
+      expect((await res.json()).configured).toBe(false);
+      expect(res.headers.get("cache-control")).toBe("no-store");
+    } finally {
+      await f.close();
+      funder = null;
+    }
+  });
+
   it("does not relay a non-Coinbase URL from the funder", async () => {
     const f = await fakeFunder(200, { ok: true, url: "https://evil.example/buy" });
     try {

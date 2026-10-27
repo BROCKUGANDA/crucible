@@ -23,10 +23,11 @@ const NAV_PRIMARY = [
 ];
 
 const NAV_MORE = [
-  { href: "/forge", label: "Forge" },
-  { href: "/bounties", label: "The Break" },
-  { href: "/clock", label: "The Clock" },
-  { href: "/assay", label: "Assay" },
+  { href: "/forge", label: "Register" },
+  { href: "/bounties", label: "Challenges" },
+  { href: "/clock", label: "How it settles" },
+  { href: "/assay", label: "Status" },
+  { href: "/teams", label: "Teams" },
   { href: "/docs", label: "Docs" },
 ];
 
@@ -307,7 +308,7 @@ export function ColdForge({ line, cta, href }: { line: string; cta: string; href
 export function SignalLost({ message }: { message: string }) {
   return (
     <div className="surface signal-lost" role="alert" data-tone="sear">
-      <strong>Signal lost.</strong> {message}
+      <strong>Couldn&apos;t reach the chain.</strong> {message}
     </div>
   );
 }

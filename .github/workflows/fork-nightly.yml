@@ -60,32 +60,59 @@ jobs:
       # The refusal is the point of this job. `ci.yml` may skip when the credential
       # is absent because it has other work to do; this job has nothing else to do,
       # so an absent credential means the obligation went unmet and must be red.
-      - name: require the RPC
+      #
+      # The endpoint is configuration, not a secret, and this repository has never had an
+      # Actions secret set at all — which is why every scheduled nightly was red. The runner is
+      # the deployment box, and the deployment box already holds both endpoints in its `.env`.
+      # Read them from there when no secret supplies them, so one value keeps one owner, and say
+      # in the log which source answered. Absent from both is still a hard refusal.
+      - name: resolve the mainnet endpoints
         env:
-          MAINNET_RPC_URL: ${{ secrets.MAINNET_RPC_URL }}
+          SECRET_MAINNET_RPC_URL: ${{ secrets.MAINNET_RPC_URL }}
+          SECRET_MAINNET_RPC_FALLBACK_URL: ${{ secrets.MAINNET_RPC_FALLBACK_URL }}
         run: |
-          if [ -z "${MAINNET_RPC_URL}" ]; then
-            echo "::error::MAINNET_RPC_URL is not configured, so the ERC-8004 fork tests" \
-                 "cannot run. This is the job whose only purpose is to run them — a green" \
-                 "nightly here would mean the bridge went a full day unexercised."
+          set -euo pipefail
+          deploy_env="/home/ubuntu/crucible/.env"
+
+          read_key() {
+            # Only the named key is ever printed; the file holds credentials this job must not
+            # put in its own log.
+            [ -f "$deploy_env" ] || return 0
+            grep -m1 "^$1=" "$deploy_env" | cut -d= -f2- || true
+          }
+
+          url="${SECRET_MAINNET_RPC_URL:-$(read_key MAINNET_RPC_URL)}"
+          fallback="${SECRET_MAINNET_RPC_FALLBACK_URL:-$(read_key MAINNET_RPC_FALLBACK_URL)}"
+
+          if [ -z "$url" ]; then
+            echo "::error::MAINNET_RPC_URL is configured nowhere — no Actions secret, and no" \
+                 "$deploy_env key either — so the ERC-8004 fork tests cannot run. This is the" \
+                 "job whose only purpose is to run them; a green nightly here would mean the" \
+                 "bridge went a full day unexercised."
             exit 1
           fi
 
+          echo "MAINNET_RPC_URL=$url" >> "$GITHUB_ENV"
+          if [ -n "$fallback" ]; then echo "MAINNET_RPC_FALLBACK_URL=$fallback" >> "$GITHUB_ENV"; fi
+          echo "primary: $url"
+          echo "fallback: ${fallback:-none}"
+          echo "source: $([ -n "${SECRET_MAINNET_RPC_URL:-}" ] && echo 'Actions secret' || echo "the deployment .env on this runner")"
+
       - name: fork tests
-        env:
-          MAINNET_RPC_URL: ${{ secrets.MAINNET_RPC_URL }}
         run: |
           set -euo pipefail
-          # `-vv` because a fork failure is about which remote call disagreed, and
-          # a summary line does not carry that.
+          # `npm run fork:test` rather than one `forge --fork-url`: it tries the primary and only
+          # then the fallback, which is the measured fact here — on 2026-10-26 both endpoints
+          # report chain id 1, but publicnode had pruned block 24,846,426 and only drpc could
+          # serve the fork. A single hard-wired URL would have called that a broken bridge.
           #
           # Assert the tests actually ran: four of them are guarded by `vm.skip`
           # when no fork is attached, and a run that reported "4 skipped" here would
           # be the same silent green this job exists to eliminate.
-          output=$(forge test --fork-url "$MAINNET_RPC_URL" --match-contract ForkTests -vv)
+          output=$(npm run --silent fork:test 2>&1)
           echo "$output"
-          if ! echo "$output" | grep -qE "[1-9][0-9]* passed"; then
-            echo "::error::ForkTests reported no passing tests — the suite ran but" \
-                 "asserted nothing. Check the vm.skip guard and the fork URL."
+          if ! echo "$output" | grep -qE "[1-9][0-9]* (tests )?passed"; then
+            echo "::error::the fork suite reported no passing tests — it ran but" \
+                 "asserted nothing. Check the vm.skip guard and the fork URLs."
             exit 1
           fi
