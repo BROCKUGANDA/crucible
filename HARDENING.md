@@ -1163,6 +1163,30 @@ guards is the decoration it exists to detect.
   path, no bridge, native ETH settlement, `FEE_BPS = 500`. Reading them remains opt-in — `ci.yml`'s
   fork job still skips loudly without a credential, so CI is never on a third party's uptime.
 
+- **An external MCP agent completed a trial, and the surface learned two refusals from it (gate 880,
+  2026-10-27).** `npm run mcp:agent` is the client: reads the board, asks the four `prepare_*` tools
+  for calldata, signs with an Anvil test key, broadcasts, signs the EIP-712 `Run` digest itself (no
+  tool can do that step — the contract only accepts the runner's signature), submits, and then reads
+  the trial back through MCP. Fifteen checks on a live chain, ending with the trial `judging` and the
+  runHash equal to the one it signed. Two of its failures were the server's, not the client's:
+  `prepare_create_trial` would encode a break window the contract reverts with `BadWindow`, so the
+  bounds are now read off the chain at boot (`MIN_RUN_WINDOW`, `MIN_BREAK_WINDOW`,
+  `MAX_BREAK_WINDOW`, `MAX_REWARD`) and a caller is refused before spending gas — and when a host has
+  not read them, the answer says `limitsChecked:false` rather than implying a check. Separately a host
+  with no chain id was still returning unsigned calldata; all four builders refuse that now, because
+  calldata with no chain named is a signature that can be replayed elsewhere. 11 tests in
+  `apps/api/test/mcp-limits.test.ts`; three mutations caught (bounds skipped, `limitsChecked`
+  hardcoded, the chain guard disabled). **The client bug that made this worth doing:** the first runs
+  failed in *my* unwrap helper, which returned `parsed.data ?? parsed` — and one builder's own field
+  is named `data` (the calldata), so the agent silently received a hex string instead of an object
+  and reported the chain id as missing. A response shape has to be read, not assumed.
+- **Registering a line ending is a real edit (2026-10-27).** `docs/gates.yml` is stored LF with the
+  worktree mixed, so a script that rewrote the file after splitting on `/\r?\n/` produced a
+  1400-line diff for a 4-line change — exactly the "buries a real diff under noise" failure AGENTS.md
+  warns about, in the opposite direction. Restored from HEAD and re-applied with a byte-preserving
+  edit; the register's diff is now 6/0 and the generated matrix 4/2. Check `git diff --numstat` on
+  every file touched by a script that rewrites it.
+
 ## Still open from this pass, by severity
 
 These are known and intentional, not claims that the software is safe. Ordered by how

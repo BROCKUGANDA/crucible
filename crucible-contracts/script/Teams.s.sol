@@ -113,8 +113,7 @@ contract Teams is Script {
     function _attest(bytes32 teamKey, bytes32 stageHash, uint256 deadline, uint256 signerKey) internal {
         address signer = vm.addr(signerKey);
         uint256 seq = ledger.team(teamKey).stageCount;
-        bytes32 structHash =
-            keccak256(abi.encode(ledger.STAGE_TYPEHASH(), teamKey, stageHash, seq, signer, deadline));
+        bytes32 structHash = keccak256(abi.encode(ledger.STAGE_TYPEHASH(), teamKey, stageHash, seq, signer, deadline));
         bytes32 digest = keccak256(abi.encodePacked("\x19\x01", ledger.DOMAIN_SEPARATOR(), structHash));
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(signerKey, digest);
 
@@ -127,8 +126,7 @@ contract Teams is Script {
         view
         returns (bytes memory)
     {
-        bytes32 structHash =
-            keccak256(abi.encode(ledger.TEAM_TYPEHASH(), teamKey, member, shareBps, deadline));
+        bytes32 structHash = keccak256(abi.encode(ledger.TEAM_TYPEHASH(), teamKey, member, shareBps, deadline));
         bytes32 digest = keccak256(abi.encodePacked("\x19\x01", ledger.DOMAIN_SEPARATOR(), structHash));
         uint256 key = member == vm.addr(pkWorker) ? pkWorker : (member == vm.addr(pkCritic) ? pkCritic : pkLead);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(key, digest);

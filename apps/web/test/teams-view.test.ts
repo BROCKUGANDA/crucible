@@ -19,7 +19,7 @@ import {
 
 function team(over: Partial<TeamRow> = {}): TeamRow {
   return {
-    teamKey: "0x53228c6de8ea8e72bc48ccf8e7ce7899cbb5490d296b84a8cae9b89731d43e3b",
+    teamKey: "0x" + "11".repeat(32),
     lead: "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
     memberCount: 3,
     stageCount: 2,
@@ -27,13 +27,13 @@ function team(over: Partial<TeamRow> = {}): TeamRow {
     held: "0",
     stages: [
       {
-        stageHash: "0xcfeedaa2b60a59b96750a7c369d93cc8d30b0bc9a27f4368111e9aab3297f921",
+        stageHash: "0xcfcfcfcfcfcfcfcfcfcfcfcfcfcfcfcfcfcfcfcfcfcfcfcfcfcfcfcfcfcfcfcf",
         member: "0x9965507d1a55bcc2695c58ba16fb37d819b0a4dc",
         seq: 2,
         blockNumber: 75,
       },
       {
-        stageHash: "0x76aca8ba4ca7935024ff4fda66b7cab4bd0b0bd8b730ed4dee507dbe575bd8aa",
+        stageHash: "0x7676767676767676767676767676767676767676767676767676767676767676",
         member: "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65",
         seq: 1,
         blockNumber: 74,

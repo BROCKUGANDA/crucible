@@ -30,7 +30,7 @@ import {
 import { parseAttestationProof, verifyAttestation } from "./attestation.js";
 import { createPassportSource, type PassportCheck, type PassportEligibility } from "./passport.js";
 import { type ContentLookup, type ContentRead } from "./content.js";
-import { createMcpHandler } from "./mcp.js";
+import { createMcpHandler, type TrialLimits } from "./mcp.js";
 import { rateLimit } from "./rate-limit.js";
 import { dlq } from "./dlq.js";
 import { TickPump } from "./tick-pump.js";
@@ -128,6 +128,12 @@ export interface ApiDeps {
    * exist, and a 404 would say otherwise.
    */
   contentLookup?: ContentLookup;
+  /**
+   * The escrow's own trial bounds, read off the chain at boot (see `readTrialLimits`). Absent means
+   * this process never read them, and `prepare_create_trial` then reports `limitsChecked:false`
+   * instead of implying it validated a window it has no number for.
+   */
+  trialLimits?: TrialLimits | null;
   /**
    * Addresses whose signatures count as a human attestation. Empty means the source is
    * unconfigured and the evidence route says so — the same honesty rule as Passport, minus
@@ -532,6 +538,8 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
     getModel: deps.getModel,
     ...(deps.alloyState ? { alloyState: deps.alloyState } : {}),
     now: () => deps.indexStatus?.().headTimestamp ?? null,
+    // The bounds the escrow enforces, so a builder cannot hand out calldata the contract rejects.
+    ...(deps.trialLimits ? { limits: deps.trialLimits } : {}),
   });
 
   /**
