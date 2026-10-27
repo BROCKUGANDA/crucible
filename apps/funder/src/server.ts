@@ -33,12 +33,16 @@ const identityUrl = (process.env.IDENTITY_API_URL ?? "http://127.0.0.1:8787").tr
 
 const cfg = cdpConfig();
 const problem = credentialProblem(cfg);
+const configured = problem === null;
 if (problem) {
-  console.error(problem);
-  process.exit(2);
+  // A missing key is a configuration state, not a reason to crash the container. The funder
+  // answers `/health` with `configured:false`, and both money paths refuse with that reason;
+  // the API reports the same fact instead of a dead socket. Credentials can be supplied later
+  // without changing the image.
+  console.error(`[funder] starting WITHOUT CDP credentials; money paths will refuse.\n${problem}`);
+} else {
+  console.log(`[funder] CDP ${cfg.envName} · ${NETWORK} · ${cfg.baseUrl}`);
 }
-
-console.log(`[funder] CDP ${cfg.envName} · ${NETWORK} · ${cfg.baseUrl}`);
 
 const caps = new CapTracker();
 const app = new Hono();
@@ -49,7 +53,13 @@ function isEthAddress(raw: string): boolean {
 }
 
 app.get("/health", (c) => {
-  const health: HealthResponse = { ok: true, service: "funder", network: NETWORK };
+  const health: HealthResponse = {
+    ok: true,
+    service: "funder",
+    network: NETWORK,
+    configured,
+    reason: configured ? null : "CDP credentials are not configured on this host",
+  };
   return c.json(health);
 });
 
@@ -75,6 +85,24 @@ app.post("/allocate", async (c) => {
       },
       400,
     );
+  }
+
+  if (!configured) {
+    const res: AllocateResponse = {
+      ok: false,
+      wallet,
+      requestedEth: requested.toString(),
+      grantedEth: null,
+      transferId: null,
+      reason: "funder is not configured: CDP credentials are missing",
+      risk: {
+        pUniqueHuman: null,
+        factor: 0,
+        reason: "funder is not configured",
+        available: false,
+      },
+    };
+    return c.json(res, 503);
   }
 
   // What the identity service knows about this wallet, before any caps are applied.
@@ -179,6 +207,14 @@ app.post("/onramp/session", async (c) => {
   const wallet = String(body.wallet ?? "").trim();
   if (!isEthAddress(wallet)) {
     return c.json({ error: "wallet must be a 0x-prefixed 20-byte Ethereum address" }, 400);
+  }
+
+  if (!configured) {
+    c.header("Cache-Control", "no-store");
+    return c.json(
+      { ok: false, configured: false, reason: "No CDP credentials are configured on this host" },
+      503,
+    );
   }
 
   try {

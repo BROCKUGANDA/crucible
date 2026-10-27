@@ -28,4 +28,7 @@ export interface HealthResponse {
   ok: boolean;
   service: string;
   network: string;
+  /** False when the process is up but has no CDP credential; money paths refuse. */
+  configured: boolean;
+  reason: string | null;
 }
