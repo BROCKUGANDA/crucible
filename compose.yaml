@@ -184,6 +184,9 @@ services:
       # empty means "publish the balance, raise no alarm", and a threshold set here in the file
       # would be this repository deciding what someone else's signer is worth.
       KEEPER_MIN_BALANCE_WEI: ${KEEPER_MIN_BALANCE_WEI:-}
+      # Push channel for Warden notifications. Empty disables delivery (gate 807): the
+      # keeper attaches webhookNotifier only when this is set, and never logs the value.
+      WARDEN_WEBHOOK_URL: ${WARDEN_WEBHOOK_URL:-}
       # The trace spine. Only sweeps that actually acted are recorded, so an idle demo adds
       # nothing to the file — a line here means a trial was finalized or reclaimed, or an
       # action was skipped, with the reason. It is a projection of things the chain already

@@ -1186,6 +1186,81 @@ guards is the decoration it exists to detect.
   warns about, in the opposite direction. Restored from HEAD and re-applied with a byte-preserving
   edit; the register's diff is now 6/0 and the generated matrix 4/2. Check `git diff --numstat` on
   every file touched by a script that rewrites it.
+- **Abstention is scored, and the guess has an interval (gate 824, 2026-10-27, `a8572b6`).** The
+  register said the grader scored no abstention, and the tree agreed: `packages/eval` exported a
+  per-probe reward shape with no caller, and no suite produced an unanswerable probe.
+  `grader/src/eval/abstention.ts` now authors 40 content-labelled probes — 30 whose evidence does
+  not settle the claim (missing, truncated, contradictory, ambiguous, stale or unverifiable) and 10
+  controls whose arithmetic or clause reading does settle it (5 PASS, 5 FAIL) — and
+  `abstentionMetrics` computes the two rates that either one alone would let a model game:
+  abstention on the unanswerable half and false abstention on the answerable half. Scorecard rows
+  carry both with 95% Wilson intervals, the share of unanswerable probes guessed at confidence
+  >= 0.8, a Brier score over every probe, and the failures themselves;
+  `npm run arena:grade -- --suite abstention --seed pilot-003` prints and pins them, joining each
+  failure to its claim/evidence payload. **Measured:** grader 282 tests (was 257), eval 35 (was 34),
+  `verify:all` green; the seeded stub run pinned a record whose 20 trajectories each carry their
+  payload. **Mutation-proven:** the Wilson count boundary and default quantile, the
+  overconfidence `>=`, the gold split, the Brier outcome, the n=0 null, the confidence range, the
+  failure kind, the scorer attachment, the `allSuites` inclusion and a flipped suite label each
+  turned the suite red; the trajectory join was proven by removing it and watching the pinned
+  record fall from 20 to 0. **What this does not prove:** the stub is code, not a model — no live
+  frontier panel has been run here, so no failure rate is a claim about any provider. **Commit
+  note:** the 818/824 register titles were swept into sibling commit `43d6834` while this slice was
+  uncommitted; `git show HEAD:docs/gates.yml` carries them, and `a8572b6` is the code.
+
+## Unresolved from the 2026-10-27 pass (continues the open list)
+
+23. **`apps/api` reported one failing test once, inside a saturated fan-out, and it has not been
+   named.** During the 2026-10-27 MCP work, `npx vitest run` in `apps/api` returned
+   `1 failed | 239 passed` while a full `npm run verify:all` was running on the same box. The same
+   tree then passed 8 consecutive times, including one run deliberately placed *inside* a live
+   `verify:all` to reproduce the condition — so this is not a claim that the product is fine, it is
+   a claim that the instrument has not been pinned. The suspects are named, not assumed: three
+   assertions in this workspace depend on elapsed time on a machine that is also running a dozen
+   other vitest fleets — `test/stream-latency.test.ts:261-262` (`worst < 750ms`, `median < 400ms`),
+   `test/stream-latency.test.ts:281` (crowd no more than `alone + 250ms`), `test/security.test.ts:373`
+   (a request refused inside 2000ms) and the 4-second notification poll at `test/mcp.test.ts:153`.
+   Item 22 above is the same shape in `apps/juror` with a *proven* mechanism (`EPERM` on a rename in
+   the machine-wide temp); here the mechanism is only consistent, not observed.
+   **What would name it, and what I refused to do instead:** run the suite under a counted load until
+   one of those four fails, read its reported numbers, then decide whether the right change is a
+   self-normalizing budget (ratio to a control measurement, like line 281 already does) or a
+   non-wall-clock assertion. Retuning a threshold to make a red run go away is the thing this
+   repository's own gate rule forbids, so no number was touched. If a future agent sees one
+   `apps/api` failure in a whole-repo run, re-run the workspace alone before believing a regression,
+   and write down which assertion fired — that record is what this item is still missing.
+24. **A mainnet render exists, but the demo script cannot seed one (2026-10-27, unresolved).**
+   The node half works and is measured: `anvil --fork-url https://eth.drpc.org
+   --fork-block-number 24846426 --chain-id 31337` answers `eth_blockNumber = 0x17b205a` (the pin the
+   fork tests use, `crucible-contracts/test/Fork.t.sol:47`) with chain id 31337, so the stack's chain
+   guards accept it. What blocks is `Demo.s.sol`: `ArgusCourt.bondSeat` for the **fifth** seat reverts
+   `OutOfFunds` inside forge's simulation, after seats 1-4 bonded (traces show
+   `SeatBonded(seat: 0xa0Ee…)` succeed and the next frame die at 21,064 gas). Root cause is NOT
+   established, and the two obvious explanations were each falsified by measurement rather than
+   argument: the seat account is not broke (`eth_getBalance` on the fork reports 10,000 ETH for every
+   index 1,2,3,9,10,11), and it is not gas price (`--gas-price 1` changes nothing). The remaining
+   candidates are that forge's simulator re-derives fork state in a way that loses the script's own
+   in-simulation transfers to seats past anvil's funded ten, or that those transfers are addressed to
+   different addresses than `vm.addr(keys[i])` produces. **What this costs:** no browser-checkable
+   render over real mainnet state, which is what gate 838's "verify this escrow against a mainnet
+   chain" story would have wanted. **Cheapest next probe:** run `forge script script/Demo.s.sol
+   --target-contract Demo -vvvv` and read the `TRANSFER` frames in the funding loop against the
+   address the fifth `startBroadcast` signs from — one run, and it either names the mechanism or
+   eliminates the last two hypotheses. No assertion or script was edited to get past it.
+25. **`/teams` renders on the deployed site, and it renders an honest absence (2026-10-27).**
+   `https://crucible.svalley.tech/teams` returns 200 and says "This host is not indexing a team
+   ledger — no TeamLedger address on this host. That is a fact about the deployment, not a count of
+   teams: the zero is not measured", which is the `projected: false` branch working on the real URL
+   with the real API. The `ready` branch is proven on a locally seeded chain (3 members, 2 attested
+   stages, `totalCredit 0.6 ETH`, `heldTotal 0`). **Why the live box cannot show a team yet, and why
+   it is not a deploy to wait for:** `deploy.yml` states its own design — "anvil is never restarted,
+   the seed service is built and never run" — because a deploy must not move money or rewrite the
+   chain. The only thing that creates a `TeamLedger` is the seed, so on a long-lived chain it will
+   never exist: this needs an explicit, additive operator action (run `Teams.s.sol` against the
+   running node, add `TEAM_LEDGER_ADDRESS` to `/run/crucible/deployed.env`, recreate `api`), which
+   writes new blocks and a real 0.6-ETH test funding + split to the shared demo chain. That is a
+   chain-state change, not a page change, so it was left for the owner to ask for rather than done
+   under a "make it live" instruction.
 
 ## Still open from this pass, by severity
 

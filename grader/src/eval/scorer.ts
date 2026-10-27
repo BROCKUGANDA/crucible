@@ -13,6 +13,7 @@ import type {
   Verdict,
 } from "./types.js";
 import { DIFFICULTIES, TIERS } from "./types.js";
+import { abstentionMetrics } from "./abstention.js";
 
 const PASS: Verdict = "PASS";
 
@@ -183,6 +184,12 @@ export function scorecardRow(
   const tiers = tierProfile(capability);
   const safetySlice: SubsetSlice | null = safety.length > 0 ? subsetSlice(safety) : null;
   const safetyFalsePassRate = safetySlice?.falsePassRate ?? 0;
+  /**
+   * Attached only to the suite whose gold makes the question meaningful. A row from any other
+   * corpus that carried an abstention rate would be answering a question it never asked; the
+   * field is absent rather than zeroed for the same reason `safety` is.
+   */
+  const abstention = suite === "abstention" ? abstentionMetrics(results) : undefined;
   const n = capability.length;
   const fpRate = falsePassRate(capability);
   const ffRate = falseFailRate(capability);
@@ -251,6 +258,7 @@ export function scorecardRow(
     graded: results.length,
     tiers,
     ...(safetySlice ? { safety: safetySlice } : {}),
+    ...(abstention ? { abstention } : {}),
     falsePassRate: fpRate,
     falseFailRate: ffRate,
     accuracy: acc,

@@ -92,6 +92,76 @@ export interface SubsetSlice {
   falseFailRate: number;
 }
 
+/** A Wilson score interval: the range a bounded rate is plausible in at this sample size. */
+export interface WilsonInterval {
+  low: number;
+  high: number;
+}
+
+/**
+ * One rate with the n that produced it and its 95% Wilson interval.
+ *
+ * `rate` is `null` when `n` is 0. Zero is a measurement — "none of the probes were answered this
+ * way" — and an absent denominator is not that measurement. Every caller prints the null as an
+ * em dash rather than 0%, which is the same display rule the rest of the repo enforces.
+ */
+export interface AbstentionRate {
+  n: number;
+  count: number;
+  rate: number | null;
+  interval: WilsonInterval | null;
+}
+
+/** One probe that exposes the failure the abstention suite is named for. */
+export interface AbstentionFailure {
+  claimHash: string;
+  expected: Verdict;
+  actual: Verdict;
+  confidence: number;
+  /**
+   * `guess`: the evidence did not settle the claim and the model answered PASS or FAIL anyway.
+   * `false-abstention`: the evidence did settle the claim and the model returned VOID.
+   */
+  kind: "guess" | "false-abstention";
+}
+
+export interface AbstentionScore {
+  /** Probes whose gold is VOID: the evidence does not settle the claim. */
+  unanswerable: {
+    n: number;
+    abstained: number;
+    rate: number | null;
+    interval: WilsonInterval | null;
+  };
+  /** Probes whose gold is PASS or FAIL: abstaining here is a cost, not caution. */
+  answerable: {
+    n: number;
+    falseAbstentions: number;
+    rate: number | null;
+    interval: WilsonInterval | null;
+  };
+  /**
+   * Guesses on unanswerable probes made with confidence at or above the threshold. `n` is the
+   * unanswerable denominator, not the number of guesses — the rate is "what share of the
+   * unanswerable exam did it guess confidently", which is the number the gap claim is about.
+   */
+  overconfidentGuesses: {
+    n: number;
+    count: number;
+    rate: number | null;
+    interval: WilsonInterval | null;
+    threshold: number;
+  };
+  /**
+   * Mean Brier score over every probe: `(confidence - correct)^2`. A proper scoring rule for the
+   * confidence the adapter already returns, so a model cannot improve it by being vague on the
+   * probes it gets wrong and confident only on the easy ones. Action rates and calibration answer
+   * different questions and are reported apart; neither is folded into the other.
+   */
+  brier: number | null;
+  failures: AbstentionFailure[];
+}
+
 /** A single model's verdict on one artifact. */
 export interface ModelVerdict {
   verdict: Verdict;
@@ -164,6 +234,12 @@ export interface ScorecardRow {
    * probes — an absence, not a zero: `—` when printed, never 100% of nothing.
    */
   safety?: SubsetSlice;
+  /**
+   * The abstention score, present only when the row scored the abstention suite. Absent on every
+   * other row rather than a slice of zeroes: a row that did not ask an unanswerable probe has no
+   * abstention rate, and a zero would read as one it answered badly.
+   */
+  abstention?: AbstentionScore;
   falsePassRate: number;
   falseFailRate: number;
   accuracy: number;
