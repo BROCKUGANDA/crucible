@@ -46,6 +46,10 @@ pub struct OpenEscrow<'info> {
     /// CHECK: stored only; verified by signature at resolve time.
     pub resolver: UncheckedAccount<'info>,
 
+    /// Protocol treasury recorded at open; fee payouts bind to this key (gate 837).
+    /// CHECK: stored only; payout token accounts are owner-checked against it.
+    pub treasury: UncheckedAccount<'info>,
+
     #[account(
         constraint = mint.to_account_info().owner == &token_program.to_account_info().key()
             @ EscrowError::UnsupportedMint
@@ -151,14 +155,14 @@ pub struct Settle<'info> {
 
     pub mint: Account<'info, Mint>,
 
-    #[account(mut, constraint = worker_ata.mint == mint.key())]
+    #[account(mut, constraint = worker_ata.mint == mint.key(), constraint = worker_ata.owner == escrow.worker @ EscrowError::PayoutAccountMismatch)]
     pub worker_ata: Account<'info, TokenAccount>,
 
-    #[account(mut, constraint = funder_ata.mint == mint.key())]
+    #[account(mut, constraint = funder_ata.mint == mint.key(), constraint = funder_ata.owner == escrow.funder @ EscrowError::PayoutAccountMismatch)]
     pub funder_ata: Account<'info, TokenAccount>,
 
     /// Protocol treasury — the fee's destination.
-    #[account(mut, constraint = treasury_ata.mint == mint.key())]
+    #[account(mut, constraint = treasury_ata.mint == mint.key(), constraint = treasury_ata.owner == escrow.treasury @ EscrowError::PayoutAccountMismatch)]
     pub treasury_ata: Account<'info, TokenAccount>,
 
     pub token_program: Program<'info, Token>,
@@ -235,13 +239,13 @@ pub struct ResolveDispute<'info> {
 
     pub mint: Account<'info, Mint>,
 
-    #[account(mut, constraint = worker_ata.mint == mint.key())]
+    #[account(mut, constraint = worker_ata.mint == mint.key(), constraint = worker_ata.owner == escrow.worker @ EscrowError::PayoutAccountMismatch)]
     pub worker_ata: Account<'info, TokenAccount>,
 
-    #[account(mut, constraint = funder_ata.mint == mint.key())]
+    #[account(mut, constraint = funder_ata.mint == mint.key(), constraint = funder_ata.owner == escrow.funder @ EscrowError::PayoutAccountMismatch)]
     pub funder_ata: Account<'info, TokenAccount>,
 
-    #[account(mut, constraint = treasury_ata.mint == mint.key())]
+    #[account(mut, constraint = treasury_ata.mint == mint.key(), constraint = treasury_ata.owner == escrow.treasury @ EscrowError::PayoutAccountMismatch)]
     pub treasury_ata: Account<'info, TokenAccount>,
 
     pub token_program: Program<'info, Token>,
@@ -278,10 +282,10 @@ pub struct Expire<'info> {
 
     pub mint: Account<'info, Mint>,
 
-    #[account(mut, constraint = worker_ata.mint == mint.key())]
+    #[account(mut, constraint = worker_ata.mint == mint.key(), constraint = worker_ata.owner == escrow.worker @ EscrowError::PayoutAccountMismatch)]
     pub worker_ata: Account<'info, TokenAccount>,
 
-    #[account(mut, constraint = funder_ata.mint == mint.key())]
+    #[account(mut, constraint = funder_ata.mint == mint.key(), constraint = funder_ata.owner == escrow.funder @ EscrowError::PayoutAccountMismatch)]
     pub funder_ata: Account<'info, TokenAccount>,
 
     pub token_program: Program<'info, Token>,

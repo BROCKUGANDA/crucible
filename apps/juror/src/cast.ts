@@ -1,6 +1,6 @@
 import { Crucible } from "@crucible/smith";
 import type { Hex } from "viem";
-import type { SaltStore, SealedVote } from "./state.js";
+import type { ReplayabilityClass, SaltStore, SealedVote } from "./state.js";
 import type { VotePoster } from "./chain.js";
 
 /**
@@ -33,7 +33,7 @@ export interface SeatCast {
   /** True when this seat holds a seal for the trial — the restart path's first question. */
   holds(trialId: number): Promise<boolean>;
   /** Persist the salt, then post the commitment. Returns the transaction hash. */
-  seal(trialId: number, breakWins: boolean): Promise<Hex>;
+  seal(trialId: number, breakWins: boolean, replayability: ReplayabilityClass): Promise<Hex>;
   /** Post the reveal for a seal already held, then forget the salt. Returns the transaction hash. */
   unseal(trialId: number): Promise<Hex>;
   /** Forget a seal that can never be opened (dispute settled, or a commitment that never landed). */
@@ -54,7 +54,7 @@ export class DurableSeat implements SeatCast {
     return (await this.deps.state.get(trialId)) !== null;
   }
 
-  async seal(trialId: number, breakWins: boolean): Promise<Hex> {
+  async seal(trialId: number, breakWins: boolean, replayability: ReplayabilityClass): Promise<Hex> {
     // Idempotent by construction, the way the keeper's `finalize` is: a seal already held is
     // re-posted with the SAME commitment rather than generating a fresh salt. A second salt
     // would mean a second commitment, which reverts — and reverting is the expensive way to
@@ -69,6 +69,7 @@ export class DurableSeat implements SeatCast {
           breakWins,
           salt,
           commit: Crucible.commit(BigInt(trialId), breakWins, salt),
+          replayability,
           sealedAt: Date.now(),
         };
       })();

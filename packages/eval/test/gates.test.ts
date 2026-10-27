@@ -61,6 +61,19 @@ describe('board, caps, rag, checkpoints, airdrop, gateway', () => {
     expect(circuitFrozen(100, 130)).toBe(true);  
     expect(circuitFrozen(100, 110)).toBe(false);  
   }); 
+  it('holdout content sequester: RAG corpora are screened against holdout prompts, not just ids', () => {
+    const holdout = [{ probeId: 'hp-1', prompt: 'Explain why the clear daytime sky appears blue using Rayleigh scattering physics' }];
+    const shortHoldout = [{ probeId: 'hp-2', prompt: 'Name the capital of France' }];
+    const freshIdLeak = [{ id: 'doc-fresh', version: 'v1', text: 'Notes: Explain why the clear daytime sky appears blue using Rayleigh scattering physics, discussed at length.', byo: true }];
+    expect(() => lintRagDocs(freshIdLeak, new Set(), holdout)).toThrow(/hp-1/);
+    const shingleLeak = [{ id: 'doc-shingle', version: 'v1', text: 'filler words here the clear daytime sky appears blue using Rayleigh plus trailing analysis', byo: true }];
+    expect(() => lintRagDocs(shingleLeak, new Set(), holdout)).toThrow(/hp-1/);
+    const trainDoc = [{ id: 'doc-train', version: 'v1', text: 'Explain why the clear daytime sky appears green using photosynthesis pigment absorption', byo: true }];
+    expect(() => lintRagDocs(trainDoc, new Set(), holdout)).not.toThrow();
+    const shortLeak = [{ id: 'doc-short', version: 'v1', text: 'Quiz answers. Name the capital of France. More text follows here.', byo: true }];
+    expect(() => lintRagDocs(shortLeak, new Set(), shortHoldout)).toThrow(/hp-2/);
+    expect(() => retrieveAt(freshIdLeak, 'v1', 'Notes', { ids: new Set(), content: holdout })).toThrow(/hp-1/);
+  });
   it('RAG lints holdout and BYO, retrieves only at pinned version', () => {  
     const docs = [{ id: 'd1', version: 'v1', text: 'Hello World', byo: true }, { id: 'h1', version: 'v1', text: 'secret', byo: true }];  
     expect(() => lintRagDocs(docs, new Set(['h1']))).toThrow();  
