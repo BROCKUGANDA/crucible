@@ -16,10 +16,19 @@
  *   npm run arena:grade -- --suite graded --retests 4    # gate 424 on a narrowed corpus
  *   npm run arena:grade -- --provider stub --seed trial-0001 --artifacts 12   # a seeded draw
  *   npm run arena:grade -- --suite abstention --seed pilot-001   # abstention with Wilson CIs
+ *   npm run arena:grade -- --provider openai-compat \
+ *     --base-url https://inference.hetzner.com/api/v1 --model Qwen/Qwen3.8-27B \
+ *     --card grader/model-cards/hetzner-qwen3.8-27b.json \
+ *     --keys-file "$HERMES_ENV" --api-key-env HETZNER_INFERENCE_API_KEY
  *
  * Options:
- *   --provider <p>     nim (default) or stub
- *   --card <file>      model card, default grader/model-cards/nvidia-nim.json
+ *   --provider <p>     nim (default), openai-compat, or stub
+ *   --card <file>      model card; defaults to grader/model-cards/nvidia-nim.json for nim
+ *   --base-url <url>   openai-compat base URL, e.g. https://inference.hetzner.com/api/v1
+ *   --model <id>       openai-compat exact snapshot id
+ *   --keys-file <f>    KEY=value file to read the key from (not copied into the repo)
+ *   --api-key-env <v>  variable to read from the environment or --keys-file
+ *   --api-key-file <f> raw key file (one key per file)
  *   --suite <name>     graded (default), injection, canonicalization, abstention, smoke,
  *                      boundary, consistency, calibration, all
  *   --artifacts <n>    narrow the corpus — the lever the call ceiling's refusal names
@@ -90,12 +99,91 @@ const TIMEOUT_MS = Number(arg("timeout-ms", "300000"));
 const SEED = arg("seed");
 const PIN = !flag("no-pin");
 const REQUIRE_SURVIVOR = flag("require-survivor");
+const BASE_URL = arg("base-url");
+const MODEL = arg("model");
+const API_KEY_ENV = arg("api-key-env", "OPENAI_API_KEY");
+const API_KEY_FILE = arg("api-key-file");
+const KEYS_FILE = arg("keys-file");
 
 const dirFlag = arg("dir", arg("content-dir"));
 const CONTENT_DIR =
   dirFlag === null
     ? process.env.CRUCIBLE_CONTENT_DIR || path.join(ROOT, ".crucible-content")
     : path.resolve(dirFlag);
+
+/**
+ * Keys read from a KEY=value file, kept in memory. The point is to use a key that lives in the
+ * operator's credential store without copying it into this repository or printing it in a command
+ * line. The file is a boundary: a missing file or a missing named variable is a refusal, not a
+ * fallback to an empty string.
+ */
+function keyMap(file) {
+  if (!file) return {};
+  if (!existsSync(file)) fail(`--keys-file ${file} does not exist`);
+  const values = {};
+  for (const line of readFileSync(file, "utf8").split(/\r?\n/)) {
+    const match = line.match(/^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/);
+    if (!match) continue;
+    let value = match[2].trim();
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+    values[match[1]] = value;
+  }
+  return values;
+}
+
+const EXTRA_KEYS = keyMap(KEYS_FILE);
+
+/** One key, from the environment, a --keys-file, or a raw --api-key-file. Never printed. */
+function apiKeyValue() {
+  if (API_KEY_FILE) {
+    if (!existsSync(API_KEY_FILE)) fail(`--api-key-file ${API_KEY_FILE} does not exist`);
+    const raw = readFileSync(API_KEY_FILE, "utf8").trim();
+    if (!raw) fail(`--api-key-file ${API_KEY_FILE} is empty`);
+    const token = raw
+      .split(/\s+/)
+      .filter(Boolean)
+      .sort((a, b) => b.length - a.length)[0];
+    if (!token) fail(`--api-key-file ${API_KEY_FILE} holds no token`);
+    return token;
+  }
+  const value = process.env[API_KEY_ENV] ?? EXTRA_KEYS[API_KEY_ENV];
+  if (!value) {
+    fail(
+      `no key in ${API_KEY_ENV}. Pass --keys-file <KEY=value file>, --api-key-file <raw key file>, ` +
+        "or export the variable — none of the three is a default that could silently call unauthenticated.",
+    );
+  }
+  return value;
+}
+
+function loadCard(cardPathArg, fallback = null) {
+  const cardPath = path.resolve(cardPathArg ?? fallback);
+  if (!existsSync(cardPath)) {
+    fail(
+      `no model card at ${path.relative(ROOT, cardPath)}. Gate 503 requires one before a paid ` +
+        "call: an exact snapshot pin, a retention posture that is not \"unknown\" and a budget. " +
+        "buildAdapter would refuse this anyway — this message is here so the refusal names the " +
+        "file that is missing rather than the field.",
+    );
+  }
+  let card;
+  try {
+    card = JSON.parse(readFileSync(cardPath, "utf8"));
+  } catch (err) {
+    fail(`${path.relative(ROOT, cardPath)} is not valid JSON: ${err.message}`);
+  }
+  try {
+    validateModelCard(card);
+  } catch (err) {
+    fail(`${path.relative(ROOT, cardPath)} was refused: ${err.message}`);
+  }
+  return { card, cardPath };
+}
 
 // ── the corpora ──────────────────────────────────────────────────────────
 
@@ -143,10 +231,49 @@ function resolveProvider() {
         "provider, and it must not be published as though it did.",
     };
   }
+  if (PROVIDER === "openai-compat") {
+    if (!BASE_URL) {
+      fail(
+        "--provider openai-compat needs --base-url, e.g. https://inference.hetzner.com/api/v1 " +
+          "or https://api.cohere.com/compatibility/v1.",
+      );
+    }
+    if (!MODEL) {
+      fail("--provider openai-compat needs --model, the exact provider snapshot id.");
+    }
+    if (!arg("card")) {
+      fail(
+        "--provider openai-compat needs --card. Gate 503 refuses a third-party call with no " +
+          "reviewed snapshot pin, retention posture and budget.",
+      );
+    }
+    const { card, cardPath } = loadCard(arg("card"));
+    if (card.dialect !== "openai-compat") {
+      fail(
+        `${path.relative(ROOT, cardPath)} is a "${card.dialect}" card, not an openai-compat card.`,
+      );
+    }
+    if (card.snapshot !== MODEL) {
+      fail(
+        `${path.relative(ROOT, cardPath)} pins "${card.snapshot}", but --model is "${MODEL}". ` +
+          "A card that describes another model is not a pin.",
+      );
+    }
+    return {
+      kind: "openai-compat",
+      modelId: card.id,
+      model: MODEL,
+      baseUrl: BASE_URL,
+      apiKey: apiKeyValue(),
+      card,
+      cardPath,
+    };
+  }
+
   if (PROVIDER !== "nim" && PROVIDER !== "nvidia") {
     fail(
-      `unknown provider "${PROVIDER}". This script wires nim (NVIDIA NIM, the one provider with a ` +
-        'key in this repo) and stub. Another dialect needs its own reviewed model card first.',
+      `unknown provider "${PROVIDER}". Use nim (NVIDIA NIM), openai-compat (with --base-url, ` +
+        "--model, --card and a key), or stub.",
     );
   }
 
@@ -160,27 +287,9 @@ function resolveProvider() {
     );
   }
 
-  const cardPath = path.resolve(arg("card", path.join(ROOT, "grader", "model-cards", "nvidia-nim.json")));
-  if (!existsSync(cardPath)) {
-    fail(
-      `no model card at ${path.relative(ROOT, cardPath)}. Gate 503 requires one before a paid ` +
-        "call: an exact snapshot pin, a retention posture that is not \"unknown\" and a budget. " +
-        "buildAdapter would refuse this anyway — this message is here so the refusal names the " +
-        "file that is missing rather than the field.",
-    );
-  }
-
-  let card;
-  try {
-    card = JSON.parse(readFileSync(cardPath, "utf8"));
-  } catch (err) {
-    fail(`${path.relative(ROOT, cardPath)} is not valid JSON: ${err.message}`);
-  }
-  try {
-    validateModelCard(card);
-  } catch (err) {
-    fail(`${path.relative(ROOT, cardPath)} was refused: ${err.message}`);
-  }
+  const { card, cardPath } = loadCard(
+    arg("card", path.join(ROOT, "grader", "model-cards", "nvidia-nim.json")),
+  );
 
   return {
     kind: "openai-compat",
