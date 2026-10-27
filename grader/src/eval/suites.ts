@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import type { Artifact, Difficulty, SuiteName, Verdict } from "./types.js";
+import { abstentionSuite } from "./abstention.js";
 
 const PASS: Verdict = "PASS";
 const VOID: Verdict = "VOID";
@@ -545,5 +546,9 @@ export function allSuites(): Artifact[] {
     ...rwaNavSuite(),
     ...payfiReconSuite(),
     ...canonicalizationVectors(),
+    // Gate 824's exam. It is not an anchor suite: the anchor floor exists so two capability
+    // draws stay comparable, and forcing thirty unanswerable probes into every capability draw
+    // would change what that draw measures rather than make the draws comparable.
+    ...abstentionSuite(),
   ];
 }

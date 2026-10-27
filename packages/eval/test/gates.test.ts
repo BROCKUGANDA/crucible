@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';  
 import { compileDag, validateRoleContract, stepKey, appendMessage, verifyChain, validateSplits, shapley, collusionScore, claimOrder } from '../src/orchestration.js';  
-import { rankBoard, verifyRanking, applyCaps, commissionInBand, circuitFrozen, lintRagDocs, retrieveAt, appendCheckpoint, verifyCheckpoints, leafFor, merkleRoot, merkleProof, verifyMerkle, sybilAdjust, EventGateway, assertPiiFree } from '../src/gates.js'; 
+import { rankBoard, verifyRanking, applyCaps, commissionInBand, circuitFrozen, lintRagDocs, retrieveAt, appendCheckpoint, verifyCheckpoints, leafFor, merkleRoot, merkleProof, verifyMerkle, sybilAdjust, abstentionScore, EventGateway, assertPiiFree } from '../src/gates.js';
 describe('orchestration gates 820, 848-854', () => {  
   it('DAG compiles deterministically and rejects cycles', () => {  
     const steps = [{ id: 'b', role: 'worker' as const, deps: ['a'], maxIterations: 1 }, { id: 'a', role: 'coordinator' as const, deps: [], maxIterations: 1 }];  
@@ -89,4 +89,21 @@ describe('board, caps, rag, checkpoints, airdrop, gateway', () => {
     expect(() => assertPiiFree({ phone: '123' })).toThrow();  
     expect(() => assertPiiFree({ trial: 't1' })).not.toThrow();  
   });  
-});  
+}); 
+
+/**
+ * Gate 824's per-probe reward primitive. The aggregate lives in @crucible/grader now; this shape
+ * is still the thing a training loop scores one outcome with, so it gets its own assertions rather
+ * than being exported and trusted. A confident wrong answer is the worst outcome, a hedged
+ * abstention is better than a guess, and a correct answer earns its stated confidence.
+ */
+describe('abstention reward primitive', () => {
+  it('orders correct, hedged abstention and confident wrong answers', () => {
+    expect(abstentionScore('correct', 0.9)).toBe(0.9);
+    expect(abstentionScore('abstain', 0.5)).toBe(0.5);
+    expect(abstentionScore('abstain', 0.9)).toBe(0.3);
+    expect(abstentionScore('wrong', 0.9)).toBe(-0.9);
+    expect(abstentionScore('correct', 0.9)).toBeGreaterThan(abstentionScore('abstain', 0.5));
+    expect(abstentionScore('abstain', 0.5)).toBeGreaterThan(abstentionScore('wrong', 0.9));
+  });
+});
