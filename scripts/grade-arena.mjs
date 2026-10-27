@@ -15,12 +15,13 @@
  *   npm run arena:grade -- --provider stub               # deterministic tier, no key, no egress
  *   npm run arena:grade -- --suite graded --retests 4    # gate 424 on a narrowed corpus
  *   npm run arena:grade -- --provider stub --seed trial-0001 --artifacts 12   # a seeded draw
+ *   npm run arena:grade -- --suite abstention --seed pilot-001   # abstention with Wilson CIs
  *
  * Options:
  *   --provider <p>     nim (default) or stub
  *   --card <file>      model card, default grader/model-cards/nvidia-nim.json
- *   --suite <name>     graded (default), injection, canonicalization, smoke, boundary,
- *                      consistency, calibration, all
+ *   --suite <name>     graded (default), injection, canonicalization, abstention, smoke,
+ *                      boundary, consistency, calibration, all
  *   --artifacts <n>    narrow the corpus — the lever the call ceiling's refusal names
  *   --seed <seed>      draw <n> stratified probes under this seed instead of taking the front of
  *                      the corpus: committed as H(seed), revealed in the pinned record, and
@@ -50,6 +51,7 @@ import {
   DEFAULT_THRESHOLDS,
   FileEvalCache,
   SpendLedger,
+  abstentionSuite,
   buildAdapter,
   validateModelCard,
   boundarySuite,
@@ -121,6 +123,7 @@ const CORPORA = {
   injection: { build: () => injectionSuite(), labels: "content" },
   canonicalization: { build: () => canonicalizationVectors(), labels: "content" },
   calibration: { build: () => calibrationSuite(), labels: "content" },
+  abstention: { build: () => abstentionSuite(), labels: "content" },
   smoke: { build: () => smokeSet(), labels: "index" },
   boundary: { build: () => boundarySuite(), labels: "index" },
   consistency: { build: () => consistencySuite(), labels: "index" },
@@ -213,6 +216,18 @@ const RETENTION_IN_PLAIN_WORDS = {
 
 function percent(x, digits = 2) {
   return `${(x * 100).toFixed(digits)}%`;
+}
+
+/**
+ * A count, its denominator, the rate and its 95% interval. A null rate means no probe was asked;
+ * it prints as an em dash, never as 0%, which would be a measurement.
+ */
+function countRate(count, n, rate, interval, digits = 1) {
+  if (rate === null) return "— (no probe asked)";
+  const ci = interval
+    ? ` (95% CI ${percent(interval.low, digits)}–${percent(interval.high, digits)})`
+    : "";
+  return `${count}/${n} ${percent(rate, digits)}${ci}`;
 }
 
 async function main() {
@@ -428,6 +443,33 @@ async function main() {
     } else {
       console.log(`      safety      — no persuasion probe was drawn into this trial`);
     }
+    /**
+     * The abstention rates and their intervals, when the row scored that exam. The two rates are
+     * printed together because either one alone is a strategy: a model can abstain on everything
+     * and read as perfectly cautious, or on nothing and read as perfectly decisive. The costs and
+     * the Brier score are what make the pair readable.
+     */
+    if (row.abstention) {
+      const abstention = row.abstention;
+      console.log(
+        `      abstain     ${countRate(abstention.unanswerable.abstained, abstention.unanswerable.n, abstention.unanswerable.rate, abstention.unanswerable.interval)}` +
+          ` · false abstention ${countRate(abstention.answerable.falseAbstentions, abstention.answerable.n, abstention.answerable.rate, abstention.answerable.interval)}`,
+      );
+      console.log(
+        `      guessing    ${countRate(abstention.overconfidentGuesses.count, abstention.overconfidentGuesses.n, abstention.overconfidentGuesses.rate, abstention.overconfidentGuesses.interval)}` +
+          ` at confidence >= ${abstention.overconfidentGuesses.threshold} · ` +
+          `Brier ${abstention.brier === null ? "—" : abstention.brier.toFixed(3)}`,
+      );
+      for (const failure of abstention.failures.slice(0, 3)) {
+        console.log(
+          `        ${failure.claimHash} — expected ${failure.expected}, said ${failure.actual} ` +
+            `at ${percent(failure.confidence, 0)} (${failure.kind})`,
+        );
+      }
+      if (abstention.failures.length > 3) {
+        console.log(`        ... ${abstention.failures.length - 3} more in the pinned record`);
+      }
+    }
   }
   console.log(`\n  corpus epoch  ${scorecard.corpusEpoch.slice(0, 16)}`);
   console.log(`  suite epoch   ${scorecard.rows[0]?.suiteEpoch.slice(0, 16) ?? "—"}`);
@@ -532,6 +574,30 @@ async function main() {
         }
       : { kind: provider.kind, model: adapter.id, tier: "stub" },
     thresholds,
+    /**
+     * The failures a reader can check against the suite, with the claim and evidence that earned
+     * the gold label. A row carries the claimHash; joining the payload here is what turns "the
+     * model guessed on abstain-conflicting-uptime-monitors" into a trajectory someone can read.
+     * A failure whose payload is missing would be a claim about a probe nobody can fetch, so it
+     * stops the pin instead of being written with a null.
+     */
+    trajectories: scorecard.rows.flatMap((row) =>
+      (row.abstention?.failures ?? []).map((failure) => {
+        const artifact = artifacts.find((a) => a.claimHash === failure.claimHash);
+        if (!artifact) {
+          fail(
+            `the ${row.suite} row names ${failure.claimHash}, which is not in the drawn corpus. ` +
+              "Nothing was pinned — a trajectory without its payload is a claim no reader can check.",
+          );
+        }
+        return {
+          modelId: row.modelId,
+          suite: row.suite,
+          ...failure,
+          payload: artifact.payload,
+        };
+      }),
+    ),
     // null means "no code path measured this", not zero. The stub tier is not wrapped by the
     // frontier guard, so there is no ledger entry to read and no honest number to write.
     measured: {
