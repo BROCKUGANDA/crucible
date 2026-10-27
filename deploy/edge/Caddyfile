@@ -107,10 +107,15 @@ crucible.svalley.tech {
 
 	# The chain RPC, behind a path prefix. `/anvil` is stripped before the
 	# request is forwarded, because anvil serves the root path.
+	# The chain RPC, behind a path prefix and the method gate. `/anvil` is
+	# stripped before the request is forwarded, because anvil serves the
+	# root path. The gate (deploy/edge/rpc-gate) allowlists wallet methods
+	# and refuses the node's control namespaces (`anvil_`, `evm_`, ...) —
+	# serving the node directly made every trial griefable by curl.
 	@anvil path /anvil /anvil/*
 	handle @anvil {
 		uri strip_prefix /anvil
-		reverse_proxy anvil:8545
+		reverse_proxy rpc-gate:8791
 	}
 
 	# The API. `handle_path` strips the `/api` prefix, which is what the

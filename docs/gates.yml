@@ -1442,6 +1442,9 @@
   frameworks: [ai-rmf]
 - id: 897
   title: Grader fairness standard (ships in part: falseFail tracked in grader/src/eval/scorer.ts with tests, JCS and dataset canonicalization exist; no per-grader false-fail regression suite in CI)
+- id: 898
+  title: Public chain RPC method gate (the edge proxies /anvil through deploy/edge/rpc-gate: wallet methods pass, anvil_/evm_/debug_/personal_/admin_ control namespaces are refused before the node, with per-IP rate limiting; the gate holds no key and authenticates nobody, which is sufficient only while the chain is valueless)
+  frameworks: [owasp-top10, soc2]
   frameworks: [ai-rmf]
 
 frameworks:
