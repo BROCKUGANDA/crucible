@@ -1261,6 +1261,21 @@ guards is the decoration it exists to detect.
    writes new blocks and a real 0.6-ETH test funding + split to the shared demo chain. That is a
    chain-state change, not a page change, so it was left for the owner to ask for rather than done
    under a "make it live" instruction.
+- **The abstention panel reaches any reviewed OpenAI-compatible provider without a key in the repo
+  (2026-10-27, `cf922f4`).** `scripts/grade-arena.mjs` now accepts `--provider openai-compat` with
+  `--base-url`, `--model`, `--card`, and a key from `--keys-file` (a `KEY=value` store),
+  `--api-key-env`, or a raw `--api-key-file`. The card's snapshot must equal `--model`, and a
+  missing card or key is a refusal before the call — not an unauthenticated fallback. Three
+  reviewed cards were added beside the NIM card: Hetzner `Qwen/Qwen3.8-27B`
+  (`api-logs-retained`), Cohere `command-a-plus-05-2026` (`training-use-allowed`, trial terms) and
+  Ollama `gemma4:31b-cloud` (`zero-retention-api`). **Measured:** one-probe CLI smokes on all four
+  paths — Hetzner 4.9 s, Cohere 2.3 s and Ollama 2.0 s answered `VOID` on the missing-shipment
+  probe; NIM answered in 270,289 ms and was p95-disqualified by its 20 s card; the stub path still
+  runs. Keys live in `C:\Users\HP\AppData\Local\hermes\.env` and `D:\access and keys`; none was
+  copied into the repo or printed. **What this does not prove:** a full 40-probe panel has not
+  been run. The four commands are the next step; the NIM leg alone is roughly 2–3 hours at the
+  measured latency. The other keys found in those stores are recorded as dead or uncredited in
+  the credential inventory memory, not as panel candidates.
 
 ## Still open from this pass, by severity
 
