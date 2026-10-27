@@ -401,6 +401,15 @@ jobs:
             --workspace @crucible/registry \
             --workspace @crucible/funder
 
+      # The edge is not a workspace, so `npm test --workspaces` never reaches it — and a
+      # gate whose tests nobody runs is a gate that is not tested. The rpc-gate suite was
+      # green on a developer laptop while the deployed edge proxied /anvil straight to the
+      # node, which is the failure this step exists to make impossible: it runs the refusal
+      # tests AND the provision/Caddyfile/compose wiring tests that read the executed
+      # statements in deploy/edge/provision.sh.
+      - name: edge (rpc gate refusal + deployment wiring)
+        run: npm run test:edge
+
       # ESLint lives only where the rules it can actually run exist: the web app
       # (react-hooks + core correctness). Type-level linting is `tsc --noEmit`
       # strict with noUnusedLocals/Parameters, which the typecheck step above

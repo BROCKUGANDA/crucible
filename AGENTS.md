@@ -38,8 +38,11 @@ request — it is a product pivot requiring a new ADR and a new contract review.
 ## Verification — run the command CI runs
 
 ```bash
-npm run verify:all          # typecheck + every workspace suite
-npm test                    # all workspaces + Foundry; currently 2282 tests (1953 TS + 329 Foundry)
+npm run verify:all          # typecheck + every workspace suite + the edge suite
+npm test                    # all workspaces + Foundry; currently 2363 tests (2034 TS + 329 Foundry)
+npm run test:edge           # deploy/edge: the RPC gate's refusals, its live probe, the installer
+#   The edge is not a workspace, so `npm test` never reaches it. That is how `gate.test.mjs` sat
+#   green on a laptop for five days while the deployed edge proxied /anvil straight to the node.
 cd crucible-contracts && node ../scripts/run-forge.mjs test   # forge is not on PATH; run-forge resolves it
 node ../scripts/run-forge.mjs build --sizes                   # forge test does NOT compile script/ —
 #   a broken deploy script is green under `forge test` and only `forge build` catches it. Measured

@@ -145,6 +145,32 @@ jobs:
             echo "host timer installed"
           fi
 
+      # Reconcile this project's own edge from the tree that was just synced.
+      #
+      # The edge is a separate compose project on purpose — an application deploy must not
+      # tear a public site down — but "separate" is also how its configuration went stale.
+      # The RPC method gate that shipped for review was never INSTALLED: the installer did
+      # not copy the gate directory, and a bind-mounted Caddyfile is not reloaded, so the
+      # live /anvil kept answering `eth_accounts` with the node's unlocked dev signers and
+      # accepting `anvil_setBalance` until 2026-10-27. Nothing in this pipeline noticed,
+      # because every step downstream of the swap asks the site questions the site can
+      # answer truthfully while the bypass is open.
+      #
+      # Idempotent: provision.sh compares the installed config against the synced one and
+      # only recreates the proxy when they differ, so a deploy that does not touch the edge
+      # does not touch a running Caddy. It runs BEFORE the build and swap so a refusal here
+      # leaves the application untouched — the rollback step's own guard is that no swap
+      # marker exists yet.
+      - name: reconcile this project's edge from the synced tree
+        run: |
+          set -euo pipefail
+          cd "$HOME/crucible"
+          if [ ! -f deploy/edge/provision.sh ]; then
+            echo "::error::no deploy/edge/provision.sh in the synced tree; refusing to ship with the public RPC unguarded"
+            exit 1
+          fi
+          bash deploy/edge/provision.sh
+
       - name: make sure the host configuration names this deployment
         run: |
           set -euo pipefail
@@ -522,6 +548,18 @@ jobs:
             echo "  ok    the indexer reports no sync error"
           else
             echo "  FAIL  the indexer reports a sync error: $sync_error"
+            fail=1
+          fi
+
+          # The public RPC, asked over the real hostname for the methods that must never
+          # reach a node. Every probe above asks the site a question the 2026-10-27 bypass
+          # left true — the site served 200s and the same edge handed the internet
+          # `eth_accounts` — so this is the leg that measures the route, not the code.
+          if gate_out=$(node deploy/edge/rpc-gate/probe.mjs --url https://crucible.svalley.tech/anvil 2>&1); then
+            echo "  ok    /anvil refuses the node's control surface and still serves the wallet"
+          else
+            echo "$gate_out"
+            echo "  FAIL  /anvil is not gated: the endpoint answered a method only a node can answer"
             fail=1
           fi
 
