@@ -1,6 +1,7 @@
 import type { Address, Hex } from "viem";
 import type { VerifyReport } from "@crucible/argus";
 import { seatKey } from "@crucible/indexer";
+import type { ReplayabilityClass } from "./state.js";
 
 /**
  * The seat's decision rules, as pure functions over a view of one dispute.
@@ -243,7 +244,7 @@ export function ballotFor(report: VerifyReport): Ballot {
  * `awaitingDisclosure` and not this seat's knowledge — and the on-chain field that would make the
  * class part of the vote rather than part of this service's log.
  */
-export type Replayability = "artifact-replayable" | "generation-attested" | "undecided";
+export type Replayability = ReplayabilityClass;
 
 export function replayabilityOf(report: VerifyReport): Replayability {
   if (report.phase === "abstain") return "undecided";

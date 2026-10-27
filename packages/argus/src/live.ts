@@ -5,6 +5,8 @@ import {
   Sandbox,
   type FileTree,
   type SandboxSpec,
+  strictSandboxFor,
+  type TrialTier,
 } from "@crucible/forge-runner";
 import { RUN_PRIMARY_TYPE, RUN_TYPES, computeRunHash, domainFor, type RunArtifact } from "@crucible/smith";
 import { hashTypedData, recoverTypedDataAddress, type Address, type Hex } from "viem";
@@ -62,6 +64,12 @@ export interface LiveVerifierOptions {
    * Production never passes one.
    */
   makeBench?: (spec: SandboxSpec) => Promise<Pick<Sandbox, "repoDir" | "runSuite" | "writeFile" | "cleanup">>;
+  /**
+   * The trial classification (gates 841-842). When set, the re-run bench is
+   * raised to the tier floor: a frontier verdict is never re-executed in a
+   * smaller envelope than the tier demands.
+   */
+  tier?: TrialTier;
 }
 
 // Re-runs are the reproducibility claim, so this path honours the digest
@@ -75,7 +83,8 @@ export class LiveVerifier {
   private readonly makeBench: NonNullable<LiveVerifierOptions["makeBench"]>;
 
   constructor(private readonly opts: LiveVerifierOptions) {
-    this.spec = opts.sandboxSpec ?? DEFAULT_SPEC;
+    const chosen = opts.sandboxSpec ?? DEFAULT_SPEC;
+    this.spec = opts.tier === undefined ? chosen : strictSandboxFor(chosen, opts.tier).spec;
     this.makeBench =
       opts.makeBench ??
       (async (spec) => {

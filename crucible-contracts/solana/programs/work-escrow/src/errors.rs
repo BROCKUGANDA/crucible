@@ -32,6 +32,8 @@ pub enum EscrowError {
     MathOverflow,
     #[msg("Conservation predicate violated: deposited != vault + withdrawn + swept")]
     ConservationViolated,
+    #[msg("Payout account is not owned by the principal recorded at open (gate 837)")]
+    PayoutAccountMismatch,
     #[msg("Mint is not the classic SPL Token program mint (Token-2022 extensions are not handled in v1)")]
     UnsupportedMint,
 }

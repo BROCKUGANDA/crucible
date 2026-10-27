@@ -13,6 +13,7 @@ import {
 } from "@crucible/smith";
 import { touchesTests } from "./agent.js";
 import { Sandbox, SandboxUnavailable, DEFAULT_SANDBOX, resolveVerifierImage, type SandboxSpec } from "./sandbox.js";
+import { strictSandboxFor, type TrialTier } from "./tiers.js";
 import {
   FAILURE_COPY,
   ForgeFailure,
@@ -79,6 +80,8 @@ export interface RunRequest {
   iterBudget: number;
   /** the trial's bond in wei — checked against the operator's cap before any work */
   bondWei: bigint;
+  /** the trial classification (gates 841-842): raises the sandbox floor for this run */
+  tier?: TrialTier;
   /** absolute deadline, unix ms — the trial's own, not a fresh budget */
   deadlineMs: number;
 }
@@ -135,7 +138,7 @@ export class ForgeRunner {
       emit("quenching-spec", `quenching spec ${short(req.specCID)}`);
       const specText = await this.fetchSpecOrFail(req.specCID);
 
-      sandbox = await this.openSandbox();
+      sandbox = await this.openSandbox(req);
       state.degraded = sandbox.degraded;
       if (sandbox.degraded) {
         // Say it out loud. A silent fallback would produce an artifact claiming
@@ -340,10 +343,12 @@ export class ForgeRunner {
     return text;
   }
 
-  private async openSandbox(): Promise<Sandbox> {
+  private async openSandbox(req: RunRequest): Promise<Sandbox> {
     try {
       return await Sandbox.create(
-        this.deps.sandbox ?? { ...DEFAULT_SANDBOX, image: resolveVerifierImage() },
+        req.tier === undefined
+          ? (this.deps.sandbox ?? { ...DEFAULT_SANDBOX, image: resolveVerifierImage() })
+          : strictSandboxFor(this.deps.sandbox ?? { ...DEFAULT_SANDBOX, image: resolveVerifierImage() }, req.tier).spec,
       );
     } catch (err) {
       if (err instanceof SandboxUnavailable) {

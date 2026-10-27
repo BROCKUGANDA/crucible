@@ -38,6 +38,7 @@ const program = anchor.workspace.WorkEscrow as Program<WorkEscrow>;
 const funder = Keypair.generate();
 const worker = Keypair.generate();
 const treasury = Keypair.generate();
+const attacker = Keypair.generate();
 const disputer = Keypair.generate();
 
 let mint: PublicKey;
@@ -45,6 +46,7 @@ let funderAta: PublicKey;
 let workerAta: PublicKey;
 let treasuryAta: PublicKey;
 let disputerAta: PublicKey;
+let attackerAta: PublicKey;
 
 /** Verdict body -> sha256, the gate-712 binding: same bytes noble would make. */
 function verdictHash(body: unknown): Buffer {
@@ -83,6 +85,7 @@ async function openEscrow(workId: BN, reward = REWARD, expirySlots = new BN(2_00
       funder: funder.publicKey,
       worker: worker.publicKey,
       resolver: funder.publicKey, // demo: the funder acts as committee
+      treasury: treasury.publicKey,
       mint,
       escrow,
       vault,
@@ -187,7 +190,7 @@ async function expectReject(p: Promise<string>, nameMatch: RegExp): Promise<void
 
 before(async () => {
   await Promise.all(
-    [funder, worker, treasury, disputer].map((k) => airdropLamports(k.publicKey)),
+    [funder, worker, treasury, disputer, attacker].map((k) => airdropLamports(k.publicKey)),
   );
 
   mint = await createMint(
@@ -208,6 +211,9 @@ before(async () => {
   ).address;
   disputerAta = (
     await getOrCreateAssociatedTokenAccount(provider.connection, funder, mint, disputer.publicKey)
+  ).address;
+  attackerAta = (
+    await getOrCreateAssociatedTokenAccount(provider.connection, funder, mint, attacker.publicKey)
   ).address;
 
   await mintTo(provider.connection, funder, mint, funderAta, funder, 1_000_000n);
@@ -306,6 +312,92 @@ describe("work-escrow — the flow table, end to end", () => {
       /VerdictHashMismatch|hash/i,
     );
   });
+  it("rejection: a permissionless settle cannot redirect the worker payout (gate 837)", async () => {
+    const workId = new BN(10);
+    await openEscrow(workId);
+    await postWork(workId);
+    const [escrow] = escrowPda(workId);
+    const [vault] = vaultPda(escrow);
+    const claim = verdictHash({ verdict: "PASS", model: "stub", probeBank: "v1" });
+    // Settle is permissionless by design, so the payout accounts are the
+    // authorization: an attacker settling with their own ATA must be refused.
+    await expectReject(
+      program.methods
+        .settle(workId, true, [...claim])
+        .accounts({
+          caller: attacker.publicKey,
+          worker: worker.publicKey,
+          escrow,
+          vault,
+          mint,
+          workerAta: attackerAta,
+          funderAta,
+          treasuryAta,
+          tokenProgram: TOKEN_PROGRAM_ID,
+        })
+        .signers([attacker])
+        .rpc(),
+      /PayoutAccountMismatch/,
+    );
+    // And the honest settle still pays afterwards - the refusal moved nothing.
+    const w0 = await balanceOf(workerAta);
+    await settle(workId, true, claim);
+    assert.equal((await balanceOf(workerAta)) - w0, REWARD - FEE + STAKE);
+  });
+
+  it("rejection: the fee cannot be redirected to a caller-chosen treasury", async () => {
+    const workId = new BN(11);
+    await openEscrow(workId);
+    await postWork(workId);
+    const [escrow] = escrowPda(workId);
+    const [vault] = vaultPda(escrow);
+    const claim = verdictHash({ verdict: "PASS", model: "stub", probeBank: "v1" });
+    await expectReject(
+      program.methods
+        .settle(workId, true, [...claim])
+        .accounts({
+          caller: attacker.publicKey,
+          worker: worker.publicKey,
+          escrow,
+          vault,
+          mint,
+          workerAta,
+          funderAta,
+          treasuryAta: attackerAta,
+          tokenProgram: TOKEN_PROGRAM_ID,
+        })
+        .signers([attacker])
+        .rpc(),
+      /PayoutAccountMismatch/,
+    );
+  });
+
+  it("rejection: a fail settle cannot redirect the funder refund", async () => {
+    const workId = new BN(12);
+    await openEscrow(workId);
+    await postWork(workId);
+    const [escrow] = escrowPda(workId);
+    const [vault] = vaultPda(escrow);
+    await expectReject(
+      program.methods
+        .settle(workId, false, [...Buffer.alloc(32)])
+        .accounts({
+          caller: attacker.publicKey,
+          worker: worker.publicKey,
+          escrow,
+          vault,
+          mint,
+          workerAta,
+          funderAta: attackerAta,
+          treasuryAta,
+          tokenProgram: TOKEN_PROGRAM_ID,
+        })
+        .signers([attacker])
+        .rpc(),
+      /PayoutAccountMismatch/,
+    );
+  });
+
 
   it("rejection: settle is blocked while a dispute is open", async () => {
     const workId = new BN(7);

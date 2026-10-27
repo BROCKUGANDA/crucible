@@ -5,7 +5,7 @@ use anchor_lang::prelude::*;
 
 /// Explicit layout version. A future migration bumps this and says how, in
 /// writing, before any account is resized (gate 704).
-pub const ESCROW_VERSION: u8 = 1;
+pub const ESCROW_VERSION: u8 = 2;
 
 /// Slots per second at the 400ms target — the one consensus-visible constant
 /// every expiry comparison goes through (gate 713). Solana has no oracle-free
@@ -36,6 +36,8 @@ pub struct Escrow {
     pub funder: Pubkey,
     /// Committee/keeper authority that may resolve a dispute (EVM: Argus).
     pub resolver: Pubkey,
+    /// Protocol treasury recorded at open; fee payouts bind to it (gate 837).
+    pub treasury: Pubkey,
     /// External work identifier, part of the PDA seeds.
     pub work_id: u64,
     /// SPL token mint — classic Token program only in v1 (gate 719).

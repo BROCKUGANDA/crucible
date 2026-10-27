@@ -31,14 +31,48 @@ export function circuitFrozen(pinnedPrice: number, currentPrice: number, thresho
 }  
 export function gasInBand(gas: number, ceiling: number): boolean { return gas > 0 && gas <= ceiling; } 
 export interface RagDoc { id: string; version: string; text: string; byo: boolean }  
-export function lintRagDocs(docs: RagDoc[], holdoutIds: ReadonlySet<string>): void {  
+/** A holdout probe's identity + prompt, fingerprinted for content screening (gate 899). */
+export interface HoldoutFingerprint { probeId: string; prompt: string }
+const SHINGLE_WORDS = 8;
+function ragTokens(text: string): string[] {
+  return text.toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').split(/\s+/).filter(Boolean);
+}
+function ragShingles(tokens: string[]): Set<string> {
+  const out = new Set<string>();
+  if (tokens.length === 0) return out;
+  if (tokens.length <= SHINGLE_WORDS) { out.add(tokens.join(' ')); return out; }
+  for (let i = 0; i + SHINGLE_WORDS <= tokens.length; i++) out.add(tokens.slice(i, i + SHINGLE_WORDS).join(' '));
+  return out;
+}
+export function lintRagDocs(docs: RagDoc[], holdoutIds: ReadonlySet<string>, holdoutContent: readonly HoldoutFingerprint[] = []): void {  
   for (const d of docs) {  
     if (holdoutIds.has(d.id)) throw new Error('holdout doc in retrieval corpus: ' + d.id);  
     if (!d.byo) throw new Error('BYO declaration missing: ' + d.id);  
     if (!d.version) throw new Error('unpinned doc version: ' + d.id);  
   }  
+  // Content sequester (gate 899): an id check alone cannot stop a fresh-id doc
+  // that quotes a holdout prompt. Screen normalized text: any shared 8-word
+  // shingle (or whole-prompt containment for short prompts) is a leak.
+  if (holdoutContent.length > 0) {
+    const prints = holdoutContent.map((h) => {
+      const tokens = ragTokens(h.prompt);
+      return { probeId: h.probeId, joined: tokens.join(' '), shingles: ragShingles(tokens) };
+    });
+    for (const d of docs) {
+      const tokens = ragTokens(d.text);
+      const joined = tokens.join(' ');
+      const docShingles = ragShingles(tokens);
+      for (const p of prints) {
+        if (p.joined.length > 0 && joined.includes(p.joined)) throw new Error('holdout content in retrieval corpus: ' + d.id + ' leaks ' + p.probeId);
+        for (const s of p.shingles) {
+          if (docShingles.has(s)) throw new Error('holdout content in retrieval corpus: ' + d.id + ' leaks ' + p.probeId);
+        }
+      }
+    }
+  }
 }  
-export function retrieveAt(docs: RagDoc[], version: string, query: string): RagDoc[] {  
+export function retrieveAt(docs: RagDoc[], version: string, query: string, holdout?: { ids: ReadonlySet<string>; content?: readonly HoldoutFingerprint[] }): RagDoc[] {  
+  if (holdout) lintRagDocs(docs, holdout.ids, holdout.content ?? []);
   const q = query.toLowerCase();  
   return docs.filter((d) => d.version === version && d.text.toLowerCase().includes(q));  
 } 

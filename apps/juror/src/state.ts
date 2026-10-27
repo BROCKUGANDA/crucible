@@ -31,6 +31,9 @@ import type { Hex } from "viem";
  * Nothing in this module logs. A `console.log` added here would eventually print a salt.
  */
 
+/** What a stranger can do with a verdict after the fact (ADR-0013). */
+export type ReplayabilityClass = "artifact-replayable" | "generation-attested" | "undecided";
+
 /** One sealed verdict: the commitment the chain holds, plus the only thing that opens it. */
 export interface SealedVote {
   trialId: number;
@@ -40,6 +43,12 @@ export interface SealedVote {
   salt: Hex;
   /** `keccak256(abi.encodePacked(trialId, breakWins, salt))` as posted */
   commit: Hex;
+/**
+   * The verdict's replayability class, recorded at sealing so the claim's kind
+   * survives in the seat's durable record rather than only in a log line.
+   * Optional because state files written before this was recorded have none.
+   */
+  replayability?: ReplayabilityClass;
   /** unix ms of the pass that sealed it — bookkeeping for the log line, not a deadline */
   sealedAt: number;
 }

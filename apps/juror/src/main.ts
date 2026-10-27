@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { resolve as resolvePath } from "node:path";
 import { fileURLToPath } from "node:url";
 import { ContentBridge, CidStore, DisclosureLog } from "@crucible/cidstore";
-import { ContentService, DEFAULT_SANDBOX } from "@crucible/forge-runner";
+import { ContentService, DEFAULT_SANDBOX, resolveVerifierImage } from "@crucible/forge-runner";
 import { LiveVerifier } from "@crucible/argus";
 import { CircuitBreaker, Flags, digestOfContent, envKillSwitches } from "@crucible/smith";
 import { Scribe, TRIALS_SOURCE, disputeState, listTrials } from "@crucible/indexer";
@@ -120,7 +120,7 @@ async function boot(): Promise<void> {
   // key and its unopened salts. The re-run either happens in the isolated bench or it fails,
   // `Argus` reports `abstain`, and this seat casts nothing — which is the designed answer rather
   // than an outage wearing a mask.
-  const verifier = new LiveVerifier({ content, sandboxSpec: DEFAULT_SANDBOX });
+  const verifier = new LiveVerifier({ content, sandboxSpec: { ...DEFAULT_SANDBOX, image: resolveVerifierImage() } });
 
   const cast = new DurableSeat({ poster: chain, state, seat: chain.seat });
 
