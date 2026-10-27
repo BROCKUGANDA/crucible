@@ -102,8 +102,28 @@ fi
 echo "seed: extending the chain with trials a visitor can act on"
 TRIALS_ADDRESS="$trials" forge script script/Extend.s.sol:Extend --rpc-url "$RPC" --broadcast 2>&1 | tail -n 20
 
+# ── phase 3: a team ledger with a team in it ──────────────────────────────
+# The indexer, GET /teams and the page beneath them all read a TeamLedger address. Deployed by
+# nobody, every one of those paths could only ever say `projected: false` — true of the host,
+# useless to a visitor, and not a thing any test would catch.
+echo "seed: deploying the team ledger and running one team through it"
+teams_out=$(TRIALS_ADDRESS="$trials" forge script script/Teams.s.sol:Teams --rpc-url "$RPC" --broadcast 2>&1)
+team_ledger=$(printf '%s\n' "$teams_out" | grep -oE 'TeamLedger 0x[0-9a-fA-F]{40}' | head -n1 | awk '{print $2}')
+if [ -z "$team_ledger" ]; then
+  echo "seed: Teams.s.sol deployed no TeamLedger - the /teams projection would have nothing" >&2
+  printf '%s\n' "$teams_out" | tail -n 20 >&2
+  exit 1
+fi
+# The same bytecode check the demo path makes, through the same helper: a parsed address holding
+# no code means the API would index an empty account and publish an empty team list as a reading.
+if ! has_code "$team_ledger"; then
+  echo "seed: $team_ledger holds no bytecode on $RPC" >&2
+  exit 1
+fi
+
 mkdir -p "$(dirname "$OUT")"
-printf 'TRIALS_ADDRESS=%s\nALLOY_ADDRESS=%s\n' "$trials" "$alloy" > "$OUT"
+printf 'TRIALS_ADDRESS=%s\nALLOY_ADDRESS=%s\nTEAM_LEDGER_ADDRESS=%s\n' "$trials" "$alloy" "$team_ledger" > "$OUT"
 echo "seed: CrucibleTrials  $trials"
 echo "seed: AlloyRegistry   $alloy"
+echo "seed: TeamLedger      $team_ledger"
 echo "seed: published $OUT"

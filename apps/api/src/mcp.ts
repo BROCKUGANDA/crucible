@@ -20,6 +20,17 @@ import { TRIALS_ABI } from "@crucible/smith";
 import type { AlloyState, ApiSnapshot, ReadModel } from "@crucible/indexer";
 import { decide, scoreWallet } from "./identity.js";
 
+export interface TrialLimits {
+  /** `MIN_RUN_WINDOW`, seconds — a deadline at least this far out or `createTrial` reverts. */
+  minRunWindowSec: number;
+  /** `MIN_BREAK_WINDOW`, seconds. */
+  minBreakWindowSec: number;
+  /** `MAX_BREAK_WINDOW`, seconds. */
+  maxBreakWindowSec: number;
+  /** `MAX_REWARD`, wei — the per-trial ceiling the contract enforces. */
+  maxRewardWei: bigint;
+}
+
 export interface McpContext {
   trialAddress: string | null;
   chainId: number | null;
@@ -29,6 +40,17 @@ export interface McpContext {
   getModel: () => ReadModel;
   alloyState?: (agentId: number) => AlloyState | null;
   now: () => number | null;
+  /**
+   * The bounds the escrow enforces, read off the chain.
+   *
+   * The `prepare_*` tools hand a caller calldata it will sign and broadcast; a builder that does not
+   * know `MIN_BREAK_WINDOW` will cheerfully produce a `createTrial` the contract rejects with
+   * `BadWindow`, and the agent learns that only from a reverted transaction with a reason it has to
+   * decode. Measured 2026-10-27 by the first external MCP agent run: it asked for a 30-minute break
+   * window, got calldata, and paid for a revert. Absent means this host never read them — then the
+   * tool says so instead of implying the numbers were checked.
+   */
+  limits?: TrialLimits | null;
 }
 
 const ADDRESS = /^0x[0-9a-fA-F]{40}$/;
@@ -43,6 +65,22 @@ function fail(message: string) {
     content: [{ type: "text" as const, text: JSON.stringify({ error: message }, null, 2) }],
     isError: true,
   };
+}
+
+/**
+ * Refuse to build calldata whose chain the caller cannot check.
+ *
+ * A `prepare_*` answer with no chain id is a signature waiting to be replayed: the caller signs
+ * bytes for one `to` on a chain nobody named. This host normally does know — it publishes the chain
+ * with the hall's proofs — and the first external MCP agent run found the case where it does not:
+ * the tool returned no chain id at all, and the client had to be the one to stop.
+ */
+function requireChainId(ctx: McpContext): ReturnType<typeof fail> | null {
+  // `null` is the only way this can be unread: the caller in `app.ts` collapses undefined to null.
+  if (ctx.chainId === null) {
+    return fail("this host has not read its chain id; refusing to build unsigned calldata with no chain bound to it");
+  }
+  return null;
 }
 
 function requireTrialAddress(ctx: McpContext): string | null {
@@ -214,6 +252,8 @@ function buildServer(ctx: McpContext, subscriptions: Set<string>): McpServer {
     async ({ rewardEth, specDigest, testsDigest, deadlineHours, breakWindowHours }) => {
       const to = requireTrialAddress(ctx);
       if (!to) return fail("no trials address is configured on this host");
+      const chainRefusal = requireChainId(ctx);
+      if (chainRefusal) return chainRefusal;
       if (!DIGEST.test(specDigest) || !DIGEST.test(testsDigest)) {
         return fail("specDigest and testsDigest must be 0x-prefixed 32-byte hex");
       }
@@ -223,6 +263,24 @@ function buildServer(ctx: McpContext, subscriptions: Set<string>): McpServer {
         const now = ctx.now() ?? Math.floor(Date.now() / 1000);
         const deadline = now + Math.round(deadlineHours * 3600);
         const breakWindow = Math.round(breakWindowHours * 3600);
+
+        // Checked against the contract's own numbers, not a copy of them typed in here.
+        const limits = ctx.limits ?? null;
+        if (limits) {
+          if (rewardWei > limits.maxRewardWei) {
+            return fail(`rewardEth exceeds MAX_REWARD (${limits.maxRewardWei} wei)`);
+          }
+          if (deadline < now + limits.minRunWindowSec) {
+            return fail(`deadline is inside MIN_RUN_WINDOW (${limits.minRunWindowSec}s); createTrial would revert BadDeadline`);
+          }
+          if (breakWindow < limits.minBreakWindowSec || breakWindow > limits.maxBreakWindowSec) {
+            return fail(
+              `breakWindowHours=${breakWindowHours} is outside MIN_BREAK_WINDOW…MAX_BREAK_WINDOW ` +
+                `(${limits.minBreakWindowSec}s…${limits.maxBreakWindowSec}s); createTrial would revert BadWindow`,
+            );
+          }
+        }
+
         const data = encodeFunctionData({
           abi: TRIALS_ABI,
           functionName: "createTrial",
@@ -236,6 +294,8 @@ function buildServer(ctx: McpContext, subscriptions: Set<string>): McpServer {
           value: rewardWei.toString(),
           deadline,
           breakWindow,
+          // False is an admission, not a silence: the caller is told the bounds were never read.
+          limitsChecked: Boolean(limits),
         });
       } catch (err) {
         return fail(`could not build createTrial: ${err instanceof Error ? err.message : String(err)}`);
@@ -253,6 +313,8 @@ function buildServer(ctx: McpContext, subscriptions: Set<string>): McpServer {
     async ({ metadataURI, runner, stakeEth }) => {
       const to = requireTrialAddress(ctx);
       if (!to) return fail("no trials address is configured on this host");
+      const chainRefusal = requireChainId(ctx);
+      if (chainRefusal) return chainRefusal;
       if (!isAddress(runner)) return fail("runner must be a 0x-prefixed 20-byte Ethereum address");
       try {
         const stakeWei = parseEther(stakeEth);
@@ -279,6 +341,8 @@ function buildServer(ctx: McpContext, subscriptions: Set<string>): McpServer {
     async ({ trialId }) => {
       const to = requireTrialAddress(ctx);
       if (!to) return fail("no trials address is configured on this host");
+      const chainRefusal = requireChainId(ctx);
+      if (chainRefusal) return chainRefusal;
       const data = encodeFunctionData({
         abi: TRIALS_ABI,
         functionName: "claimTrial",
@@ -298,6 +362,8 @@ function buildServer(ctx: McpContext, subscriptions: Set<string>): McpServer {
     async () => {
       const to = requireTrialAddress(ctx);
       if (!to) return fail("no trials address is configured on this host");
+      const chainRefusal = requireChainId(ctx);
+      if (chainRefusal) return chainRefusal;
       const data = encodeFunctionData({ abi: TRIALS_ABI, functionName: "withdraw", args: [] });
       return ok({ unsigned: true, to, chainId: ctx.chainId, data });
     },

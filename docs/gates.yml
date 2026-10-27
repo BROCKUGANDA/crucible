@@ -992,7 +992,7 @@
   title: Standing library — TS equals Rust on golden vectors
   frameworks: [ai-rmf]
 - id: 748
-  title: Soulbound credential both chains; epochs on identity transfer
+  title: Non-transferable credential both chains; epochs on identity transfer
   frameworks: [scsvs]
 - id: 749
   title: ERC-8004 publish in try/catch + republish; one-call getSummary
@@ -1203,7 +1203,7 @@
   title: Capability tier taxonomy (Tier 1-4) + AGI-profile receipts (composite capability fingerprints)
   frameworks: [ai-rmf]
 - id: 818
-  title: Safety/control probe family (corrigibility, calibration/abstention, honesty-under-pressure)
+  title: Safety/control probe family (calibration and abstention suites are scored; corrigibility and honesty-under-pressure remain design-only)
   frameworks: [ai-rmf]
 - id: 819
   title: Skill tree + attested capability registry (decay and dormancy are live and pinned in params; node derivation sits in packages/eval with no runtime caller and no earned-node attestation type is in the contracts)
@@ -1221,7 +1221,7 @@
   title: Pinned RAG service (retrieval at version, holdout-exclusion linter, BYO declaration — asserted in packages/eval/test; nothing in apps/* calls it)
   frameworks: [ai-rmf]
 - id: 824
-  title: Meta-cognition scoring (calibrated abstention rewards) — packages/eval gates only; the grader scores no abstention
+  title: Meta-cognition scoring (calibrated abstention rewards) — a 40-probe abstention suite (30 unanswerable, 10 controls) is scored by @crucible/grader; rows carry abstention, false-abstention and overconfident-guess rates with Wilson 95% intervals plus a Brier score; npm run arena:grade -- --suite abstention prints and pins them; the stub proves the wiring, a live frontier panel is still a run, not a result
   frameworks: [ai-rmf]
 - id: 825
   title: Ceiling caps (per-tx max, per-trial max stake, per-epoch exposure cap, clamp-or-reject, price-lock disclosure)
@@ -1385,6 +1385,12 @@
 - id: 878
   title: Funder container starts without CDP credentials (health reports configured:false; allocate and on-ramp return 503 with the reason; entrypoint configures the CDP CLI from inline keys or a key file; compose and deploy build, swap and health-wait it)
   frameworks: [scsvs]
+- id: 879
+  title: Team ledger wired end to end (Teams.s.sol deploys it and drives one signed team on the seed chain; GET /teams projects it; /teams renders the stages each member attested; the seed publishes TEAM_LEDGER_ADDRESS and the entrypoints export what they source)
+  frameworks: [ai-rmf, soc2]
+- id: 880
+  title: External MCP agent completes a devnet trial with no UI (the read, the four unsigned builders, the runner's own EIP-712 signature and the chain's answer, end to end; prepare_create_trial refuses a window outside the contract's bounds before calldata exists, and refuses to build at all when the host has not read its chain id)
+  frameworks: [ai-rmf, soc2]
 
 frameworks:
   owasp-top10: "OWASP Web Top 10 (2021)"

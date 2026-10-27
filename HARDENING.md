@@ -1122,6 +1122,71 @@ guards is the decoration it exists to detect.
   opened with the flag — this checkout cannot mount a volume read-only, so the mount itself is
   proven only by the live probe that now returns the bytes.
 
+- **One team, attested by the members who did the work (gate 879, 2026-10-27).** `TeamLedger` had a
+  contract, an indexer projection, a route and — after this pass — a page, but no deploy script ever
+  created one, so `GET /teams` could only ever answer `projected: false`. `script/Teams.s.sol` now
+  deploys it on the seed chain and drives a team through every state: three members each signing
+  their own share, two stage attestations broadcast by the member who did the stage, 0.6 ETH funded
+  then distributed, with the conservation equation asserted after both money moves and the worker's
+  credit asserted to be the 30% it signed. The stage hashes are trial 1's own on-chain commitments,
+  so they name bytes a reader can fetch and re-hash rather than a number this script invented.
+  Measured live on a fresh chain: `/teams` returned 3 members, 2 stages, `totalCredit
+  600000000000000000`, `heldTotal 0`, and the two stage digests matched `testsDigest`/`specDigest`
+  from `/snapshot` byte for byte. **What this is not:** the escrow still has one claimant, one bond
+  and one 5% fee per trial — attribution lives beside the money, and `TeamLedger` holds no reward and
+  cannot reach the escrow. The parties are Anvil's published test accounts and the ETH is worthless.
+- **A sourced file is not an exported one (2026-10-27).** Both container entrypoints did
+  `. /run/crucible/deployed.env` without `set -a`. In POSIX shells that only *reassigns* variables the
+  environment already exported, so the two addresses the seed published appeared to take effect —
+  because `.env` happened to name them — while any new key (here `TEAM_LEDGER_ADDRESS`) would vanish
+  silently between the seed and the process. The comment above those lines claims the file wins over
+  the static environment; it could not have. Both entrypoints now export on source. **Why it stayed
+  invisible:** the failure looks identical to "this host has no ledger", which is a correct answer the
+  route already produces, so nothing downstream was wrong until a real ledger existed.
+- **A fork gate that grades its own exit code can certify nothing (2026-10-27).**
+  `scripts/run-fork-tests.mjs` decided a mainnet endpoint was good enough by checking forge's exit
+  status. Running it against a Sepolia endpoint as the primary produced four `[SKIP]` lines, exit 0,
+  and the line `fork suite passed via ethereum-sepolia-rpc.publicnode.com` — and because the primary
+  never "failed", the fallback was never tried. The endpoint was wrong for the fork; the gate called
+  it a pass. It now asks the endpoint `eth_chainId` before compiling anything, refuses a non-1 chain
+  by name, and requires at least one `[PASS]` **and zero skips** before a run counts. Measured after
+  the change: 4/4 through `eth.drpc.org`; Sepolia-primary + drpc-fallback → refused by name, then
+  4/4 via the fallback; a chain-id-1 node that prunes the pinned block → exit 1. `fork-nightly.yml`
+  resolves both endpoints from the deployment box's `.env` when no Actions secret exists (this
+  repository has none at all, which is why the nightly had failed three scheduled runs) and still
+  refuses when neither source answers.
+- **`NEXT_PUBLIC_ONRAMP_URL`, the mainnet RPC pair and the Sepolia endpoints are filled in
+  `.env.example` (2026-10-27).** `.env` already carried the working values; the template named the
+  keys with empty strings, so a fresh clone was configured by archaeology. The block now states the
+  measured order (archive-capable primary, chain-id-1-only fallback, fallback tried only after a
+  failure) and the boundary none of this moves: no custody, no ERC-20 or stablecoin on the escrow
+  path, no bridge, native ETH settlement, `FEE_BPS = 500`. Reading them remains opt-in — `ci.yml`'s
+  fork job still skips loudly without a credential, so CI is never on a third party's uptime.
+
+- **An external MCP agent completed a trial, and the surface learned two refusals from it (gate 880,
+  2026-10-27).** `npm run mcp:agent` is the client: reads the board, asks the four `prepare_*` tools
+  for calldata, signs with an Anvil test key, broadcasts, signs the EIP-712 `Run` digest itself (no
+  tool can do that step — the contract only accepts the runner's signature), submits, and then reads
+  the trial back through MCP. Fifteen checks on a live chain, ending with the trial `judging` and the
+  runHash equal to the one it signed. Two of its failures were the server's, not the client's:
+  `prepare_create_trial` would encode a break window the contract reverts with `BadWindow`, so the
+  bounds are now read off the chain at boot (`MIN_RUN_WINDOW`, `MIN_BREAK_WINDOW`,
+  `MAX_BREAK_WINDOW`, `MAX_REWARD`) and a caller is refused before spending gas — and when a host has
+  not read them, the answer says `limitsChecked:false` rather than implying a check. Separately a host
+  with no chain id was still returning unsigned calldata; all four builders refuse that now, because
+  calldata with no chain named is a signature that can be replayed elsewhere. 11 tests in
+  `apps/api/test/mcp-limits.test.ts`; three mutations caught (bounds skipped, `limitsChecked`
+  hardcoded, the chain guard disabled). **The client bug that made this worth doing:** the first runs
+  failed in *my* unwrap helper, which returned `parsed.data ?? parsed` — and one builder's own field
+  is named `data` (the calldata), so the agent silently received a hex string instead of an object
+  and reported the chain id as missing. A response shape has to be read, not assumed.
+- **Registering a line ending is a real edit (2026-10-27).** `docs/gates.yml` is stored LF with the
+  worktree mixed, so a script that rewrote the file after splitting on `/\r?\n/` produced a
+  1400-line diff for a 4-line change — exactly the "buries a real diff under noise" failure AGENTS.md
+  warns about, in the opposite direction. Restored from HEAD and re-applied with a byte-preserving
+  edit; the register's diff is now 6/0 and the generated matrix 4/2. Check `git diff --numstat` on
+  every file touched by a script that rewrites it.
+
 ## Still open from this pass, by severity
 
 These are known and intentional, not claims that the software is safe. Ordered by how

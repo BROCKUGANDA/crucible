@@ -36,4 +36,11 @@ regexes = [
   # commit is published and this job scans `--log-opts=--all`, so it reddens every branch until it
   # is named. Exception is the exact literal; any other key-shaped string still fails.
   '''0x59c6995e998f97a5a0044966f0945389dc98a1073772777215dc9d3f5d5d0b4f''',
+  # A random 32-byte team key invented for the `/teams` view-model fixture at
+  # apps/web/test/teams-view.test.ts in commit 476e005. It names no account and signs nothing —
+  # the fixture only needs a key-shaped field — but it is high-entropy hex, which is what a leaked
+  # credential looks like, and gitleaks scans `--log-opts=--all`, so it reddened every branch.
+  # The fixture now uses a repeated byte instead; this entry exists only for the published commit.
+  # Exception is the exact literal, so any other key-shaped string still fails.
+  '''0x53228c6de8ea8e72bc48ccf8e7ce7899cbb5490d296b84a8cae9b89731d43e3b''',
 ]

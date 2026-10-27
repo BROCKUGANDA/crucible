@@ -9,7 +9,12 @@
 set -eu
 
 if [ -f /run/crucible/deployed.env ]; then
+  # Export on the way in, or the file only reassigns variables `.env` already exported and an
+  # address published by the seed that `.env` never names never reaches this process. See the same
+  # three lines in apps/api/docker-entrypoint.sh.
+  set -a
   . /run/crucible/deployed.env
+  set +a
 fi
 
 exec node apps/keeper/dist/main.js
