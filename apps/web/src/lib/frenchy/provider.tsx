@@ -12,6 +12,7 @@ import {
 import { useAccount } from "wagmi";
 import { API_BASE } from "@/lib/apiBase";
 import { cancelUtterance, teardownFrenchy, type MediaTrack } from "./teardown";
+import { createScribeTranscriber } from "./scribe-transcriber";
 
 export type FrenchyState =
   | "idle"
@@ -75,6 +76,7 @@ export function FrenchyProvider({ children }: { children: ReactNode }) {
   const [isMuted, setIsMuted] = useState(false);
 
   const recognitionRef = useRef<any>(null);
+  const scribeRef = useRef<ReturnType<typeof createScribeTranscriber> | null>(null);
   const audioRef = useRef<{ pause(): void } | null>(null);
   const isListeningRef = useRef(false);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -386,6 +388,32 @@ export function FrenchyProvider({ children }: { children: ReactNode }) {
       return;
     }
 
+    // Prefer ElevenLabs Scribe Realtime when a signed URL is available — it streams
+    // partial + committed transcripts with lower latency than the browser recognizer.
+    // Fall back to the native recognizer otherwise.
+    try {
+      const scribe = createScribeTranscriber(API_BASE, {
+        onPartial: (t) => setTranscript(t),
+        onCommitted: (t) => {
+          setTranscript("");
+          void handleTranscript(t.trim());
+        },
+        onError: (err) => {
+          setError(`Transcription error: ${err.message}`);
+          setState("granted");
+        },
+      });
+      const started = await scribe.start();
+      if (started) {
+        scribeRef.current = scribe;
+        setState("granted");
+        setError(null);
+        return;
+      }
+    } catch {
+      // Fall through to the browser recognizer.
+    }
+
     try {
       setState("prompt");
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -421,6 +449,10 @@ export function FrenchyProvider({ children }: { children: ReactNode }) {
   }
 
   function stopListening() {
+    if (scribeRef.current) {
+      scribeRef.current.stop();
+      scribeRef.current = null;
+    }
     if (recognitionRef.current && isListeningRef.current) {
       recognitionRef.current.stop();
     }
@@ -508,6 +540,8 @@ export function FrenchyProvider({ children }: { children: ReactNode }) {
       });
       abortControllerRef.current = null;
       recognitionRef.current = null;
+      scribeRef.current?.stop();
+      scribeRef.current = null;
     };
   }, []);
 
