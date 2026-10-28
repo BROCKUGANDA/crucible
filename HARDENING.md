@@ -161,6 +161,21 @@ current tree actually verifies, what it deliberately does not, and what is still
   one-block-per-gate enumeration leaves exactly 674 (static pools, no runtime LLM) and 676 (never a
   spine writer) for the two properties the header states but no number pinned; the comment now
   matches.
+- **The Money Trees chip was a file, not a screen, until it was mounted (gates 904–905, 2026-10-27).**
+  The bullet above says `docs/gates.yml` carries gates 434–438 "the shipped chip implements", and 434's
+  title is "CUE IT deep-link chip on the settlement screen". Measured on 2026-10-27, `MoneyTreesChip`
+  had no importer anywhere in `apps/web/src` — the chip rendered on no page, and `streamLink`,
+  `moneyTreesAuditLine` and the whole remote-config surface had zero consumers with it. It is now
+  mounted once, inside the verdict branch of `app/trials/[id]/page.tsx`, with `settled` bound to
+  `verdict === "paid"`; `streamLink` is the only place the three sources' links are written and the
+  default derives from it; an override that names a source with no url gets that source's search, and
+  an empty url falls back instead of rendering an `href` that goes nowhere. `moneyTreesAuditLine` was
+  deleted rather than wired, because nothing read it and nothing could. Six mutations turned each
+  claim red — the source scan, the source-derived url, the empty-url fallback, the `%2B` separator the
+  first draft double-encoded, the chip's position relative to the branch after it, and the paid
+  binding — and all were restored. **What this does not close:** the chip has not been clicked in a
+  browser at the live URL until the deploy carrying it lands, and `remote` still has no remote-config
+  source in the app, so gate 437's swappability is reachable in tests only.
 - **The trace spine's spans are inventoried as data.** `SPAN_INVENTORY` in `packages/smith-sdk/
   src/trace.ts` says, per span, which actor writes it, when, and which detail keys it carries — the
   table the Live Foundry showcase renders from. The keeper's test reads the `span:` literals out of

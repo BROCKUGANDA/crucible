@@ -1460,6 +1460,12 @@
 - id: 903
   title: Deployed RPC route measured at the endpoint, not in the checkout (provision.sh installs the gate directory, recreates the proxy when its config differs - a bind-mounted Caddyfile is never reloaded under admin off - and refuses to finish until the live /anvil answers eth_accounts, anvil_setBalance with real arguments, anvil_mine, evm_mine, personal_sign and a batch-smuggled cheat call with the gate's own refusal; deploy.yml reconciles the edge before the container swap and re-asks the public hostname after it; npm run test:edge runs in CI, and the probe's negative control replays the responses measured on 2026-10-27 when the endpoint served the node directly)
   frameworks: [owasp-top10, soc2]
+- id: 904
+  title: Money Trees deep link names the work, never a recording (streamLink is the only place the three sources' URLs are written and the default is derived from it, so there is no id to go stale and nothing to license; a remote override that changes the source with no url gets that source's search rather than the previous service's link, and an empty url falls back instead of rendering an href that goes nowhere. Enforced twice in apps/web/test/money-sound.test.ts - a source scan for a recording-link shape and a behaviour test on streamLink/resolveMoneyTrees - after the shipped default was found pointing at a different song entirely)
+  frameworks: [soc2]
+- id: 905
+  title: The chip's celebration is bound to the money that moved (MoneyTreesChip is mounted once, inside the verdict branch of the trial detail page, with settled bound to verdict === "paid" - so a slashed or reclaimed trial renders no cue affordance at all; asserted by a wiring test that compares the position of the guard, the chip and the branch after it, because a fixed-size window over the panel's own markup measured this claim wrong once)
+  frameworks: [soc2]
 
 frameworks:
   owasp-top10: "OWASP Web Top 10 (2021)"

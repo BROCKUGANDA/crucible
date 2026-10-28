@@ -4,8 +4,8 @@ import { useCallback } from "react";
 import { resolveMoneyTrees, type MoneyTreesConfig } from "@/lib/frenchy/money-trees";
 
 interface MoneyTreesChipProps {
-  /** Remote config override (437). */
-  remote?: MoneyTreesConfig | null;
+  /** Remote config override (437) — any subset; what it omits is derived. */
+  remote?: Partial<MoneyTreesConfig> | null;
   /** Whether the first payout has landed (showtime mode). */
   settled: boolean;
   /** Optional click handler override for tests. */
