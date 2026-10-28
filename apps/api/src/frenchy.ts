@@ -304,7 +304,7 @@ export function createFrenchyRoutes(config: FrenchyConfig | null): Hono {
         return c.json({ error: "could not mint scribe token" }, 502);
       }
       const modelId = cfg.modelId ?? "scribe_v2_realtime";
-      const wsUrl = `wss://api.elevenlabs.io/v1/speech-to-text/realtime?model_id=${encodeURIComponent(modelId)}&token=${encodeURIComponent(data.token)}`;
+      const wsUrl = `wss://api.elevenlabs.io/v1/speech-to-text/realtime?model_id=${encodeURIComponent(modelId)}&token=${encodeURIComponent(data.token)}&commit_strategy=vad&vad_silence_threshold_secs=1.5`;
       return c.json({ url: wsUrl }, 200, { "cache-control": "no-store" });
     } catch (err) {
       dlq.push("frenchy.scribe", err instanceof Error ? err.message : "scribe error");
