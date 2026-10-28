@@ -18,7 +18,7 @@ export interface ScribeTranscriber {
 
 export function createScribeTranscriber(
   apiBase: string,
-  callbacks: { onPartial: (t: string) => void; onCommitted: (t: string) => void; onError?: (e: Error) => void },
+  callbacks: { onPartial: (t: string) => void; onCommitted: (t: string) => void; onError?: (e: Error) => void; onClose?: () => void },
 ): ScribeTranscriber {
   let session: ScribeSession | null = null;
   let mediaRecorder: MediaRecorder | null = null;
@@ -40,6 +40,7 @@ export function createScribeTranscriber(
       onPartial: callbacks.onPartial,
       onCommitted: callbacks.onCommitted,
       onError: callbacks.onError,
+      onClose: callbacks.onClose,
     });
 
     // Prefer a mime type the browser supports; MediaRecorder defaults otherwise.

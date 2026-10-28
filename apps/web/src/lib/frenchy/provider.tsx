@@ -402,6 +402,12 @@ export function FrenchyProvider({ children }: { children: ReactNode }) {
           setError(`Transcription error: ${err.message}`);
           setState("granted");
         },
+        onClose: () => {
+          if (scribeRef.current) {
+            scribeRef.current = null;
+            setState((c) => (c === "listening" || c === "transcribing" ? "granted" : c));
+          }
+        },
       });
       const started = await scribe.start();
       if (started) {
