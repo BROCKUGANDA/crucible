@@ -16,7 +16,7 @@
     "prepare": "npm run build:libs",
     "build": "npm run build --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
-    "test:edge": "node --test \"deploy/edge/**/*.test.mjs\"",
+    "test:edge": "node deploy/edge/run-tests.mjs",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "verify:all": "npm run typecheck && npm test && npm run test:edge",
     "format": "prettier --write \"**/*.{ts,tsx,md,json}\"",
@@ -55,6 +55,7 @@
     "npm": ">=10"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.1",
     "prettier": "^3.9.10",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
