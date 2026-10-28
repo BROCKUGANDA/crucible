@@ -1,0 +1,16 @@
+{
+  "id": "hetzner-qwen3.6-35b-a3b",
+  "dialect": "openai-compat",
+  "snapshot": "Qwen/Qwen3.6-35B-A3B",
+  "pinnedAt": "2026-10-27",
+  "roles": ["contestant"],
+  "retention": {
+    "retention": "api-logs-retained",
+    "reviewedAt": "2026-10-27",
+    "source": "https://www.hetzner.com/legal/privacy-policy/"
+  },
+  "budgetUsd": { "stage": 2, "day": 10 },
+  "costPerCallUsd": 0,
+  "maxCallsPerStage": 64,
+  "latencyP95Ms": 20000
+}
