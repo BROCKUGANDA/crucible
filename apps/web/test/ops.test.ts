@@ -330,8 +330,12 @@ describe("trial counts and the books", () => {
     // `formatEth` is this site's existing display rule, trailing zeros trimmed: the assay uses
     // it rather than a second money format of its own.
     expect(view.volume).toBe("12.5 ETH");
-    expect(view.fees).toBe("0.07 ETH");
     expect(view.paidOut).toBe("1.4 ETH");
+    // The operator's own cumulative fee is deliberately NOT in the view (owner, 2026-10-27: stop
+    // advertising what the treasury holds). The payload still carries `feesEth` — it is chain
+    // data the read model reports — but a page that renders it publishes the operator's takings
+    // as site content. This is the gate that keeps it out.
+    expect(view).not.toHaveProperty("fees");
     expect(view.paidSettlements).toBe("4");
     // The plain rate leads and the stored read follows: every other label on this page is written
     // for a reader ("Fees kept", not `feesEth`), so a bare basis-points figure was the one line
@@ -370,14 +374,12 @@ describe("trial counts and the books", () => {
     // The money beside it does not depend on that read, so it still prints — and a paid-out of
     // zero from a payload that says so is a measured zero, printed as one.
     expect(view.paidOut).toBe("1 ETH");
-    expect(view.fees).toBe("0 ETH");
   });
 
   it("renders the whole of the economics as unknown when the snapshot has none", () => {
     const bare = { now: SERVER_NOW, trials: [], agents: [], hall: [], counts: {} } as unknown as ApiSnapshot;
     const view = ops({ snapshot: bare });
     expect(view.volume).toBe(UNKNOWN);
-    expect(view.fees).toBe(UNKNOWN);
     expect(view.paidOut).toBe(UNKNOWN);
     expect(view.paidSettlements).toBe(UNKNOWN);
     expect(view.feeRate).toBe(UNKNOWN);
@@ -395,7 +397,6 @@ describe("trial counts and the books", () => {
       view.dlqLastAge,
       view.total,
       view.volume,
-      view.fees,
       view.paidOut,
       view.paidSettlements,
       view.feeRate,

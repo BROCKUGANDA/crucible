@@ -26,11 +26,18 @@ const bearerSentinel = process.env.CRUCIBLE_TEST_BEARER ?? ["round", "trip", "se
 
 const server: Server = createServer();
 let capture: Capture = {};
-let next: { status: number; payload: unknown } = { status: 200, payload: {} };
+let next: { status: number; payload: unknown; headers?: Record<string, string> } = { status: 200, payload: {} };
+let responses: Array<{ status: number; payload: unknown; headers?: Record<string, string> }> = [];
 let hang = false;
+let resetNext = 0;
 
 beforeAll(async () => {
   server.on("request", (req, res) => {
+    if (resetNext > 0) {
+      resetNext--;
+      req.socket.destroy();
+      return;
+    }
     const chunks: Buffer[] = [];
     req.on("data", (c: Buffer) => chunks.push(c));
     req.on("end", () => {
@@ -44,8 +51,9 @@ beforeAll(async () => {
       capture = { url: req.url, headers: req.headers, body };
       // A request that is captured and then never answered: the shape a slow provider has.
       if (hang) return;
-      res.writeHead(next.status, { "content-type": "application/json" });
-      res.end(JSON.stringify(next.payload));
+      const outcome = responses.length ? responses.shift()! : next;
+      res.writeHead(outcome.status, { "content-type": "application/json", ...outcome.headers });
+      res.end(JSON.stringify(outcome.payload));
     });
   });
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
@@ -64,6 +72,13 @@ function baseUrl(): string {
 }
 
 function reply(content: string): void {
+  hang = false;
+  responses = [];
+  resetNext = 0;
+  next = { status: 200, payload: { choices: [{ message: { content } }] } };
+}
+
+function answer(content: string): void {
   hang = false;
   next = { status: 200, payload: { choices: [{ message: { content } }] } };
 }
@@ -164,6 +179,51 @@ describe("a call that never answers", () => {
     await expect(adapter.grade(ARTIFACT, "v1")).rejects.toThrow(
       /openai-compat the-model: transport failure/,
     );
+  });
+});
+
+describe("a provider that rate-limits", () => {
+  it("retries a 429 and returns the eventual answer", async () => {
+    hang = false;
+    responses = [
+      { status: 429, payload: { message: "rate limited" }, headers: { "retry-after": "0" } },
+      {
+        status: 200,
+        payload: { choices: [{ message: { content: '{"verdict":"PASS","confidence":0.8}' } }] },
+      },
+    ];
+    const adapter = new OpenAICompatAdapter(baseUrl(), bearerSentinel, "the-model", "v1");
+
+    const out = await adapter.grade(ARTIFACT, "v1");
+    expect(out.verdict).toBe("PASS");
+    expect(out.confidence).toBe(0.8);
+    expect(responses).toHaveLength(0);
+  });
+
+  it("stops at the retry ceiling and names the provider answer", async () => {
+    hang = false;
+    responses = Array.from({ length: 4 }, () => ({
+      status: 429,
+      payload: { message: "rate limited" },
+      headers: { "retry-after": "0" },
+    }));
+    const adapter = new OpenAICompatAdapter(baseUrl(), bearerSentinel, "the-model", "v1");
+
+    await expect(adapter.grade(ARTIFACT, "v1")).rejects.toThrow(/openai-compat the-model: 429/);
+    responses = [];
+  });
+});
+
+describe("a provider that resets the socket", () => {
+  it("retries a transient reset and returns the answer", async () => {
+    answer('{"verdict":"VOID","confidence":0.1}');
+    responses = [];
+    resetNext = 1;
+    const adapter = new OpenAICompatAdapter(baseUrl(), bearerSentinel, "the-model", "v1", undefined, 10_000);
+
+    const out = await adapter.grade(ARTIFACT, "v1");
+    expect(out.verdict).toBe("VOID");
+    expect(resetNext).toBe(0);
   });
 });
 

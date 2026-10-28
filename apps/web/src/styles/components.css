@@ -620,6 +620,12 @@
   .wallet-label-short {
     display: inline;
   }
+
+  /* The sticky header wraps to two rows on mobile; give the main content enough
+     top padding so content isn't hidden behind it. */
+  .chrome__main {
+    padding-top: clamp(80px, 18vh, 120px);
+  }
 }
 
 /* ── hall of alloy ────────────────────────────────────────── */
@@ -728,3 +734,13 @@
 .hall-row__more summary:hover {
   color: var(--gold);
 }
+
+/* glyphs */
+.glyph { display: inline-block; vertical-align: middle; }
+.glyph--drop { animation: dropFall 1.6s ease-in-out infinite; transform-origin: 50% 0%; }
+.glyph--chute { animation: chuteDrift 2.4s ease-in-out infinite; }
+.glyph--stake { animation: stakePlant 1.8s ease-out 1; }
+@keyframes dropFall { 0% { transform: translateY(-2px); opacity: 0.7; } 50% { transform: translateY(2px); opacity: 1; } 100% { transform: translateY(-2px); opacity: 0.7; } }
+@keyframes chuteDrift { 0% { transform: translateX(-1px) rotate(-2deg); } 50% { transform: translateX(1px) rotate(2deg); } 100% { transform: translateX(-1px) rotate(-2deg); } }
+@keyframes stakePlant { 0% { transform: scaleY(0.6); opacity: 0.4; } 60% { transform: scaleY(1.05); opacity: 1; } 100% { transform: scaleY(1); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .glyph--drop, .glyph--chute, .glyph--stake { animation: none; } }

@@ -1,0 +1,16 @@
+{
+  "id": "cohere-command-a-plus-05-2026",
+  "dialect": "openai-compat",
+  "snapshot": "command-a-plus-05-2026",
+  "pinnedAt": "2026-10-27",
+  "roles": ["contestant"],
+  "retention": {
+    "retention": "training-use-allowed",
+    "reviewedAt": "2026-10-27",
+    "source": "https://cohere.com/terms-of-use"
+  },
+  "budgetUsd": { "stage": 2, "day": 10 },
+  "costPerCallUsd": 0,
+  "maxCallsPerStage": 64,
+  "latencyP95Ms": 20000
+}

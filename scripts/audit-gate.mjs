@@ -66,6 +66,8 @@ const EXACT = [
   { name: "decode-uri-component", ceiling: "moderate" },
   { name: "query-string", ceiling: "moderate" },
   { name: "uuid", ceiling: "moderate" },
+  { name: "@vanilla-extract/css", ceiling: "low" },
+  { name: "deepmerge", ceiling: "low" },
   // The `zod` chain: `zod` -> `abitype` -> `viem`, and `@coinbase/cdp-sdk` -> `abitype`.
   // `zod`'s advisory is memory exhaustion while validating oversized constrained collections,
   // and there is no patched 3.x — the fix is 4.6.6, which `abitype` cannot take. See the README.

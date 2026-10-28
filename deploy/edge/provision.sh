@@ -28,6 +28,12 @@
 #      because the edge publishes on LOOPBACK: the name has to be pointed at
 #      127.0.0.1 explicitly, or the check would go out to the public
 #      internet and measure the front door instead of the edge.
+#
+#   5. PROVES THE RPC GATE IS IN THE PATH. A container that is up and a site
+#      that answers 200 are both true of an edge that proxies /anvil straight
+#      to the node, which is what was deployed until 2026-10-27. So the script
+#      asks the live endpoint for the node's control methods and refuses to
+#      call the install finished while any of them is answered.
 set -eu
 
 SRC="$(cd "$(dirname "$0")" && pwd)"
@@ -55,16 +61,48 @@ if ! grep -q "$HTTP_PORT;" "$SRC/nginx/edge.d/crucible.host.map"; then
 fi
 
 # ── 2. install ────────────────────────────────────────────────────────────────
-mkdir -p "$INSTALL_DIR/nginx/edge.d"
+#
+# The gate code belongs in the installed directory, not only in the checkout.
+#
+# This is the line that was missing, and the reason "the gate is deployed" was false for
+# five days: compose.yaml mounts `./rpc-gate:/gate`, this script copied only the Caddyfile
+# and the compose file, so the installed edge had no gate to mount and kept serving /anvil
+# straight to the node. The live scan on 2026-10-27 answered `eth_accounts` with the ten
+# unlocked dev signers.
+#
+# Whether the edge's own configuration changed is measured BEFORE the copy, because a
+# bind-mounted Caddyfile is never reloaded — this edge runs with `admin off`, so the
+# running Caddy keeps the config it read at container start. Copying a new Caddyfile over
+# an old container changes nothing until the container is recreated.
+needs_recreate=0
+for f in Caddyfile compose.yaml; do
+	if [ ! -f "$INSTALL_DIR/$f" ] || ! cmp -s "$SRC/$f" "$INSTALL_DIR/$f"; then
+		needs_recreate=1
+	fi
+done
+
+mkdir -p "$INSTALL_DIR/nginx/edge.d" "$INSTALL_DIR/rpc-gate"
 cp "$SRC/Caddyfile" "$INSTALL_DIR/Caddyfile"
 cp "$SRC/compose.yaml" "$INSTALL_DIR/compose.yaml"
 cp "$SRC/nginx/edge.d/crucible.sni.map" "$INSTALL_DIR/nginx/edge.d/"
 cp "$SRC/nginx/edge.d/crucible.host.map" "$INSTALL_DIR/nginx/edge.d/"
+cp "$SRC"/rpc-gate/*.mjs "$INSTALL_DIR/rpc-gate/"
+# The scripts travel with the config so the installed directory is not a half-copy. A
+# shell reads its script as it runs, so this is skipped when it would overwrite the very
+# file being executed.
+for f in provision.sh seed-certs.sh; do
+	if [ "$SRC/$f" -ef "$INSTALL_DIR/$f" ]; then continue; fi
+	install -m 0755 "$SRC/$f" "$INSTALL_DIR/$f"
+done
 
 cd "$INSTALL_DIR"
 
 # ── 3. start and wait ─────────────────────────────────────────────────────────
 docker compose -f compose.yaml up -d
+if [ "$needs_recreate" = 1 ]; then
+	echo "==> the edge config differs from the running container; recreating caddy"
+	docker compose -f compose.yaml up -d --force-recreate --no-deps caddy
+fi
 
 status=""
 for _ in $(seq 1 30); do
@@ -119,6 +157,37 @@ else
 	}
 fi
 
-echo "==> the edge is serving $NAME on 127.0.0.1:$TLS_PORT"
+# ── 5. prove the gate is in the path ─────────────────────────────────────────
+#
+# Steps 3 and 4 prove a container is up and answering. Neither proves the thing gate 898
+# actually claims: that a request for /anvil is refused the node's control methods BEFORE
+# it reaches the node. The bypass found on 2026-10-27 passed every check this script had
+# and still served `eth_accounts` to the internet, because the route in the running Caddy
+# pointed at anvil:8545.
+#
+# So the script asks the endpoint, over the network, for the methods that must never be
+# answered, and refuses to finish if any of them is. The probe takes real arguments for
+# `anvil_setBalance`: a parameter-length error from the node is proof the call got through,
+# and a check that counted that as a refusal would be the same mistake in a new place.
+#
+# The TLS path is the one a visitor takes. Without a certificate there is no TLS listener
+# for this name yet, so the probe runs from inside the edge network against the gate
+# service directly — which proves the gate answers and refuses, and prints in the same
+# breath that the Caddy-to-gate route is still unproven on this box.
+if docker run --rm -v "crucible-edge_caddy-data:/data:ro" alpine:3 sh -c \
+	"test -f /data/caddy/certificates/acme-v02.api.letsencrypt.org-directory/$NAME/$NAME.crt" 2>/dev/null; then
+	echo "==> probing the public RPC path through the edge"
+	node "$INSTALL_DIR/rpc-gate/probe.mjs" \
+		--url "https://$NAME:$TLS_PORT/anvil" \
+		--connect-to "127.0.0.1:$TLS_PORT" \
+		--servername "$NAME" \
+		--insecure
+else
+	echo "==> no certificate yet: probing the gate service inside the edge network."
+	echo "    this proves the gate refuses; it does NOT prove Caddy routes /anvil to it."
+	docker exec crucible-edge-rpc-gate-1 node /gate/probe.mjs --url "http://127.0.0.1:8791/"
+fi
+
+echo "==> the edge is serving $NAME on 127.0.0.1:$TLS_PORT, with /anvil behind the gate"
 echo "    it is NOT on the public ports yet: the shared front door owns those,"
 echo "    and it routes this name here once it is up."

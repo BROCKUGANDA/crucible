@@ -40,13 +40,18 @@ Open ──claim──> Assigned ──submitRun──> Judging ──fileBreak�
    settlement transaction and the identity registration that earned it. The
    contracts are in `crucible-contracts/contracts` with 333 tests (329 passed; 4 of them ERC-8004
    fork tests, which skip without an RPC). The workspace suites
-   add 2009 more — web 381, grader 282, api 240, smith-sdk 201, agent-security 153, forge-runner 163
-   (6 of them need a Docker daemon and skip without one), indexer 154, cidstore 106, juror 80,
-   argus 44, keeper 40, warden 24, frame 12, crypto 12, datasets 50, eval 35, registry 12, funder 20 — and `npm test` runs all of them plus the
+   add 2034 more — web 381, grader 282, api 240, smith 201, forge-runner 170 (6 of them need a
+   Docker daemon and skip without one), indexer 154, agent-security 153, cidstore 106, juror 84,
+   argus 45, keeper 48, datasets 50, eval 36, warden 24, funder 24, crypto 12, frame 12, registry
+   12 — and `npm test` runs all of them plus the
    Foundry suite; the contracts half needs Foundry (`forge test`), which the seed image runs on a
-   machine without a local forge. Counted per workspace on 2026-10-27: **2003 passed, 6 skipped**
-   across the eighteen TypeScript workspaces and **329 passed, 4 skipped** in Foundry — 2332
-   passing, 2342 counted. Run `npm test` to reproduce them.
+   machine without a local forge. The edge suite (`npm run test:edge`, 15 tests over the RPC method
+   gate, its live probe and the installer that deploys them) is not a workspace, so it rides
+   `npm run verify:all` and CI as its own step. Counted per workspace on 2026-10-27: **2034 passed,
+   6 skipped**
+   across the eighteen TypeScript workspaces, **15 passed** at the edge and **329 passed, 4 skipped**
+   in Foundry — 2378
+   passing, 2388 counted. Run `npm run verify:all` to reproduce them.
 4. Replay the whole loop against a running chain — register, post, claim,
    runner-signed runs, a break that Argus slashes, and the permissionless quench
    after the window really closes — with `crucible-contracts/script/GoldenPath.s.sol`:
@@ -369,16 +374,22 @@ Business: [plan](./docs/business/plan.md) · [roadmap](./docs/business/roadmap.m
 ```bash
 npm run contracts:test      # 333 Foundry tests (329 passed, 4 fork tests skipped without an RPC)
 npm test                    # the eighteen TypeScript workspaces, then the Foundry suite
-npm run verify:all          # typecheck + every workspace suite in one command
+npm run test:edge           # the RPC gate: refusals, the live probe, the installer that ships it
+npm run verify:all          # typecheck + every workspace suite + the edge, in one command
 npm run coverage --workspace crucible-contracts   # line/statement/branch coverage of the contracts
 npm run build               # tsc for packages, next build for the web app
 npm run demo                # anvil + deploy + the whole loop, settles a real verdict
 npm run agent:live          # the real agent against a real model in a real sandbox
 ```
 
-**2332 tests pass, 10 skipped** — 2003 TypeScript passed with 6 skipped, and 329 Foundry passed
-with 4 skipped, so 2342 counted. Measured per workspace on 2026-10-27 on the working tree; the
-six skips are `forge-runner` tests that ask for a Docker daemon, the four are the fork tests below.
+**2378 tests pass, 10 skipped** — 2034 TypeScript passed with 6 skipped, 15 at the edge, and 329
+Foundry passed with 4 skipped, so 2388 counted. Measured per workspace on 2026-10-27 on the working
+tree; the six skips are `forge-runner` tests that ask for a Docker daemon, the four are the fork
+tests below. The edge's 15 are `node --test` over `deploy/edge`, not a workspace: 6 refusals at the
+RPC gate, 3 on the probe that asks the live endpoint those methods (one of them a negative control
+that replays the responses measured on the ungated edge), and 6 on the installer and routing that
+put the gate in the path — which is how a green gate suite came to coexist with a public `/anvil`
+that answered `eth_accounts`.
 The 62 tests the escrow and disclosure work adds over the previous count are 17 in the escrow
 projection, 12 on `/escrow/:wallet`, 13 on `/content/:id`, 4 on reading a store the mount will not
 let you write, and 16 in the explorer page's view model; the funder's no-credential path adds one

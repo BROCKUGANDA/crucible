@@ -1443,9 +1443,8 @@
 - id: 897
   title: Grader fairness standard (ships in part: falseFail tracked in grader/src/eval/scorer.ts with tests, JCS and dataset canonicalization exist; no per-grader false-fail regression suite in CI)
 - id: 898
-  title: Public chain RPC method gate (the edge proxies /anvil through deploy/edge/rpc-gate: wallet methods pass, anvil_/evm_/debug_/personal_/admin_ control namespaces are refused before the node, with per-IP rate limiting; the gate holds no key and authenticates nobody, which is sufficient only while the chain is valueless)
-  frameworks: [owasp-top10, soc2]
-  frameworks: [ai-rmf]
+  title: Public chain RPC method gate (the gate in deploy/edge/rpc-gate allowlists the wallet's own methods and refuses the node-control namespaces anvil_/evm_/debug_/personal_/admin_ before the node sees them, with per-IP rate limiting; it holds no key, signs nothing, authenticates nobody - sufficient only while the chain is valueless, and gate 903 is what proves a deployed edge actually routes through it)
+  frameworks: [owasp-top10, soc2, ai-rmf]
 - id: 899
   title: Holdout content sequester (the contamination rule made executable at the retrieval door: lintRagDocs screens RAG corpora against holdout probe prompts by 8-word shingle and whole-prompt containment, not doc ids alone, and retrieveAt refuses an unlinted corpus when holdout fingerprints are supplied; paraphrase-level detection needs an embedding gate and stays open)
   frameworks: [llm-top10, ai-rmf]
@@ -1458,6 +1457,9 @@
 - id: 902
   title: Solana payout binding (settle, resolve and expire pay only token accounts owned by the worker, funder and treasury recorded at open - PayoutAccountMismatch otherwise; settle stays permissionless because the bound accounts are the authorization; ESCROW_VERSION 2 records the treasury key; e2e redirection tests are committed but not yet run - no validator on the build host)
   frameworks: [scsvs, soc2]
+- id: 903
+  title: Deployed RPC route measured at the endpoint, not in the checkout (provision.sh installs the gate directory, recreates the proxy when its config differs - a bind-mounted Caddyfile is never reloaded under admin off - and refuses to finish until the live /anvil answers eth_accounts, anvil_setBalance with real arguments, anvil_mine, evm_mine, personal_sign and a batch-smuggled cheat call with the gate's own refusal; deploy.yml reconciles the edge before the container swap and re-asks the public hostname after it; npm run test:edge runs in CI, and the probe's negative control replays the responses measured on 2026-10-27 when the endpoint served the node directly)
+  frameworks: [owasp-top10, soc2]
 
 frameworks:
   owasp-top10: "OWASP Web Top 10 (2021)"
