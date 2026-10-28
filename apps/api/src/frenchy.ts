@@ -21,6 +21,13 @@ export interface FrenchyConfig {
     baseUrl?: string;
     fetchImpl?: typeof fetch;
   };
+  /** Optional ElevenLabs Scribe Realtime STT. If absent, /frenchy/scribe-url is disabled. */
+  scribe?: {
+    apiKey: string;
+    modelId?: string;
+    baseUrl?: string;
+    fetchImpl?: typeof fetch;
+  };
 }
 
 /**
@@ -270,6 +277,38 @@ export function createFrenchyRoutes(config: FrenchyConfig | null): Hono {
       });
     } catch {
       return c.json({ error: "the voice failed" }, 502);
+    }
+  });
+
+  app.get("/scribe-url", async (c) => {
+    if (!config?.scribe) {
+      return c.json({ error: "scribe not configured" }, 503);
+    }
+    const cfg = config.scribe;
+    const baseUrl = (cfg.baseUrl ?? "https://api.elevenlabs.io").replace(/\/+$/, "");
+    const fetchImpl = cfg.fetchImpl ?? fetch;
+    try {
+      const res = await fetchImpl(`${baseUrl}/v1/single-use-token/realtime_scribe`, {
+        method: "POST",
+        headers: { "xi-api-key": cfg.apiKey, "content-type": "application/json" },
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        dlq.push("frenchy.scribe", `token mint failed ${res.status}: ${text.slice(0, 200)}`);
+        return c.json({ error: "could not mint scribe token" }, 502);
+      }
+      const data = (await res.json().catch(() => null)) as { token?: string } | null;
+      if (!data?.token) {
+        dlq.push("frenchy.scribe", "token mint returned no token");
+        return c.json({ error: "could not mint scribe token" }, 502);
+      }
+      const modelId = cfg.modelId ?? "scribe_v2_realtime";
+      const wsUrl = `wss://api.elevenlabs.io/v1/speech-to-text/realtime?model_id=${encodeURIComponent(modelId)}&token=${encodeURIComponent(data.token)}`;
+      return c.json({ url: wsUrl }, 200, { "cache-control": "no-store" });
+    } catch (err) {
+      dlq.push("frenchy.scribe", err instanceof Error ? err.message : "scribe error");
+      return c.json({ error: "scribe unavailable" }, 502);
     }
   });
 
