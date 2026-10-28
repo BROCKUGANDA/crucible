@@ -176,6 +176,24 @@ current tree actually verifies, what it deliberately does not, and what is still
   binding — and all were restored. **What this does not close:** the chip has not been clicked in a
   browser at the live URL until the deploy carrying it lands, and `remote` still has no remote-config
   source in the app, so gate 437's swappability is reachable in tests only.
+- **A published `localStorage` key reddened every branch, because gitleaks reads the identifier
+  and not the intent (2026-10-28).** Commit `75c4643` added the engram vault, and with it
+  `const STORAGE_KEY = "crucible.engram.vault.v1"` in `apps/web/src/app/engrams/page.tsx`. That
+  string is a browser storage slot — a name the page invents for itself — and it controls no
+  account, signs nothing and grants no access. gitleaks' `generic-api-key` rule does not read
+  intent either: it matched the `*_KEY = "<entropy>"` shape and scored the entropy of the value.
+  Because the secrets job scans `--log-opts=--all`, the one published commit reddened **every**
+  branch, and `develop` was red on `Secrets (gitleaks)` alone while its other six jobs passed.
+  Measured, not assumed: the rule fires on `STORAGE_KEY` with that value and does not fire on
+  `VAULT_STORAGE_ID`, `STORAGE_ID` or `ENGRAM_VAULT_ID` with the identical string, nor on
+  `STORAGE_KEY = "vault"` — so the trigger is the identifier next to the entropy, not the value.
+  The identifier is now `VAULT_STORAGE_ID`, and the published literal is named in
+  `.gitleaks.toml` by exact match, which is the same treatment the three earlier false positives
+  in that file carry. **Verified:** `gitleaks detect --log-opts="--all"` over 436 commits reports
+  no leaks, a source-tree scan of every workspace reports no leaks, and `npm run test --workspace
+  @crucible/web` is 397/397 green with `tsc --noEmit` clean. **What this does not close:** the
+  exception is the exact literal, so any *other* key-shaped string still fails the job — which is
+  the point, and is why the rule was narrowed rather than disabled.
 - **The trace spine's spans are inventoried as data.** `SPAN_INVENTORY` in `packages/smith-sdk/
   src/trace.ts` says, per span, which actor writes it, when, and which detail keys it carries — the
   table the Live Foundry showcase renders from. The keeper's test reads the `span:` literals out of

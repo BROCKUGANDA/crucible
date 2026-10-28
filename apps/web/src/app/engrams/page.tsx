@@ -59,7 +59,11 @@ function formatMs(ms: number): string {
   return h > 0 ? `${h}h ${m}m` : `${m}m`;
 }
 
-const STORAGE_KEY = "crucible.engram.vault.v1";
+// Not a credential: this is the localStorage slot the vault reads and writes. The name is
+// `..._ID` rather than `..._KEY` because gitleaks' generic-api-key rule matches a
+// `*_KEY = "<entropy>"` assignment, and this literal is published in commit 75c4643 - so
+// the history scan reddened every branch until it was named in .gitleaks.toml.
+const VAULT_STORAGE_ID = "crucible.engram.vault.v1";
 
 interface VaultState {
   opened: number[];
@@ -70,7 +74,7 @@ interface VaultState {
 
 function loadVault(): VaultState {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(VAULT_STORAGE_ID);
     if (raw) return JSON.parse(raw) as VaultState;
   } catch {
     /* ignore */
@@ -80,7 +84,7 @@ function loadVault(): VaultState {
 
 function saveVault(v: VaultState) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(v));
+    localStorage.setItem(VAULT_STORAGE_ID, JSON.stringify(v));
   } catch {
     /* ignore */
   }
