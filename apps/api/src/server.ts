@@ -188,7 +188,21 @@ const frenchy = (() => {
     }
   }
 
-  return { llm: { apiKey: llmApiKey, model: llmModel, baseUrl: llmBaseUrl }, tts };
+  // Optional ElevenLabs Scribe Realtime STT
+  let scribe: { apiKey: string; modelId?: string; baseUrl?: string } | undefined;
+  if (process.env.FRENCHY_SCRIBE_DISABLED !== "1") {
+    const scribeApiKey = process.env.ELEVENLABS_API_KEY?.trim();
+    const scribeBaseUrl = process.env.ELEVENLABS_BASE_URL?.trim() || undefined;
+    const scribeModelId = process.env.ELEVENLABS_SCRIBE_MODEL_ID?.trim() || "scribe_v2_realtime";
+    if (scribeApiKey) {
+      if (scribeBaseUrl && !/^https?:\/\//.test(scribeBaseUrl)) {
+        throw new Error(`ELEVENLABS_BASE_URL must be an http(s) URL; got "${scribeBaseUrl}"`);
+      }
+      scribe = { apiKey: scribeApiKey, modelId: scribeModelId, baseUrl: scribeBaseUrl };
+    }
+  }
+
+  return { llm: { apiKey: llmApiKey, model: llmModel, baseUrl: llmBaseUrl }, tts, scribe };
 })();
 
 const publicClient = createPublicClient({ chain: foundry, transport: http(rpcUrl) });
