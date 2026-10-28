@@ -743,4 +743,9 @@
 @keyframes dropFall { 0% { transform: translateY(-2px); opacity: 0.7; } 50% { transform: translateY(2px); opacity: 1; } 100% { transform: translateY(-2px); opacity: 0.7; } }
 @keyframes chuteDrift { 0% { transform: translateX(-1px) rotate(-2deg); } 50% { transform: translateX(1px) rotate(2deg); } 100% { transform: translateX(-1px) rotate(-2deg); } }
 @keyframes stakePlant { 0% { transform: scaleY(0.6); opacity: 0.4; } 60% { transform: scaleY(1.05); opacity: 1; } 100% { transform: scaleY(1); opacity: 1; } }
-@media (prefers-reduced-motion: reduce) { .glyph--drop, .glyph--chute, .glyph--stake { animation: none; } }
+.glyph--engram { animation: engramPulse 2s ease-in-out infinite; }
+@keyframes engramPulse {
+  0% { transform: scale(1); filter: drop-shadow(0 0 0 rgba(226,97,47,0)); }
+  50% { transform: scale(1.08); filter: drop-shadow(0 0 6px rgba(226,97,47,0.6)); }
+  100% { transform: scale(1); filter: drop-shadow(0 0 0 rgba(226,97,47,0)); }
+}
