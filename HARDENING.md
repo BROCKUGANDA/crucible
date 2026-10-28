@@ -975,6 +975,15 @@ guards is the decoration it exists to detect.
   the skeptic and 70% to the treasury — every figure the books page states, read from the
   contract — and the escrow's balance `10.04 ETH` equals stakes `1.6` + credits `4.24` + escrow
   `4.2` to the wei.
+  **Superseded on 2026-10-27 by the owner's instruction, not by a defect.** The two HUD cells that
+  made those numbers reconcilable — `Fees` and `Treasury` — were taken off the landing page, along
+  with `/assay`'s "Fees kept", because the site should not advertise what the operator holds. The
+  landing now states the **rate** (`5% · 500 bps`, read from `FEE_BPS`) which answers the same
+  question — whose money, how much does it cost — without publishing a balance. The read model
+  still emits `economics.feesEth` and `economics.treasuryCreditEth`: they are chain facts anyone can
+  call on the contract, and the reconciliation this bullet recorded remains checkable there.
+  `apps/web/test/scrub-hud.test.ts` is the gate, and it is a scan of the executed markup, not of
+  prose — the two files still *explain* the removed figures in their comments.
 - **The hero printed a JSON path at a first-time reader (2026-10-26).** `/.well-known/crucible.json`
   appeared in the landing paragraph; it is a machine-readable address and a visitor checking
   whether the product is honest is not helped by one. The plain sentence stays, the link to
@@ -1208,6 +1217,59 @@ guards is the decoration it exists to detect.
   note:** the 818/824 register titles were swept into sibling commit `43d6834` while this slice was
   uncommitted; `git show HEAD:docs/gates.yml` carries them, and `a8572b6` is the code.
 
+- **The public RPC gate was code, not deployment (2026-10-27, gate 903, commit `dafca1a`).** The
+  row "public `/anvil` RPC proxy exposed" was closed once already — gate 898 shipped the method
+  gate, its compose service and the Caddyfile route, and its six tests passed. Measured on the
+  live endpoint they described a route that did not exist: `eth_accounts` answered with the node's
+  ten unlocked dev signers, and `anvil_setBalance` came back as `{"error":{"code":-32602,"message":
+  "invalid length 0, expected tuple variant EthRequest::SetBalance with 2 elements"}}` — text only
+  anvil can produce, so the request had reached the node. Three causes, all measured on the box:
+  **(1)** `/home/ubuntu/crucible-edge/Caddyfile`, installed 2026-10-22, still said
+  `reverse_proxy anvil:8545` while the repository said `rpc-gate:8791`, and the edge runs with
+  `admin off`, so a bind-mounted Caddyfile is not reloaded — copying it changes nothing until the
+  container is recreated; **(2)** `provision.sh` copied `Caddyfile`, `compose.yaml` and the two
+  front-door maps and **never copied `rpc-gate/`**, so re-running the installer as written would
+  have mounted an empty directory, crash-looped the gate and turned a security fix into a `/anvil`
+  502 for every wallet; **(3)** `crucible-edge` was running one container — there was no gate
+  service at all — and nothing in CI or in any workspace script ran `deploy/edge/rpc-gate/gate.test.mjs`,
+  which is how six green tests coexisted with the bypass.
+  **Shipped:** `rpc-gate/probe.mjs` asks an endpoint for `eth_accounts`, `anvil_setBalance` **with
+  real arguments**, `anvil_impersonateAccount`, `anvil_setNextBlockTimestamp`, `anvil_mine`,
+  `evm_mine`, `personal_sign`, `eth_sendTransaction` and one batch-smuggled cheat call, and accepts
+  exactly one answer — HTTP 403 carrying JSON-RPC `-32601`. A node-side `-32602` counts as a
+  failure, because it proves the call arrived; that distinction is the whole content of the bug.
+  `provision.sh` now installs the gate directory (and its own copy, guarded so it cannot overwrite
+  the file it is executing), measures config drift **before** the copy and recreates caddy when the
+  two differ, and ends with the probe on both certificate branches so a missing certificate cannot
+  skip the check. `deploy.yml` reconciles the edge from the synced tree before the container swap —
+  a refusal there leaves the application untouched, which is why the position matters — and re-asks
+  the public hostname in the post-swap surface assertion. `npm run test:edge` (15 tests) is a CI
+  step and part of `verify:all`.
+  **Mutation-proven:** disabling the gate allowlist reddened 3 tests; loosening `isRefusal` to
+  "any HTTP answer" reddened the negative control and the code test; deleting each of the installer's
+  `cp rpc-gate`, `--force-recreate`, route and mount statements reddened its own wiring test. One
+  mutation **survived**: my first deploy.yml assertion matched the string `deploy/edge/provision.sh`,
+  which the step's existence check also contains, so deleting the run line kept it green — rewritten
+  to match the invocation as an executed line, and the ordering assertion then needed its mutation
+  re-anchored past the swap before it would fail, which is a second way the same instrument was soft.
+  **Measured on the live host:** installed through the edge's own TLS listener and then over the
+  public name — `10/10 probes as expected`, every control method refused with `-32601`, `eth_chainId`
+  still served (`0x7a69`), `eth_getBalance`/`eth_blockNumber`/`eth_call` still forwarded (the node
+  answered my deliberately wrong params, which is proof of forwarding, not of a refusal). Site,
+  `/api/ready`, `/api/health`, `/api/escrow/:wallet` and `/api/teams` all 200 after the recreate;
+  anvil was not touched — same container, started 2026-10-24T20:03, block still `0x44`. The web's
+  wallet transport is `http(rpcUrl())` for reads only (`apps/web/src/lib/wagmi.ts:164-175`);
+  accounts come from the connector, so refusing `eth_accounts` on the RPC removes the leak without
+  removing a call the app makes.
+  **Corrected in the register:** gate 898's title claimed the edge proxies `/anvil` through the
+  gate — a deployment fact the repository could not see — and carried **two** `frameworks:` keys,
+  so YAML's last-key-wins had silently dropped `owasp-top10` and `soc2` from the compliance matrix;
+  the claim is now scoped to the code, 903 owns the deployment proof, and `/compliance` regenerated
+  at 485 gates. **What this does not close:** the gate still authenticates nobody, which is the
+  stated design while the chain holds worthless ETH — on a chain holding real funds the endpoint
+  must sit behind auth or not exist (mainnet runbook), and `eth_sendRawTransaction` passing means
+  anyone can still submit transactions to the demo chain from the browser's own accounts.
+
 ## Unresolved from the 2026-10-27 pass (continues the open list)
 
 23. **`apps/api` reported one failing test once, inside a saturated fan-out, and it has not been
@@ -1261,6 +1323,21 @@ guards is the decoration it exists to detect.
    writes new blocks and a real 0.6-ETH test funding + split to the shared demo chain. That is a
    chain-state change, not a page change, so it was left for the owner to ask for rather than done
    under a "make it live" instruction.
+- **The abstention panel reaches any reviewed OpenAI-compatible provider without a key in the repo
+  (2026-10-27, `cf922f4`).** `scripts/grade-arena.mjs` now accepts `--provider openai-compat` with
+  `--base-url`, `--model`, `--card`, and a key from `--keys-file` (a `KEY=value` store),
+  `--api-key-env`, or a raw `--api-key-file`. The card's snapshot must equal `--model`, and a
+  missing card or key is a refusal before the call — not an unauthenticated fallback. Three
+  reviewed cards were added beside the NIM card: Hetzner `Qwen/Qwen3.8-27B`
+  (`api-logs-retained`), Cohere `command-a-plus-05-2026` (`training-use-allowed`, trial terms) and
+  Ollama `gemma4:31b-cloud` (`zero-retention-api`). **Measured:** one-probe CLI smokes on all four
+  paths — Hetzner 4.9 s, Cohere 2.3 s and Ollama 2.0 s answered `VOID` on the missing-shipment
+  probe; NIM answered in 270,289 ms and was p95-disqualified by its 20 s card; the stub path still
+  runs. Keys live in `C:\Users\HP\AppData\Local\hermes\.env` and `D:\access and keys`; none was
+  copied into the repo or printed. **What this does not prove:** a full 40-probe panel has not
+  been run. The four commands are the next step; the NIM leg alone is roughly 2–3 hours at the
+  measured latency. The other keys found in those stores are recorded as dead or uncredited in
+  the credential inventory memory, not as panel candidates.
 
 ## Still open from this pass, by severity
 

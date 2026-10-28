@@ -21,8 +21,7 @@ export function ScrubHud({
   smiths,
   settled,
   lastBlock,
-  take,
-  treasury,
+  feeRate,
   showCrowdKey,
 }: {
   trials: number | null;
@@ -31,17 +30,16 @@ export function ScrubHud({
   /** Block number of the newest settlement the index saw — not the chain head. */
   lastBlock: number | null;
   /**
-   * The protocol's settlement fee, in ETH. Shown because it is real revenue
-   * and the reader is entitled to know whose it is: null until the snapshot
-   * arrives, and never zero-for-zero.
+   * The settlement fee as a rate ("5% · 500 bps"), read off the chain.
+   *
+   * Two ETH cells used to sit here — the protocol's cumulative fee and `credit[treasury]`. They
+   * were removed on 2026-10-27 at the owner's request: an operator's takings are not the
+   * visitor's business, and a landing page that advertises them invites the reader to price the
+   * demo. The rate answers the question the cells were added for — whose money is this, and what
+   * does it cost — without publishing a balance. `—` when the chain read has not landed; zero
+   * would say the protocol charges nothing.
    */
-  take: string | null;
-  /**
-   * `credit[treasury]` as read from the chain: the fee above plus the treasury's share of
-   * every slashed bond. Two cells because they are two different entitlements — the page
-   * that printed only the fee under one heading could not be reconciled with the contract.
-   */
-  treasury: string | null;
+  feeRate: string | null;
   /** Only when the crowd is actually being drawn from smiths, so the key never lies. */
   showCrowdKey: boolean;
 }) {
@@ -90,13 +88,9 @@ export function ScrubHud({
           <dt>Latest</dt>
           <dd>{lastBlock ?? "—"}</dd>
         </div>
-        <div>
-          <dt>Fees</dt>
-          <dd>{take ?? "—"}</dd>
-        </div>
-        <div title="What the treasury can withdraw: settlement fees plus its share of slashed bonds">
-          <dt>Treasury</dt>
-          <dd>{treasury ?? "—"}</dd>
+        <div title="What the chain charges to settle a paid trial — a rate, not anybody's balance">
+          <dt>Fee</dt>
+          <dd>{feeRate ?? "—"}</dd>
         </div>
       </dl>
 

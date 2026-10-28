@@ -7,6 +7,7 @@ import { useAccount, useReadContract } from "wagmi";
 import { TRIALS_ABI } from "@crucible/smith";
 import { WalletButton, WalletNotConfiguredNotice } from "@/components/Wallet";
 import { VoiceControl } from "@/components/VoiceControl";
+import { PayoffSound } from "@/components/PayoffSound";
 import { FrenchyAsk } from "@/components/FrenchyAsk";
 import { SeedPhrasePromise } from "@/components/SeedPhrasePromise";
 import { Modal } from "@/components/Modal";
@@ -28,6 +29,9 @@ const NAV_MORE = [
   { href: "/clock", label: "How it settles" },
   { href: "/assay", label: "Status" },
   { href: "/teams", label: "Teams" },
+  { href: "/faucet", label: "Sponsorship" },
+  { href: "/airdrops", label: "Airdrops" },
+  { href: "/staking", label: "Staking" },
   { href: "/docs", label: "Docs" },
 ];
 
@@ -113,6 +117,7 @@ export function Chrome({ children }: { children: ReactNode }) {
             <span className="menu-label">Menu</span>
           </button>
           <VoiceControl />
+          <PayoffSound />
           <FrenchyAsk />
           <CreditButton />
           <WalletButton />

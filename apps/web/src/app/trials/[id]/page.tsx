@@ -18,6 +18,7 @@ import {
 import { buildFinalize, useTx } from "@/lib/useTx";
 import { useCountdown } from "@/lib/useSnapshot";
 import { announceVoice } from "@/lib/voice";
+import { celebrate } from "@/lib/sound-pref";
 
 const TABS = ["The charge", "Struck work", "Break attempts", "The quench"] as const;
 
@@ -43,6 +44,9 @@ export default function TrialDetailPage() {
     if (announcedFor.current === trial.id) return;
     announcedFor.current = trial.id;
     announceVoice("verdict");
+    // The sound follows the same rule as the voice: this page saw a paid verdict, the visitor
+    // switched audio on, and the motif is ours. Nothing here plays on a slash or a refund.
+    celebrate();
   }, [trial, tab]);
 
   /** Quenchable: the skeptic window has closed, nothing was filed, and Argus holds
