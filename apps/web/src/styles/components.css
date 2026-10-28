@@ -752,3 +752,9 @@
 
 .engram-row { display: flex; align-items: center; gap: 0.75rem; }
 @media (prefers-reduced-motion: reduce) { .glyph--drop, .glyph--chute, .glyph--stake, .glyph--engram { animation: none; } }
+
+.engram-actions { display: flex; gap: 0.5rem; }
+.rarity { text-transform: capitalize; font-weight: 600; }
+.rarity--legendary { color: var(--gold, #d4a017); }
+.rarity--rare { color: var(--accent, #e2612f); }
+.event-active { border-color: var(--gold, #d4a017); }
