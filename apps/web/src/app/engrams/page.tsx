@@ -57,7 +57,7 @@ export default function EngramsPage() {
             const isOpen = opened.has(t.id);
             return (
               <li key={t.id} className="surface detail-panel">
-                <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+                <div className="engram-row">
                   <EngramGlyph className={isOpen ? "" : "glyph--engram"} />
                   <div>
                     <p className="mono">Engram #{t.id}</p>
