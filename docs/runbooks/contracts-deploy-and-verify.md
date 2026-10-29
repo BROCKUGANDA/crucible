@@ -20,6 +20,14 @@ forge script script/Deploy.s.sol:Deploy \
   --rpc-url "$RPC_URL" --private-key "$PRIVATE_KEY" --broadcast
 ```
 
+Prefer `npm run deploy:network -- --env <local|testnet|production> [--dry-run]`, which asks the
+node for its `eth_chainId` before it will run the command above, refuses a chain that disagrees
+with the environment named, and refuses to sign with Anvil's published account #0 anywhere but a
+loopback demo node. `Deploy.s.sol` now reverts without a key unless `ALLOW_ANVIL_DEV_KEY=1` is set
+deliberately: a chain-id check *inside* the script cannot be the guard, because `forge script
+--rpc-url` evaluates the script in a local EVM that reports 31337 whatever node it points at —
+measured with forge 1.8.5 on 2026-10-29, and the reason the interrogation lives outside.
+
 The deploy order matters: `AlloyRegistry` first, `CrucibleTrials` second,
 then `setForge(address(trials))` once. `ReputationBridge` and the ERC-8004
 Identity Registry are optional; wire them with the owner setter and verify the

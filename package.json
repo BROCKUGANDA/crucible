@@ -31,6 +31,7 @@
     "demo": "node --env-file-if-exists=.env scripts/demo.mjs",
     "test:e2e": "node --env-file-if-exists=.env scripts/demo.mjs --exit",
     "mainnet:preflight": "node --env-file-if-exists=.env scripts/mainnet-preflight.mjs",
+    "deploy:network": "node --env-file-if-exists=.env scripts/deploy-network.mjs",
     "fork:test": "node --env-file-if-exists=.env scripts/run-fork-tests.mjs",
     "agent:live": "node --env-file-if-exists=.env scripts/live-agent.mjs",
     "cdp:sandbox": "node --env-file-if-exists=.env scripts/cdp-sandbox.mjs",
