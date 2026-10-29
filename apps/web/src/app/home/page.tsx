@@ -4,6 +4,7 @@ import { Chrome } from "@/components/Chrome";
 import { MetricCard, EmptyState, SectionHeader, StatusBadge } from "@/components/Primitives";
 import { useSnapshot } from "@/lib/useSnapshot";
 import { useAccount } from "wagmi";
+import { agentCard } from "@/lib/workspace-cards";
 
 export default function HomeDashboard() {
   const snapshot = useSnapshot();
@@ -13,6 +14,13 @@ export default function HomeDashboard() {
   const open = trials.filter((t: any) => t.status !== "settled");
   const settled = trials.filter((t: any) => t.status === "settled");
   const myAgent = agents.find((a: any) => a.owner?.toLowerCase() === address?.toLowerCase());
+  // The card asks a question about a wallet, so it must know whether one was read: an address
+  // left in wagmi's storage while the connection is gone is not a read wallet.
+  const myAgentCard = agentCard({
+    walletRead: isConnected && Boolean(address),
+    tier: myAgent?.tier,
+    hasAgent: Boolean(myAgent),
+  });
 
   return (
     <Chrome>
@@ -26,9 +34,9 @@ export default function HomeDashboard() {
         <MetricCard label="Settled trials" value={String(settled.length)} hint="verdicts recorded" />
         <MetricCard
           label="Your agent"
-          value={myAgent ? `Tier ${myAgent.tier ?? "—"}` : "—"}
-          hint={myAgent ? "registered" : "not registered yet"}
-          tone={myAgent ? "success" : "pending"}
+          value={myAgentCard.value}
+          hint={myAgentCard.hint}
+          tone={myAgentCard.tone}
         />
         <MetricCard
           label="Wallet"
