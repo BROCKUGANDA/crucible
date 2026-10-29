@@ -119,7 +119,12 @@ export async function plan(env = process.env, argv = process.argv.slice(2)) {
     );
   }
 
-  const pk = (env.PRIVATE_KEY ?? "").trim();
+  // The deployer has its own variable, and it is checked BEFORE `PRIVATE_KEY`: that name is what
+  // the keeper relayer inherits inside its container (`compose.yaml` maps KEEPER_PRIVATE_KEY ->
+  // PRIVATE_KEY), so a key that is correct for one role is silently wrong for the other. Neither
+  // value is ever put into the plan — `signerSource` names the variable, not its contents.
+  const signerSource = (env.DEPLOYER_PRIVATE_KEY ?? "").trim() ? "DEPLOYER_PRIVATE_KEY" : "PRIVATE_KEY";
+  const pk = (env[signerSource] ?? "").trim();
   const isLocalNode = isProvableLocal(rpcUrl, observed);
   if (!pk) {
     if (!spec.allowDevKey) throw new Refusal(`PRIVATE_KEY is not set. "${envName}" is not a local demo chain, so the published Anvil key is not an option.`);
@@ -136,6 +141,8 @@ export async function plan(env = process.env, argv = process.argv.slice(2)) {
     rpcHost: host(rpcUrl),
     rpcUrl,
     usesDevKey: !pk,
+    /** which variable the key came from — the name only, never the value */
+    signerSource: pk ? signerSource : null,
     requiresPreflight: Boolean(spec.requiresPreflight),
     dryRun: argv.includes("--dry-run"),
   };
@@ -148,7 +155,7 @@ function forgeScript(p) {
     "--rpc-url",
     p.rpcUrl,
     "--broadcast",
-    ...(p.usesDevKey ? [] : ["--private-key", process.env.PRIVATE_KEY.trim()]),
+    ...(p.signerSource ? ["--private-key", String(process.env[p.signerSource]).trim()] : []),
   ];
 }
 
@@ -175,7 +182,7 @@ async function main() {
 
   console.log(
     `plan: env=${p.envName} chainId=${p.chainId} rpc=${p.rpcVar}@${p.rpcHost} ` +
-      `signer=${p.usesDevKey ? "anvil-dev-key(loopback-verified)" : "PRIVATE_KEY(explicit)"} broadcast=${p.dryRun ? "no (dry run)" : "yes"}`,
+      `signer=${p.signerSource ?? "anvil-dev-key(loopback-verified)"} broadcast=${p.dryRun ? "no (dry run)" : "yes"}`,
   );
   if (p.dryRun) return 0;
 

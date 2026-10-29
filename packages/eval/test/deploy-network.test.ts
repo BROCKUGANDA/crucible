@@ -103,6 +103,45 @@ describe("refusals — the ones that protect a deployment", () => {
   });
 });
 
+describe("the deployer variable is its own, and never leaks", () => {
+  it("prefers DEPLOYER_PRIVATE_KEY over the name the keeper relayer inherits", async () => {
+    // compose.yaml maps KEEPER_PRIVATE_KEY -> PRIVATE_KEY inside the keeper container. Pointing
+    // the deploy at that same name would let one key hold the escrow's owner role and the
+    // settlement relayer at once, which is the separation ADR-0006 exists to keep.
+    chainId = 11155111;
+    const p = await plan(
+      { SEPOLIA_RPC_URL: rpc(), DEPLOYER_PRIVATE_KEY: OPERATOR_KEY, PRIVATE_KEY: "" },
+      argv("testnet"),
+    );
+    expect(p.signerSource).toBe("DEPLOYER_PRIVATE_KEY");
+    expect(p.usesDevKey).toBe(false);
+  });
+
+  it("still accepts PRIVATE_KEY alone, so the runbook command keeps working", async () => {
+    chainId = 11155111;
+    const p = await plan({ SEPOLIA_RPC_URL: rpc(), PRIVATE_KEY: OPERATOR_KEY }, argv("testnet"));
+    expect(p.signerSource).toBe("PRIVATE_KEY");
+  });
+
+  it("carries the variable name into the plan and not the key itself", async () => {
+    // The plan is what gets printed and, later, what a deployment record could hold. A plan that
+    // contained the secret would leak it through the ordinary logging path.
+    chainId = 11155111;
+    const p = await plan({ SEPOLIA_RPC_URL: rpc(), DEPLOYER_PRIVATE_KEY: OPERATOR_KEY }, argv("testnet"));
+    expect(JSON.stringify(p)).not.toContain(OPERATOR_KEY.slice(2, 18));
+    expect(p).not.toHaveProperty("privateKey");
+  });
+
+  it("treats an empty DEPLOYER_PRIVATE_KEY as unset rather than as a key", async () => {
+    // The same blank-string nuance the keeper documents: compose hands "" for a missing secret,
+    // and "" must fall through to the check, never to a bare default key.
+    chainId = 11155111;
+    await expect(
+      plan({ SEPOLIA_RPC_URL: rpc(), DEPLOYER_PRIVATE_KEY: "   ", PRIVATE_KEY: "" }, argv("testnet")),
+    ).rejects.toThrow(/PRIVATE_KEY is not set|published Anvil key/);
+  });
+});
+
 describe("the plans that are allowed, and what they say", () => {
   it("accepts a real deployer key on the chain it matches", async () => {
     chainId = 11155111;
