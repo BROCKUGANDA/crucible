@@ -11,6 +11,7 @@ import { useSnapshot } from "@/lib/useSnapshot";
 import { activeChain, deployment } from "@/lib/wagmi";
 import { parseEth } from "@/lib/eth";
 import { OnrampButton } from "@/components/OnrampButton";
+import { SigningNotice } from "@/components/SigningNotice";
 
 /**
  * Sponsor wizard — three steps, matching the flow in the PRD.
@@ -39,6 +40,7 @@ export default function NewTrialPage() {
     <Chrome>
       <WrongNetworkNotice requiredChainId={dep.chainId} />
       <h1 className="page-title">Light a trial</h1>
+      <SigningNotice />
 
       <nav className="wizard-stepper" aria-label="Wizard progress">
         {STEPS.map((s, i) => {

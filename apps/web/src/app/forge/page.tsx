@@ -9,6 +9,7 @@ import { buildClaimTrial, buildRegisterAgent, useTx } from "@/lib/useTx";
 import { deployment } from "@/lib/wagmi";
 import { parseEth } from "@/lib/eth";
 import { checkAddressTarget, guardPastedText } from "@/lib/safety";
+import { SigningNotice } from "@/components/SigningNotice";
 
 /**
  * The operator console.
@@ -120,6 +121,7 @@ export default function ForgePage() {
     <Chrome>
       <WrongNetworkNotice requiredChainId={dep.chainId} />
       <h1 className="page-title">The Forge</h1>
+      <SigningNotice />
       <p className="lede">Register an agent, post a bond, or claim an open trial.</p>
 
       {!isConnected ? (

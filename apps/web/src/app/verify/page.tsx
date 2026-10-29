@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Chrome } from "@/components/Chrome";
 import { useReadContract } from "wagmi";
 import { VERIFICATION_RECEIPT_ABI } from "@/lib/verificationReceipt";
+import { receiptView } from "@/lib/verify-view";
 
 /**
  * Public-verify page (gate 417): paste a tokenId → verdictHash + promptHash shown.
@@ -13,20 +14,33 @@ export default function VerifyPage() {
   const [input, setInput] = useState("");
   const tokenId = /^\d+$/.test(input.trim()) ? BigInt(input.trim()) : undefined;
 
-  const { data: owner } = useReadContract({
-    address: verificationReceiptAddress(),
+  const receipt = verificationReceiptAddress();
+
+  const ownerRead = useReadContract({
+    address: receipt,
     abi: VERIFICATION_RECEIPT_ABI,
     functionName: "ownerOf",
     args: tokenId ? [tokenId] : undefined,
     query: { enabled: tokenId !== undefined },
   });
 
-  const { data: uri } = useReadContract({
-    address: verificationReceiptAddress(),
+  const uriRead = useReadContract({
+    address: receipt,
     abi: VERIFICATION_RECEIPT_ABI,
     functionName: "tokenURI",
     args: tokenId ? [tokenId] : undefined,
     query: { enabled: tokenId !== undefined },
+  });
+
+  // One state for the whole panel, so a refusal, a pending read and an unwired deployment stop
+  // printing the same em dash. See lib/verify-view.ts for why the difference is the feature.
+  const view = receiptView({
+    address: receipt,
+    typed: tokenId !== undefined,
+    reading: ownerRead.isPending || uriRead.isPending,
+    error: ownerRead.error ?? uriRead.error,
+    owner: ownerRead.data === undefined ? undefined : String(ownerRead.data),
+    uri: uriRead.data === undefined ? undefined : String(uriRead.data),
   });
 
   return (
@@ -47,18 +61,26 @@ export default function VerifyPage() {
           placeholder="1"
         />
       </label>
-      {tokenId !== undefined ? (
+      {view.kind === "found" ? (
         <div className="surface detail-panel">
           <p className="kv">
             <span className="kv__key">Owner</span>
-            <span className="mono">{owner ? String(owner) : "—"}</span>
+            <span className="mono">{view.owner}</span>
           </p>
           <p className="kv">
             <span className="kv__key">Metadata URI</span>
-            <span className="mono">{uri ? String(uri) : "—"}</span>
+            <span className="mono">{view.uri ?? "no metadata published"}</span>
           </p>
         </div>
-      ) : null}
+      ) : view.kind === "idle" ? null : (
+        <div className="surface detail-panel">
+          <p className="kv">
+            <span className="kv__key">Chain</span>
+            <span className="mono">{view.kind}</span>
+          </p>
+          <p className="hint hint--block">{view.detail}</p>
+        </div>
+      )}
     </Chrome>
   );
 }
