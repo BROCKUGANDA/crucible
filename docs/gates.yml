@@ -1466,7 +1466,37 @@
 - id: 905
   title: The chip's celebration is bound to the money that moved (MoneyTreesChip is mounted once, inside the verdict branch of the trial detail page, with settled bound to verdict === "paid" - so a slashed or reclaimed trial renders no cue affordance at all; asserted by a wiring test that compares the position of the guard, the chip and the branch after it, because a fixed-size window over the panel's own markup measured this claim wrong once)
   frameworks: [soc2]
+- id: 910
+  title: A speech-to-speech host that never speaks the caller's words (the caller brings audio, the host transcribes it with our key, the brain composes the answer, and only the model's words reach the synthesiser - asserted by a test that transcribes a caller's phrase and reads the request the voice provider actually received, so the boundary ADR-0009 drew is enforced rather than described; a voice that refuses still returns the words with the failure named, because the words are the content and the audio is the garnish)
+  frameworks: [soc2, llm-top10]
+- id: 911
+  title: The turn monitor is the host's record, with every cost measured (the API writes the ledger - who spoke, what was said, what each of the three steps cost - and a step that did not finish carries null rather than 0, so a panel can never print a duration it does not have; the host publishes the phase it is in while a turn runs, and the client polls it over ordinary HTTP rather than opening a second stream, which is why the whitepaper's never-list of second SSE streams and WebSockets still holds)
+  frameworks: [soc2]
+- id: 914
+  title: The conversation's credential does not travel in a URL (the session is opened once and the token is returned once - 256 bits of randomness in a header, never in a path, because a path segment lands in an access log, in the browser's history and in a Referer; the host keeps only sha256 of it, so a memory dump of the process is not a list of conversations; the routes carry no identifier at all - POST /sts/session, GET /sts/session, POST /sts/turn)
+  frameworks: [soc2]
+- id: 915
+  title: A turn the visitor answered over is interrupted, not failed (a turn that arrives while another is running tears the running one's provider calls down through an abort signal and records it as interrupted, because a failed turn is the host's problem and an interrupted one is the visitor changing their mind; closing a turn is idempotent, so a late handler cannot reopen a turn a newer turn has already superseded)
+  frameworks: [soc2]
+- id: 912
+  title: The microphone policy matches the product, and the speech host is bounded (Permissions-Policy said microphone=() while the header's Frenchy control has asked for the microphone since 2026-10-28, so the browser refused it before the visitor was prompted and the button could not work; it is now microphone=(self) on every page - the narrowest thing that lets the shipped control work, and the browser still asks the visitor; the body ceiling is per path so the 256 KiB of an utterance does not raise the limit for every route, and the turn is bounded at 20 a minute, 40 turns a session, 50 sessions a host and a 30-minute idle TTL)
+  frameworks: [owasp-top10, soc2]
+- id: 913
+  title: The deployment hands the API every variable it reads (a variable the API reads and the deployment does not pass is a feature that is on in the developer's shell and off on the box - fifteen were found on 2026-10-29, including WARDEN_WEBHOOK_URL, the channel the sponsorship owner is notified on, so that notice could not have left the box that shipped it, and ALLOWED_ORIGINS, the CORS allowlist, so a deployment on any other origin was refused by the browser; the gate reads the API's own source for the names it reads - the direct reads, the reads through its environment readers, and the reads through an injected environment object - and compose.yaml for the names it passes, so the next one is caught here rather than in production)
+  frameworks: [soc2]
 
+- id: 906
+  title: Disclosed bytes are readable (GET /content/:id serves what a CID names or what a trial digest resolves to through the disclosure log; an unmounted store, content nobody pinned here, and content that no longer hashes to its id are three different answers, and the page that shows them says which one it is)
+  frameworks: [ai-rmf, soc2]
+- id: 907
+  title: The reader and the writers agree on where the store is (every writer opens join(contentDir, "store") - scripts/seed-content.mjs and apps/juror - so the bytes live in <dir>/store/data; the reader opened <dir> itself, so it looked in a directory no writer creates and every disclosed suite answered 503 "the content store could not be read" with a path that was never the store's; the regression test writes where the writers write, and reverting the reader turns 7 of 14 content tests red)
+  frameworks: [soc2]
+- id: 908
+  title: The owner is told when somebody applies for sponsorship (every application is recorded - granted, refused, or unanswered - and the owner is notified through the same webhook channel the warden's trial pings use; a notice that cannot be delivered is recorded in the dead-letter queue and never becomes the applicant's answer, so a dead webhook cannot refuse a wallet that asked)
+  frameworks: [soc2]
+- id: 909
+  title: The sponsorship queue and the treasury ledger are the owner's view (GET /faucet/applications and GET /faucet/ledger answer the owner wallet only, and say which of the two it is when they say no: no queue on this host, no owner configured, or a wallet that is not the owner; the ledger is read from the funder, the only party that knows what left the wallet holding the test ETH)
+  frameworks: [soc2]
 frameworks:
   owasp-top10: "OWASP Web Top 10 (2021)"
   llm-top10: "OWASP LLM Top 10 (2025)"

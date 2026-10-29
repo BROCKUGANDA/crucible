@@ -179,6 +179,115 @@
 }
 
 /*
+ * The disclosed content a hash names.
+ *
+ * The bytes are the point of the page, so they get the page's own frame
+ * rather than a browser's default `<pre>` chrome: the content is read inside
+ * the product, next to the panel that says what it is. `pre-wrap` because a
+ * suite or a spec is prose with long lines, and a horizontal scrollbar to read
+ * one line of it is a worse way to read a document than a wrap.
+ *
+ * The size is bounded by the page, not by the document: a pinned file can be
+ * arbitrarily large, and a page that renders all of it is a page that can be
+ * made to stop responding.
+ */
+.content-view {
+  margin: var(--s-4) 0 0;
+  padding: var(--s-5);
+  background: var(--bg1);
+  border: 1px solid var(--bg2);
+  border-radius: var(--radius);
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  line-height: 1.6;
+  color: var(--text);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
+/*
+ * The owner's sponsorship queue.
+ *
+ * A list of people who asked for the treasury's test ETH, so it is read as a
+ * ledger rather than as chat: one row per application, the wallet and the
+ * amount on the left of the key column, the outcome stated in words rather
+ * than as a coloured dot that only a sighted reader can decode.
+ */
+.owner-queue {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--s-3);
+}
+
+.owner-queue__row {
+  padding: var(--s-3);
+  border: 1px solid var(--bg2);
+  border-radius: var(--radius);
+  display: grid;
+  gap: var(--s-2);
+}
+
+/*
+ * The turn monitor.
+ *
+ * A conversation read as a ledger: one row per exchange, the words on both sides,
+ * and the measured cost of each step. The steps are listed rather than summed,
+ * because a single number for "how long did that take" hides which of the three
+ * was slow — and the whole point of the panel is to say which one.
+ *
+ * The numbers are tabular so the columns line up and a reader can compare two
+ * turns by eye, which is the only comparison this panel exists to support.
+ */
+.turn-monitor {
+  list-style: none;
+  margin: var(--s-4) 0 0;
+  padding: 0;
+  display: grid;
+  gap: var(--s-3);
+  counter-reset: turn;
+}
+
+.turn-monitor__row {
+  padding: var(--s-3);
+  border: 1px solid var(--bg2);
+  border-left: 2px solid var(--accent);
+  border-radius: var(--radius);
+  display: grid;
+  gap: var(--s-2);
+}
+
+.turn-monitor__row[data-outcome="failed"] {
+  border-left-color: var(--sear);
+}
+
+.turn-monitor__steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-4);
+  font-size: var(--fs-micro);
+  color: var(--dim);
+}
+
+.turn-monitor__steps li {
+  display: flex;
+  gap: var(--s-2);
+  align-items: baseline;
+}
+
+.turn-monitor__step-label {
+  text-transform: uppercase;
+  letter-spacing: var(--track-micro);
+  color: var(--faint);
+}
+
+/*
  * The money-sound switch, in the header beside the voice control.
  *
  * It is quiet on purpose: an un-muted audio control that shouts is a control visitors turn off

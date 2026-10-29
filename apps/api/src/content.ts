@@ -21,6 +21,7 @@
  */
 
 import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { CidStore, ContentCorruptedError, isCid } from "@crucible/cidstore";
 
 export type ContentRead =
@@ -65,7 +66,15 @@ export function createContentSource(
       // Read-only on purpose, and the mount says so too: compose gives the API `content` read-only
       // because resolving is not announcing. Opening the store as a writer called `mkdir` on that
       // mount and every read answered 503 before anything was looked up.
-      store = new CidStore({ dir: contentDir, readonly: true });
+      //
+      // **`store` is part of the path, and it has to be here.** Every writer opens
+      // `join(contentDir, "store")` - `scripts/seed-content.mjs:72` and
+      // `apps/juror/src/main.ts:51` - so the bytes live in `<dir>/store/data`. This reader
+      // opened `<dir>` itself, which made it look in `<dir>/data`: a directory no writer
+      // creates, on a path that exists and is empty. The answer was therefore never "not
+      // pinned" but "the store could not be read", and every disclosed suite on the deployed box
+      // answered 503 with a path that named a directory that was never the store's.
+      store = new CidStore({ dir: join(contentDir, "store"), readonly: true });
       return store;
     } catch (err) {
       storeFault = err instanceof Error ? err.message : String(err);

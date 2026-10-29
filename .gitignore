@@ -50,6 +50,24 @@ cdp_api_key*.json
 /scan.js
 /pkg.json
 
+# A session's VPS runner-setup scripts, written at the repo root while it wires
+# self-hosted runners. Two reasons they must never be committed: they hardcode
+# one machine's paths and an SSH key, and they carry a **GitHub Actions runner
+# registration token in plaintext**. The secrets job scans `--all`, so one
+# token-shaped string in one of them reddens every branch - which is what
+# commit 75c4643 did with a localStorage key, and why the gate exists. The
+# scripts are another session's live work, so they are ignored rather than
+# deleted; the token in them should be revoked by whoever owns it.
+/setup*.js
+/svc*.js
+/svc-vps*.service
+/tok.js
+
+# The business PDFs are local renders of the markdown beside them, with no
+# committed generator: three of the four disagree with their sources because
+# the test counts moved under them. Left out rather than committed stale.
+docs/business/*.pdf
+
 # editors / os
 .DS_Store
 Thumbs.db

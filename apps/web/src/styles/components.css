@@ -758,3 +758,39 @@
 .rarity--legendary { color: var(--gold, #d4a017); }
 .rarity--rare { color: var(--accent, #e2612f); }
 .event-active { border-color: var(--gold, #d4a017); }
+
+.badge { display:inline-block; padding:0.15rem 0.5rem; border-radius:var(--radius); font-size:var(--fs-micro); text-transform:uppercase; letter-spacing:0.04em; border:1px solid var(--ash); }
+.badge--success { color:var(--success); border-color:var(--success); }
+.badge--warning { color:var(--warning); border-color:var(--warning); }
+.badge--error { color:var(--error); border-color:var(--error); }
+.badge--info { color:var(--info); border-color:var(--info); }
+.badge--pending { color:var(--pending); border-color:var(--pending); }
+.badge--neutral { color:var(--dim); border-color:var(--ash); }
+.metric-card { padding:var(--s-4); border:1px solid var(--ash); border-radius:var(--radius); }
+.metric-card__label { font-size:var(--fs-micro); color:var(--dim); text-transform:uppercase; letter-spacing:0.04em; }
+.metric-card__value { font-size:var(--fs-title); font-weight:600; margin:var(--s-1) 0; }
+.metric-card__value--success { color:var(--success); }
+.metric-card__value--warning { color:var(--warning); }
+.metric-card__value--error { color:var(--error); }
+.metric-card__hint { font-size:var(--fs-small); color:var(--dim); }
+.empty-state { padding:var(--s-6); text-align:center; border:1px dashed var(--ash); border-radius:var(--radius); }
+.empty-state__title { font-size:var(--fs-sub); margin-bottom:var(--s-2); }
+.empty-state__body { color:var(--dim); font-size:var(--fs-small); }
+.empty-state__action { margin-top:var(--s-4); }
+.section-header { margin:var(--s-5) 0 var(--s-3); }
+.section-header__title { font-size:var(--fs-sub); margin:0; }
+.section-header__subtitle { color:var(--dim); font-size:var(--fs-small); margin:var(--s-1) 0 0; }
+
+.wizard-stepper { display:flex; flex-wrap:wrap; gap:0.5rem; margin:0.75rem 0; }
+.wizard-stepper__step { font-size:var(--fs-micro); padding:0.2rem 0.5rem; border:1px solid var(--ash); border-radius:var(--radius); color:var(--dim); }
+.wizard-stepper__step.is-active { border-color:var(--accent); color:var(--text); }
+.wizard-stepper__step.is-done { border-color:var(--success); color:var(--success); }
+
+.metric-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(10rem,1fr)); gap:var(--s-3); margin:var(--s-4) 0; }
+
+.arena__preview { margin:1.5rem 0; padding:1rem; border:1px solid var(--ash); border-radius:var(--radius); background:var(--bg1); }
+.arena__preview__row { display:flex; align-items:center; gap:0.75rem; flex-wrap:wrap; margin:0.5rem 0; }
+.arena__preview__id { font-family:var(--font-mono); color:var(--accent); }
+.arena__preview__title { flex:1; }
+.arena__preview__reward { font-family:var(--font-mono); color:var(--gold); }
+.arena__preview__hint { font-size:var(--fs-small); color:var(--dim); }

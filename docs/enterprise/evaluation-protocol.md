@@ -178,20 +178,18 @@ closest thing, and it governs *data*, not tasks.
 
 Named plainly, with the slice that closes each:
 
-1. **The runner now emits a manifest — but the grader does not consume one.**
-   The schema exists (ADR-0017) with 224 tests and nine mutation proofs, and
+1. **The runner emits a manifest, and the grader attaches one to every row.**
+   The schema exists (ADR-0017) with 224 tests and nine mutation proofs;
    `packages/forge-runner` emits a manifest beside every artifact with nine
-   more mutation proofs. **A candidate's score is still not attached to the
-   conditions that produced it**, because the grader does not read the
-   manifest and does not attach its digest to a scorecard row. Until it does,
-   a published score cannot be attributed. **This is the first thing to build.**
-2. **The grader does not consume a manifest.** A candidate's score is not
-   yet attached to the conditions that produced it, and a row whose manifest
-   cannot be verified is not refused.
-3. **The web product does not display one.** There is no manifest view, no
+   more; and `ScorecardRow` now carries `manifestDigest` and the manifest
+   itself, both required, with ten more mutation proofs on the grader side.
+   **What is still missing is the refusal:** `incomparability` names the field
+   that moved, but no caller consults it, so a leaderboard that ranked rows
+   across two corpora would still rank them. That is the next line of work.
+2. **The web product does not display one.** There is no manifest view, no
    "these two runs are comparable" indicator, and no comparison guard.
-4. **No leaderboard eligibility rules** and no cross-protocol warning.
-5. **No contamination disclosure, canary, rotation or retirement.**
+3. **No leaderboard eligibility rules** and no cross-protocol warning.
+4. **No contamination disclosure, canary, rotation or retirement.**
 
 ## 8. The protocol version
 

@@ -287,6 +287,58 @@ export function manifestsComparable(left: EvalManifest, right: EvalManifest): bo
 }
 
 /**
+ * The fields that must agree for two **scores** to be comparable.
+ *
+ * This is a different question from `manifestsComparable`, and the difference
+ * matters. `manifestsComparable` asks "is this the same evaluation?" - the
+ * answer must be yes for a repeat measurement. This asks "may these two
+ * numbers be set side by side?" - and there the **model is the thing being
+ * compared**, so it is excluded.
+ *
+ * Two leaderboard rows that differ only in their model are exactly the rows
+ * a leaderboard is made of. Comparing them with the model included would
+ * report every pair of candidates as incomparable and refuse to rank
+ * anything.
+ *
+ * `startedAt`/`finishedAt` are excluded for the same reason as above: two
+ * runs of the same evaluation are a repeat measurement, not two games.
+ */
+export const SCORE_COMPARISON_FIELDS = [
+  "taskDigest",
+  "datasetDigest",
+  "suiteDigest",
+  "evaluator",
+  "agent",
+  "environment",
+  "seed",
+  "sampling",
+  "scoring",
+] as const;
+
+/**
+ * Whether two **scores** may be compared - that is, set side by side,
+ * averaged, or ranked against each other.
+ *
+ * The model is excluded, because the model is the subject of the comparison
+ * rather than a condition of it. Everything else - the corpus, the
+ * evaluator, the rubric, the seed, the sampling and the fee schedule - is a
+ * condition, and a difference in any of them means the two numbers are not
+ * the same measurement.
+ *
+ * `compareManifests` reports which field moved; this reports whether it
+ * matters for a comparison.
+ */
+export function scoresComparable(left: EvalManifest, right: EvalManifest): boolean {
+  return compareManifests(left, right).every(
+    (d) =>
+      d.path === "startedAt" ||
+      d.path === "finishedAt" ||
+      d.path === "model" ||
+      d.path.startsWith("model."),
+  );
+}
+
+/**
  * Build a manifest, refusing the inputs that would make it unhonest.
  *
  * The checks are the ones a later reader cannot check: a moving model alias,

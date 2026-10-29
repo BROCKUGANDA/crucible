@@ -14,7 +14,10 @@ Start with the question you have, not the folder.
 ## I want to know why it is built this way
 
 - [`docs/adr/`](adr/) — the architecture decisions, including the product
-  boundary between this agent proving ground and the external USDC PRD.
+  boundary between this agent proving ground and the external USDC PRD, and
+  [`ADR-0018`](adr/0018-speech-to-speech-and-turn-monitor.md) — the
+  speech-to-speech host and the turn monitor, and why the caller's words never
+  reach the synthesiser.
 - [`docs/pipeline-ledger.md`](pipeline-ledger.md) — the CI/promotion/deploy
   history and the failures that shaped it.
 
@@ -58,8 +61,8 @@ Start with the question you have, not the folder.
 
 ## I have to operate it
 
-- [`docs/runbooks/`](runbooks/) — site down, indexer, deploy, voice host,
-  contracts, incident response.
+- [`docs/runbooks/`](runbooks/) — site down, indexer, deploy, voice host (both
+  the one-way host and the speech-to-speech host), contracts, incident response.
 - [`docs/setup.md`](setup.md) — local development and the shared edge.
 - [`docs/runbooks/credentials-and-deploy.md`](runbooks/credentials-and-deploy.md) — where every credential comes from, box steps, and the mainnet checklist.
 - [`docs/key-inventory.md`](key-inventory.md) — every key, what it can reach,

@@ -230,6 +230,25 @@ The never-list, grep-able:
 
 - second chain writer · second SSE stream / WebSocket · new adapter file for a model · agent-held key · write endpoint · unbounded queue · retry-until-pass · embedded commercial audio · upgrade key · timestamp-scored verdict · parallel indexer · secret in client · `dangerouslySetInnerHTML`
 
+### The one addition since, and why it is not the list
+
+The speech-to-speech host (ADR-0018) added three write routes — open a session,
+read it, send a turn. They are named here so nobody has to infer them:
+
+- **They write no chain state.** The API holds no chain key (ADR-0006) and a
+  session is an in-memory ledger entry. Nothing a caller posts can move ETH.
+- **They open no stream.** The exchange is one request and one response over the
+  ordinary HTTP the rest of the API uses; the turn monitor polls the phase. The
+  list's "second SSE stream / WebSocket" still stands.
+- **They spend provider credits, so they are bounded rather than open.** Twenty
+  turns a minute, 256 KiB of audio a turn, forty turns a session, fifty sessions
+  a host, a thirty-minute idle TTL, and a body ceiling that is **per path** so
+  the utterance's size does not raise the limit for every other route. The
+  "unbounded queue" in the list is the thing these numbers refuse.
+- **The microphone is opened on one route.** `microphone=()` on every page and
+  `microphone=(self)` on `/voice` alone.
+
+
 ---
 
 ## 13. Honest limits

@@ -100,9 +100,9 @@ unsafe / unverified. Grouped by the brief's own workstreams.
 | Holdout contamination linting | **Existing** | `packages/eval/src/gates.ts` — `lintRagDocs` with `HoldoutFingerprint` (prompt-content match against holdout ids) | — |
 | Deterministic suite re-runs outrank LLM rubrics | **Existing** | `packages/argus` re-runs the pinned suite; LLM rubric only when the suite cannot decide (`contract-spec.md`, `packages/argus`) | — |
 | Shared-corpus comparison with false-pass / p95 / test–retest gates | **Existing** | `grader/src/scorer.ts`, `frontier.ts`; `grader/src/eval/abstention.ts` computes Wilson intervals, false-abstention rate, Brier score | — |
-| **Versioned evaluation manifest** pinning task/dataset/suite/evaluator/model/scaffold/prompt/tool/image/seed/temperature/limits | **Verified** | `packages/smith-sdk/src/manifest.ts` — `EVAL_MANIFEST_SCHEMA_VERSION = "1.0.0"`, `manifestDigest` (keccak256 over RFC 8785), `compareManifests`, `manifestsComparable`; 224 tests in the workspace and **nine mutations proven red and restored**; ADR-0017. **The runner emits one**: `packages/forge-runner/src/manifest.ts` with nine more mutations proven | **The grader does not consume one yet** — a score is still not attached to its conditions. That is slice S1c in [`roadmap.md`](roadmap.md). |
+| **Versioned evaluation manifest** pinning task/dataset/suite/evaluator/model/scaffold/prompt/tool/image/seed/temperature/limits | **Verified** | `packages/smith-sdk/src/manifest.ts` — `EVAL_MANIFEST_SCHEMA_VERSION = "1.0.0"`, `manifestDigest` (keccak256 over RFC 8785), `compareManifests`, `manifestsComparable`, `scoresComparable`; 224 tests and **nine mutations proven red and restored**; ADR-0017. **The runner emits one** (`packages/forge-runner/src/manifest.ts`, nine more mutations proven). **The grader consumes one**: `grader/src/eval/manifest.ts` and `ScorecardRow.manifestDigest` / `.manifest`, both required; `scripts/grade-arena.mjs` supplies the builder | **Nothing refuses an incomparable pair yet** — `incomparability` names the field that moved, but no caller consults it. That is slice S1d in [`roadmap.md`](roadmap.md). |
 | **Run IDs and idempotent job phases** | **Partial** | `grader/src/session.ts` files exist (`session_fed…json`) | No idempotency key contract is exposed; session files are per-run but the phase model is undocumented. || **Paired comparison / bootstrap / inter-rater agreement** | **Partial** | `grader/src/sampler.ts`, `eval/abstention.ts` (Wilson intervals, Brier) | No paired-difference estimator, bootstrap CI, or inter-rater agreement statistic (Cohen's κ beyond a single `kappa` field on the row). |
-| **Leaderboard eligibility + incompatible-protocol warning** | **Partial** | `packages/eval/src/gates.ts` — `rankBoard`, `verifyRanking` | Ranking exists; eligibility rules and cross-protocol comparison warnings do not. |
+| **Leaderboard eligibility + incompatible-protocol warning** | **Partial** | `packages/eval/src/gates.ts` — `rankBoard`, `verifyRanking`; `grader/src/eval/scorer.ts` — `incomparability` names the field that moved | The ranking path does not consult the guard, so rows across two corpora would still be ranked together. |
 | **Benchmark retirement / incident disclosure / replacement** | **Missing** | — | No deprecation or incident procedure for a published benchmark version. |
 
 ### 2.2 Game theory and market integrity (brief §B)
@@ -314,16 +314,18 @@ independently shippable:
 |---|---|---|
 | **S1 — Evaluation manifest** ✅ shipped | 12 items (021–025, 027, 072, 176, 286, and 022–026 partially) | nothing — pure addition |
 | **S1b — The runner emits one** ✅ shipped | the remaining 021–026 and 072 gaps | S1 |
-| **S1c — The grader consumes one** | attaches the manifest digest to every scorecard row | S1b |
+| **S1c — The grader consumes one** ✅ shipped | attaches the manifest digest to every scorecard row | S1b |
+| **S1d — The leaderboard refuses an incomparable pair** | the ranking path consults the guard | S1c |
 | **S2 — Explicit economics model** | 8 items (112, 114–116, 120, 134, 253, 298) | S1 for the schedule-version field |
 | **S3 — Adversary simulation** | 8 items (084–090, 102, 103) | S2 for the constants it perturbs |
 | **S4 — Organisation + tenancy** | 15 items (141–160, 271–275) | S1 for per-org dataset visibility |
 | **S5 — Release evidence** | 6 items (020, 202, 218–220, 226) | nothing |
 
-**S1c is where the plan should start.** It is the smallest slice that makes
-the manifest a fact about a *published score* rather than a fact about a run,
-and it is the precondition for every statistical and eligibility claim the
-brief asks for.
+**S1d is where the plan should start.** It is the smallest slice that makes
+the manifest a fact about a *published score* rather than a fact about a run:
+the ranking path reads the manifests, refuses a pair whose conditions differ,
+and says which field moved. Every statistical and eligibility claim the brief
+asks for depends on it.
 
 ### 5.2 Honest limits of this assessment
 

@@ -167,7 +167,20 @@ const securityHeaders = [
   { key: "Referrer-Policy", value: "no-referrer" },
   {
     key: "Permissions-Policy",
-    value: "camera=(), microphone=(), geolocation=(), payment=(), usb=(), display-capture=()",
+    // The microphone is open to this origin, and that is a correction rather
+    // than a relaxation.
+    //
+    // The policy said `microphone=()` while the product has shipped a voice
+    // control since 2026-10-28: the header's Frenchy panel asks for the
+    // microphone, and `microphone=()` makes the browser refuse it before the
+    // visitor is ever prompted. The button could not work, and the refusal it
+    // produced told the visitor to change their browser settings - which is not
+    // what was wrong.
+    //
+    // `microphone=(self)` is the narrowest thing that lets the feature work:
+    // this origin may ask, no other origin may, and the browser still asks the
+    // visitor. The microphone is requested only when somebody presses Listen.
+    value: "camera=(), microphone=(self), geolocation=(), payment=(), usb=(), display-capture=()",
   },
   ...(isProductionBuild ? [{ key: "Content-Security-Policy", value: CSP }] : []),
 ];

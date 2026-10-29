@@ -1303,6 +1303,151 @@ guards is the decoration it exists to detect.
   must sit behind auth or not exist (mainnet runbook), and `eth_sendRawTransaction` passing means
   anyone can still submit transactions to the demo chain from the browser's own accounts.
 
+- **The owner is told when somebody applies for sponsorship, and the queue is the owner's view.**
+  A sponsorship application used to end at the funder's answer: the applicant was
+  told "granted" or "refused", and the owner of the wallet holding the test ETH
+  was never told that anyone had asked. Every application is now recorded -
+  **granted, refused, or unanswered**, because a refusal is an application too and a
+  queue holding only the successes would say "nothing happened" when a wallet was
+  turned away - and the owner is notified through the same webhook channel the
+  warden's trial pings use (`WARDEN_WEBHOOK_URL`), so there is one channel and one
+  URL rather than a second notifier beside the first. The warden's transport was
+  widened from "a trial event" to "a message" (`Message` in
+  `packages/warden/src/policy.ts`) because borrowing the channel otherwise meant
+  inventing a trial id and a trial kind, and a lie inside a notification is worse
+  than no notification. **A delivery failure is never the applicant's answer:** the
+  notice is awaited, and a failure goes to the dead-letter queue while the
+  applicant's response stays the funder's own. `GET /faucet/applications` and
+  `GET /faucet/ledger` answer the owner wallet only and say which of the three
+  refusals they are - no queue on this host, no owner configured, or a wallet that
+  is not the owner - and the ledger is read from the funder, the only party that
+  knows what left the treasury. **Measured on the local stack:** an application
+  appeared in the owner's queue and the owner's channel received
+  `Sponsorship application: 0xabcdef… asked for 0.01 ETH and was refused (…)`; a
+  stranger asking for the queue got 403. **Three mutations were proven and
+  restored** - record nothing (5 of 12 tests red), do not deliver the notice (4
+  red), let every wallet be the owner (3 red) - and the web suite adds 15 tests
+  over the reading of the host's answer, where "the queue is empty" and "the host
+  could not answer" are kept apart. **What this does not close:** the owner gate
+  compares an address the caller *claims*, so it is a demo gate and not a
+  production one - the production gate is a signature from the owner's wallet, and
+  `OwnerGate` says so in the code rather than implying a protection it does not
+  have; the queue is in-memory (ADR-0008), so a restart empties it; and the
+  funder's own `/allocations` route has no automated test, because
+  `apps/funder/src/server.ts` starts its listener at import - it was verified by
+  observation (`{"allocations":[]}` from a running funder), not by a test.
+
+- **The disclosed bytes are readable, and the reader and the writers agree on where
+  the store is.** The chain holds a keccak digest, the disclosure log names the
+  sha256 CID for the same bytes, and the content store holds the bytes - but the
+  **reader** opened `<contentDir>` while **every writer** opens
+  `join(contentDir, "store")` (`scripts/seed-content.mjs:72`,
+  `apps/juror/src/main.ts:51`). The bytes therefore live in `<dir>/store/data` and
+  the reader looked in `<dir>/data`, a directory no writer creates, so every
+  disclosed suite answered **503 "the content store could not be read"** with a
+  reason that named a path which was never the store's. **Measured on the local
+  stack:** 503 before, and **200 with 741 bytes for both the CID and the on-chain
+  digest** after, for the same content. The regression test writes where the
+  writers write - that is the whole point of it, because a test that wrote the
+  store at `<dir>` itself was testing a layout no writer produces - and reverting
+  the reader turns **7 of the 14 content tests red**. The bytes now have a page of
+  their own (`/content/[id]`), because the raw route answers JSON for every
+  failure and a visitor who clicked a hash used to land in a browser tab showing
+  `{"error":"the content store could not be read", …}` with no explanation and no
+  way back; the page says which of the four failures it is - not here, broken
+  here, unmounted, or bytes that no longer hash to the id they were served under
+  - and the raw route stays one click away. The page was checked in a real browser
+  against the production build.
+
+- **The speech-to-speech host never speaks the caller's words, and the turn
+  monitor is the host's own record.** ADR-0018. The caller brings **audio**; the
+  host transcribes it with our key, the brain composes an answer, and **only the
+  model's words** reach the synthesiser — so the boundary ADR-0009 drew is reached
+  from the other side rather than loosened. The enforcement is a test that
+  transcribes a caller's phrase and reads the request the voice provider actually
+  received; replacing the reply with the transcript turns it red. **The words are
+  the content and the audio is the garnish:** a synthesiser that refuses still
+  returns the transcript and the reply with the failure named, because a visitor
+  who asked a question deserves the answer on a host whose voice has stopped
+  working. **The ledger is the host's** — the API writes who spoke, what was said
+  and what each of the three steps cost, and a step that did not finish carries
+  `null` rather than `0`, because a step that never ran did not take no time and a
+  panel that printed `0 ms` for it would be reporting a measurement that was never
+  taken. The host publishes the phase it is in while a turn runs, and the client
+  polls it over ordinary HTTP: **no second SSE stream and no WebSocket**, so the
+  security whitepaper's never-list still holds. **Measured:** 34 API tests and 21
+  client tests, with **15 and 7 mutations** proven red and restored for the host
+  and the client, and **8 more** for the credential and the superseding.
+  **The credential does not travel in a URL**: the session is opened once and the
+  token — 256 bits, returned once — goes in a header, because a path segment
+  lands in an access log, in the browser's history and in a `Referer`; the host
+  keeps only its `sha256`, so a memory dump of the process is not a list of
+  conversations; and the routes carry no identifier at all. It is still a
+  **bearer** credential — whoever holds it may read that conversation, and it is
+  not a signature, because the voice room has to work for a visitor who has not
+  connected a wallet. **A turn the visitor answered over is `interrupted`, not
+  `failed`**: the provider calls are torn down through an abort signal, and
+  closing a turn is idempotent so a late handler cannot reopen a turn a newer
+  turn has already superseded. **The microphone is open to this origin, and that
+  is a correction**: the policy said
+  `microphone=()` while the header's Frenchy control has asked for the microphone
+  since 2026-10-28, so the browser refused it before the visitor was prompted and
+  the button could not work — and the refusal told the visitor to change their
+  browser settings, which was not what was wrong. It is now `microphone=(self)`
+  on every page: the narrowest thing that lets the shipped control work, and the
+  browser still asks the visitor. The first draft of ADR-0018 assumed the
+  microphone was closed everywhere and could be opened on one route; it could not,
+  because the header's panel is global and a route-scoped exception would have
+  left the shipped control dead on every page but one, so the policy was
+  corrected instead. **What this does not close:** the session credential is a
+  bearer token, so anyone holding it may read that conversation; the
+  visitor's speech is text on our key before it is text anywhere else; a turn is a
+  request and not a stream, so interrupting an answer mid-sentence is not
+  shipped; and no browser has spoken
+  through this host, because the deployment has no ElevenLabs key.
+
+- **Fifteen variables the API reads were passed to no container, so a shipped feature
+  could not have worked on the box that shipped it.** Reading the API's source
+  for the names it reads beside `compose.yaml`'s for the names it passes found
+  `STS_DISABLED` and `ELEVENLABS_STT_MODEL_ID` (the speech host's own switches),
+  `ELEVENLABS_SCRIBE_MODEL_ID` and `FRENCHY_SCRIBE_DISABLED` (the live-caption
+  model and its kill switch), `CRUCIBLE_OWNER_ADDRESSES` (the sponsorship
+  queue's owner list), **`WARDEN_WEBHOOK_URL`** — the channel the owner is
+  notified on, so the sponsorship notification could not have left the machine
+  that shipped it — the MCP agent surface's `MCP_RATE_LIMIT` and
+  `MCP_RATE_BURST`, and the **seven the API reads through its injected
+  environment object** (`apps/api/src/security.ts`), among them
+  **`ALLOWED_ORIGINS`**: the CORS allowlist, so a deployment on any origin but
+  the four local demo ports was refused by the browser. All fifteen are passed
+  now — the API reads 46 variables and the deployment passes 46 — and
+  `apps/api/test/compose-env.test.ts` is the gate that keeps it true: it reads
+  the API's own source for the names it reads (the direct reads, the reads
+  through its environment readers, and the reads through an injected environment
+  object) and the deployment's own file for the names it passes, so the next one
+  is caught here rather than in production. A hand-written list of "the
+  variables that matter" would have named these fifteen and been silent about
+  the sixteenth, which is the one that breaks next.
+
+- **Frenchy's answers are grounded in the read model again.** The route read the
+  live model from `(c as any).var?.apiDeps`, and **nothing ever set that
+  variable** — so every answer was composed against an empty model while the
+  system prompt told the model it was "grounded in live CRUCIBLE state". A prompt
+  that promises grounding the host does not provide produces confident sentences
+  about a deployment the model cannot see. The model is now a dependency of the
+  route (`createFrenchyRoutes(config, { getModel })`), and the speech host is
+  mounted with the same one. A test asserts the open trial is named in the
+  context; removing the model from the prompt turns it red.
+
+- **The site's palette is one palette again.** Commit `53bd09f` replaced
+  `src/styles/tokens.css` wholesale: it changed the values under the token names
+  the whole stylesheet speaks and **dropped the names it did not replace**
+  (`--text`, `--hot`, `--sand`). `var(--text)` on an undefined custom property is
+  not "the old text" — it is no declaration at all, so ~240 references across
+  seven stylesheets either pointed at a different colour or at nothing. The
+  drift gate `test/scrub-palette.test.ts` caught it (two failures) and the fix
+  restores the vocabulary and layers the new semantic names additively, each bound
+  to the arena colour it already means rather than to a new hue.
+
 ## Unresolved from the 2026-10-27 pass (continues the open list)
 
 23. **`apps/api` reported one failing test once, inside a saturated fan-out, and it has not been
@@ -1767,6 +1912,38 @@ much of the product's promise each one costs.
     Windows is a scanned, shared directory, so a passing full-tree run here is a weaker signal than it
     looks. Costed last because it costs no promise to a judge; it costs the next agent an hour of
     believing the product regressed.
+
+23. **The whole-tree gate on this box is red on wall-clock budgets, and the quantity each one
+    depends on is named here rather than the word "flaky".** Four separate runs of
+    `npm run verify:all` on 2026-10-29 were red, each time on a *different* test, and each time
+    outside the slice under test: the API's `passport.test.ts` timing out at vitest's 5,000 ms
+    default, the indexer's `mock-shape.test.ts` timing out at the same 5,000 ms, the datasets'
+    `sybil-labels.test.ts` timing out at the same 5,000 ms, and the API's `stream-latency.test.ts`
+    measuring 554 ms against a 400 ms budget for delivering a change to twenty SSE clients. **The
+    quantity is wall-clock under a saturated fan-out** - a dozen-plus concurrent vitest processes
+    on a Windows box that another agent is also running tests on - and each of the four passes in
+    isolation: the API workspace 282/282, the indexer's `mock-shape` 1/1, the datasets' sybil-labels
+    7/7, the juror's `state` 8/8. **The check that distinguishes the two stories is to re-run the
+    one workspace before believing a regression**, exactly as item 22 says for the durability test,
+    and the residue is the same residue: a green full-tree run on this box is a weaker signal than
+    it looks, because a 5-second budget is a statement about the machine and not about the code.
+    **Two further runs measured on the same day, from a second pair of eyes on this box, put a
+    number on it.** Each run produced **four failures and not the same four**: one run failed
+    `packages/eval` ×2, `packages/forge-runner` ×1 and `packages/indexer` ×1, and the next failed
+    `packages/datasets` ×1, `packages/indexer` ×2 and `packages/grader` ×1. **Every one of the
+    eight was a `Test timed out in 5000ms` and never a failed assertion**, and every one of the
+    tests involved **binds a local HTTP server** on the same box (`packages/eval`'s `rpc()`,
+    `packages/indexer`'s `createServer`, `packages/forge-runner`'s local forge sandbox) — so the
+    quantity is not only the clock but the round trip to a socket the machine is also serving.
+    `packages/indexer/test/mock-shape.test.ts`, the one that failed in both runs, was then run
+    **10 times on its own and passed 10 out of 10**. **No threshold was retuned**: a timeout that
+    is made to stop firing by moving a number is the decoration this repository's gate rule
+    forbids, and the fix when it is worth making is a budget that does not depend on the machine's
+    load, not a bigger number.
+    The slice that added the sponsorship queue was measured green on a whole-tree run on the same
+    day (`npm run verify:all` exit 0) before its last two web tests were added; the two API and
+    fifteen web tests it owns are green in every run. Nothing here is a money gate and nothing was
+    re-rolled for a green.
 
 Report a vulnerability as described in [`SECURITY.md`](SECURITY.md), not in a public issue.
  

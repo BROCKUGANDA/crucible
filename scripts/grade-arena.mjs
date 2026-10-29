@@ -50,6 +50,7 @@
  */
 
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { CidStore, ContentBridge, DisclosureLog } from "@crucible/cidstore";
@@ -75,7 +76,31 @@ import {
   drawSuite,
   verifyDraw,
   isAnchor,
+  buildGraderManifest,
 } from "@crucible/grader";
+
+/**
+ * The grader's own version, which the manifest records as the evaluator.
+ *
+ * It is a constant rather than a git hash because a hash changes on every
+ * commit - including a commit that changed a comment - and the manifest is
+ * compared across runs. The version changes when the *evaluation* changes.
+ */
+const GRADER_VERSION = "1.0.0";
+
+/**
+ * The digest naming the exam set a row belongs to.
+ *
+ * The grader's own `corpusEpochOf` takes the finished rows, which is the
+ * right shape for a scorecard but the wrong one here: the manifest is built
+ * before the rows exist. So this hashes the same pair the grader does -
+ * `suite` and `suiteEpoch`, joined and sorted - with the same construction,
+ * and the row's own `corpusEpoch` is checked against it below.
+ */
+function scorecardCorpusEpoch(suite, suiteEpoch) {
+  const pairs = [`${suite}::${suiteEpoch}`].sort();
+  return createHash("sha256").update(JSON.stringify(pairs)).digest("hex");
+}
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, "..");
@@ -479,9 +504,46 @@ async function main() {
     console.log();
   }
 
-  const arena = new Arena(cache, spend);
+  // The manifest builder: this script holds the facts the arena does not -
+  // the provider, the model card that pins the snapshot, the seed the draw
+  // was taken with, and the thresholds in force. The arena knows the corpus
+  // and the model id; it cannot know the rest, so it asks.
+  const startedAtMs = Date.now();
+  const manifestFor = (ctx) =>
+    buildGraderManifest({
+      modelId: ctx.modelId,
+      provider: provider.kind,
+      card: provider.card ?? {
+        id: ctx.modelId,
+        dialect: "stub",
+        snapshot: "unpinned",
+        pinnedAt: "1970-01-01",
+        roles: ["contestant"],
+        retention: { retention: "unknown", reviewedAt: "1970-01-01", source: "none" },
+        budgetUsd: { stage: 0, day: 0 },
+        costPerCallUsd: 0,
+        maxCallsPerStage: 0,
+        latencyP95Ms: 0,
+      },
+      suite: ctx.suite,
+      suiteEpoch: ctx.suiteEpoch,
+      corpusEpoch: scorecardCorpusEpoch(ctx.suite, ctx.suiteEpoch),
+      promptVersion: "v1",
+      seed: draw?.seed ?? "unset",
+      ...(draw?.seedCommitment ? { seedCommitment: draw.seedCommitment } : {}),
+      ...(draw?.drawHash ? { drawHash: draw.drawHash } : {}),
+      evaluatorVersion: GRADER_VERSION,
+      thresholds: {
+        maxFalsePassRate: String(thresholds.maxFalsePassRate),
+        maxP95LatencyMs: String(thresholds.maxP95LatencyMs),
+      },
+      startedAt: new Date(startedAtMs).toISOString(),
+      finishedAt: new Date(Date.now()).toISOString(),
+    });
+
+  const arena = new Arena(cache, spend, manifestFor);
   let scorecard;
-  const startedAt = Date.now();
+  const startedAt = startedAtMs;
   try {
     scorecard = await arena.runSmoke([adapter], { [SUITE]: () => artifacts }, RETESTS, thresholds);
   } catch (err) {
@@ -746,6 +808,11 @@ async function main() {
         drawHash: draw?.drawHash ?? null,
         corpusEpoch: scorecard.corpusEpoch,
         suiteEpoch: row.suiteEpoch,
+        // The manifest digest is the row's link to the conditions that
+        // produced it. Without it, a ledger row names a model and a number
+        // and nothing else - and two ledger rows over different corpora would
+        // look like the same measurement.
+        manifestDigest: row.manifestDigest,
         row,
         pinned: { cid: pinned.cid, digest: pinned.digest },
       };
