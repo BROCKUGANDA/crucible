@@ -179,6 +179,34 @@
 }
 
 /*
+ * The disclosed content a hash names.
+ *
+ * The bytes are the point of the page, so they get the page's own frame
+ * rather than a browser's default `<pre>` chrome: the content is read inside
+ * the product, next to the panel that says what it is. `pre-wrap` because a
+ * suite or a spec is prose with long lines, and a horizontal scrollbar to read
+ * one line of it is a worse way to read a document than a wrap.
+ *
+ * The size is bounded by the page, not by the document: a pinned file can be
+ * arbitrarily large, and a page that renders all of it is a page that can be
+ * made to stop responding.
+ */
+.content-view {
+  margin: var(--s-4) 0 0;
+  padding: var(--s-5);
+  background: var(--bg1);
+  border: 1px solid var(--bg2);
+  border-radius: var(--radius);
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  line-height: 1.6;
+  color: var(--text);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
  * The money-sound switch, in the header beside the voice control.
  *
  * It is quiet on purpose: an un-muted audio control that shouts is a control visitors turn off
