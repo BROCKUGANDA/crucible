@@ -621,10 +621,10 @@ Two properties it checks that a stub could not:
   their identity with the ERC-8004 Identity registry themselves (`register(agentURI)`
   mints to the caller), and Crucible records the association via `linkIdentity`.
   Verified on mainnet in `ForkTests.test_Fork_OperatorLinksARealIdentityRegistration`.
-- **28 npm advisories remain** (15 moderate, 13 high, 0 critical — the gate reconciles its own walk
+- **30 npm advisories remain** (2 low, 12 moderate, 16 high, 0 critical — the gate reconciles its own walk
   against npm's summary and fails if the two disagree), and CI's audit passes them because each one
   is inside the documented set in `scripts/audit-gate.mjs` with a written ceiling. They reduce to
-  **five advisories in four leaf packages, every one of them reached through the wallet connector
+  **six advisories in four leaf packages, every one of them reached through the wallet connector
   tree** — not the "two" an earlier version of this list claimed, which missed the last two:
   - **`ws` — uninitialized memory disclosure (GHSA-58qx-3vcg-4xpx) and memory-exhaustion DoS
     (GHSA-96hv-2xvq-fx4p), high.** Reached through `@walletconnect/ethereum-provider` →
@@ -645,10 +645,13 @@ Two properties it checks that a stub could not:
     `@metamask/utils@11.12.1`, and again under `@metamask/sdk`. The vulnerable shape needs a caller
     that passes a `buf` to a namespaced UUID; whether the MetaMask SDK does that has **not** been
     checked here, and the ceiling admits it unexamined rather than pretending otherwise.
-  - **`decode-uri-component` — DoS by exponential decoding of malformed percent-encoded input,
-    moderate.** Reached through `@walletconnect/ethereum-provider` → `@reown/appkit` →
-    `@walletconnect/universal-provider` → `query-string`. npm reports the vulnerable range as
-    `<=0.4.2`. This one decodes URIs, and a wallet deep-link is exactly the attacker-visible string
+  - **`decode-uri-component` — two DoS advisories in a URI decoder, **high**.
+    Reached through `@walletconnect/ethereum-provider` → `@reown/appkit` →
+    `@walletconnect/universal-provider` → `query-string`. npm reports the exponential-decoding
+    advisory (GHSA-vcc3-ghjq-m6fr) for `<=0.4.2` and the quadratic-replacement one
+    (GHSA-qr28-fpjm-wq7f) for `<=0.5.0`; the installed copy is `0.2.2`, in range for both, so
+    the package is now scored **high** rather than moderate and the ceiling moved with it.
+    This one decodes URIs, and a wallet deep-link is exactly the attacker-visible string
     that reaches a decoder — the input is the connect URI, not a chain response.
   npm offers the same fix for all four: `wagmi` `3.7.9`, a semver-major. **That was measured, not
   assumed** — the upgrade was installed, built, typechecked, tested and `next build`ed green on

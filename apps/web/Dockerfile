@@ -25,6 +25,7 @@ COPY packages/indexer/package.json packages/indexer/
 COPY packages/smith-sdk/package.json packages/smith-sdk/
 COPY packages/warden/package.json packages/warden/
 COPY grader/package.json grader/
+COPY packages/site-index/package.json packages/site-index/
 COPY apps/api/package.json apps/api/
 COPY apps/keeper/package.json apps/keeper/
 COPY apps/juror/package.json apps/juror/

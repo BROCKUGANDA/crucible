@@ -20,7 +20,11 @@ import { isProvableLocal, plan } from "../../../scripts/deploy-network.mjs";
  */
 
 const ANVIL_DEV_KEY = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
-const OPERATOR_KEY = "0x59c6995e998f97a5a0044966f094533579aee81dd4dbbe82c73bec743c0b44a7";
+// Anvil's published dev key #1: a real key that is NOT the dev key #0 the
+// runbook publishes, so the plan's local-dev-key branch is not what this test
+// measures, and a literal that is already named in .gitleaks.toml rather than
+// one invented here that looks exactly like a leaked credential.
+const OPERATOR_KEY = "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d";
 
 let server;
 let chainId = 31337;

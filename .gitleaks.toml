@@ -1,10 +1,10 @@
 # Gitleaks configuration.
 #
 # The allowlist contains only deterministic development values that are published by
-# Anvil, plus the secp256k1 curve constants used by the signature check, plus one retired
-# fixture literal named below. None of them is a credential: an Anvil key controls only a
-# throwaway local account, the curve constants are public mathematics, and the retired
-# literal is a string that was invented for a test and never controlled anything.
+# Anvil, plus the secp256k1 curve constants used by the signature check, plus the
+# retired fixture literals named below. None of them is a credential: an Anvil key controls
+# only a throwaway local account, the curve constants are public mathematics, and a
+# retired literal is a string that was invented for a test and never controlled anything.
 # Everything else is scanned, including git history.
 [extend]
 useDefault = true
@@ -55,4 +55,15 @@ regexes = [
   # `--log-opts=--all`, so the old assignment reddens every branch until it is named.
   # Exception is the exact literal, so any other key-shaped string still fails.
   '''crucible\.engram\.vault\.v1''',
+  # A third invented "a different key" literal: `const OPERATOR_KEY` in
+  # `packages/eval/test/deploy-network.test.ts` at commit b253f33c, used to prove the deploy
+  # plan does not leak a key-shaped value into its own output. It is not Anvil key #1 and not
+  # any published dev key (it borrows key #1's first bytes, which is what made it look like
+  # one), it appears in no other commit, and it controls nothing - but a high-entropy hex
+  # string is what a leaked credential looks like, and this job scans `--log-opts=--all`, so
+  # the published commit reddens every branch until the literal is named.
+  #
+  # The fixture now uses Anvil's published dev key #1 instead, so nothing new looks like
+  # this. Exception is the exact literal, so any other key-shaped string still fails.
+  '''0x59c6995e998f97a5a0044966f094533579aee81dd4dbbe82c73bec743c0b44a7''',
 ]

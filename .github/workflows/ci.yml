@@ -376,6 +376,7 @@ jobs:
             --workspace @crucible/datasets \
             --workspace @crucible/eval \
             --workspace @crucible/registry \
+            --workspace @crucible/site-index \
             --workspace @crucible/funder
 
       - name: test (every workspace)
@@ -399,6 +400,7 @@ jobs:
             --workspace @crucible/datasets \
             --workspace @crucible/eval \
             --workspace @crucible/registry \
+            --workspace @crucible/site-index \
             --workspace @crucible/funder
 
       # The edge is not a workspace, so `npm test --workspaces` never reaches it — and a

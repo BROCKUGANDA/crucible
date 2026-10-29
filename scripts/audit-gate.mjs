@@ -63,8 +63,8 @@ const EXACT = [
   // `viem` scores at `high` because of the `ws` advisory it inherits, not one of its own.
   { name: "viem", ceiling: "high" },
   { name: "wagmi", ceiling: "moderate" },
-  { name: "decode-uri-component", ceiling: "moderate" },
-  { name: "query-string", ceiling: "moderate" },
+  { name: "decode-uri-component", ceiling: "high" },
+  { name: "query-string", ceiling: "high" },
   { name: "uuid", ceiling: "moderate" },
   { name: "@vanilla-extract/css", ceiling: "low" },
   { name: "deepmerge", ceiling: "low" },

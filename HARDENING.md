@@ -1448,6 +1448,26 @@ guards is the decoration it exists to detect.
   restores the vocabulary and layers the new semantic names additively, each bound
   to the arena colour it already means rather than to a new hue.
 
+- **Three gates were red on this slice's push, and each was closed with the remedy the gate itself
+  names.** (1) The **workspace-coverage gate** refused the new `@crucible/site-index` package: the CI
+  job enumerates its workspaces by hand, and a package with a `test` script that the job does not
+  run is a package whose tests nobody runs. The package is now in both enumerations, and the five
+  node images copy its manifest — an image that omits one resolves a workspace that is not there
+  and asks the registry for a package that does not exist, which is a failure that lands at deploy
+  time on the machine serving the demo. (2) The **dependency audit** was red on
+  `decode-uri-component` and `query-string`: npm re-scored the package (a second DoS advisory,
+  GHSA-qr28-fpjm-wq7f, sits beside the first) so it is now **high** rather than moderate, and the
+  fix npm offers is the same semver-major `wagmi` bump the README already records as measured,
+  built and reverted. The ceiling moved with the score and the README's Known-limits paragraph says
+  why, in the same place as every other accepted advisory. (3) The **secret scanner** stopped the
+  build on an invented key-shaped literal in a *test fixture* — the same shape of fixture this
+  repository has already named three times. The fixture now uses Anvil's published dev key #1 (a
+  real key that is not the dev key #0 the runbook publishes, so the test measures what it meant
+  to), and the invented literal is named in `.gitleaks.toml` by exact match because the commit is
+  published and the job scans `--log-opts=--all`. **Verified locally with the same commands CI
+  runs**: `gitleaks detect --log-opts=--all` reports *no leaks found* over 487 commits, the audit
+  gate reports every advisory inside the documented set and below its ceiling, and the workspace
+  coverage gate reports 20 workspaces, 19 in `ci.yml`, 1 excluded by name.
 - **Frenchy answers in depth, and she can act — and the action is checked against the site itself.**
   She had two limits that were not the model's fault. The prompt said *"you answer in 3 spoken
   sentences MAXIMUM"* and the voice route refused anything over 600 characters, so "she never goes
