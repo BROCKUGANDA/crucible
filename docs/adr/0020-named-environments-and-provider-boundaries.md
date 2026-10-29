@@ -107,3 +107,13 @@ provider is wired in.
 - Not verified, and not claimed: an actual Sepolia broadcast. `--dry-run` proves the plan and the
   refusals; only a funded key on the real chain proves the deployment, and that is the operator's
   action with the operator's credential.
+- **Amended by measurement, 2026-10-29.** Against the real Alchemy Sepolia endpoint (verified
+  `eth_chainId` = 11155111 at block 12021230), `npm run deploy:network -- --env testnet` refused —
+  and the reason is a finding, not a false positive: the `PRIVATE_KEY` configured in this operator's
+  `.env` is **Anvil's published account #0** (`0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266`), holding
+  1.88e-13 Sepolia ETH. That key is documentation, not a secret: anyone who reads Foundry's docs can
+  sign for it. Had the deployment gone through, the escrow's `owner` — the only role that can wire
+  the receipt, the reputation registry and the forge — would have been permanently controlled by a key
+  the whole world has. The guard exists for exactly this case, and it closed. What a Sepolia launch
+  actually needs: a dedicated deployer key, funded from the faucet, with the dev key removed from
+  `.env` entirely; the balance is dust, so nothing is deployable today regardless of the key.
