@@ -365,7 +365,7 @@ dependency column names the slice that closes it.
 | 226 | Immutable release artifacts and provenance metadata | **Partial** | Principal engineer | digest-pinned tools; no per-release provenance attestation | S5 | P1 |
 | 227 | Require green gates before promotion between develop, staging and main | **Existing** | Principal engineer | the promote workflow refuses at 'refuse a red gate' — observed refusing three promotions | — | P0 |
 | 228 | Rollback restores the previous working service without resetting funded chain state | **Existing** | Principal engineer | the deploy reconciles the edge before the container swap; the chain is untouched | — | P0 |
-| 229 | Verify chain ID, bytecode hash and contract addresses after deployment | **Existing** | Principal engineer | scripts/mainnet-preflight.mjs; the deploy refuses a stale address | — | P0 |
+| 229 | Verify chain ID, bytecode hash and contract addresses after deployment | **Existing** | Principal engineer | scripts/deploy-network.mjs asks the node eth_chainId BEFORE forge starts and refuses a mismatch (ADR-0020); hasCode re-reads each deployed address; scripts/mainnet-preflight.mjs gates production; proven by packages/eval/test/deploy-network.test.ts (13 tests, 2 mutations) | — | P0 |
 | 230 | Require a release checklist and named approver for production changes | **Partial** | Principal engineer | docs/crucible-deploy-day-gates.pdf is the checklist; no named approver field | S5 | P1 |
 ## Testing and quality engineering
 
