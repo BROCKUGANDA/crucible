@@ -59,12 +59,19 @@
   --faint: #9e9078;
 
   /* The four states. Names and meanings are unchanged from the forge; only the hues moved,
-     from molten metal to terracotta, laurel, sea-water and blood. */
+     from molten metal to terracotta, laurel, sea-water and blood.
+
+     `--sear` was `#cf4132` until the 2026-10-29 browser audit measured it at **3.96:1** on the
+     card surface and **4.20:1** on the ground, at 13.9px/400 — under WCAG AA's 4.5:1 for text
+     that small. It is the colour of a verdict ("Broken"), so it is exactly the word a reader
+     must be able to make out. It is now `#de5243`: the same hue (6°), the same meaning, 4.79:1
+     on the card and 5.08:1 on the ground. `test/contrast-tokens.test.ts` computes that from the
+     values in this file, so moving it back goes red. */
   --ember: #e2612f;
   --gold: #e3b25c;
   --hot: #fbeeda;
   --quench: #4fbfae;
-  --sear: #cf4132;
+  --sear: #de5243;
   --ash: #8a8073;
 
   /* The ink a bright fill writes with. Buttons and seals invert onto `--ember`/`--gold`, and
@@ -73,11 +80,18 @@
 
   /* Materials the arena is made of. These four are also the scene's ramp in
      src/lib/scrub/palette.ts, and `test/scrub-palette.test.ts` fails if the two ever
-     disagree — a canvas that drifts from the theme looks fine right up until it ships. */
+     disagree — a canvas that drifts from the theme looks fine right up until it ships.
+
+     Two of them moved on 2026-10-29, for the same reason as `--sear`: they are painted as text
+     (`--bronze` cuts the hall's rank numerals) and they did not clear 4.5:1 on this file's own
+     grounds. `--bronze` `#8c6b3f` → `#a07e49` (34° → 37°, 4.04:1 → 5.25:1 on `--bg0`);
+     `--tyrian` `#7a2b56` → `#b56893` (327° → 326°, 2.17:1 → 5.05:1 on `--bg0`). Lightening a
+     dark saturated purple necessarily costs it some saturation (0.65 → 0.43) — the hue is held,
+     the darkness is what was failing. */
   --marble: #f2ead9;
-  --bronze: #8c6b3f;
+  --bronze: #a07e49;
   --sand: #c8a878;
-  --tyrian: #7a2b56;
+  --tyrian: #b56893;
 
   /* The action colour, named the way the landing surfaces name it. It is the same terracotta
      as `--ember`, deliberately: the primary action and the agent's identity are one colour,
@@ -86,10 +100,12 @@
 
   /* Semantic states for the status surfaces. Each is bound to the arena colour it already
      means rather than to a new hue, so a badge, a badge's border and the thing the badge is
-     about are all the same colour. */
+     about are all the same colour. `--error` is bound to `--sear` and moves with it — a badge
+     that says "error" is the same red as the slash that caused it, and one of them passing the
+     contrast gate while the other fails would be two colours for one meaning again. */
   --success: #3dd68c;
   --warning: #f5a623;
-  --error: #cf4132;
+  --error: #de5243;
   --info: #4fbfae;
   --pending: #9e9078;
 

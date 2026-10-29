@@ -81,6 +81,28 @@
 # and is kept EXACTLY as it was. Changing a site's HSTS scope during an
 # ownership change is a policy decision, not a refactor, and quietly widening
 # or narrowing it would be a change nobody asked for.
+#
+# 2026-10-29, browser audit: the deletions below are the ONE deliberate
+# behaviour change in this snippet, so the "behaviourally identical" claim in
+# the header comment no longer holds for them, and it is not silently
+# maintained by the next reader.
+#
+#   · `-Via` — Caddy adds `Via: 1.1 Caddy` to every proxied response itself
+#     (upstream `finalizeResponse` writes it into the response header map when
+#     it drops its own `Server`). The value is a stack disclosure to anyone
+#     scanning the hostname, and it changes nothing about how the site works:
+#     no client, no test and no cache here reads it. A `-` deletion is
+#     deferred to write time by Caddy, which is what makes it able to remove a
+#     header the proxy added — `header_down` inside `reverse_proxy` operates on
+#     the *upstream* header map and cannot.
+#   · `-X-Powered-By` — the app turns this off at the source
+#     (`apps/web/next.config.mjs`), and this is the belt: the edge deletes it
+#     whatever image is running behind it.
+#
+# `X-Nextjs-Cache`, `X-Nextjs-Prerender` and `X-Nextjs-Stale-Time` are left
+# alone. They are framework internals and they are also the only way this
+# stack's cache state is readable with curl, which is what `docs/` and the
+# hardening notes use to prove a page was served prerendered.
 (secure_defaults) {
 	header {
 		Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
@@ -89,6 +111,8 @@
 		Referrer-Policy "strict-origin-when-cross-origin"
 		# This process is a reverse proxy, never a browser-reachable document.
 		-Server
+		-Via
+		-X-Powered-By
 	}
 	encode zstd gzip
 }
