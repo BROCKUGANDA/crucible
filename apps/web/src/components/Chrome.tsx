@@ -18,6 +18,7 @@ import { activeChain, deployment, environmentBadge, explorerTxUrl, ZERO_ADDRESS 
 const NAV_PRIMARY = [
   { href: "/home", label: "Workspace" },
   { href: "/trials", label: "Trials" },
+  { href: "/arena", label: "Arena" },
   { href: "/verticals", label: "Verticals" },
   { href: "/agents", label: "Agents" },
   { href: "/hall", label: "Hall" },
