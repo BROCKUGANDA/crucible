@@ -80,9 +80,9 @@ dependency column names the slice that closes it.
 | 025 | Record seeds, decoding settings, retries, timeout and tool permissions | **Verified** | Principal engineer | manifest.ts — seed, sampling, agent.tools, agent.toolPermissions | S1b | P0 |
 | 026 | Stable run IDs and idempotency keys per execution phase | **Partial** | Principal engineer | grader/src/session.ts session files; no exposed idempotency contract | S1b | P1 |
 | 027 | Store artifacts content-addressed and verify bytes against their digest | **Existing** | Principal engineer | packages/cidstore; packages/smith-sdk/src/eip712.ts digestOfContent; packages/datasets/src/registry.ts verifyDatasetId | — | P0 |
-| 028 | Separate capability scores from scaffold, prompt and tool-access effects | **Partial** | Principal engineer | manifest.ts separates the fields, so a comparison can attribute; no report surfaces it yet | S1b, S3 | P2 |
+| 028 | Separate capability scores from scaffold, prompt and tool-access effects | **Partial** | Principal engineer | manifest.ts separates the fields, so a comparison can attribute; no report surfaces it yet | S1c, S3| undefined| P2 |
 | 029 | Score final environment state and verifiable artifacts, not self-reported success | **Existing** | Principal engineer | packages/argus re-runs the pinned suite; the run artifact is signed and its results re-derived | — | P0 |
-| 030 | Reproducibility report listing every variable that can change a result | **Partial** | Principal engineer | manifest.ts IS that list; no rendered report yet | S1b | P2 |
+| 030 | Reproducibility report listing every variable that can change a result | **Partial** | Principal engineer | manifest.ts IS that list, and the runner emits it; no rendered report yet | S1c| undefined| P2 |
 ## Benchmark quality and contamination
 
 | # | Requirement | Status | Owner | Evidence / test | Depends on | Phase |
@@ -103,8 +103,8 @@ dependency column names the slice that closes it.
 |---|---|---|---|---|---|---|
 | 041 | Report sample size alongside every score | **Existing** | Principal engineer | grader rows carry n and graded; abstention.ts reports n=40 | — | P1 |
 | 042 | Confidence intervals appropriate to the evaluation design | **Partial** | Principal engineer | Wilson intervals in grader/src/eval/abstention.ts; no paired or bootstrap interval | S1b, S3 | P2 |
-| 043 | Paired comparisons when candidates share task instances | **Missing** | Principal engineer | — | S1b, S3 | P2 |
-| 044 | Report variance across seeds, prompts and repeated trials | **Missing** | Principal engineer | — | S1b | P2 |
+| 043 | Paired comparisons when candidates share task instances | **Missing** | Principal engineer | — the comparator exists (`compareManifests`) but no paired-difference estimator does | S1c, S3| undefined| P2 |
+| 044 | Report variance across seeds, prompts and repeated trials | **Missing** | Principal engineer | — the manifest records the seed, but variance across seeds is not reported | S1c| undefined| P2 |
 | 045 | Measure inter-rater agreement for human and model judges | **Partial** | Principal engineer | a kappa field on a grader row; no systematic inter-rater statistic | S3 | P2 |
 | 046 | Calibrate LLM judges against audited gold examples | **Missing** | Principal engineer | — | S3 | P2 |
 | 047 | Keep deterministic checks authoritative when they decide an outcome | **Existing** | Principal engineer | docs/adr/0005-deterministic-evidence-first.md; manifest.scoring.decision | — | P0 |
@@ -131,7 +131,7 @@ dependency column names the slice that closes it.
 |---|---|---|---|---|---|---|
 | 061 | Ephemeral isolation for each untrusted run | **Partial** | Principal engineer | packages/forge-runner/src/sandbox.ts; the live path CAN run unisolated and is labelled degraded | — | P0 |
 | 062 | Rootless containers or VM/microVM isolation appropriate to risk | **Partial** | Principal engineer | packages/forge-runner/src/sandbox.ts; no microVM | — | P1 |
-| 063 | Pin runtime images by immutable digest | **Existing** | Principal engineer | resolveVerifierImage in packages/forge-runner/src/runner.ts; manifest.environment.imageDigest | S1b | P0 |
+| 063 | Pin runtime images by immutable digest | **Existing** | Principal engineer | resolveVerifierImage in packages/forge-runner/src/runner.ts; the manifest records the image that ran and the image is a MUTABLE `:latest` tag | S5| undefined| P0 |
 | 064 | Disable privileged mode and drop unnecessary Linux capabilities | **Existing** | Principal engineer | packages/forge-runner/src/sandbox.ts; the sandbox seal is CI-enforced at gate 502 | — | P0 |
 | 065 | Apply seccomp/AppArmor or equivalent mandatory restrictions | **Existing** | Principal engineer | the sandbox seal enforced by packages/forge-runner/src/import-lint.ts (gate 502) | — | P0 |
 | 066 | Enforce CPU, memory, process, disk and wall-clock limits | **Partial** | Principal engineer | manifest.environment.limits carries them; enforcement is not attested per run | S1b | P1 |
@@ -144,7 +144,7 @@ dependency column names the slice that closes it.
 | # | Requirement | Status | Owner | Evidence / test | Depends on | Phase |
 |---|---|---|---|---|---|---|
 | 071 | Sign runner attestations with a scoped runner identity | **Existing** | Principal engineer | packages/smith-sdk/src/eip712.ts RUN_TYPES + domainFor; the run signature is EIP-712 over the artifact | — | P0 |
-| 072 | Bind attestation to manifest, image, artifact and result digests | **Partial** | Principal engineer | the artifact binds spec/suite/repo/commit; the MANIFEST binding is new and not yet emitted (S1b) | S1b | P0 |
+| 072 | Bind attestation to manifest, image, artifact and result digests | **Partial** | Principal engineer | the artifact binds spec/suite/repo/commit; the manifest binds the image and the limits and is EMITTED beside the artifact (`packages/forge-runner/src/manifest.ts`, nine mutations proven) | The manifest is hashed, not signed — by design, so an evaluation-schema change cannot touch the money path | P0 |
 | 073 | Reject artifacts whose hashes or signatures do not verify | **Existing** | Principal engineer | packages/argus re-derives; the contract recomputes the EIP-712 digest and requires the agent's current runner | — | P0 |
 | 074 | Prevent agents from modifying grader code or hidden tests | **Existing** | Principal engineer | touchesTests fails closed | — | P0 |
 | 075 | Fail closed when changed-file detection is ambiguous | **Existing** | Principal engineer | touchesTests fails closed on a non-empty patch that touches the suite | — | P0 |
@@ -290,8 +290,8 @@ dependency column names the slice that closes it.
 | 171 | Make Overview, Trials, Evaluation Studio, Runs and Compare easy to find | **Partial** | Principal engineer | apps/web has trials, engrams, assay, compliance; no Runs/Compare surfaces | S4 | P2 |
 | 172 | Onboarding that explains the trust model in plain language | **Partial** | Principal engineer | docs/business/investor-faq.md is the 60-second version; no in-product onboarding flow | S4 | P2 |
 | 173 | Explain bond, escrow, gas, commission and dispute risk before signing | **Partial** | Principal engineer | packages/eval/src/gates.ts has the policy helpers; not surfaced before a transaction | S2 | P2 |
-| 174 | Show immutable hashes and evaluator versions on trial detail pages | **Partial** | Principal engineer | apps/web/src/app/trials/[id]/page.tsx shows the spec/suite digests; the manifest is not yet emitted | S1b | P2 |
-| 175 | Show model/scaffold, environment, score, confidence and cost on result pages | **Partial** | Principal engineer | the grader rows carry them; the web product shows the settlement receipt | S1b | P2 |
+| 174 | Show immutable hashes and evaluator versions on trial detail pages | **Partial** | Principal engineer | apps/web/src/app/trials/[id]/page.tsx shows the spec/suite digests; the manifest is emitted by the runner but has no view | S1c, S4| undefined| P2 |
+| 175 | Show model/scaffold, environment, score, confidence and cost on result pages | **Partial** | Principal engineer | the grader rows carry them; the web product shows the settlement receipt | S1c, S4| undefined| P2 |
 | 176 | Warn when comparison protocols are incompatible | **Verified** | Principal engineer | manifestsComparable + compareManifests — implemented and mutation-proven; no UI surface yet | S1b | P2 |
 | 177 | Loading, empty, offline, pending, failure and retry states | **Partial** | Principal engineer | apps/web/src/app/global-error.tsx and route error boundaries; no offline state | S4 | P2 |
 | 178 | Keyboard navigation and semantic labels | **Partial** | Principal engineer | semantic markup throughout; no axe gate in CI | S4 | P2 |
@@ -373,7 +373,7 @@ dependency column names the slice that closes it.
 |---|---|---|---|---|---|---|
 | 231 | Test all critical business rules with table-driven tests | **Existing** | Principal engineer | crucible-contracts/test/ — 329 Foundry tests; every workspace has a vitest suite | — | P0 |
 | 232 | Property-based tests for fees, conservation and state transitions | **Existing** | Principal engineer | test/Invariants.t.sol (handler-driven) and RewardFlowInvariant.t.sol | — | P0 |
-| 233 | Fuzz tests for malformed manifests, oversized inputs and unusual Unicode | **Partial** | Principal engineer | the manifest refuses a malformed number and a moving alias; no fuzz harness for manifests yet | S1b | P2 |
+| 233 | Fuzz tests for malformed manifests, oversized inputs and unusual Unicode | **Partial** | Principal engineer | the manifest refuses a malformed number and a moving alias; no fuzz harness for manifests yet | S1c| undefined| P2 |
 | 234 | Test concurrency, duplicate requests and race conditions | **Partial** | Principal engineer | packages/smith-sdk/test/patterns-concurrency.test.ts; apps/api/src/replay.ts | — | P1 |
 | 235 | Test queue retry, worker crash and dead-letter recovery | **Existing** | Principal engineer | apps/api/src/dlq.ts; packages/warden collects per-trial errors so one bad trial never stops the others | — | P1 |
 | 236 | Test indexer reorgs, missed logs and full-rescan recovery | **Partial** | Principal engineer | ADR-0010 cursor semantics; the reset path and a full rescan are tested, reorg rollback is not | S4 | P2 |
@@ -421,8 +421,8 @@ dependency column names the slice that closes it.
 | 266 | Track attribution for each agent's contribution to the final outcome | **Missing** | Principal engineer | — | S3 | P2 |
 | 267 | Prevent double counting of shared work across agents | **Missing** | Principal engineer | — | S3 | P2 |
 | 268 | Measure cost and latency of team-level success | **Missing** | Principal engineer | — | S3 | P2 |
-| 269 | Blinded pairwise comparison of team configurations | **Partial** | Principal engineer | the grader compares candidates on a shared corpus and the manifest makes conditions explicit; no BLINDING | S1b, S3 | P2 |
-| 270 | Publish protocol and tool permissions for multi-agent runs | **Partial** | Principal engineer | the manifest carries agent.tools and toolPermissions; no multi-agent run exists to publish for | S1b | P2 |
+| 269 | Blinded pairwise comparison of team configurations | **Partial** | Principal engineer | the grader compares candidates on a shared corpus and the manifest makes conditions explicit; no BLINDING | S1c, S3| undefined| P2 |
+| 270 | Publish protocol and tool permissions for multi-agent runs | **Partial** | Principal engineer | the manifest carries agent.tools and toolPermissions, and the runner emits them; no multi-agent run exists to publish for | S3| undefined| P2 |
 ## Billing and unit economics
 
 | # | Requirement | Status | Owner | Evidence / test | Depends on | Phase |
