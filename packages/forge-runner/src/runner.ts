@@ -12,6 +12,7 @@ import {
   type WorkResult,
 } from "@crucible/smith";
 import { touchesTests } from "./agent.js";
+import { emitManifest, type EmittedManifest, type ManifestInputs } from "./manifest.js";
 import { Sandbox, SandboxUnavailable, DEFAULT_SANDBOX, resolveVerifierImage, type SandboxSpec } from "./sandbox.js";
 import { strictSandboxFor, type TrialTier } from "./tiers.js";
 import {
@@ -67,6 +68,15 @@ export interface RunnerDeps {
   chainId: number;
   verifyingContract: `0x${string}`;
   model: string;
+  /**
+   * The evaluation's own inputs, for the manifest.
+   *
+   * Optional, because a caller that knows only the model can still run - it
+   * will produce a sparse manifest, and its absent fields will read as
+   * absent rather than as a guess. What is NOT optional is that the manifest
+   * is emitted at all: a score nobody can attribute is not evidence.
+   */
+  manifest?: Omit<ManifestInputs, "model" | "specDigest" | "suiteDigest">;
   status?: StatusSink;
 }
 
@@ -75,14 +85,24 @@ export interface RunRequest {
   agentId: number;
   specCID: string;
   testsCID: string;
+  /**
+   * The trial's on-chain commitments, for the manifest.
+   *
+   * These are the `bytes32` values the chain holds, not the CIDs. The
+   * distinction matters: a CID names content by a content-address, and the
+   * chain holds a keccak digest of the same bytes. The manifest records what
+   * the chain committed to, because that is what a third party can check.
+   */
+  specDigest?: `0x${string}`;
+  suiteDigest?: `0x${string}`;
   suiteCommand: string;
   timeBudgetSec: number;
   iterBudget: number;
-  /** the trial's bond in wei — checked against the operator's cap before any work */
+  /** the trial's bond in wei - checked against the operator's cap before any work */
   bondWei: bigint;
   /** the trial classification (gates 841-842): raises the sandbox floor for this run */
   tier?: TrialTier;
-  /** absolute deadline, unix ms — the trial's own, not a fresh budget */
+  /** absolute deadline, unix ms - the trial's own, not a fresh budget */
   deadlineMs: number;
 }
 
@@ -97,6 +117,15 @@ export interface RunOutcome {
   /** true when execution was NOT containerised */
   degraded: boolean;
   failure?: ForgeFailure;
+  /**
+   * The manifest and its digest, when the run produced one.
+   *
+   * It travels with the outcome and is published beside the artifact. It is
+   * NOT signed and NOT on chain: the manifest is a fact about the evaluation,
+   * derived from inputs that are themselves content-addressed, so nobody
+   * needs to vouch for it (ADR-0017).
+   */
+  manifest?: EmittedManifest;
 }
 
 /**
@@ -274,6 +303,16 @@ export class ForgeRunner {
       const txHash = await this.deps.submit({ runHash, sig, sigDeadline });
       emit("submitted", "Work presented. Skeptics, do your worst.");
 
+      // The manifest is emitted LAST, on the green path only, and it is
+      // emitted from the run's own inputs rather than derived from the
+      // artifact - the artifact is a fact about the run, and this is a fact
+      // about the evaluation.
+      //
+      // A run that throws produces no manifest, exactly as it produces no
+      // artifact: there is no score to attribute, so there is nothing for a
+      // manifest to describe.
+      const manifest = this.emitManifestFor(req, startedAt, Date.now(), state.degraded);
+
       return {
         ok: true,
         status: "submitted",
@@ -283,6 +322,7 @@ export class ForgeRunner {
         iterations: state.iterations,
         summary: results,
         degraded: state.degraded,
+        manifest,
       };
     } catch (err) {
       const failure = classify(err);
@@ -301,6 +341,45 @@ export class ForgeRunner {
   }
 
   // ── internals ──────────────────────────────────────────────────────────
+  /**
+   * Emit the manifest for a run.
+   *
+   * It is built from the operator's inputs plus the run's own environment, and
+   * it is returned rather than published here: publishing it is the caller's
+   * job, because only the caller knows the content store the manifest should
+   * land in.
+   *
+   * **A run with no digests and no evaluator inputs produces no manifest.**
+   * That is not a fallback path - it is a refusal to invent a task digest or
+   * a rubric version. A manifest whose `taskDigest` was a placeholder would
+   * be indistinguishable, to every consumer, from one that knew the value.
+   */
+  private emitManifestFor(
+    req: RunRequest,
+    startedAt: number,
+    finishedAt: number,
+    degraded: boolean,
+  ): EmittedManifest | undefined {
+    const inputs = this.deps.manifest;
+    if (!inputs || !req.specDigest || !req.suiteDigest) return undefined;
+    return emitManifest(
+      {
+        ...inputs,
+        specDigest: req.specDigest,
+        suiteDigest: req.suiteDigest,
+        model: this.deps.model,
+      },
+      {
+        sandbox: this.deps.sandbox ?? { ...DEFAULT_SANDBOX, image: resolveVerifierImage() },
+        tier: req.tier,
+        timeoutMs: req.timeBudgetSec * 1000,
+        degraded,
+      },
+      new Date(startedAt).toISOString(),
+      new Date(finishedAt).toISOString(),
+    );
+  }
+
   private briefFor(req: RunRequest): TrialBrief {
     return {
       trialId: req.trialId,

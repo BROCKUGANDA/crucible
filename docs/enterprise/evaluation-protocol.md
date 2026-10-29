@@ -178,12 +178,16 @@ closest thing, and it governs *data*, not tasks.
 
 Named plainly, with the slice that closes each:
 
-1. **The runner does not emit a manifest.** The schema exists (ADR-0017) with
-   224 tests and nine mutation proofs, and **no code produces one**. Until it
-   is wired, a score in this system still cannot be attributed. **This is the
-   first thing to build.**
+1. **The runner now emits a manifest — but the grader does not consume one.**
+   The schema exists (ADR-0017) with 224 tests and nine mutation proofs, and
+   `packages/forge-runner` emits a manifest beside every artifact with nine
+   more mutation proofs. **A candidate's score is still not attached to the
+   conditions that produced it**, because the grader does not read the
+   manifest and does not attach its digest to a scorecard row. Until it does,
+   a published score cannot be attributed. **This is the first thing to build.**
 2. **The grader does not consume a manifest.** A candidate's score is not
-   yet attached to the conditions that produced it.
+   yet attached to the conditions that produced it, and a row whose manifest
+   cannot be verified is not refused.
 3. **The web product does not display one.** There is no manifest view, no
    "these two runs are comparable" indicator, and no comparison guard.
 4. **No leaderboard eligibility rules** and no cross-protocol warning.

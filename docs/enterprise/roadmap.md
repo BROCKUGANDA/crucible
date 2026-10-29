@@ -13,7 +13,8 @@ by **what blocks what**, and one slice is out of the brief's order on purpose.
 
 ```
 P0  S1   Evaluation manifest                     ✅ shipped (ADR-0017)
-P0  S1b  The runner emits one                     ← NEXT
+P0  S1b  The runner emits one                     ✅ shipped (schema + emission)
+P0  S1c  The grader consumes one                  ← NEXT
 P0  S2   Two typed schedules, one consumer API
 P0  S3   Adversary simulation
 P1  S4   Organisation and tenancy
@@ -21,12 +22,16 @@ P2  S5   Release evidence (SBOM, DR drill, SLOs)
 P3  --   Solana, frontier tier, pricing proposal
 ```
 
-**Why S1b is next rather than S2 or S4.** The manifest exists and nothing
-produces one. Until the runner emits a manifest, a score in this system still
-cannot be attributed to its conditions, and every statistical, eligibility and
-reproducibility requirement in the brief — items 022 through 030, 041 through
-050, 176, 286, and the whole of S2's schedule identity — is unreachable. S1b
-is the smallest slice that turns a schema into a fact.
+**Why S1c is next rather than S2 or S4.** The manifest exists, the runner
+emits one, and **the grader still does not consume it** — so a score in this
+system is still not attached to the conditions that produced it. S1c is the
+last step of the chain: the grader attaches the manifest digest to every
+scorecard row, and refuses a row whose manifest it cannot verify. It is the
+smallest slice that makes the manifest a *fact about a published score*
+rather than a fact about a run, and it is the precondition for every
+statistical, eligibility and reproducibility requirement in the brief —
+items 022 through 030, 041 through 050, 176, 286, and the whole of S2's
+schedule identity.
 
 **Why S3 (adversary simulation) precedes S4 (tenancy).** The brief's Gate
 ordering puts economic integrity before enterprise collaboration, and this
@@ -58,27 +63,50 @@ mutations proven and restored. ADR-0017.
 
 **Not delivered, and named:** no code produces a manifest. That is S1b.
 
-### S1b — The runner emits the manifest
+### S1b — The runner emits the manifest ✅ **shipped**
 
 `packages/forge-runner` writes an `EvalManifest` beside the artifact and
 publishes its digest the way a spec digest is published. The manifest
 records: the trial's spec and suite digests, the model **and its exact
 version**, the scaffold, the system-prompt digest, the tool set and per-tool
-permission digests, the environment image digest and its limits, the seed,
-the sampling parameters, the scoring configuration with the fee **schedule**,
-and the timestamps.
+permission digests, the environment image and its limits, the seed, the
+sampling parameters, the scoring configuration with the fee **schedule**, and
+the timestamps.
 
 **Nothing on chain changes.** The manifest is content-addressed and
 fetchable; `RunArtifact`, `computeRunHash` and `submitRun` are untouched.
 
+**The split of knowledge is the design.** The *operator* knows the trial's
+on-chain commitments, the evaluator version and the rubric - it posted the
+trial. The *runner* knows the environment it executed in and when. Neither
+side can supply the other's facts.
+
+**The rule that makes it honest: absent means absent.** A run with no
+`specDigest` on the request emits **no manifest** rather than one with an
+invented digest, because a manifest whose `taskDigest` was a placeholder is
+indistinguishable, to every consumer, from one that knew the value. The same
+rule applies to the rubric version, the dataset digest and the scaffold.
+
 **Gate:**
-1. The runner emits a manifest for every run, and a run with no manifest is
-   refused by the grader — not scored with a default.
-2. A third party holding only the run's inputs recomputes the same digest.
-3. The grader attaches the manifest digest to every scorecard row, so a
-   leaderboard row points at the conditions that produced it.
-4. Two rows with different manifests are refused by the comparator, and the
-   refusal names the field that moved.
+1. ✅ The runner emits a manifest for every run that has the digests.
+2. ✅ A run with no digests emits **no** manifest, and that is asserted.
+3. ✅ A third party holding only the run's inputs recomputes the same digest
+   (the manifest is a pure function of the inputs).
+4. ⬜ The grader attaches the manifest digest to every scorecard row, so a
+   leaderboard row points at the conditions that produced it. **This is the
+   remaining half of S1b** and it is not yet built.
+5. ⬜ Two rows with different manifests are refused by the comparator, and the
+   refusal names the field that moved. The comparator exists and is
+   mutation-proven; **it is not yet wired to the grader's rows.**
+
+**Delivered:** `packages/forge-runner/src/manifest.ts`,
+`packages/forge-runner/test/manifest.test.ts`, and the runner wiring in
+`packages/forge-runner/src/runner.ts`. Nine mutations proven and restored.
+
+**What this does not close:** the grader still does not consume a manifest,
+so a score is not yet attached to the conditions that produced it. That is
+gate 4 above, and it is the last step before the statistics in S3 have
+something to compare.
 
 **Closes:** 022, 023, 024, 025, 026, 027, 050, 070, 176, 286 — and opens
 041–049 (the statistics), 172 and 176.

@@ -15,6 +15,9 @@ import {
 const CID_A = "bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi";
 const RUNNER = "0x1111111111111111111111111111111111111111" as const;
 const TRIALS = "0x2222222222222222222222222222222222222222" as const;
+/** The chain's bytes32 commitments for the trial's spec and suite. */
+const SPEC_DIGEST = `0x${"33".repeat(32)}` as `0x${string}`;
+const SUITE_DIGEST = `0x${"44".repeat(32)}` as `0x${string}`;
 
 /**
  * Local, unisolated sandbox: these tests never need Docker. The runner still
@@ -225,6 +228,56 @@ describe("ForgeRunner invariants", () => {
     expect(out.artifact).toBeDefined();
     expect(out.artifact!.testResults.every((t) => t.status === "pass")).toBe(true);
     expect(out.summary?.green).toBe(true);
+  }, 30_000);
+
+  it("emits the manifest beside the artifact on the green path", async () => {
+    const deps = harness();
+    deps.manifest = {
+      provider: "hetzner",
+      modelVersion: "Qwen/Qwen3.6-35B-A3B",
+      seed: "panel-2026-10-27",
+      evaluator: { id: "argus", version: "1.4.0", rubricVersion: "3" },
+      feeSchedule: "legacy-v1",
+      feeScheduleVersion: "1",
+    };
+    const out = await new ForgeRunner(deps).run(
+      request({
+        suiteCommand: GREEN_SUITE,
+        iterBudget: 3,
+        specDigest: SPEC_DIGEST,
+        suiteDigest: SUITE_DIGEST,
+      }),
+    );
+    expect(out.ok).toBe(true);
+    expect(out.manifest).toBeDefined();
+    expect(out.manifest!.manifest.taskDigest).toBe(SPEC_DIGEST);
+    expect(out.manifest!.manifest.suiteDigest).toBe(SUITE_DIGEST);
+    expect(out.manifest!.manifest.model.version).toBe("Qwen/Qwen3.6-35B-A3B");
+    expect(out.manifest!.manifest.scoring.feeSchedule).toBe("legacy-v1");
+    expect(out.manifest!.digest).toMatch(/^0x[0-9a-f]{64}$/);
+    // The manifest is not part of the signed artifact. Changing it must not
+    // change the run hash, or it would have to be signed - and a signed
+    // manifest would put an evaluation question on the money path.
+    expect(out.runHash).toBeDefined();
+  }, 30_000);
+
+  it("emits no manifest rather than one with an invented task digest", async () => {
+    const deps = harness();
+    deps.manifest = {
+      provider: "hetzner",
+      modelVersion: "Qwen/Qwen3.6-35B-A3B",
+      seed: "panel-2026-10-27",
+      evaluator: { id: "argus", version: "1.4.0" },
+      feeSchedule: "legacy-v1",
+      feeScheduleVersion: "1",
+    };
+    // No specDigest on the request: the runner does not know the chain's
+    // commitment, so it refuses to write one.
+    const out = await new ForgeRunner(deps).run(
+      request({ suiteCommand: GREEN_SUITE, iterBudget: 3 }),
+    );
+    expect(out.ok).toBe(true);
+    expect(out.manifest).toBeUndefined();
   }, 30_000);
 
   it("tells the operator, without the withheld text, when the agent lost its suite output", async () => {
