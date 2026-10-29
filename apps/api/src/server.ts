@@ -17,7 +17,9 @@ import {
   type TeamLedgerModel,
 } from "@crucible/indexer";
 import { ALLOY_ABI, ARENA_ABI, TEAM_LEDGER_ABI, selfSchedulingLoop } from "@crucible/smith";
+import { webhookNotifier } from "@crucible/warden";
 import { createApp } from "./app.js";
+import { OwnerGate, SponsorshipQueue, sponsorshipMessage } from "./sponsorship.js";
 import { disclosureFileIn, disclosedCids as readDisclosure, type DisclosureEntry } from "./disclosure.js";
 import { createContentSource, digestToCidMap } from "./content.js";
 import { makeReplaySource } from "./replay.js";
@@ -116,6 +118,38 @@ const trialsAddress = requiredAddress("TRIALS_ADDRESS");
 const alloyAddress = requiredAddress("ALLOY_ADDRESS");
 const teamLedgerAddress = (process.env.TEAM_LEDGER_ADDRESS ?? "").trim();
 const funderUrl = (process.env.FUNDER_URL ?? "").trim();
+
+/**
+ * The wallets allowed to read the sponsorship queue.
+ *
+ * Comma-separated, because one operator is the common case and a team is the
+ * next one, and a list is barely harder than a single value. Empty means this
+ * host keeps no queue behind an owner: applications are still recorded and the
+ * owner is still notified, but nobody can read the queue back over HTTP.
+ */
+const ownerAddresses = (process.env.CRUCIBLE_OWNER_ADDRESSES ?? "")
+  .split(",")
+  .map((a) => a.trim())
+  .filter((a) => a.length > 0);
+
+/**
+ * The push channel for sponsorship applications.
+ *
+ * The same webhook the warden's trial pings use (`WARDEN_WEBHOOK_URL`), because
+ * there is one channel and one URL in this deployment, and a second notifier
+ * beside the first is how a host ends up with two places a notice can be
+ * delivered and neither of them is the one that was configured.
+ *
+ * The URL is never printed - a webhook URL may carry a secret token - and the
+ * fetch is given a deadline so a hanging channel costs the applicant a moment
+ * rather than the request.
+ */
+const webhookUrl = (process.env.WARDEN_WEBHOOK_URL ?? "").trim();
+const sponsorshipNotifier = webhookUrl
+  ? webhookNotifier<{ message: string }>(webhookUrl, (input, init) =>
+      fetch(input, { ...init, signal: AbortSignal.timeout(2000) }),
+    )
+  : null;
 
 /**
  * How often the alloy sweep runs. A floor, not a guess at a block time: a malformed
@@ -758,6 +792,24 @@ const app = createApp({
   arena: arenaAddress.length > 0 ? () => arenaModel : undefined,
   team: teamLedgerAddress.length > 0 ? () => teamLedgerModel : undefined,
   funderUrl: funderUrl.length > 0 ? funderUrl : undefined,
+  /**
+   * The sponsorship queue, and the gate that says who may read it.
+   *
+   * The queue is always on: every application is recorded, and the owner is
+   * notified through the webhook whether or not an owner address is configured
+   * here. The address list only decides who can read the queue back over HTTP.
+   */
+  sponsorship: {
+    queue: new SponsorshipQueue(),
+    owners: new OwnerGate(ownerAddresses),
+    ...(sponsorshipNotifier
+      ? {
+          notify: async (application) => {
+            await sponsorshipNotifier.send({ message: sponsorshipMessage(application) });
+          },
+        }
+      : {}),
+  },
   // The hall's txHashes are only checkable against one chain and one contract, and the
   // read model cannot infer either — this process is the only party that knows them.
   proofSource: { chain: foundry.name, chainId: foundry.id, trialsAddress },

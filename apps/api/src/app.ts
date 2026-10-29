@@ -30,6 +30,13 @@ import {
 import { parseAttestationProof, verifyAttestation } from "./attestation.js";
 import { createPassportSource, type PassportCheck, type PassportEligibility } from "./passport.js";
 import { type ContentLookup, type ContentRead } from "./content.js";
+import {
+  sponsorshipMessage,
+  type OwnerGate,
+  type SponsorshipApplication,
+  type SponsorshipOutcome,
+  type SponsorshipQueue,
+} from "./sponsorship.js";
 import { createMcpHandler, type TrialLimits } from "./mcp.js";
 import { rateLimit } from "./rate-limit.js";
 import { dlq } from "./dlq.js";
@@ -178,6 +185,30 @@ export interface ApiDeps {
    * zero says the protocol charges nothing.
    */
   protocolFeeBps?: () => number | null;
+  /**
+   * The sponsorship queue, and the gate that says who may read it.
+   *
+   * A sponsorship application used to end at the funder's answer: the applicant
+   * was told granted or refused, and the owner of the treasury was never told
+   * that anybody had asked. This carries the applications, names the wallets
+   * allowed to see them, and delivers the notification when one arrives.
+   *
+   * Absent means this host keeps no queue - no application is recorded, and
+   * `/faucet/applications` says so rather than answering with an empty list
+   * that reads as "nobody has applied".
+   */
+  sponsorship?: {
+    queue: SponsorshipQueue;
+    owners: OwnerGate;
+    /**
+     * Deliver the notice for one application.
+     *
+     * A delivery failure is recorded by the caller and never becomes the
+     * applicant's answer: the wallet that asked for test ETH must not be told
+     * "refused" because a webhook was down.
+     */
+    notify?: (application: SponsorshipApplication) => Promise<void>;
+  };
 }
 
 const VALID_STATUSES = ["open", "assigned", "judging", "challenged", "settled"] as const satisfies readonly TrialStatus[];
@@ -690,7 +721,9 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
     });
     app.use("/frenchy*", frenchyLimiter);
   }
-  app.route("/frenchy", createFrenchyRoutes(opts.frenchy ?? null));
+  app.route("/frenchy", createFrenchyRoutes(opts.frenchy ?? null, { getModel: deps.getModel }));
+
+
 
   /**
    * The replay projector. One request makes the node answer a `getLogs` over the whole look-back
@@ -1418,6 +1451,49 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
   });
 
   /**
+   * Record one sponsorship application, and tell the owner that it happened.
+   *
+   * Two separate things, deliberately:
+   *
+   *   * the **record** is the queue. It is written whatever else happens, so an
+   *     application is never lost because a notice could not be delivered.
+   *   * the **notice** is one way of hearing about the record. A delivery that
+   *     fails is pushed to the dead-letter queue and *not* raised: the wallet
+   *     that asked for test ETH must not be told "refused" because a webhook
+   *     was down. The applicant gets the funder's answer, whatever it was.
+   *
+   * The notice is awaited rather than fired and forgotten, because a test that
+   * asserts "the owner was told" has to be able to await that fact. The wait is
+   * bounded by the notifier's own timeout, so a hanging webhook costs a
+   * moment, not a request.
+   */
+  async function recordApplication(input: {
+    wallet: string;
+    requestedEth: string;
+    grantedEth: string | null;
+    outcome: SponsorshipOutcome;
+    reason: string | null;
+  }): Promise<SponsorshipApplication | null> {
+    const sponsorship = deps.sponsorship;
+    if (!sponsorship) return null;
+
+    const application = sponsorship.queue.record(input);
+
+    if (sponsorship.notify) {
+      try {
+        await sponsorship.notify(application);
+      } catch (err) {
+        dlq.push(
+          "sponsorship.notify",
+          `${sponsorshipMessage(application)} - ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
+
+    return application;
+  }
+
+  /**
    * Request test ETH from the funder service.
    *
    * The funder holds the CDP credential (ADR-0015 §1); this process only asks it for
@@ -1427,17 +1503,16 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
    *
    * `fundable: false` is a different answer from a refused allocation: the first means
    * no funder is reachable on this host, the second means the funder said no.
+   *
+   * Every application is recorded and the owner is told about it, granted or
+   * refused: the applicant is not the only party entitled to know that the
+   * treasury was asked.
    */
   app.post("/faucet", async (c) => {
-    const funder = deps.funderUrl;
-    if (!funder) {
-      return c.json({
-        ok: false,
-        fundable: false,
-        reason: "no funder address on this host",
-      });
-    }
-
+    // The body is read before the funder is asked about, so that an application
+    // this host could not answer is still recorded with the wallet that asked.
+    // A host with no funder is exactly the host whose owner most needs to know
+    // that somebody tried.
     let body: { wallet?: string; amountEth?: number | string };
     try {
       body = await c.req.json();
@@ -1454,6 +1529,23 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
       return c.json({ error: "amountEth must be a positive number" }, 400);
     }
 
+    const funder = deps.funderUrl;
+    if (!funder) {
+      const reason = "no funder address on this host";
+      await recordApplication({
+        wallet,
+        requestedEth: amount.toString(),
+        grantedEth: null,
+        outcome: "unanswered",
+        reason,
+      });
+      return c.json({
+        ok: false,
+        fundable: false,
+        reason,
+      });
+    }
+
     let res: Response;
     try {
       res = await fetch(`${funder}/allocate`, {
@@ -1462,11 +1554,19 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
         body: JSON.stringify({ wallet, amountEth: amount }),
       });
     } catch (err) {
+      const reason = `funder unreachable: ${err instanceof Error ? err.message : String(err)}`;
+      await recordApplication({
+        wallet,
+        requestedEth: amount.toString(),
+        grantedEth: null,
+        outcome: "unanswered",
+        reason,
+      });
       return c.json(
         {
           ok: false,
           fundable: true,
-          reason: `funder unreachable: ${err instanceof Error ? err.message : String(err)}`,
+          reason,
         },
         502,
       );
@@ -1490,10 +1590,134 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
         }
       | null;
     if (!json) {
-      return c.json({ ok: false, fundable: true, reason: "funder returned an empty response" }, 502);
+      const reason = "funder returned an empty response";
+      await recordApplication({
+        wallet,
+        requestedEth: amount.toString(),
+        grantedEth: null,
+        outcome: "unanswered",
+        reason,
+      });
+      return c.json({ ok: false, fundable: true, reason }, 502);
     }
 
+    // The application is recorded from the funder's own answer, not from the
+    // request: what was granted and what was refused are facts about the
+    // treasury, and the funder is the only party that knows them.
+    await recordApplication({
+      wallet: json.wallet || wallet,
+      requestedEth: json.requestedEth ?? amount.toString(),
+      grantedEth: json.grantedEth ?? null,
+      outcome: json.ok && json.grantedEth !== null ? "granted" : "refused",
+      reason: json.reason ?? null,
+    });
+
     return c.json(json, res.ok ? 200 : 402);
+  });
+
+  /**
+   * The owner's view of the sponsorship queue.
+   *
+   * Every application this host has seen, newest first, with what was asked
+   * for and what went. The gate is the owner list: a wallet that is not on it
+   * gets nothing, and gets a 403 that says why rather than an empty list that
+   * would read as "nobody has applied".
+   *
+   * The address in `wallet` is *claimed*, not proved - see `OwnerGate`. The
+   * queue holds applicant addresses and amounts, which the applicants can see
+   * for themselves, so the exposure is a list of who else asked rather than a
+   * secret; the production gate is a signature, and this route says so rather
+   * than implying a protection it does not have.
+   */
+  app.get("/faucet/applications", (c) => {
+    const sponsorship = deps.sponsorship;
+    if (!sponsorship) {
+      return c.json(
+        { error: "this host keeps no sponsorship queue", owner: false, applications: null },
+        501,
+      );
+    }
+
+    const wallet = (c.req.query("wallet") ?? "").trim();
+    if (!sponsorship.owners.isOwner(wallet)) {
+      c.header("Cache-Control", "no-store");
+      return c.json(
+        {
+          error: sponsorship.owners.configured
+            ? "the sponsorship queue is the owner's view"
+            : "no owner wallet is configured on this host",
+          owner: false,
+          applications: null,
+        },
+        403,
+      );
+    }
+
+    c.header("Cache-Control", "no-store");
+    return c.json({
+      owner: true,
+      configured: true,
+      applications: sponsorship.queue.list(),
+    });
+  });
+
+  /**
+   * The treasury's ledger: what the funder has actually handed out.
+   *
+   * The queue says who asked; this says what left the wallet that holds the
+   * test ETH. Both are the owner's view, and both are read from the party that
+   * knows them - the queue from this host's record, the ledger from the funder
+   * itself, so the number shown is the number the treasury moved.
+   */
+  app.get("/faucet/ledger", async (c) => {
+    const sponsorship = deps.sponsorship;
+    if (!sponsorship) {
+      return c.json({ error: "this host keeps no sponsorship queue", allocations: null }, 501);
+    }
+
+    const wallet = (c.req.query("wallet") ?? "").trim();
+    if (!sponsorship.owners.isOwner(wallet)) {
+      c.header("Cache-Control", "no-store");
+      return c.json(
+        {
+          error: sponsorship.owners.configured
+            ? "the treasury ledger is the owner's view"
+            : "no owner wallet is configured on this host",
+          owner: false,
+          allocations: null,
+        },
+        403,
+      );
+    }
+
+    const funder = deps.funderUrl;
+    if (!funder) {
+      return c.json({ error: "no funder address on this host", allocations: null }, 503);
+    }
+
+    let res: Response;
+    try {
+      res = await fetch(`${funder}/allocations`);
+    } catch (err) {
+      return c.json(
+        {
+          error: `funder unreachable: ${err instanceof Error ? err.message : String(err)}`,
+          allocations: null,
+        },
+        502,
+      );
+    }
+
+    const json = (await res.json().catch(() => null)) as { allocations?: unknown } | null;
+    if (!res.ok || !json || !Array.isArray(json.allocations)) {
+      return c.json(
+        { error: "the funder did not return its allocation ledger", allocations: null },
+        502,
+      );
+    }
+
+    c.header("Cache-Control", "no-store");
+    return c.json({ owner: true, configured: true, allocations: json.allocations });
   });
 
   /**

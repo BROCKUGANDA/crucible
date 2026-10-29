@@ -166,8 +166,22 @@ export function notifications(model: ReadModel, nowSeconds: number): Notificatio
   return out;
 }
 
-export interface Notifier {
-  send(n: Notification): Promise<void>;
+/**
+ * Anything a push channel can carry.
+ *
+ * The webhook transport only ever reads `message`, so the transport is about
+ * messages and the warden's trial events are one *kind* of message. Without
+ * this, a caller that is not the warden - the API telling an operator that a
+ * sponsorship application arrived - would have to invent a trial id and a trial
+ * kind to borrow the channel, and a lie inside a notification is worse than no
+ * notification at all.
+ */
+export interface Message {
+  message: string;
+}
+
+export interface Notifier<T extends Message = Notification> {
+  send(n: T): Promise<void>;
 }
 
 export async function notifyAll(notifier: Notifier, ns: Notification[]): Promise<void> {

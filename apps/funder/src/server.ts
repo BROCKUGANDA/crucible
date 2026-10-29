@@ -191,6 +191,23 @@ app.post("/allocate", async (c) => {
 });
 
 /**
+ * The treasury's ledger: every allocation this funder has made.
+ *
+ * The owner of the wallet that holds the test ETH needs to see what has left
+ * it, and this process is the only one that knows: the API proxies the ledger
+ * into the owner's view and keeps no copy of the money itself.
+ *
+ * It is a read of the in-memory tracker (ADR-0008), so it is the truth for as
+ * long as this process has been up. A restart empties it, which is why the
+ * API's own record of the applications is a separate thing and not a copy of
+ * this list.
+ */
+app.get("/allocations", (c) => {
+  c.header("Cache-Control", "no-store");
+  return c.json({ allocations: caps.list() });
+});
+
+/**
  * Mint one Coinbase Onramp session for a sponsor wallet.
  *
  * The URL is single-use and expires in minutes. It is returned with `no-store` and is never
