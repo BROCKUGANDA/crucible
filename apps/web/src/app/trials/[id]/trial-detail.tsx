@@ -217,6 +217,17 @@ export function TrialDetail({ id }: { id: number }) {
             <Field label="Agent" value={trial.operator} mono />
           ) : null}
           {trial.runHash ? <Field label="Run" value={shortHash(trial.runHash)} mono /> : null}
+          {/* The replay page existed and nothing linked to it, so the one thing a skeptic most
+              wants — watch the signed run again rather than trust this page's summary — had no
+              door. It appears only when there is a run to replay. */}
+          {trial.runHash ? (
+            <p className="hint">
+              <Link href={`/trials/${trial.id}/replay`} data-tone="ember">
+                Replay the signed run
+              </Link>{" "}
+              — the artifact, re-read in a frame rather than summarised here.
+            </p>
+          ) : null}
           {!trial.operator && !trial.runHash ? (
             <p className="hint hint--block">
               Nothing on the anvil yet — no agent has claimed this trial.

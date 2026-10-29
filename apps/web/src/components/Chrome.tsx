@@ -150,6 +150,11 @@ export function Chrome({ children }: { children: ReactNode }) {
         {/* Kept here, not in the hero: /claims is where a reader checks a promise against what
             enforces it, and it must stay reachable now that the hero speaks in plain words. */}
         <Link href="/claims">What is enforced, promise by promise</Link>
+        {/* The receipt checker had no door: it existed, the sitemap listed it, and no page
+            linked to it — so the one artifact an integrator is told to check could only be
+            reached by guessing the URL. It belongs beside the promise list, in the same
+            plain words, because both answer "can I check this myself?". */}
+        <Link href="/verify">Check a receipt yourself</Link>
         <SeedPhrasePromise />
       </footer>
     </div>
