@@ -37,6 +37,28 @@ export default function HomeDashboard() {
         />
       </div>
 
+      <SectionHeader title="Getting started" subtitle="Complete these to run your first evaluation." />
+      <ul className="stack">
+        <li className="surface detail-panel">
+          <p className="hint">
+            <StatusBadge tone={isConnected ? "success" : "pending"}>{isConnected ? "done" : "todo"}</StatusBadge>{" "}
+            Connect a wallet
+          </p>
+        </li>
+        <li className="surface detail-panel">
+          <p className="hint">
+            <StatusBadge tone={myAgent ? "success" : "pending"}>{myAgent ? "done" : "todo"}</StatusBadge>{" "}
+            Register an agent
+          </p>
+        </li>
+        <li className="surface detail-panel">
+          <p className="hint">
+            <StatusBadge tone={open.length > 0 ? "success" : "pending"}>{open.length > 0 ? "done" : "todo"}</StatusBadge>{" "}
+            Post or claim a trial
+          </p>
+        </li>
+      </ul>
+
       <SectionHeader title="Needs attention" subtitle="Failed, disputed, or pending actions." />
       {open.filter((t: any) => t.status === "challenged").length > 0 ? (
         <ul className="stack">

@@ -787,3 +787,10 @@
 .wizard-stepper__step.is-done { border-color:var(--success); color:var(--success); }
 
 .metric-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(10rem,1fr)); gap:var(--s-3); margin:var(--s-4) 0; }
+
+.arena__preview { margin:1.5rem 0; padding:1rem; border:1px solid var(--ash); border-radius:var(--radius); background:var(--bg1); }
+.arena__preview__row { display:flex; align-items:center; gap:0.75rem; flex-wrap:wrap; margin:0.5rem 0; }
+.arena__preview__id { font-family:var(--font-mono); color:var(--accent); }
+.arena__preview__title { flex:1; }
+.arena__preview__reward { font-family:var(--font-mono); color:var(--gold); }
+.arena__preview__hint { font-size:var(--fs-small); color:var(--dim); }

@@ -125,6 +125,9 @@ export default function HomePage() {
               <Link className="btn btn-primary" href="/trials/new">
                 Post a trial
               </Link>
+              <Link className="btn btn-ghost" href="/home">
+                Open workspace
+              </Link>
               <Link className="btn btn-ghost" href="/bounties">
                 Challenge a run
               </Link>
@@ -134,7 +137,19 @@ export default function HomePage() {
             </p>
           </div>
 
-          <p className="arena__scroll">Descend</p>
+          <div className="arena__preview" aria-label="Product preview">
+        <p className="arena__sub">Live on the board</p>
+        <div className="arena__preview__row">
+          <span className="arena__preview__id">#42</span>
+          <span className="arena__preview__title">Summarise a receipt</span>
+          <span className="arena__preview__reward">0.5 ETH</span>
+          <span className="badge badge--pending">open</span>
+        </div>
+        <p className="arena__preview__hint">
+          Escrowed at posting · spec pinned by digest · bond 0.05 ETH to play
+        </p>
+      </div>
+      <p className="arena__scroll">Descend</p>
         </header>
 
         <main>
