@@ -1426,25 +1426,6 @@ guards is the decoration it exists to detect.
    repository's own gate rule forbids, so no number was touched. If a future agent sees one
    `apps/api` failure in a whole-repo run, re-run the workspace alone before believing a regression,
    and write down which assertion fired — that record is what this item is still missing.
-23b. **The whole-tree run has a load-dependent timeout class, and it was measured on
-    2026-10-29 while another session was running its own tree.** Two `verify:all` runs on
-    this box produced **four failures each, and not the same four**: run one failed
-    `packages/eval` ×2, `packages/forge-runner` ×1 and `packages/indexer` ×1; run two
-    failed `packages/datasets` ×1, `packages/indexer` ×2 and `packages/grader` ×1. **Every
-    one of them was a `Test timed out in 5000ms`, never a failed assertion** — and every
-    one of the tests involved **binds a local HTTP server** (`packages/eval`'s `rpc()`,
-    `packages/indexer`'s `createServer`, `packages/forge-runner`'s local forge sandbox).
-    Re-run alone, they pass: `packages/eval` 36/36, `packages/indexer` 154/154,
-    `packages/forge-runner` 188 passed | 6 skipped, and
-    `packages/indexer/test/mock-shape.test.ts` — the one that failed in both runs — passed
-    **10 runs out of 10** on its own. **The quantity they depend on is a five-second
-    wall clock on a round trip to a socket on the same box**, and the box was running two
-    verify trees at once. **No threshold was retuned** — a timeout that is made to stop
-    firing by moving a number is the decoration this repository's gate rule forbids, and
-    the honest reading is the one above: the instrument has a ceiling under load and the
-    ceiling is 5 seconds. The fix, when it is worth making, is a budget that does not
-    depend on the machine's load (a retry on a refused bind, or a timeout the test
-    itself sets), not a bigger number.
 24. **A mainnet render exists, but the demo script cannot seed one (2026-10-27, unresolved).**
    The node half works and is measured: `anvil --fork-url https://eth.drpc.org
    --fork-block-number 24846426 --chain-id 31337` answers `eth_blockNumber = 0x17b205a` (the pin the
@@ -1903,6 +1884,19 @@ much of the product's promise each one costs.
     one workspace before believing a regression**, exactly as item 22 says for the durability test,
     and the residue is the same residue: a green full-tree run on this box is a weaker signal than
     it looks, because a 5-second budget is a statement about the machine and not about the code.
+    **Two further runs measured on the same day, from a second pair of eyes on this box, put a
+    number on it.** Each run produced **four failures and not the same four**: one run failed
+    `packages/eval` ×2, `packages/forge-runner` ×1 and `packages/indexer` ×1, and the next failed
+    `packages/datasets` ×1, `packages/indexer` ×2 and `packages/grader` ×1. **Every one of the
+    eight was a `Test timed out in 5000ms` and never a failed assertion**, and every one of the
+    tests involved **binds a local HTTP server** on the same box (`packages/eval`'s `rpc()`,
+    `packages/indexer`'s `createServer`, `packages/forge-runner`'s local forge sandbox) — so the
+    quantity is not only the clock but the round trip to a socket the machine is also serving.
+    `packages/indexer/test/mock-shape.test.ts`, the one that failed in both runs, was then run
+    **10 times on its own and passed 10 out of 10**. **No threshold was retuned**: a timeout that
+    is made to stop firing by moving a number is the decoration this repository's gate rule
+    forbids, and the fix when it is worth making is a budget that does not depend on the machine's
+    load, not a bigger number.
     The slice that added the sponsorship queue was measured green on a whole-tree run on the same
     day (`npm run verify:all` exit 0) before its last two web tests were added; the two API and
     fifteen web tests it owns are green in every run. Nothing here is a money gate and nothing was
