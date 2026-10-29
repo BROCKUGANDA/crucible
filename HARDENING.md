@@ -1375,15 +1375,45 @@ guards is the decoration it exists to detect.
   panel that printed `0 ms` for it would be reporting a measurement that was never
   taken. The host publishes the phase it is in while a turn runs, and the client
   polls it over ordinary HTTP: **no second SSE stream and no WebSocket**, so the
-  security whitepaper's never-list still holds. **Measured:** 26 API tests and 18
+  security whitepaper's never-list still holds. **Measured:** 26 API tests and 19
   client tests, with **15 and 7 mutations** proven red and restored. **The
-  microphone is opened on one route** — `microphone=()` on every page and
-  `microphone=(self)` on `/voice` alone, registered *after* the global rule
-  because the last matching rule wins. **What this does not close:** the session id
+  microphone is open to this origin, and that is a correction**: the policy said
+  `microphone=()` while the header's Frenchy control has asked for the microphone
+  since 2026-10-28, so the browser refused it before the visitor was prompted and
+  the button could not work — and the refusal told the visitor to change their
+  browser settings, which was not what was wrong. It is now `microphone=(self)`
+  on every page: the narrowest thing that lets the shipped control work, and the
+  browser still asks the visitor. The first draft of ADR-0018 assumed the
+  microphone was closed everywhere and could be opened on one route; it could not,
+  because the header's panel is global and a route-scoped exception would have
+  left the shipped control dead on every page but one, so the policy was
+  corrected instead. **What this does not close:** the session id
   is the only credential, so anyone holding it can read that conversation; the
   visitor's speech is text on our key before it is text anywhere else; a turn is a
   request and not a stream, so there is no barge-in; and no browser has spoken
   through this host, because the deployment has no ElevenLabs key.
+
+- **Fifteen variables the API reads were passed to no container, so a shipped feature
+  could not have worked on the box that shipped it.** Reading the API's source
+  for the names it reads beside `compose.yaml`'s for the names it passes found
+  `STS_DISABLED` and `ELEVENLABS_STT_MODEL_ID` (the speech host's own switches),
+  `ELEVENLABS_SCRIBE_MODEL_ID` and `FRENCHY_SCRIBE_DISABLED` (the live-caption
+  model and its kill switch), `CRUCIBLE_OWNER_ADDRESSES` (the sponsorship
+  queue's owner list), **`WARDEN_WEBHOOK_URL`** — the channel the owner is
+  notified on, so the sponsorship notification could not have left the machine
+  that shipped it — the MCP agent surface's `MCP_RATE_LIMIT` and
+  `MCP_RATE_BURST`, and the **seven the API reads through its injected
+  environment object** (`apps/api/src/security.ts`), among them
+  **`ALLOWED_ORIGINS`**: the CORS allowlist, so a deployment on any origin but
+  the four local demo ports was refused by the browser. All fifteen are passed
+  now — the API reads 46 variables and the deployment passes 46 — and
+  `apps/api/test/compose-env.test.ts` is the gate that keeps it true: it reads
+  the API's own source for the names it reads (the direct reads, the reads
+  through its environment readers, and the reads through an injected environment
+  object) and the deployment's own file for the names it passes, so the next one
+  is caught here rather than in production. A hand-written list of "the
+  variables that matter" would have named these fifteen and been silent about
+  the sixteenth, which is the one that breaks next.
 
 - **Frenchy's answers are grounded in the read model again.** The route read the
   live model from `(c as any).var?.apiDeps`, and **nothing ever set that

@@ -125,6 +125,22 @@ services:
       # The proxy in front overwrites X-Real-IP and X-Forwarded-For, so the
       # limiter can key on the real client instead of on the proxy's address.
       TRUST_PROXY: ${TRUST_PROXY:-0}
+      # The transport policy the API reads through its injected environment
+      # (apps/api/src/security.ts). Empty means the code's default, which is
+      # what an unset variable is for: the four local demo origins, the 64 KiB
+      # body ceiling and the ten-second request timeout.
+      #
+      # ALLOWED_ORIGINS is the one that bites: a browser on any origin the
+      # list does not name is refused by the CORS policy, so a deployment on a
+      # different host has to name its own origin here. It was read and passed
+      # to no container until 2026-10-29.
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
+      ALLOW_CREDENTIALS: ${ALLOW_CREDENTIALS:-}
+      ENFORCE_HTTPS: ${ENFORCE_HTTPS:-}
+      HSTS_MAX_AGE: ${HSTS_MAX_AGE:-}
+      MAX_BODY_BYTES: ${MAX_BODY_BYTES:-}
+      READY_MAX_LAG: ${READY_MAX_LAG:-}
+      REQUEST_TIMEOUT_MS: ${REQUEST_TIMEOUT_MS:-}
       # Where the disclosure log lives: `<dir>/disclosure/disclosure.json`, written by the
       # seat through `DisclosureLog.open(join(dir, "disclosure"))`. Without the mount and this
       # variable the API cannot see a single announced CID, so every trial says "suite not
@@ -143,16 +159,33 @@ services:
       ELEVENLABS_API_KEY: ${ELEVENLABS_API_KEY:-}
       ELEVENLABS_BASE_URL: ${ELEVENLABS_BASE_URL:-}
       ELEVENLABS_MODEL_ID: ${ELEVENLABS_MODEL_ID:-}
+      ELEVENLABS_SCRIBE_MODEL_ID: ${ELEVENLABS_SCRIBE_MODEL_ID:-}
+      ELEVENLABS_STT_MODEL_ID: ${ELEVENLABS_STT_MODEL_ID:-}
       ELEVENLABS_VOICE_ID: ${ELEVENLABS_VOICE_ID:-}
       FRENCHY_DISABLED: ${FRENCHY_DISABLED:-}
       FRENCHY_LLM_API_KEY: ${FRENCHY_LLM_API_KEY:-}
       FRENCHY_LLM_BASE_URL: ${FRENCHY_LLM_BASE_URL:-}
       FRENCHY_LLM_MODEL: ${FRENCHY_LLM_MODEL:-}
+      FRENCHY_SCRIBE_DISABLED: ${FRENCHY_SCRIBE_DISABLED:-}
       FRENCHY_TTS_DISABLED: ${FRENCHY_TTS_DISABLED:-}
       IDENTITY_ATTESTORS: ${IDENTITY_ATTESTORS:-}
+      # The agent surface's own bucket. Read by the API and tunable per
+      # deployment; empty means the code's default, which is what an unset
+      # variable is for.
+      MCP_RATE_LIMIT: ${MCP_RATE_LIMIT:-}
+      MCP_RATE_BURST: ${MCP_RATE_BURST:-}
       REPLAY_WINDOW_BLOCKS: ${REPLAY_WINDOW_BLOCKS:-}
       TEAM_LEDGER_ADDRESS: ${TEAM_LEDGER_ADDRESS:-}
       VOICE_DISABLED: ${VOICE_DISABLED:-}
+      # The speech-to-speech host (ADR-0018). It borrows the brain and the key
+      # above, so it is on wherever they are; `STS_DISABLED=1` is the kill
+      # switch, and the transcription model is the one the host posts to.
+      STS_DISABLED: ${STS_DISABLED:-}
+      # The sponsorship queue's owner list, and the channel the owner is
+      # notified on. Both were read by the API and passed to no container, so
+      # the queue was unreadable and the notice went nowhere on a deployed box.
+      CRUCIBLE_OWNER_ADDRESSES: ${CRUCIBLE_OWNER_ADDRESSES:-}
+      WARDEN_WEBHOOK_URL: ${WARDEN_WEBHOOK_URL:-}
     ports:
       - "${API_HOST_PORT:-8787}:8787"
     volumes:
