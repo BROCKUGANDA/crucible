@@ -239,6 +239,38 @@ const frenchy = (() => {
   return { llm: { apiKey: llmApiKey, model: llmModel, baseUrl: llmBaseUrl }, tts, scribe };
 })();
 
+/**
+ * Frenchy, spoken: the speech-to-speech host.
+ *
+ * It borrows the brain and the voice the conversational assistant already uses, and
+ * adds the one thing that host does not have: a transcription of the visitor's own
+ * speech. The ElevenLabs key is the same key, because it is the same account and a
+ * second key for the same provider would be a second thing to leak.
+ *
+ * `STS_DISABLED=1` turns the whole host off. The parts are still reported
+ * separately by `/sts/status`, so an operator can see *which* piece is missing
+ * rather than a flat "not configured".
+ */
+const sts = (() => {
+  if (process.env.STS_DISABLED === "1") return null;
+  if (!frenchy) return null;
+
+  const sttApiKey = process.env.ELEVENLABS_API_KEY?.trim();
+  const sttBaseUrl = process.env.ELEVENLABS_BASE_URL?.trim() || undefined;
+  const sttModelId = process.env.ELEVENLABS_STT_MODEL_ID?.trim() || "scribe_v1";
+  if (sttBaseUrl && !/^https?:\/\//.test(sttBaseUrl)) {
+    throw new Error(`ELEVENLABS_BASE_URL must be an http(s) URL; got "${sttBaseUrl}"`);
+  }
+
+  // Without a voice the host can still answer in words, so the route is mounted and
+  // says so: the words are the content and the audio is the garnish (see sts.ts).
+  return {
+    stt: sttApiKey ? { apiKey: sttApiKey, modelId: sttModelId, baseUrl: sttBaseUrl } : null,
+    brain: frenchy.llm,
+    tts: frenchy.tts ?? null,
+  };
+})();
+
 const publicClient = createPublicClient({ chain: foundry, transport: http(rpcUrl) });
 
 const scribe = new Scribe({
@@ -848,6 +880,7 @@ const app = createApp({
   },
   voice,
   frenchy,
+  sts,
 });
 
 serve({ fetch: app.fetch, port }, (info) => {
@@ -867,6 +900,11 @@ serve({ fetch: app.fetch, port }, (info) => {
     frenchy
       ? `[crucible] frenchy: brain on (${frenchy.llm.model})${frenchy.tts ? " + premium TTS" : ""}`
       : "[crucible] frenchy: brain off (set FRENCHY_LLM_API_KEY to enable)",
+  );
+  console.log(
+    sts
+      ? `[crucible] speech-to-speech: on (stt ${sts.stt?.modelId ?? "off"}, brain ${sts.brain?.model ?? "off"}, voice ${sts.tts ? "on" : "off"})`
+      : "[crucible] speech-to-speech: off (set STS_DISABLED=0 with FRENCHY_LLM_API_KEY and ELEVENLABS_API_KEY to enable)",
   );
   // A replay reads the trial's own logs back from the node, so the window it searches is a
   // fact an operator needs when a replay comes back missing its first beats.

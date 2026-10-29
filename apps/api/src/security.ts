@@ -412,20 +412,49 @@ export function securityHeaders(overrides: Partial<SecurityConfig> = {}): Middle
 /* ------------------------------------------------------------ body limit ---- */
 
 /**
+ * The ceiling that applies to a path.
+ *
+ * A map of path prefixes to their own ceiling, and the **longest** prefix wins: a
+ * route mounted at `/sts/session/:id/turn` must not be captured by a shorter prefix
+ * that was meant for something else. `null` means "no entry", not "no limit".
+ */
+export function pathCeiling(path: string, ceilings: Record<string, number>): number | null {
+  let best: number | null = null;
+  let bestLength = -1;
+  for (const [prefix, value] of Object.entries(ceilings)) {
+    if (!path.startsWith(prefix)) continue;
+    if (prefix.length > bestLength) {
+      best = value;
+      bestLength = prefix.length;
+    }
+  }
+  return best;
+}
+
+/**
  * Reject an oversized request body before a handler sees it.
  *
- * There is no upload path: every route is a GET, and no handler calls `c.req.json()` or
- * `.text()`, so nothing in this process buffers a request body today. What this does
- * enforce is (a) any announced `Content-Length` above the ceiling is refused with 413, and
- * (b) a read carries no body at all. The value is for the route that is added later and for
- * the fact that the check costs one header read.
+ * There was no upload path until the speech-to-speech host arrived: every other route
+ * is a GET, and no handler buffered a request body. What this enforces is (a) any
+ * announced `Content-Length` above the ceiling is refused with 413, and (b) a read
+ * carries no body at all.
+ *
+ * **The ceiling is per path, not one number for the process.** The speech host
+ * accepts a recorded utterance, which is bigger than the JSON every other route
+ * takes, and the honest way to say that is a named exception with its own number —
+ * not a blanket raise that would let a JSON route accept a quarter of a megabyte
+ * because an audio route needs it.
  *
  * Stated plainly, because the alternative is pretending: a body announced as `chunked`
  * with no `Content-Length` cannot be bounded from here without consuming the stream, which
  * would itself be the DoS. `client_max_body_size` at the proxy is the real ceiling for that
- * case; this is defence in depth for the case the server can see.
+ * case; this is defence in depth for the case the server can see. The speech route
+ * therefore checks the bytes it actually received as well.
  */
-export function bodyLimit(cfg: Pick<SecurityConfig, "maxBodyBytes">): MiddlewareHandler {
+export function bodyLimit(
+  cfg: Pick<SecurityConfig, "maxBodyBytes">,
+  pathCeilings: Record<string, number> = {},
+): MiddlewareHandler {
   return async function limit(c: Context, next: Next) {
     const announced = c.req.header("content-length");
     if (!announced) return next();
@@ -435,9 +464,10 @@ export function bodyLimit(cfg: Pick<SecurityConfig, "maxBodyBytes">): Middleware
       return c.json({ error: "malformed Content-Length" }, 400);
     }
 
-    if (size > cfg.maxBodyBytes) {
+    const ceiling = pathCeiling(c.req.path, pathCeilings) ?? cfg.maxBodyBytes;
+    if (size > ceiling) {
       return c.json(
-        { error: `request body too large: ${size} bytes exceeds the ${cfg.maxBodyBytes} byte limit`, maxBytes: cfg.maxBodyBytes },
+        { error: `request body too large: ${size} bytes exceeds the ${ceiling} byte limit`, maxBytes: ceiling },
         413,
       );
     }
@@ -471,6 +501,7 @@ export function bodyLimit(cfg: Pick<SecurityConfig, "maxBodyBytes">): Middleware
  */
 export function requestTimeout(
   cfg: Partial<Pick<SecurityConfig, "timeoutMs" | "timeoutExemptPaths">> = {},
+  pathTimeouts: Record<string, number> = {},
 ): MiddlewareHandler {
   const timeoutMs = cfg.timeoutMs ?? DEFAULT_SECURITY.timeoutMs;
   const exempt = new Set(cfg.timeoutExemptPaths ?? DEFAULT_SECURITY.timeoutExemptPaths);
@@ -478,10 +509,16 @@ export function requestTimeout(
   return async function timeout(c: Context, next: Next) {
     if (exempt.has(c.req.path)) return next();
 
+    // A route with a longer budget of its own gets it: the speech-to-speech turn
+    // makes three provider round trips, and a blanket ten seconds would answer 504
+    // for work that was about to finish. The ceiling is still a ceiling — the
+    // exception is a bigger number, not an absent one.
+    const budget = pathCeiling(c.req.path, pathTimeouts) ?? timeoutMs;
+
     let timer: ReturnType<typeof setTimeout> | undefined;
     const worked = next().then(() => "done" as const);
     const expired = new Promise<"timeout">((resolve) => {
-      timer = setTimeout(() => resolve("timeout"), cfg.timeoutMs);
+      timer = setTimeout(() => resolve("timeout"), budget);
       // A pending timeout must not be the reason the process stays alive at shutdown.
       timer.unref?.();
     });

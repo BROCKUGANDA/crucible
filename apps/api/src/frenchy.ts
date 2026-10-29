@@ -4,23 +4,34 @@ import type { ReadModel } from "@crucible/indexer";
 
 export type FrenchyMode = "text" | "voice";
 
+/**
+ * The brain's provider configuration.
+ *
+ * Named separately because the speech-to-speech host (`sts.ts`) borrows exactly this
+ * configuration and nothing else: one brain, one provider key, one prompt.
+ */
+export interface FrenchyBrain {
+  apiKey: string;
+  model: string;
+  baseUrl?: string;
+  /** Injected by tests; production uses the platform fetch. */
+  fetchImpl?: typeof fetch;
+}
+
+/** The premium voice's provider configuration. */
+export interface FrenchyTts {
+  apiKey: string;
+  voiceId: string;
+  modelId?: string;
+  baseUrl?: string;
+  fetchImpl?: typeof fetch;
+}
+
 export interface FrenchyConfig {
   /** LLM provider configuration. */
-  llm: {
-    apiKey: string;
-    model: string;
-    baseUrl?: string;
-    /** Injected by tests; production uses the platform fetch. */
-    fetchImpl?: typeof fetch;
-  };
+  llm: FrenchyBrain;
   /** Optional premium TTS (ElevenLabs). If absent, the voice route is disabled. */
-  tts?: {
-    apiKey: string;
-    voiceId: string;
-    modelId?: string;
-    baseUrl?: string;
-    fetchImpl?: typeof fetch;
-  };
+  tts?: FrenchyTts;
   /** Optional ElevenLabs Scribe Realtime STT. If absent, /frenchy/scribe-url is disabled. */
   scribe?: {
     apiKey: string;
@@ -48,8 +59,12 @@ Current CRUCIBLE context will be injected with each request. Use it.
 
 /**
  * Build the context string from the live read model.
+ *
+ * Exported because the speech-to-speech host answers the same questions and must be
+ * grounded in the same facts: two hosts that each built their own context would be
+ * two places where "what is open right now?" could be answered differently.
  */
-function buildContext(model: ReadModel): string {
+export function buildContext(model: ReadModel): string {
   const now = Date.now();
   const trials = [...model.trials.values()];
   const agents = [...model.agents.values()];
@@ -112,8 +127,11 @@ let now = () => Date.now();
 
 /**
  * Request the LLM with the injected context.
+ *
+ * Exported for the same reason `buildContext` is: one brain, one prompt, one place
+ * where the refusal to answer an empty question lives.
  */
-async function askLLM(config: FrenchyConfig["llm"], prompt: string, history: { role: "user" | "assistant"; content: string }[]): Promise<string> {
+export async function askLLM(config: FrenchyBrain, prompt: string, history: { role: "user" | "assistant"; content: string }[]): Promise<string> {
   const baseUrl = (config.baseUrl ?? "https://api.openai.com/v1").replace(/\/+$/, "");
   const url = `${baseUrl}/chat/completions`;
 
@@ -157,8 +175,12 @@ async function askLLM(config: FrenchyConfig["llm"], prompt: string, history: { r
 
 /**
  * Premium TTS via ElevenLabs (reuses voice.ts logic).
+ *
+ * The bytes are returned rather than a `Blob` because the speech-to-speech host
+ * needs the length of the audio as a number and the audio itself as a payload, and
+ * two shapes of the same call is two places for the provider's request to drift.
  */
-async function speakTTS(config: NonNullable<FrenchyConfig["tts"]>, text: string): Promise<Blob> {
+export async function speakAudio(config: FrenchyTts, text: string): Promise<Uint8Array> {
   const baseUrl = (config.baseUrl ?? "https://api.elevenlabs.io").replace(/\/+$/, "");
   const url = `${baseUrl}/v1/text-to-speech/${encodeURIComponent(config.voiceId)}/stream`;
 
@@ -182,11 +204,41 @@ async function speakTTS(config: NonNullable<FrenchyConfig["tts"]>, text: string)
     throw new Error("the voice failed");
   }
 
-  return await res.blob();
+  return new Uint8Array(await res.arrayBuffer());
 }
 
-export function createFrenchyRoutes(config: FrenchyConfig | null): Hono {
+export interface FrenchyDeps {
+  /**
+   * The live read model.
+   *
+   * A dependency rather than something read off the request, so that the grounding
+   * the system prompt promises is the grounding the host actually has. A host with
+   * no chain behind it gets an empty model, and the prompt says so rather than
+   * implying facts it does not have.
+   */
+  getModel?: () => ReadModel;
+}
+
+/**
+ * The read model a host with no chain behind it hands to the brain.
+ *
+ * Exported so the speech host uses the same empty model rather than a second copy
+ * of it: two empty models would be two places where "there is no chain here" is
+ * decided, and the two could drift into meaning different things.
+ */
+export function emptyReadModel(): ReadModel {
+  return {
+    trials: new Map(),
+    agents: new Map(),
+    runs: new Map(),
+    disputes: new Map(),
+    version: 0,
+  } as ReadModel;
+}
+
+export function createFrenchyRoutes(config: FrenchyConfig | null, deps: FrenchyDeps = {}): Hono {
   const app = new Hono();
+  const getModel = deps.getModel ?? (() => emptyReadModel());
 
   app.post("/", async (c) => {
     if (!config) {
@@ -226,9 +278,16 @@ export function createFrenchyRoutes(config: FrenchyConfig | null): Hono {
         .slice(-12);
     }
 
-    // Build context from the live read model
-    const deps = (c as any).var?.apiDeps;
-    const model = deps?.getModel?.() ?? { trials: new Map(), agents: new Map(), runs: new Map(), disputes: new Map(), version: 0 } as ReadModel;
+    // Build context from the live read model.
+    //
+    // The model is handed in by the caller, not read off the context variable.
+    // It used to be read off `(c as any).var?.apiDeps`, and **nothing ever set
+    // that variable**: the host answered every question with an empty read model,
+    // while the system prompt told the model it was "grounded in live CRUCIBLE
+    // state". A prompt that promises grounding the host does not provide is a
+    // prompt that produces confident sentences about a deployment the model cannot
+    // see, so the model is now a dependency the route is mounted with.
+    const model = getModel();
 
     const context = buildContext(model);
     const walletContext = wallet && typeof wallet === "object" && "address" in wallet
@@ -267,8 +326,8 @@ export function createFrenchyRoutes(config: FrenchyConfig | null): Hono {
     }
 
     try {
-      const blob = await speakTTS(config.tts, text.trim());
-      return new Response(blob, {
+      const bytes = await speakAudio(config.tts, text.trim());
+      return new Response(Buffer.from(bytes), {
         status: 200,
         headers: {
           "content-type": "audio/mpeg",

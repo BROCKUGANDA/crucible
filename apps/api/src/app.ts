@@ -45,6 +45,7 @@ import { authRoutes } from "./auth.js";
 import { createVoiceRoutes, type VoiceConfig } from "./voice.js";
 import { createReplayRoutes, type ReplaySourceResult } from "./replay.js";
 import { createFrenchyRoutes, type FrenchyConfig } from "./frenchy.js";
+import { createStsRoutes, STS_MAX_AUDIO_BYTES, STS_TURN_TIMEOUT_MS, type StsConfig } from "./sts.js";
 import {
   bodyLimit,
   corsPolicy,
@@ -401,6 +402,18 @@ export interface ApiOptions {
    */
   voiceRateLimit?: { limit: number; windowMs: number; burst?: number } | false;
   /**
+   * Frenchy, spoken: the speech-to-speech host. Null or absent means the host is off
+   * and `/sts/status` says so; the rest of the app is unchanged.
+   */
+  sts?: StsConfig | null;
+  /**
+   * The speech host's own bucket.
+   *
+   * A turn costs three provider calls, so it is not a read allowance. `false`
+   * disables it for tests.
+   */
+  stsRateLimit?: { limit: number; windowMs: number; burst?: number } | false;
+  /**
    * The replay projector. Absent means `/replay/:id` answers 501: a deployment that cannot
    * read logs must not render an empty stage and let it look like a trial with no history.
    */
@@ -672,7 +685,13 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
       // as well would make an agent's long session spend the allowance the
       // browser needs for `/snapshot`, which is the starvation this limiter
       // exists to prevent, only in the other direction.
-      if (c.req.path === "/stream" || c.req.path === "/mcp") {
+      //
+      // `/sts` is exempt for the same reason, with one addition: the turn
+      // monitor polls the session while a turn is in flight, so the speech host
+      // needs several requests a minute per open conversation. It has its own
+      // buckets below, and the one that spends provider credits is the tighter
+      // of the two.
+      if (c.req.path === "/stream" || c.req.path === "/mcp" || c.req.path.startsWith("/sts")) {
         await next();
         return;
       }
@@ -680,8 +699,29 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
     });
   }
 
-  app.use("*", bodyLimit(security));
-  app.use("*", requestTimeout(security));
+  /**
+   * The body ceiling, per path.
+   *
+   * The speech host accepts a recorded utterance, which is bigger than the JSON
+   * every other route takes, so it carries its own number rather than the blanket
+   * one being raised for the whole process. The route checks the bytes it
+   * actually received as well, because a `chunked` body announces no length.
+   */
+  const bodyCeilings: Record<string, number> = {
+    "/sts/session/": STS_MAX_AUDIO_BYTES,
+  };
+  app.use("*", bodyLimit(security, bodyCeilings));
+
+  /**
+   * The timeout, per path.
+   *
+   * A turn is three provider round trips, so the blanket ten seconds would answer
+   * 504 for work that was about to finish. The ceiling is still a ceiling.
+   */
+  const pathTimeouts: Record<string, number> = {
+    "/sts/session/": STS_TURN_TIMEOUT_MS,
+  };
+  app.use("*", requestTimeout(security, pathTimeouts));
 
   /**
    * Sign-In with Ethereum, mounted as a closed sub-app. Ported from the merged
@@ -723,7 +763,42 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
   }
   app.route("/frenchy", createFrenchyRoutes(opts.frenchy ?? null, { getModel: deps.getModel }));
 
-
+  /**
+   * Frenchy, spoken: the speech-to-speech host.
+   *
+   * Two buckets, because the host serves two very different requests:
+   *
+   *   * a **turn** costs a transcription, a brain call and a synthesis, so it has a
+   *     tight bucket of its own — twenty a minute is one conversation a minute.
+   *   * a **session read** is the turn monitor polling the phase while a turn is in
+   *     flight, and it has to be allowed enough room to poll.
+   *
+   * The turn bucket is registered first so it is charged before the broader one.
+   */
+  if (opts.stsRateLimit !== false) {
+    app.use(
+      "/sts/session/:id/turn",
+      rateLimit({
+        limit: 20,
+        windowMs: 60_000,
+        burst: 5,
+        trustProxy: opts.trustProxy ?? false,
+        ...opts.stsRateLimit,
+      }),
+    );
+  }
+  if (opts.stsRateLimit !== false) {
+    app.use(
+      "/sts/*",
+      rateLimit({
+        limit: 120,
+        windowMs: 60_000,
+        burst: 20,
+        trustProxy: opts.trustProxy ?? false,
+      }),
+    );
+  }
+  app.route("/sts", createStsRoutes(opts.sts ?? null, { getModel: deps.getModel }));
 
   /**
    * The replay projector. One request makes the node answer a `getLogs` over the whole look-back
