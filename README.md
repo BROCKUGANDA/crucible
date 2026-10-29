@@ -385,7 +385,10 @@ npm run agent:live          # the real agent against a real model in a real sand
 **2556 tests pass, 10 skipped** — 2212 TypeScript passed with 6 skipped, 15 at the edge, and 329
 Foundry passed with 4 skipped, so 2566 counted. Measured per workspace on 2026-10-29 on the working
 tree; the six skips are `forge-runner` tests that ask for a Docker daemon, the four are the fork
-tests below. The edge's 15 are `node --test` over `deploy/edge`, not a workspace: 6 refusals at the
+tests below. **The same tree on a runner that has a Docker daemon reads 2217 TypeScript passed
+with 1 skipped** — the same five `forge-runner` tests, run rather than skipped — so the two
+numbers are the same tree and not two claims. The edge's 15 are `node --test` over `deploy/edge`,
+not a workspace: 6 refusals at the
 RPC gate, 3 on the probe that asks the live endpoint those methods (one of them a negative control
 that replays the responses measured on the ungated edge), and 6 on the installer and routing that
 put the gate in the path — which is how a green gate suite came to coexist with a public `/anvil`
