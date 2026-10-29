@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { compareManifests, type EvalManifest } from "@crucible/smith";
 import type {
   ClaimHash,
   EvalResult,
@@ -165,6 +166,8 @@ export function scorecardRow(
   perArtifactConsistency: Map<ClaimHash, Verdict[]>,
   avgCostUsd: number,
   thresholds: SmokeThresholds,
+  manifest: EvalManifest,
+  manifestDigest: string,
 ): ScorecardRow {
   /**
    * The split that keeps an aggregate from silently mixing two different exams.
@@ -254,6 +257,8 @@ export function scorecardRow(
     promptVersion,
     suite,
     suiteEpoch,
+    manifestDigest,
+    manifest,
     n,
     graded: results.length,
     tiers,
@@ -298,6 +303,17 @@ export function buildScorecard(
     results: EvalResult[];
     perArtifactConsistency: Map<ClaimHash, Verdict[]>;
     avgCostUsd: number;
+    /**
+     * The manifest for this row's evaluation, and its digest.
+     *
+     * Supplied per entry rather than computed here, because the grader's
+     * manifest needs facts the scorer does not hold: the model card that
+     * pins the snapshot, the seed the draw was taken with, and the
+     * thresholds in force. The scorer holds the numbers; the caller holds
+     * the conditions.
+     */
+    manifest: EvalManifest;
+    manifestDigest: string;
   }>,
   thresholds: SmokeThresholds,
 ): Scorecard {
@@ -311,6 +327,8 @@ export function buildScorecard(
       entry.perArtifactConsistency,
       entry.avgCostUsd,
       thresholds,
+      entry.manifest,
+      entry.manifestDigest,
     ),
   );
   return { rows, corpusEpoch: corpusEpochOf(rows), generatedAt: Date.now() };
@@ -332,6 +350,44 @@ export function corpusEpochOf(rows: readonly ScorecardRow[]): SuiteEpoch {
 /** Serialize a scorecard row as one JSONL line. */
 export function scorecardLine(row: ScorecardRow): string {
   return JSON.stringify(row);
+}
+
+/**
+ * Why two rows may not be compared, or `undefined` when they may.
+ *
+ * This is the guard the brief asks for - "prevent score comparisons across
+ * incompatible protocols without an explicit warning" - and it is a
+ * **warning with a reason**, not a silent refusal. The reason names the field
+ * that moved, because "these two numbers are not comparable" is a claim the
+ * reader cannot check; "the rubric version moved" is one they can.
+ *
+ * The **model is excluded**: two rows that differ only in their model are the
+ * rows a leaderboard is made of. Comparing them with the model included
+ * would report every pair of candidates as incomparable and refuse to rank
+ * anything.
+ */
+export function incomparability(
+  left: ScorecardRow,
+  right: ScorecardRow,
+): { path: string; left: unknown; right: unknown }[] {
+  return compareManifests(left.manifest, right.manifest).filter(
+    (d) =>
+      d.path !== "startedAt" &&
+      d.path !== "finishedAt" &&
+      d.path !== "model" &&
+      !d.path.startsWith("model."),
+  );
+}
+
+/**
+ * Whether two rows' scores may be set side by side.
+ *
+ * The honest default is **no**: two rows are comparable only when the caller
+ * has established that their conditions match. A guard that defaults to "yes"
+ * and complains later is a guard that gets switched off.
+ */
+export function scoresComparable(left: ScorecardRow, right: ScorecardRow): boolean {
+  return incomparability(left, right).length === 0;
 }
 
 /** Gate 432 — Public trust page scorecard line per deployed graderVersion. */

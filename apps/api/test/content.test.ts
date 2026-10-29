@@ -33,6 +33,23 @@ function tempDir(prefix: string): string {
   return dir;
 }
 
+/**
+ * The store, opened the way every *writer* opens it.
+ *
+ * `scripts/seed-content.mjs:72` and `apps/juror/src/main.ts:51` both do
+ * `new CidStore({ dir: join(contentDir, "store") })`, so the bytes land in
+ * `<contentDir>/store/data`. A test that wrote the store at `<contentDir>`
+ * itself would be testing a layout no writer produces - which is exactly how
+ * the reader drifted: it looked in `<contentDir>/data`, a directory that
+ * nothing ever creates, so every disclosed suite answered 503 "the content
+ * store could not be read" while the bytes sat one directory away.
+ *
+ * So the test writes where the writers write, and the reader has to follow.
+ */
+function writerStore(contentDir: string): CidStore {
+  return new CidStore({ dir: join(contentDir, "store") });
+}
+
 afterEach(() => {
   while (dirs.length) {
     const d = dirs.pop();
@@ -67,7 +84,7 @@ describe("serving what was pinned", () => {
   it("returns the text a CID names, marked immutable", async () => {
     const { dir } = workspace();
     const suite = "forge test --match-path 'test/Suite.t.sol'";
-    const cid = new CidStore({ dir }).put(suite);
+    const cid = writerStore(dir).put(suite);
 
     const res = await appWith(createContentSource(dir, () => new Map())).request(`/content/${cid}`);
     expect(res.status).toBe(200);
@@ -79,7 +96,7 @@ describe("serving what was pinned", () => {
   it("serves bytes that are not text without pretending they are", async () => {
     const { dir } = workspace();
     const blob = new Uint8Array([0xff, 0xfe, 0x00, 0x41]);
-    const cid = new CidStore({ dir }).put(blob);
+    const cid = writerStore(dir).put(blob);
 
     const res = await appWith(createContentSource(dir, () => new Map())).request(`/content/${cid}`);
     expect(res.status).toBe(200);
@@ -87,12 +104,40 @@ describe("serving what was pinned", () => {
     expect(new Uint8Array(await res.arrayBuffer())).toEqual(blob);
   });
 
+  /**
+   * The reader and the writers must agree on where the store lives.
+   *
+   * This is the whole bug, written as a test: the writer's layout is
+   * `<contentDir>/store/data` (both writers put it there), and the reader
+   * opened `<contentDir>` and so looked in `<contentDir>/data` — a directory
+   * no writer creates. The symptom on the deployed box was a 503 whose reason
+   * named a path that was never the store's, for every disclosed suite.
+   *
+   * The assertion is deliberately about the *layout*, not about one fixture:
+   * the bytes are written by `writerStore`, exactly as `seed-content.mjs` and
+   * the juror write them, and the reader has to find them. Reverting the
+   * reader to `<contentDir>` turns this red.
+   */
+  it("reads the bytes the writers wrote, at the path the writers wrote them", async () => {
+    const { dir } = workspace();
+    const suite = "the bytes a sponsor pinned";
+    const cid = writerStore(dir).put(suite);
+
+    // The shape on disk, asserted so the test says what broke if it goes red.
+    const written = filesUnder(dir).find((f) => f.includes(toHex(sha256(suite)).slice(2)));
+    expect(written, "the writer did not put the bytes on disk where it says it does").toBeTruthy();
+
+    const res = await appWith(createContentSource(dir, () => new Map())).request(`/content/${cid}`);
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe(suite);
+  });
+
   it("answers a valid CID nobody pinned here with 404, and says the content may exist elsewhere", async () => {
-    const elsewhere = new CidStore({ dir: tempDir("crucible-other-") }).put("somewhere else's bytes");
+    const elsewhere = writerStore(tempDir("crucible-other-")).put("somewhere else's bytes");
     const { dir } = workspace();
     // This host does have a store — it just does not hold that entry. Provisioning it is what
     // separates "not here" from "no store here", and the two answer with different statuses.
-    new CidStore({ dir }).put("something this host pinned earlier");
+    writerStore(dir).put("something this host pinned earlier");
 
     const res = await appWith(createContentSource(dir, () => new Map())).request(`/content/${elsewhere}`);
     expect(res.status).toBe(404);
@@ -126,7 +171,7 @@ describe("the digest a trial carries", () => {
   it("follows a disclosed digest to the bytes it names", async () => {
     const { dir, disclosure } = workspace();
     const suite = "contract Suite { function test_a() public {} }";
-    const cid = new CidStore({ dir }).put(suite);
+    const cid = writerStore(dir).put(suite);
     const digest = disclose(disclosure, suite, cid);
 
     const res = await appWith(createContentSource(dir, () => digestToCidMap(disclosure, () => {}))).request(
@@ -149,7 +194,7 @@ describe("the digest a trial carries", () => {
   it("reads the disclosure map again on the next request", async () => {
     const { dir, disclosure } = workspace();
     const suite = "delayed disclosure";
-    const cid = new CidStore({ dir }).put(suite);
+    const cid = writerStore(dir).put(suite);
     const app = appWith(createContentSource(dir, () => digestToCidMap(disclosure, () => {})));
 
     const before = await app.request(`/content/${keccak256(toBytes(suite))}`);
@@ -183,7 +228,7 @@ describe("when the store itself is the problem", () => {
 
   it("answers 500 when the bytes under a CID do not hash to it", async () => {
     const { dir } = workspace();
-    const cid = new CidStore({ dir }).put("original bytes");
+    const cid = writerStore(dir).put("original bytes");
     // The disk backend stores by the hex sha256 of the content; corrupt that file the way a
     // partial write or a failing disk would.
     const key = toHex(sha256("original bytes")).slice(2);

@@ -2,6 +2,10 @@
 
 - Status: Accepted
 - Date: 2026-10-21
+- The interactive variant rejected under "Alternatives considered" below is
+  superseded by [ADR-0018](0018-speech-to-speech-and-turn-monitor.md). The decision
+  recorded here — the one-way host, the fixed copy, the muted default — is
+  unchanged and still in force.
 
 ## Context
 

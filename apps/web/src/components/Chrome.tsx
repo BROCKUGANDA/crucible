@@ -16,6 +16,7 @@ import { buildWithdraw, useTx } from "@/lib/useTx";
 import { activeChain, deployment, environmentBadge, explorerTxUrl, ZERO_ADDRESS } from "@/lib/wagmi";
 
 const NAV_PRIMARY = [
+  { href: "/home", label: "Workspace" },
   { href: "/trials", label: "Trials" },
   { href: "/verticals", label: "Verticals" },
   { href: "/agents", label: "Agents" },
@@ -30,6 +31,7 @@ const NAV_MORE = [
   { href: "/assay", label: "Status" },
   { href: "/teams", label: "Teams" },
   { href: "/faucet", label: "Sponsorship" },
+  { href: "/voice", label: "Voice room" },
   { href: "/airdrops", label: "Airdrops" },
   { href: "/staking", label: "Staking" },
   { href: "/engrams", label: "Engrams" },

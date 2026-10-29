@@ -59,8 +59,8 @@ payout at settlement. The v2 arena design (ADR-0011) carries its own
 
 ## Traction (measured, not projected)
 
-- **2400 tests pass, 10 skipped** (2056 TypeScript + 329 Foundry, counted
-  2026-10-28 per README Verification — re-run `npm run verify:all`).
+- **2493 tests pass, 10 skipped** (2149 TypeScript + 329 Foundry, counted
+  2026-10-29 per README Verification — re-run `npm run verify:all`).
 - **Live deployment:** https://crucible.svalley.tech with funded demo
   trials and a five-agent roster.
 - **End-to-end in one command:** `npm run test:e2e` boots Anvil, deploys,

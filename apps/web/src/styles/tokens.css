@@ -1,5 +1,29 @@
 /* @file tokens.css — the `:root` token layer (colour, type, spacing, easing, duration) and
  * nothing else: no selectors. Imported first by src/app/layout.tsx.
+ *
+ * ONE palette, and this file is where it lives. `src/lib/forge.ts` is the TypeScript mirror
+ * of it and `src/lib/scrub/palette.ts` mirrors its material colours; `test/scrub-palette.test.ts`
+ * parses this file and fails if the three ever separate. Two files in two languages that
+ * describe one design will drift the moment nobody is made to notice, and the symptom is a
+ * screen that looks fine right up until it ships.
+ *
+ * **Why the arena palette wins the names.** The token *names* are a vocabulary that the whole
+ * stylesheet already speaks — `arena.css`, `base.css`, `components.css`, `console.css`,
+ * `pages.css`, `scrub.css` and `trials.css` reference `--bg0/--text/--hot/--sand/--ink` and
+ * about two hundred other references besides, and the canvas scene paints itself from the same
+ * six state colours. A rewrite that changed the values under those names and dropped the rest
+ * left every one of those references either pointing at a different colour or pointing at
+ * nothing at all: `var(--text)` on an undefined custom property is not "the old text", it is
+ * no declaration, so the rule loses its colour and inherits whatever the cascade gives it.
+ * The vocabulary belongs to the stylesheet, so the values go with the names.
+ *
+ * **What is added, and why.** The landing surfaces brought a second, smaller set of
+ * *semantic* names — `--accent`, `--success`, `--warning`, `--error`, `--info`, `--pending`,
+ * and the `--z-*` stacking order. None of them collided with the arena's, so they are kept,
+ * each bound to the arena colour it means rather than to a new hue: `--error` is the slash
+ * (`--sear`), `--info` is the reprieve (`--quench`), `--pending` is the muted step
+ * (`--faint`). One palette means one meaning per colour, and a badge that says "error" is
+ * the same red as the slash that caused it.
  */
 
 /* The Colosseum — stone, sand, and the light that falls on them. Every state is still a
@@ -55,6 +79,27 @@
   --sand: #c8a878;
   --tyrian: #7a2b56;
 
+  /* The action colour, named the way the landing surfaces name it. It is the same terracotta
+     as `--ember`, deliberately: the primary action and the agent's identity are one colour,
+     and a second orange beside it would be a second meaning for one hue. */
+  --accent: #e2612f;
+
+  /* Semantic states for the status surfaces. Each is bound to the arena colour it already
+     means rather than to a new hue, so a badge, a badge's border and the thing the badge is
+     about are all the same colour. */
+  --success: #3dd68c;
+  --warning: #f5a623;
+  --error: #cf4132;
+  --info: #4fbfae;
+  --pending: #9e9078;
+
+  /* Stacking order, named so an overlay is not `z-index: 9999` in four different files. */
+  --z-base: 0;
+  --z-raised: 10;
+  --z-overlay: 100;
+  --z-modal: 1000;
+  --z-toast: 1100;
+
   /* Composed, not hardcoded: `:root` outranks the class next/font puts on <html>, so a
      literal family name here would silently win over the vendored TTF and render the whole
      brand in system-ui. */
@@ -97,6 +142,7 @@
 
   /* Mirrors `motion.duration` in src/lib/forge.ts — JS animations and CSS must not drift. */
   --t-tap: 120ms;
+  --t-small: 160ms;
   --t-state: 240ms;
   --t-pour: 400ms;
   --t-quench: 700ms;

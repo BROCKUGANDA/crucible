@@ -7,6 +7,7 @@ import {
   notifications,
   notifyAll,
   type FinalizeDecision,
+  type Message,
   type Notifier,
   type WardenConstants,
 } from "./policy.js";
@@ -182,8 +183,15 @@ export class Warden {
   }
 }
 
-/** Webhook notifier for the Warden pings in /settings. */
-export function webhookNotifier(url: string, fetchImpl = fetch): Notifier {
+/**
+ * The webhook channel.
+ *
+ * The transport is a message, so the parameter is the message: the warden's own
+ * notifications are trial events, and the API sends sponsorship applications
+ * down the same channel. One notifier, one URL, one place where a delivery
+ * failure is caught - rather than a second webhook implementation beside this one.
+ */
+export function webhookNotifier<T extends Message>(url: string, fetchImpl = fetch): Notifier<T> {
   return {
     async send(n) {
       const res = await fetchImpl(url, {

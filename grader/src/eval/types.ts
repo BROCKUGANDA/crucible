@@ -1,3 +1,5 @@
+import type { EvalManifest } from "@crucible/smith";
+
 export type Verdict = "PASS" | "VOID" | "FAIL";
 
 export type ModelId = string;
@@ -215,7 +217,31 @@ export interface ScorecardRow {
    */
   suiteEpoch: SuiteEpoch;
   /**
-   * Capability results scored — persuasion probes excluded. Every judgement number on this row
+   * The digest of the evaluation manifest this row was produced under.
+   *
+   * Required, not optional, for the same reason `suiteEpoch` is: a row that
+   * cannot be compared to another row wearing the same `suite` name has no
+   * honest placeholder for its conditions. The epoch names the *corpus*; this
+   * names the corpus **and** the evaluator, the model's exact snapshot, the
+   * seed, the prompt version and the thresholds - everything else that moves
+   * a score.
+   *
+   * Two rows are comparable only when their manifests agree. The manifest
+   * itself is carried alongside the digest, so a reader can see *which field*
+   * moved rather than being told only that something did.
+   */
+  manifestDigest: string;
+  /**
+   * The manifest the digest names.
+   *
+   * Carried on the row rather than only published elsewhere, because a digest
+   * with no document behind it cannot be checked - and a reader who is told
+   * "these two rows are not comparable" deserves to see the field that
+   * differs.
+   */
+  manifest: EvalManifest;
+  /**
+   * Capability results scored - persuasion probes excluded. Every judgement number on this row
    * (accuracy, kappa, false-pass, false-fail, kill-rate) is computed over exactly these `n`, and
    * `tiers` below partitions them.
    */

@@ -28,6 +28,7 @@ way it does and what would have to change to revisit it.
 | [0015](0015-funded-test-wallet-its-own-service.md) | A funded test wallet is its own service; the API keeps holding no key | Proposed |
 | [0016](0016-faucet-sizes-by-risk-not-denial.md) | The faucet sizes by risk; absence of evidence is not denial | Accepted |
 | [0017](0017-evaluation-manifest.md) | The evaluation manifest is hashed separately from the signed run artifact | Accepted |
+| [0018](0018-speech-to-speech-and-turn-monitor.md) | A speech-to-speech host and a turn monitor; the caller's words never reach the synthesiser | Accepted |
 
 ## Writing a new ADR
 
