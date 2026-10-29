@@ -99,3 +99,101 @@ export function indexAsPrompt(): string {
     })
     .join("\n");
 }
+
+/**
+ * What Frenchy may do.
+ *
+ * Two verbs and no money in either of them. The type lives here, beside the
+ * map that says where those verbs may point, because the rule that binds them
+ * - *the destination has to be a page of this site* - is a property of the
+ * site and not of the host that asks.
+ */
+export interface SiteAction {
+  kind: "navigate" | "point";
+  /** The page to go to, or the page the point is on. */
+  path: string;
+  /** The element to point at. Only for `kind: "point"`. */
+  point?: string;
+  /** Why she is taking them there, in a few words. */
+  why: string;
+}
+
+/** "Taking you there" is a clause, not an essay. */
+export const MAX_WHY_CHARS = 200;
+
+export interface ReadActionResult {
+  /** The action, or null when it was refused. */
+  action: SiteAction | null;
+  /**
+   * What was refused, and why.
+   *
+   * A refusal is worth recording: a model that keeps asking for a page that
+   * does not exist is a model whose prompt is out of date, and that is a fact
+   * an operator needs to see rather than a silent no-op.
+   */
+  refused: string[];
+}
+
+/**
+ * Read an action out of what a model said, and refuse the ones that are not
+ * allowed.
+ *
+ * This is the whole of "computer use" in one check, and it lives here rather
+ * than in the host or in the browser because **both of them have to agree**:
+ * the server refuses to send an action the browser would refuse to carry out,
+ * and a disagreement between the two would be a hole rather than a gate.
+ *
+ * A refusal is a refusal, not a repair: a path that is not a page of this
+ * site is dropped rather than "fixed" into the nearest one, because a
+ * navigation to the wrong page is worse than no navigation - the visitor is
+ * moved somewhere and told they were somewhere else.
+ */
+export function readAction(value: unknown): ReadActionResult {
+  const refused: string[] = [];
+  if (value === null || value === undefined) return { action: null, refused };
+  if (typeof value !== "object" || Array.isArray(value)) {
+    refused.push("action was not an object");
+    return { action: null, refused };
+  }
+  const action = value as Record<string, unknown>;
+
+  const kind = action.kind;
+  if (kind !== "navigate" && kind !== "point") {
+    refused.push(`action kind ${JSON.stringify(kind)} is not one of navigate or point`);
+    return { action: null, refused };
+  }
+
+  const path = typeof action.path === "string" ? action.path.trim() : "";
+  if (!path) {
+    refused.push("action named no path");
+    return { action: null, refused };
+  }
+  if (!path.startsWith("/")) {
+    // A path without its leading slash is not a route, it is a fragment of
+    // one. "trials" matched "/trials" when the segments were compared, which
+    // is a path the browser would resolve to something else entirely.
+    refused.push(`action named ${path}, which is not an absolute path`);
+    return { action: null, refused };
+  }
+  if (!entryForPath(path)) {
+    refused.push(`action named ${path}, which is not a page of this site`);
+    return { action: null, refused };
+  }
+
+  const why = typeof action.why === "string" ? action.why.trim().slice(0, MAX_WHY_CHARS) : "";
+
+  if (kind === "point") {
+    const point = typeof action.point === "string" ? action.point.trim() : "";
+    if (!point) {
+      refused.push("point action named no point");
+      return { action: null, refused };
+    }
+    if (!pointsFor(path).includes(point)) {
+      refused.push(`point ${point} is not on ${path}`);
+      return { action: null, refused };
+    }
+    return { action: { kind, path, point, why }, refused };
+  }
+
+  return { action: { kind, path, why }, refused };
+}

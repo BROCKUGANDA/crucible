@@ -16,6 +16,7 @@
     "@crucible/cidstore": "*",
     "@crucible/frame": "*",
     "@crucible/indexer": "*",
+    "@crucible/site-index": "*",
     "@crucible/smith": "*",
     "@crucible/warden": "*",
     "@hono/node-server": "^2.1.5",

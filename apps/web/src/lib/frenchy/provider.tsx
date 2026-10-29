@@ -10,7 +10,11 @@ import {
   type ReactNode,
 } from "react";
 import { useAccount } from "wagmi";
+import { useRouter } from "next/navigation";
+import { readAction, type SiteAction } from "@crucible/site-index";
+import { decideAction } from "./action";
 import { API_BASE } from "@/lib/apiBase";
+import { interactionPending } from "@/lib/interaction";
 import { cancelUtterance, teardownFrenchy, type MediaTrack } from "./teardown";
 import { createScribeTranscriber } from "./scribe-transcriber";
 
@@ -29,6 +33,25 @@ export interface FrenchyMessage {
   role: "user" | "assistant";
   content: string;
   timestamp: number;
+  /**
+   * What the visitor reads, when the spoken line was not the whole answer.
+   *
+   * The mouth and the screen are separate: the spoken line is three sentences
+   * the voice can carry, and the detail is the depth - the numbers, the lists,
+   * one line per item - which a spoken paragraph would have lost.
+   */
+  detail?: string | null;
+  /**
+   * What she did, and what she was refused.
+   *
+   * `action` is the action that was carried out. `offered` is the one she
+   * wanted but could not carry out - because a wallet signature was open, or
+   * because the browser could not find what she pointed at - and it is kept
+   * because a visitor who was not moved deserves to be told what was on the
+   * table.
+   */
+  action?: SiteAction | null;
+  offered?: SiteAction | null;
 }
 
 interface FrenchyContextValue {
@@ -40,12 +63,26 @@ interface FrenchyContextValue {
   startListening: () => void;
   stopListening: () => void;
   sendText: (text: string) => Promise<void>;
+  /** Speak a piece of text - the panel's "read it to me". */
+  speak: (text: string) => Promise<void>;
   dismissError: () => void;
   /** stop this answer without changing the visitor's mute preference */
   cancel: () => void;
   mute: () => void;
   unmute: () => void;
   isMuted: boolean;
+  /**
+   * Whether the Frenchy panel is open.
+   *
+   * It lives here rather than in the panel's own component because the header
+   * is **per page** while this provider is **per layout** - so a panel whose
+   * state was its own would be unmounted by the very navigation Frenchy
+   * makes, and the answer she had just given would disappear on the page she
+   * sent the visitor to. Keeping the flag here means the answer survives the
+   * journey, and the panel opens again on arrival.
+   */
+  panelOpen: boolean;
+  setPanelOpen: (open: boolean) => void;
 }
 
 const FrenchyContext = createContext<FrenchyContextValue | null>(null);
@@ -74,6 +111,8 @@ export function FrenchyProvider({ children }: { children: ReactNode }) {
   const [messages, setMessages] = useState<FrenchyMessage[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isMuted, setIsMuted] = useState(false);
+  const [panelOpen, setPanelOpen] = useState(false);
+  const router = useRouter();
 
   const recognitionRef = useRef<any>(null);
   const scribeRef = useRef<ReturnType<typeof createScribeTranscriber> | null>(null);
@@ -149,6 +188,45 @@ export function FrenchyProvider({ children }: { children: ReactNode }) {
       audio: audioRef,
     });
   }, []);
+
+  /**
+   * Carry out what Frenchy asked for.
+   *
+   * Two verbs, and the rule that governs both is that **the visitor is not
+   * moved while a signature is open**: the wallet's dialog belongs to the page
+   * that opened it, and navigating underneath it leaves a confirmed
+   * transaction with no receipt on screen. So while anything is being signed,
+   * she speaks and offers instead of taking - and the offer is kept on the
+   * message, because a visitor who was not moved deserves to know what was on
+   * the table.
+   *
+   * A point that lands nowhere is refused too: the id was promised by the
+   * page's own descriptor, so an element that is not there means the page and
+   * the map have drifted, and drifting is worth saying rather than hiding.
+   */
+  const applyAction = useCallback(
+    (action: SiteAction): { action: SiteAction | null; offered: SiteAction | null } => {
+      const point = action.kind === "point" && action.point ? document.getElementById(action.point) : null;
+      const decision = decideAction(action, {
+        signatureOpen: interactionPending(),
+        pointExists: point !== null,
+      });
+
+      if (!decision.action) return { action: null, offered: decision.offered };
+
+      if (decision.action.kind === "navigate") {
+        router.push(decision.action.path);
+        return { action: decision.action, offered: null };
+      }
+
+      if (!point) return { action: null, offered: decision.offered };
+      point.scrollIntoView({ behavior: "smooth", block: "center" });
+      point.classList.add("frenchy-pointed");
+      window.setTimeout(() => point.classList.remove("frenchy-pointed"), 2400);
+      return { action: decision.action, offered: null };
+    },
+    [router],
+  );
 
   const playBlob = useCallback((blob: Blob): Promise<void> => {
     return new Promise((resolve, reject) => {
@@ -261,18 +339,38 @@ export function FrenchyProvider({ children }: { children: ReactNode }) {
         });
 
         if (!res.ok) throw new Error("brain error");
-        const data = (await res.json()) as { reply?: unknown };
+        const data = (await res.json()) as { reply?: unknown; detail?: unknown; action?: unknown };
         const reply = typeof data.reply === "string" ? data.reply : "";
         if (!reply) throw new Error("brain error");
+
+        const detail = typeof data.detail === "string" && data.detail.trim() ? data.detail : null;
+
+        // The host has already checked the action against the site index; the
+        // browser checks it again, because the two have to agree and only the
+        // browser knows what it can actually do. The rule itself is one rule,
+        // in the package both of them import.
+        const { action: wanted } = readAction(data.action);
+        const applied = wanted ? applyAction(wanted) : { action: null, offered: null };
+
+        // The panel opens again on the page she sent the visitor to, so the
+        // answer is there to read when they arrive. The header is per page
+        // and this provider is per layout, which is why the flag lives here.
+        if (applied.action || applied.offered) setPanelOpen(true);
 
         const assistantMsg: FrenchyMessage = {
           role: "assistant",
           content: reply,
           timestamp: Date.now(),
+          detail,
+          action: applied.action,
+          offered: applied.offered,
         };
         messagesRef.current = [...messagesRef.current, assistantMsg];
         setMessages((prev) => [...prev, assistantMsg]);
 
+        // The redirect and the speech start together: the visitor is moved
+        // while she is still talking, which is what "shall I take you there"
+        // means.
         await speakReply(reply, controller);
       } catch (err) {
         if (err instanceof Error && err.name === "AbortError") {
@@ -283,7 +381,7 @@ export function FrenchyProvider({ children }: { children: ReactNode }) {
         setState("granted");
       }
     },
-    [beginFetch, speakReply],
+    [beginFetch, speakReply, applyAction],
   );
 
   // ── speech recognition ────────────────────────────────────────────────
@@ -551,6 +649,21 @@ export function FrenchyProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  /**
+   * Speak a piece of text that is already on the screen.
+   *
+   * The panel's "read it to me": the detail was written for the eye, and a
+   * visitor who wants it spoken should not have to ask the question again.
+   */
+  const speak = useCallback(
+    async (text: string) => {
+      const trimmed = text.trim();
+      if (!trimmed) return;
+      await speakReply(trimmed, beginFetch());
+    },
+    [beginFetch, speakReply],
+  );
+
   const value: FrenchyContextValue = {
     state,
     transcript,
@@ -560,11 +673,14 @@ export function FrenchyProvider({ children }: { children: ReactNode }) {
     startListening,
     stopListening,
     sendText,
+    speak,
     dismissError,
     cancel,
     mute,
     unmute,
     isMuted,
+    panelOpen,
+    setPanelOpen,
   };
 
   return <FrenchyContext.Provider value={value}>{children}</FrenchyContext.Provider>;

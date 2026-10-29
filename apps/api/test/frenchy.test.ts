@@ -35,8 +35,14 @@ describe("Frenchy's brain context", () => {
     const system = request.messages.find((m) => m.role === "system")!.content;
     const user = request.messages.find((m) => m.role === "user")!.content;
     expect(system).toContain("instead of repeating a greeting");
-    expect(user).toContain("/verticals");
-    expect(user).toContain("/escrow");
+    // The surfaces moved from the per-request context into the prompt's site
+    // index, which is where they belong: the index is a property of the site,
+    // not of the moment. The property this test protects - that Frenchy is
+    // told about them - is unchanged.
+    expect(system).toContain("/verticals");
+    expect(system).toContain("/escrow");
+    // /mcp is an endpoint, not a page, so it is named in the per-request
+    // context rather than in the site index - the index carries routes.
     expect(user).toContain("/mcp");
     expect(user).toContain("native ETH");
     expect(user).toContain(WALLET);

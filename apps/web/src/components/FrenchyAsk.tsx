@@ -45,12 +45,11 @@ const STATE_LINE: Record<string, string> = {
 };
 
 export function FrenchyAsk() {
-  const { state, transcript, error, messages, enable, startListening, stopListening, sendText, mute, unmute, isMuted, cancel } =
+  const { state, transcript, error, messages, enable, startListening, stopListening, sendText, speak, mute, unmute, isMuted, cancel, panelOpen, setPanelOpen } =
     useFrenchy();
 
   const [ready, setReady] = useState(false);
   const [configured, setConfigured] = useState(false);
-  const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState("");
   const [refusal, setRefusal] = useState<string | null>(null);
 
@@ -70,8 +69,8 @@ export function FrenchyAsk() {
   // still playing, has to stop with it. Closing is not muting — the visitor may come back.
   const close = useCallback(() => {
     cancel();
-    setOpen(false);
-  }, [cancel]);
+    setPanelOpen(false);
+  }, [cancel, setPanelOpen]);
 
   /** The paste guard. Refuses the phrase and says why; the text never reaches the field. */
   function onPaste(event: React.ClipboardEvent<HTMLInputElement>) {
@@ -102,22 +101,22 @@ export function FrenchyAsk() {
 
   const canListen = state !== "unavailable";
   const listening = state === "listening";
-  const lastAnswer = [...messages].reverse().find((m) => m.role === "assistant")?.content ?? null;
+  const lastAnswer = [...messages].reverse().find((m) => m.role === "assistant") ?? null;
 
   return (
     <span className="wallet-inline">
       <button
         type="button"
         className="btn btn-ghost btn-sm"
-        onClick={() => (open ? close() : setOpen(true))}
-        aria-expanded={open}
+        onClick={() => (panelOpen ? close() : setPanelOpen(true))}
+        aria-expanded={panelOpen}
         aria-controls="frenchy-ask-panel"
         title="Ask Frenchy, the forge's AI host, by voice or in words."
       >
-        {open ? "Close Frenchy (AI)" : "Ask Frenchy (AI)"}
+        {panelOpen ? "Close Frenchy (AI)" : "Ask Frenchy (AI)"}
       </button>
 
-      {open ? (
+      {panelOpen ? (
         <div className="surface stack" id="frenchy-ask-panel" role="region" aria-label="Ask Frenchy">
           <span className="kicker">Frenchy (AI)</span>
 
@@ -191,7 +190,53 @@ export function FrenchyAsk() {
             </span>
           ) : null}
 
-          {lastAnswer ? <span className="hint hint--block">{lastAnswer}</span> : null}
+          {lastAnswer ? (
+        <span className="stack">
+          <span className="hint hint--block">{lastAnswer.content}</span>
+
+          {/*
+            The detail is the depth: the numbers, the lists, one line per
+            item. The spoken line is three sentences the voice can carry; this
+            is everything she did not say out loud, written where it can be
+            read properly and kept.
+          */}
+          {lastAnswer.detail ? (
+            <span className="surface detail-panel">
+              <span className="kicker">In detail</span>
+              <span className="frenchy-detail">{lastAnswer.detail}</span>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => void speak(lastAnswer.detail ?? "")}
+                title="Read the detail out loud."
+              >
+                Read it to me
+              </button>
+            </span>
+          ) : null}
+
+          {/*
+            Where she took the visitor, and what was on the table when she
+            could not. A destination she refused to take is said out loud
+            rather than swallowed: a visitor who was not moved deserves to know
+            there was somewhere to go.
+          */}
+          {lastAnswer.action ? (
+            <span className="hint" role="status">
+              {lastAnswer.action.kind === "point"
+                ? `Pointing at ${lastAnswer.action.why || lastAnswer.action.point}.`
+                : `Taking you to ${lastAnswer.action.path}.`}
+            </span>
+          ) : null}
+          {lastAnswer.offered ? (
+            <span className="hint" role="status">
+              {lastAnswer.offered.kind === "point"
+                ? `I can point at ${lastAnswer.offered.point} on ${lastAnswer.offered.path}, once your wallet is free.`
+                : `I can take you to ${lastAnswer.offered.path}, once your wallet is free.`}
+            </span>
+          ) : null}
+        </span>
+      ) : null}
 
           {/*
             The voice room is the same brain and the same voice, and it is the

@@ -36,6 +36,7 @@ const NAV_MORE = [
   { href: "/airdrops", label: "Airdrops" },
   { href: "/staking", label: "Staking" },
   { href: "/engrams", label: "Engrams" },
+  { href: "/tour", label: "Tour" },
   { href: "/docs", label: "Docs" },
 ];
 

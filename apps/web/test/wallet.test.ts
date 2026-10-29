@@ -392,6 +392,11 @@ describe("useTx multi-user guards", () => {
   });
 
   it("keeps `address` in the send callback deps so the guard never goes stale", () => {
-    expect(code).toMatch(/\[sendTransactionAsync, address\]/);
+    // The property, not the literal array: the deps list grows as the hook
+    // gains dependencies (the interaction lock, for one), and what must not
+    // go is `address` - the guard reads it, and a stale copy of it would let
+    // a disconnected wallet through.
+    const deps = code.slice(code.lastIndexOf("[sendTransactionAsync"), code.indexOf(")", code.lastIndexOf("[sendTransactionAsync")));
+    expect(deps).toContain("address");
   });
 });

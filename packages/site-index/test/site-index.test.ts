@@ -8,6 +8,7 @@ import {
   isKnownPath,
   matchesRoute,
   pointsFor,
+  readAction,
   siteIndex,
 } from "../src/index.js";
 
@@ -154,5 +155,69 @@ describe("the index as the prompt carries it", () => {
   it("is one line per page, so the prompt does not grow without bound", () => {
     const lines = indexAsPrompt().split("\n");
     expect(lines.length).toBe(siteIndex.length);
+  });
+});
+
+describe("what may be done with the site", () => {
+  it("allows a navigation to a page that exists", () => {
+    const { action, refused } = readAction({
+      kind: "navigate",
+      path: "/trials",
+      why: "the open trials",
+    });
+    expect(action).toEqual({ kind: "navigate", path: "/trials", why: "the open trials" });
+    expect(refused).toEqual([]);
+  });
+
+  it("allows a concrete path that matches a dynamic route", () => {
+    const { action } = readAction({ kind: "navigate", path: "/trials/12", why: "that trial" });
+    expect(action?.path).toBe("/trials/12");
+  });
+
+  it("refuses a path that is not a page of this site", () => {
+    const { action, refused } = readAction({
+      kind: "navigate",
+      path: "/pay-someone",
+      why: "the payment page",
+    });
+    expect(action).toBeNull();
+    expect(refused.join(" ")).toContain("/pay-someone");
+  });
+
+  it("refuses a path without its leading slash", () => {
+    const { action } = readAction({ kind: "navigate", path: "trials", why: "x" });
+    expect(action).toBeNull();
+  });
+
+  it("allows a point the page declares", () => {
+    const { action } = readAction({
+      kind: "point",
+      path: "/trials",
+      point: "trial-table",
+      why: "the table",
+    });
+    expect(action?.point).toBe("trial-table");
+  });
+
+  it("refuses a point the page does not declare", () => {
+    const { action, refused } = readAction({
+      kind: "point",
+      path: "/trials",
+      point: "hidden-thing",
+      why: "x",
+    });
+    expect(action).toBeNull();
+    expect(refused.join(" ")).toContain("hidden-thing");
+  });
+
+  it("refuses a verb that is not navigate or point", () => {
+    const { action, refused } = readAction({ kind: "sign", path: "/trials", why: "x" });
+    expect(action).toBeNull();
+    expect(refused.join(" ")).toContain("sign");
+  });
+
+  it("refuses nothing when there was nothing to refuse", () => {
+    expect(readAction(null).action).toBeNull();
+    expect(readAction(undefined).refused).toEqual([]);
   });
 });

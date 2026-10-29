@@ -44,7 +44,7 @@ import { TickPump } from "./tick-pump.js";
 import { authRoutes } from "./auth.js";
 import { createVoiceRoutes, type VoiceConfig } from "./voice.js";
 import { createReplayRoutes, type ReplaySourceResult } from "./replay.js";
-import { createFrenchyRoutes, type FrenchyConfig } from "./frenchy.js";
+import { createFrenchyRoutes, DEFAULT_BRAIN_TIMEOUT_MS, type FrenchyConfig } from "./frenchy.js";
 import { createStsRoutes, STS_MAX_AUDIO_BYTES, STS_TURN_TIMEOUT_MS, type StsConfig } from "./sts.js";
 import {
   bodyLimit,
@@ -717,9 +717,15 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
    *
    * A turn is three provider round trips, so the blanket ten seconds would answer
    * 504 for work that was about to finish. The ceiling is still a ceiling.
+   *
+   * Frenchy's brain is the same shape of problem: a provider that takes twenty
+   * seconds to answer is slow, not broken, and the browser says "Thinking..."
+   * the whole time. The brain carries its own budget, so the route gets it
+   * plus a little, rather than the blanket ten seconds.
    */
   const pathTimeouts: Record<string, number> = {
     "/sts/": STS_TURN_TIMEOUT_MS,
+    "/frenchy": (opts.frenchy?.llm.timeoutMs ?? DEFAULT_BRAIN_TIMEOUT_MS) + 5_000,
   };
   app.use("*", requestTimeout(security, pathTimeouts));
 

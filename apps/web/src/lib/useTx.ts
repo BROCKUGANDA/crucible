@@ -11,6 +11,7 @@ import { encodeFunctionData, type Address, type Hex } from "viem";
 import { Crucible, TRIALS_ABI } from "@crucible/smith";
 import { assertConfigured, deployment, rpcUrl, ZERO_ADDRESS } from "@/lib/wagmi";
 import { ERROR_COPY } from "@/lib/forge";
+import { holdInteraction, releaseInteraction } from "@/lib/interaction";
 
 /**
  * Real transaction submission.
@@ -105,6 +106,26 @@ export function useTx(): UseTxResult {
   // tick, which state can never do.
   const inFlight = useRef(false);
 
+  /**
+   * Whether this hook is holding the site's "a signature is open" flag.
+   *
+   * The flag is global (see `lib/interaction.ts`), so it has to be taken and
+   * dropped exactly once per signature: a hook that released on every path
+   * could release a hold another hook took, and a signature that was still
+   * open would look idle.
+   */
+  const holdsInteraction = useRef(false);
+  const takeInteraction = useCallback(() => {
+    if (holdsInteraction.current) return;
+    holdsInteraction.current = true;
+    holdInteraction();
+  }, []);
+  const dropInteraction = useCallback(() => {
+    if (!holdsInteraction.current) return;
+    holdsInteraction.current = false;
+    releaseInteraction();
+  }, []);
+
   // Receipt -> terminal state. Done in an effect rather than during render: setting
   // state while rendering is only legal for the component's *own* derived state, and
   // it is fragile enough that a reviewer has to stop and check.
@@ -112,22 +133,25 @@ export function useTx(): UseTxResult {
     if (state !== "heating") return;
     if (isSuccess) {
       inFlight.current = false;
+      dropInteraction();
       setState("poured");
     } else if (isError) {
       inFlight.current = false;
+      dropInteraction();
       setError(decodeRevert(receiptError));
       setState("doused");
     }
-  }, [isSuccess, isError, receiptError, state]);
+  }, [isSuccess, isError, receiptError, state, dropInteraction]);
 
   const reset = useCallback(() => {
     inFlight.current = false;
+    dropInteraction();
     setState("idle");
     setError(null);
     setHash(null);
     setGasUsed(null);
     setGasWei(null);
-  }, []);
+  }, [dropInteraction]);
 
   const send = useCallback(
     (request: TxRequest, to?: Address) => {
@@ -160,6 +184,7 @@ export function useTx(): UseTxResult {
 
       const dep = deployment();
       inFlight.current = true;
+      takeInteraction();
       setState("heating");
       setError(null);
       setHash(null);
@@ -175,11 +200,12 @@ export function useTx(): UseTxResult {
         .then((txHash) => setHash(txHash))
         .catch((err) => {
           inFlight.current = false;
+          dropInteraction();
           setError(decodeRevert(err));
           setState("doused");
         });
     },
-    [sendTransactionAsync, address],
+    [sendTransactionAsync, address, takeInteraction, dropInteraction],
   );
 
   return {

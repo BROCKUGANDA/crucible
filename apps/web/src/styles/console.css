@@ -193,6 +193,8 @@ a.tx-link {
   display: inline-flex;
   align-items: center;
   gap: var(--s-2);
+  /* The Frenchy panel drops below this, so it needs something to drop from. */
+  position: relative;
 }
 
 .net-alert {

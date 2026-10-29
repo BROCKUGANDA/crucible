@@ -263,6 +263,15 @@ export const SITE_INDEX: SiteEntry[] = [
     ]
   },
   {
+    "path": "/tour",
+    "label": "Tour",
+    "purpose": "Every page of the site, and what each one is for - the map Frenchy is given.",
+    "can": [
+      "read the whole map of the site",
+      "see what each page is for"
+    ]
+  },
+  {
     "path": "/trials",
     "label": "Trials",
     "purpose": "Every trial on the chain, and what state each one is in.",
