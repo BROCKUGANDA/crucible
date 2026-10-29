@@ -79,16 +79,48 @@ export interface AgentPin {
  * requested by: a tag is a name that can point at different bytes, and the
  * whole point of this manifest is that the name cannot be used to hide a
  * change.
+ *
+ * It is therefore **optional and validated**, in that order. Optional because
+ * a run that executed in no container has no image digest to report, and
+ * putting the requested tag there anyway would make the field's name a false
+ * claim; validated because `buildEvalManifest` refuses any value that is not
+ * immutable, so a producer cannot route a tag through here and have the
+ * manifest read like a pin. `imageRequested` is where the tag belongs — it is
+ * a true fact about the run's *input*, and it is labelled as one.
  */
 export interface EnvironmentPin {
-  /** Immutable digest of the runtime image or sandbox root. */
-  imageDigest: Hex;
+  /**
+   * Immutable reference of the runtime image or sandbox root: a `@sha256:` pinned
+   * reference, a `sha256:` image id, or a bare 64-hex content digest.
+   */
+  imageDigest?: string;
+  /** The mutable reference the run was given, recorded as a request, not as a pin. */
+  imageRequested?: string;
+  /** Whether the run executed in a container or unisolated on the host. */
+  isolation?: "container" | "unisolated";
   /** Network policy in force during the run. */
   networkPolicy?: string;
   /** Wall-clock budget the run was given, in milliseconds. */
   timeoutMs?: number;
   /** CPU, memory, process, disk and wall-clock limits. */
   limits?: Record<string, string>;
+}
+
+/**
+ * A digest a later party can check, or nothing.
+ *
+ * Accepted: `[name@]sha256:<64 hex>` (an image reference or a local image id) and
+ * `<64 hex>` / `0x<64 hex>` (a content digest — the grader's corpus epoch is one, and a
+ * bytes32 is exactly the kind of value this field should carry). Rejected: anything else,
+ * which in practice means a tag such as `crucible/verifier:latest`. The refusal is the
+ * gate — the field's name is a reproducibility claim, and the only way to keep a mutable
+ * name out of it is to check the value rather than trust the writer.
+ */
+const IMMUTABLE_DIGEST_VALUE =
+  /^(?:[^\s@]+@)?sha256:[0-9a-fA-F]{64}$|^(?:0x)?[0-9a-fA-F]{64}$/;
+
+export function isImmutableDigest(value: string): boolean {
+  return IMMUTABLE_DIGEST_VALUE.test(value.trim());
 }
 
 /**
@@ -372,6 +404,20 @@ export function buildEvalManifest(args: {
   if (/(^|[:\-])(latest|live|default|preview|stable)$/i.test(model.version.trim())) {
     throw new Error(
       `manifest model version "${model.version}" is a moving alias. Pin an exact version or snapshot.`,
+    );
+  }
+  // The same rule the model version gets, applied to the environment. A moving alias in
+  // `model.version` was already a refusal; a moving tag in `imageDigest` was not, and it is
+  // the more damaging of the two, because a field named *digest* is read as a pin by anyone
+  // who never opens this file. Absence is allowed — it means "we did not resolve one", which
+  // a reader can see and act on. A tag is not allowed, because it looks like knowledge.
+  if (
+    args.environment.imageDigest !== undefined &&
+    !isImmutableDigest(args.environment.imageDigest)
+  ) {
+    throw new Error(
+      `manifest environment.imageDigest "${args.environment.imageDigest}" is not an immutable ` +
+        "digest. Record the resolved @sha256: reference, or omit the field and say so.",
     );
   }
   if (args.seed.trim() === "") {

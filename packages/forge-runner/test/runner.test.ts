@@ -10,6 +10,7 @@ import {
   suiteLine,
   type RunnerDeps,
   type RunRequest,
+  type CommandResult,
 } from "../src/index.js";
 
 const CID_A = "bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi";
@@ -362,26 +363,71 @@ describe("ForgeRunner invariants", () => {
     expect(submit).not.toHaveBeenCalled();
   }, 30_000);
 
-  it("reports degraded as a boolean so the caller can surface it", async () => {
-    const runner = new ForgeRunner(harness());
-    const out = await runner.run(request({ suiteCommand: "false", iterBudget: 1 }));
-    expect(typeof out.degraded).toBe("boolean");
-  }, 30_000);
-
-  it("refuses to run unisolated when Docker is required", async () => {
+  /**
+   * The end state of a run that cannot be sealed, not the act of refusing.
+   *
+   * This used to read `expect(typeof out.degraded).toBe("boolean")`, which a run reporting
+   * `degraded: false` while executing unisolated would have passed — a shape assertion on
+   * the one field whose whole job is to be true. What is asserted now is that nothing was
+   * produced that could claim isolation: no artifact, no run hash, no manifest, no submit.
+   */
+  it("produces nothing at all when Docker is required and absent", async () => {
     const submit = vi.fn(async () => `0x${"22".repeat(32)}` as `0x${string}`);
     const deps = harness({ requireDocker: true });
     deps.submit = submit;
-    const runner = new ForgeRunner(deps);
-    const out = await runner.run(request({ suiteCommand: "false", iterBudget: 1 }));
-    // Docker may or may not be running on this machine; either way the run must
-    // not silently pretend to be isolated.
-    if (out.failure?.kind === "sandbox-unavailable") {
-      expect(out.ok).toBe(false);
-      expect(submit).not.toHaveBeenCalled();
-    } else {
-      expect(out.degraded).toBe(false); // Docker was available, so it was sealed
-    }
+    const out = await new ForgeRunner(deps).run(
+      request({
+        suiteCommand: GREEN_SUITE,
+        iterBudget: 1,
+        specDigest: SPEC_DIGEST,
+        suiteDigest: SUITE_DIGEST,
+      }),
+    );
+    expect(out.ok).toBe(false);
+    expect(out.failure?.kind).toBe("sandbox-unavailable");
+    expect(out.artifact).toBeUndefined();
+    expect(out.runHash).toBeUndefined();
+    expect(out.txHash).toBeUndefined();
+    // No manifest either: an evaluation record for a run that did not execute would be a
+    // second thing to falsify.
+    expect(out.manifest).toBeUndefined();
+    expect(submit).not.toHaveBeenCalled();
+  }, 30_000);
+
+  /**
+   * `forceLocal` is the test-only escape hatch that executes without a container, and the
+   * record it emits must say so. The failure this proves against is the one the field name
+   * hides: a degraded run whose manifest environment still reads as a pinned, sealed
+   * environment, because `degraded` was logged to a console and then dropped.
+   */
+  it("says unisolated in the record it emits when it ran without a container", async () => {
+    const deps = harness();
+    deps.manifest = {
+      provider: "hetzner",
+      modelVersion: "Qwen/Qwen3.6-35B-A3B",
+      seed: "panel-2026-10-27",
+      evaluator: { id: "argus", version: "1.4.0" },
+      feeSchedule: "legacy-v1",
+      feeScheduleVersion: "1",
+    };
+    const out = await new ForgeRunner(deps).run(
+      request({
+        suiteCommand: GREEN_SUITE,
+        iterBudget: 1,
+        specDigest: SPEC_DIGEST,
+        suiteDigest: SUITE_DIGEST,
+      }),
+    );
+
+    expect(out.ok).toBe(true);
+    expect(out.degraded).toBe(true);
+    const env = out.manifest!.manifest.environment;
+    expect(env.isolation).toBe("unisolated");
+    // The harness image is a tag, and a tag is not a digest: the field is absent rather
+    // than filled with the reference the run was given.
+    expect(env.imageDigest).toBeUndefined();
+    expect("imageDigest" in env).toBe(false);
+    expect(env.imageRequested).toBe("crucible/verifier:test");
   }, 30_000);
 
   /**
@@ -464,4 +510,131 @@ describe("ForgeRunner invariants", () => {
       expect(logPins).toBe(0);
     }, 30_000);
   });
+});
+
+/**
+ * The container path, end to end, through the runner.
+ *
+ * Unit-level against an injected Docker CLI — this machine has the binary and no daemon, so
+ * the real-container proof stays in `sandbox-docker.test.ts` and reports SKIPPED there. What
+ * is proven here is the *wiring*, which no amount of container testing would prove: that the
+ * digest resolved before the run is the reference `docker run` was handed, and the same value
+ * that lands in the manifest. A resolver that works and a runner that ignores it is exactly
+ * the shape of the original defect.
+ */
+describe("the container path records the image it launched", () => {
+  const RESOLVED = `crucible/verifier@sha256:${"a".repeat(64)}`;
+  const CONTAINER_SANDBOX = {
+    image: "crucible/verifier:latest",
+    memory: "1g",
+    cpus: "1",
+    timeoutSec: 60,
+    allowLocalFallback: false,
+  };
+
+  const MANIFEST_INPUTS = {
+    provider: "hetzner",
+    modelVersion: "Qwen/Qwen3.6-35B-A3B",
+    seed: "panel-2026-10-27",
+    evaluator: { id: "argus", version: "1.4.0" },
+    feeSchedule: "legacy-v1",
+    feeScheduleVersion: "1",
+  };
+
+  function fakeDocker(inspectOk = true) {
+    const runs: string[][] = [];
+    const settle = (over: Partial<CommandResult>): CommandResult => ({
+      stdout: "",
+      stderr: "",
+      code: 0,
+      timedOut: false,
+      durationMs: 1,
+      ...over,
+    });
+    const exec = async (_bin: string, args: string[]): Promise<CommandResult> => {
+      if (args[0] === "version") return settle({ stdout: "29.0.0" });
+      if (args[0] === "image") {
+        return inspectOk
+          ? settle({ stdout: `["${RESOLVED}"]|sha256:${"c".repeat(64)}` })
+          : settle({ code: 1, stderr: "No such image: crucible/verifier:latest" });
+      }
+      if (args[0] === "run") {
+        runs.push(args);
+        return settle({ stdout: forgeJson(3, 0) });
+      }
+      return settle({});
+    };
+    return { exec, runs };
+  }
+
+  function containerDeps(inspectOk = true) {
+    const docker = fakeDocker(inspectOk);
+    const deps = harness();
+    deps.sandbox = CONTAINER_SANDBOX;
+    deps.sandboxDeps = { exec: docker.exec };
+    deps.manifest = MANIFEST_INPUTS;
+    return { deps, docker };
+  }
+
+  const greenRequest = () =>
+    request({
+      suiteCommand: "forge test --json",
+      iterBudget: 1,
+      specDigest: SPEC_DIGEST,
+      suiteDigest: SUITE_DIGEST,
+    });
+
+  it("launches the container from the resolved digest, not the tag", async () => {
+    const { deps, docker } = containerDeps();
+    const out = await new ForgeRunner(deps).run(greenRequest());
+
+    expect(out.ok).toBe(true);
+    expect(out.degraded).toBe(false);
+    expect(docker.runs).toHaveLength(1);
+    expect(docker.runs[0]).toContain(RESOLVED);
+    expect(docker.runs[0]).not.toContain("crucible/verifier:latest");
+  }, 30_000);
+
+  it("records in the manifest the same reference it launched from", async () => {
+    const { deps, docker } = containerDeps();
+    const out = await new ForgeRunner(deps).run(greenRequest());
+
+    const env = out.manifest!.manifest.environment;
+    expect(env.imageDigest).toBe(RESOLVED);
+    // The launch argv and the manifest are one value, not two claims about the same thing.
+    expect(docker.runs[0]).toContain(env.imageDigest);
+    expect(env.isolation).toBe("container");
+    expect(env.imageRequested).toBe("crucible/verifier:latest");
+  }, 30_000);
+
+  it("refuses the run when the tag resolves to nothing, and submits nothing", async () => {
+    const { deps, docker } = containerDeps(false);
+    const submit = vi.fn(async () => `0x${"22".repeat(32)}` as `0x${string}`);
+    deps.submit = submit;
+    const out = await new ForgeRunner(deps).run(greenRequest());
+
+    // End state: no container was ever started, and nothing was claimed about one.
+    expect(out.ok).toBe(false);
+    expect(out.failure?.kind).toBe("image-unresolved");
+    expect(docker.runs).toHaveLength(0);
+    expect(out.artifact).toBeUndefined();
+    expect(out.manifest).toBeUndefined();
+    expect(submit).not.toHaveBeenCalled();
+  }, 30_000);
+
+  it("raises the sandbox floor for a tier and records the raised spec, not the requested one", async () => {
+    const { deps } = containerDeps();
+    deps.sandbox = { ...CONTAINER_SANDBOX, timeoutSec: 60, memory: "256m" };
+    const out = await new ForgeRunner(deps).run({
+      ...greenRequest(),
+      tier: 4,
+    });
+
+    expect(out.ok).toBe(true);
+    const env = out.manifest!.manifest.environment;
+    // Gate 901 raises the floor; a manifest quoting the caller's smaller numbers would
+    // understate the environment the run actually had. Tier 4 is 8192m / 3600s.
+    expect(env.limits?.memory).toBe("8192m");
+    expect(env.limits?.wallClockSec).toBe("3600");
+  }, 30_000);
 });

@@ -33,6 +33,36 @@ export interface SandboxSpec {
   forceLocal?: boolean;
 }
 
+/** The signature of `execIn`, so a test can drive the Docker CLI without a daemon. */
+export type ExecFn = typeof execIn;
+
+/**
+ * The seams a Sandbox takes from outside its own process.
+ *
+ * Only one exists: the Docker CLI. The probe, the digest inspection and the container
+ * launch all go through it, so a test can assert the whole container path — including
+ * *which reference* `docker run` was handed — without a daemon. Host binaries (`git`, the
+ * suite command under `forceLocal`) still execute for real.
+ */
+export interface SandboxDeps {
+  exec?: ExecFn;
+}
+
+/**
+ * A container is only reproducible if the reference it launched from is immutable.
+ *
+ * Two shapes qualify: a registry reference pinned at `@sha256:…`, which anybody can
+ * re-pull, and a bare local image ID `sha256:…`, which identifies exactly the bytes
+ * that ran on this host. A tag (`name:latest`) qualifies as neither — it is a name
+ * that can be pointed at different bytes between two runs.
+ */
+const IMAGE_ID = /^sha256:[0-9a-f]{64}$/;
+const PINNED_REF = /^[^\s@]+@sha256:[0-9a-f]{64}$/;
+
+function isImmutableImageRef(ref: string): boolean {
+  return IMAGE_ID.test(ref) || PINNED_REF.test(ref);
+}
+
 export const DEFAULT_SANDBOX: SandboxSpec = {
   // The verifier image, built locally from packages/forge-runner/Dockerfile.verifier and
   // referenced by its MUTABLE `:latest` tag — this is NOT a digest pin. An earlier comment here
@@ -42,8 +72,14 @@ export const DEFAULT_SANDBOX: SandboxSpec = {
   // solc set every offline run needs), but reproducibility across machines and over time is only
   // real once the image is published to a registry and referenced by `@sha256:` digest. Argus's
   // re-run claim depends on that digest; the sandbox's isolation claim does not — Docker enforces
-  // `--network=none`/`--memory`/`--read-only` regardless of how the tag is named. Fixing this is
-  // publishing the image by digest, not changing the comment to match a lie.
+  // `--network=none`/`--memory`/`--read-only` regardless of how the tag is named.
+  //
+  // What the tag no longer does is *stand in for a digest in the manifest*. `Sandbox.create`
+  // resolves whatever this names to its immutable reference (`resolveImageDigest`) before the run
+  // executes, launches the container from that reference, and records it; a run whose image cannot
+  // be resolved is refused rather than attested. Publishing the image by digest is still what
+  // makes a re-run on another machine reproducible — this only stops the receipt from claiming
+  // more than the tag can give.
   image: "crucible/verifier:latest",
   memory: "1g",
   cpus: "1",
@@ -65,6 +101,102 @@ export function resolveVerifierImage(env: NodeJS.ProcessEnv = process.env): stri
 /** True when `image` names an immutable digest rather than a moving tag. */
 export function isDigestPinned(image: string): boolean {
   return /@sha256:[0-9a-f]{64}$/.test(image.trim());
+}
+
+/**
+ * Raised when a container run cannot be told apart from any other run of the same tag.
+ *
+ * The runner refuses rather than recording the tag: `imageDigest` is a reproducibility
+ * claim, and a claim that cannot be checked is worse than no claim, because a skeptic
+ * reads the field's name, not its provenance.
+ */
+export class ImageDigestUnresolved extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ImageDigestUnresolved";
+  }
+}
+
+/**
+ * The immutable reference of the image `image` currently resolves to, or `undefined`.
+ *
+ * Asked of the same Docker CLI the run itself shells out to, so the answer describes the
+ * environment the container will actually get — not the tag the operator typed. The
+ * precedence is deliberate:
+ *
+ *  1. a reference already pinned at `@sha256:` is returned untouched, with no subprocess,
+ *     because there is nothing to resolve and asking would only add a failure mode;
+ *  2. `RepoDigests` — what a skeptic can `docker pull` and re-run;
+ *  3. the local image `Id` — immutable and exact, but only verifiable on this host. An
+ *     image built from `Dockerfile.verifier` and never pushed has no `RepoDigests` at all,
+ *     so without this tier every local run would be refused;
+ *  4. nothing. `undefined`, and the caller fails closed.
+ *
+ * Step 4 is the whole point. Returning the tag here would put a mutable name in a field
+ * named `imageDigest` and make the manifest's reproducibility claim unfalsifiable — the
+ * defect this function exists to remove.
+ */
+export async function resolveImageDigest(
+  image: string,
+  exec: ExecFn = execIn,
+  timeoutSec = 30,
+): Promise<string | undefined> {
+  const ref = image.trim();
+  if (!ref) return undefined;
+  if (isDigestPinned(ref)) return ref;
+
+  // One call, both fields. `|` cannot appear in a hex digest or an image name, and the
+  // JSON array is terminated by `]`, so the last pipe is an unambiguous separator.
+  let result: CommandResult;
+  try {
+    result = await exec(
+      "docker",
+      ["image", "inspect", ref, "--format", "{{json .RepoDigests}}|{{.Id}}"],
+      undefined,
+      timeoutSec,
+    );
+  } catch {
+    return undefined;
+  }
+  if (result.code !== 0) return undefined;
+
+  const out = result.stdout.trim();
+  const sep = out.lastIndexOf("|");
+  if (sep < 0) return undefined;
+
+  const pinned = pinnedRepoDigests(out.slice(0, sep), ref);
+  if (pinned) return pinned;
+
+  const id = out.slice(sep + 1).trim();
+  return IMAGE_ID.test(id) ? id : undefined;
+}
+
+/**
+ * Pick the registry digest for `ref` among the digests the image carries.
+ *
+ * An image pushed to two registries has two `RepoDigests` entries pointing at the same
+ * bytes; the run needs one deterministic string, or two runs of one image would emit two
+ * manifests that `compareManifests` reports as different environments. The entry naming
+ * the repository the run asked for wins; otherwise the sorted first, so the choice does
+ * not depend on daemon ordering.
+ */
+function pinnedRepoDigests(repoDigestsJson: string, ref: string): string | undefined {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(repoDigestsJson);
+  } catch {
+    return undefined;
+  }
+  if (!Array.isArray(parsed)) return undefined;
+  const candidates = parsed.filter(
+    (entry): entry is string => typeof entry === "string" && isImmutableImageRef(entry.trim()),
+  );
+  if (candidates.length === 0) return undefined;
+  const sorted = [...candidates].map((c) => c.trim()).sort();
+  // The requested reference minus its tag — `python:3.12-alpine` -> `python`, and
+  // `registry:5000/x:tag` -> `registry:5000/x` (a registry port is not a tag).
+  const requested = ref.replace(/:[^:/]+$/, "");
+  return sorted.find((c) => c.split("@")[0] === requested) ?? sorted[0];
 }
 
 export interface CommandResult {
@@ -108,8 +240,8 @@ export function sandboxLabel(root: string): string {
   return basename(root);
 }
 
-async function dockerAvailable(): Promise<boolean> {
-  const r = await execIn("docker", ["version", "--format", "{{.Server.Version}}"], undefined, 10);
+async function dockerAvailable(exec: ExecFn = execIn): Promise<boolean> {
+  const r = await exec("docker", ["version", "--format", "{{.Server.Version}}"], undefined, 10);
   return r.code === 0;
 }
 
@@ -227,19 +359,47 @@ export class Sandbox {
     readonly root: string,
     readonly docker: boolean,
     readonly spec: SandboxSpec,
+    /**
+     * The immutable reference the container is launched from, resolved before the run.
+     *
+     * `undefined` exactly when no container ran (`degraded`) — there is then no image to
+     * attest to, and inventing one from the requested tag is the lie this field exists to
+     * stop. A containerised sandbox never has it absent: `create` refuses the run.
+     */
+    readonly imageDigest: string | undefined,
+    /** The Docker-CLI seam (probe, inspect, run). Host binaries still use `execIn`. */
+    private readonly dockerExec: ExecFn,
   ) {}
 
-  static async create(spec: SandboxSpec = DEFAULT_SANDBOX): Promise<Sandbox> {
-    const hasDocker = spec.forceLocal ? false : await dockerAvailable();
+  static async create(
+    spec: SandboxSpec = DEFAULT_SANDBOX,
+    deps: SandboxDeps = {},
+  ): Promise<Sandbox> {
+    const exec = deps.exec ?? execIn;
+    const hasDocker = spec.forceLocal ? false : await dockerAvailable(exec);
     if (!hasDocker && !spec.allowLocalFallback) {
       throw new SandboxUnavailable(
         "Docker is not available, so the run cannot be sandboxed. " +
           "Set allowLocalFallback to run unisolated — the artifact will be marked degraded.",
       );
     }
+
+    // Resolved before the run, and before the workspace exists, so a refused run leaves
+    // nothing behind. The fail-closed choice over "record the tag and carry on" is the
+    // point: a tag here is a digest-shaped field nobody can falsify, and this path has
+    // Docker available, so not knowing the digest means not having the environment.
+    const imageDigest = hasDocker ? await resolveImageDigest(spec.image, exec) : undefined;
+    if (hasDocker && !imageDigest) {
+      throw new ImageDigestUnresolved(
+        `Docker is up, but ${spec.image} cannot be resolved to an immutable digest, so this ` +
+          "run cannot say which environment it executed in. Publish the verifier image by " +
+          "digest, or set CRUCIBLE_VERIFIER_IMAGE to a @sha256: reference.",
+      );
+    }
+
     const root = await mkdtemp(join(tmpdir(), "crucible-run-"));
     await mkdir(join(root, "repo"), { recursive: true });
-    return new Sandbox(root, hasDocker, spec);
+    return new Sandbox(root, hasDocker, spec, imageDigest, exec);
   }
 
   get repoDir(): string {
@@ -310,9 +470,18 @@ export class Sandbox {
   }
 
   /**
-   * Run the pinned suite. In Docker this is `docker run --rm --network=none`
-   * with the image pinned by digest; locally it is a direct exec, which the
-   * caller must surface as degraded.
+   * Run the pinned suite.
+   *
+   * In Docker this is `docker run --rm --network=none` against the **resolved immutable
+   * reference** — `this.imageDigest`, a `@sha256:` repo digest or a local image ID — which
+   * `create` obtained before the run started and refused to begin without. The launch
+   * argument is deliberately not `spec.image`: passing the tag would let the tag move
+   * between the inspection and the container, and would make the manifest's digest a
+   * statement about a build the run did not use. Run by the resolved reference, the digest
+   * in the manifest is the thing the daemon was told to start.
+   *
+   * Locally (only via `allowLocalFallback`) it is a direct exec with no container at all,
+   * which the caller must surface as degraded; there is no image to name, because none ran.
    */
   async runSuite(command: string, workDir: string = this.repoDir): Promise<CommandResult> {
     const argv = parseCommandLine(command);
@@ -321,6 +490,10 @@ export class Sandbox {
     const rest = argv.slice(1);
 
     if (this.docker) {
+      // Guaranteed by `create`: a containerised sandbox always has its digest resolved, or
+      // it does not exist. The fallback is unreachable and stays a fallback rather than a
+      // throw, because throwing here would lose an artifact that already ran.
+      const image = this.imageDigest ?? this.spec.image;
       // Named and labelled so the timeout below can reach the container. Without a name the
       // only handle to the run is the CLI's own process, and the CLI is not the workload —
       // see execIn. The sequence keeps successive runs of one sandbox from colliding.
@@ -365,16 +538,16 @@ export class Sandbox {
         `${workDir}:/work`,
         "-w",
         "/work",
-        this.spec.image,
+        image,
         bin,
         ...rest,
       ];
-      const r = await execIn("docker", args, undefined, this.spec.timeoutSec, () => {
+      const r = await this.dockerExec("docker", args, undefined, this.spec.timeoutSec, () => {
         // `--force` stops and removes in one call, so the container cannot outlive the budget
         // and `--rm` cannot be left waiting on a workload that ignores SIGTERM. The result is
         // discarded: whether this call reports success, the CLI's stream is closing and the run
         // is already recorded as timed out.
-        void execIn("docker", ["rm", "--force", name], undefined, 15).catch(() => {});
+        void this.dockerExec("docker", ["rm", "--force", name], undefined, 15).catch(() => {});
       });
       if (r.timedOut) throw new SandboxTimeout(this.spec.timeoutSec);
       if (/OutOfMemory|Killed|oom-kill/i.test(r.stderr)) throw new SandboxOOM();

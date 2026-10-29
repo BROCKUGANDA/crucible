@@ -130,6 +130,43 @@ describe("the manifest", () => {
     expect(() => baseManifest({ seed: "   " })).toThrow(/seed/);
   });
 
+  /**
+   * A field named `imageDigest` is read as a pin by everyone who sees it, including the
+   * skeptic paid to re-run the work. A mutable tag inside it is therefore worse than an
+   * absent one: absence is legible, a tag is a claim that cannot be honoured. The forge
+   * runner produced exactly this for as long as the field existed, which is why the check
+   * sits in the shared builder rather than only in the producer — any producer, including
+   * one written tomorrow, has to pass through here.
+   */
+  it("refuses a mutable tag where it asks for an image digest", () => {
+    expect(() =>
+      baseManifest({ environment: { imageDigest: "crucible/verifier:latest" } }),
+    ).toThrow(/not an immutable digest/);
+    expect(() =>
+      baseManifest({ environment: { imageDigest: "python:3.12-alpine" } }),
+    ).toThrow(/not an immutable digest/);
+    // A truncated digest is not a digest either.
+    expect(() => baseManifest({ environment: { imageDigest: "sha256:abc" } })).toThrow(
+      /not an immutable digest/,
+    );
+  });
+
+  it("accepts every immutable digest shape a real producer has", () => {
+    const pinned = `crucible/verifier@sha256:${"a".repeat(64)}`;
+    const localId = `sha256:${"b".repeat(64)}`;
+    const bareHex = "c".repeat(64); // the grader's corpus epoch: a content digest, no prefix
+    for (const value of [HASH_A, pinned, localId, bareHex]) {
+      expect(baseManifest({ environment: { imageDigest: value } }).environment.imageDigest).toBe(
+        value,
+      );
+    }
+    // And absence is honest, not an error: a run with no container has no image digest.
+    expect(
+      "imageDigest" in
+        baseManifest({ environment: { imageRequested: "crucible/verifier:latest" } }).environment,
+    ).toBe(false);
+  });
+
   it("refuses timestamps that are not dates", () => {
     expect(() => baseManifest({ startedAt: "yesterday" })).toThrow(/ISO-8601/);
   });
