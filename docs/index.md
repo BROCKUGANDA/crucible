@@ -30,6 +30,12 @@ Start with the question you have, not the folder.
   numbers (817–875 are taken); mainnet exit criterion is a green preflight.
 - [`docs/business/investor-faq.md`](business/investor-faq.md) — the
   60-second answers: why on-chain, revenue, no token, risks, how to verify.
+- [`docs/business/pitch/`](business/pitch/) — the pitch deck and the
+  Colosseum submission package: `pitch-deck.html` (self-contained, printable),
+  the two PDF renders, the generator that produces one of them, the condensed
+  contract documentation, and the submission script. The raise figure in the
+  deck is the founder's ask, not a commitment; the research behind it is
+  [`valuation-and-raise.md`](business/valuation-and-raise.md).
 
 ## I have to operate it
 
