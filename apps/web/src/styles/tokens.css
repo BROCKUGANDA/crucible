@@ -1,86 +1,153 @@
-/* tokens.css — single source of truth for Crucible design tokens.
-   Imported first in layout.tsx. Values reference the existing palette so
-   nothing changes visually; this file only centralises and documents them. */
+/* @file tokens.css — the `:root` token layer (colour, type, spacing, easing, duration) and
+ * nothing else: no selectors. Imported first by src/app/layout.tsx.
+ *
+ * ONE palette, and this file is where it lives. `src/lib/forge.ts` is the TypeScript mirror
+ * of it and `src/lib/scrub/palette.ts` mirrors its material colours; `test/scrub-palette.test.ts`
+ * parses this file and fails if the three ever separate. Two files in two languages that
+ * describe one design will drift the moment nobody is made to notice, and the symptom is a
+ * screen that looks fine right up until it ships.
+ *
+ * **Why the arena palette wins the names.** The token *names* are a vocabulary that the whole
+ * stylesheet already speaks — `arena.css`, `base.css`, `components.css`, `console.css`,
+ * `pages.css`, `scrub.css` and `trials.css` reference `--bg0/--text/--hot/--sand/--ink` and
+ * about two hundred other references besides, and the canvas scene paints itself from the same
+ * six state colours. A rewrite that changed the values under those names and dropped the rest
+ * left every one of those references either pointing at a different colour or pointing at
+ * nothing at all: `var(--text)` on an undefined custom property is not "the old text", it is
+ * no declaration, so the rule loses its colour and inherits whatever the cascade gives it.
+ * The vocabulary belongs to the stylesheet, so the values go with the names.
+ *
+ * **What is added, and why.** The landing surfaces brought a second, smaller set of
+ * *semantic* names — `--accent`, `--success`, `--warning`, `--error`, `--info`, `--pending`,
+ * and the `--z-*` stacking order. None of them collided with the arena's, so they are kept,
+ * each bound to the arena colour it means rather than to a new hue: `--error` is the slash
+ * (`--sear`), `--info` is the reprieve (`--quench`), `--pending` is the muted step
+ * (`--faint`). One palette means one meaning per colour, and a badge that says "error" is
+ * the same red as the slash that caused it.
+ */
+
+/* The Colosseum — stone, sand, and the light that falls on them. Every state is still a
+ * temperature, because the temperature is the state model: `ember` is the action an agent
+ * takes, `gold` is what a result is worth, `quench` is the reprieve, `sear` is the slash.
+ * What changed when the forge became an arena is the ground the states sit on: charcoal and
+ * molten metal gave way to travertine, blood-sand and laurel bronze, so the same six meanings
+ * now read against stone rather than against fire.
+ *
+ * The motion language, in one place:
+ *   ignite   entrances. Fast out of the gate, long settle. Heat arrives suddenly.
+ *   cool     exits and settlement. Everything drains back into the charcoal.
+ *   temper   the spring pop on a verdict seal. Only for things that *decide*.
+ * Nothing here is decorative motion. A pour means metal is moving, a shimmer means a
+ * transaction is in flight, a doused pulse means it failed. prefers-reduced-motion kills
+ * every loop and keeps every colour change, because the state model must survive.
+ */
 
 :root {
-  /* ── Surface ─────────────────────────────────────────────── */
-  --bg0: #0a0b0d;
-  --bg1: #111318;
-  --bg2: #1a1d24;
-  --ink: #e8e6e1;
-  --dim: #9a9890;
-  --faint: #5a5852;
-  --ash: #2a2d34;
+  color-scheme: dark;
 
-  /* ── Accent ─────────────────────────────────────────────── */
+  /* Ground: the arena floor at night, and stone in shadow by day. */
+  --bg0: #0b0a09;
+  --bg1: #151210;
+  --bg2: #1e1915;
+
+  /* Ink: inscribed marble, and the two dimmer steps under it. The dimmer steps were
+     sitting at luminance values that read as ghost text against the night scene —
+     a micro label you can only see by staring is a label nobody reads. These two
+     are the quiet steps, not invisible ones. */
+  --text: #ece5d8;
+  --dim: #bfb199;
+  --faint: #9e9078;
+
+  /* The four states. Names and meanings are unchanged from the forge; only the hues moved,
+     from molten metal to terracotta, laurel, sea-water and blood. */
+  --ember: #e2612f;
+  --gold: #e3b25c;
+  --hot: #fbeeda;
+  --quench: #4fbfae;
+  --sear: #cf4132;
+  --ash: #8a8073;
+
+  /* The ink a bright fill writes with. Buttons and seals invert onto `--ember`/`--gold`, and
+     pure black there looks like a hole cut in the metal rather than a hot surface. */
+  --ink: #170d06;
+
+  /* Materials the arena is made of. These four are also the scene's ramp in
+     src/lib/scrub/palette.ts, and `test/scrub-palette.test.ts` fails if the two ever
+     disagree — a canvas that drifts from the theme looks fine right up until it ships. */
+  --marble: #f2ead9;
+  --bronze: #8c6b3f;
+  --sand: #c8a878;
+  --tyrian: #7a2b56;
+
+  /* The action colour, named the way the landing surfaces name it. It is the same terracotta
+     as `--ember`, deliberately: the primary action and the agent's identity are one colour,
+     and a second orange beside it would be a second meaning for one hue. */
   --accent: #e2612f;
-  --gold: #d4a017;
-  --ember: #ff6b35;
-  --quench: #4a9eff;
-  --sear: #ff4444;
-  --bronze: #cd7f32;
-  --tyrian: #9b59b6;
-  --marble: #d9d9d9;
 
-  /* ── Semantic states ─────────────────────────────────────── */
+  /* Semantic states for the status surfaces. Each is bound to the arena colour it already
+     means rather than to a new hue, so a badge, a badge's border and the thing the badge is
+     about are all the same colour. */
   --success: #3dd68c;
   --warning: #f5a623;
-  --error: #ff4444;
-  --info: #4a9eff;
-  --pending: #9a9890;
+  --error: #cf4132;
+  --info: #4fbfae;
+  --pending: #9e9078;
 
-  /* ── Typography ─────────────────────────────────────────── */
-  --font-display: var(--font-display-real, "Georgia", serif);
-  --font-mono: var(--font-mono-real, "Consolas", monospace);
-  --font-roman: var(--font-roman-real, "Times New Roman", serif);
-
-  --fs-micro: 0.7rem;
-  --fs-small: 0.8rem;
-  --fs-body: 1rem;
-  --fs-sub: 1.1rem;
-  --fs-title: 1.5rem;
-  --fs-lede: 1.25rem;
-  --fs-hero: 3rem;
-  --fs-act: 2rem;
-
-  /* ── Spacing scale (4px base) ────────────────────────────── */
-  --s-1: 0.25rem;
-  --s-2: 0.5rem;
-  --s-3: 0.75rem;
-  --s-4: 1rem;
-  --s-5: 1.5rem;
-  --s-6: 2rem;
-  --s-7: 3rem;
-
-  /* ── Radius ─────────────────────────────────────────────── */
-  --radius: 0.5rem;
-
-  /* ── Motion ─────────────────────────────────────────────── */
-  --t-tap: 120ms;
-  --t-state: 240ms;
-  --t-pour: 480ms;
-  --t-quench: 620ms;
-  --t-small: 160ms;
-  --ease-ignite: cubic-bezier(0.2, 0.8, 0.2, 1);
-  --ease-cool: cubic-bezier(0.4, 0, 0.2, 1);
-  --ease-temper: cubic-bezier(0.34, 1.56, 0.64, 1);
-
-  /* ── Layering ───────────────────────────────────────────── */
+  /* Stacking order, named so an overlay is not `z-index: 9999` in four different files. */
   --z-base: 0;
   --z-raised: 10;
   --z-overlay: 100;
   --z-modal: 1000;
   --z-toast: 1100;
 
-  /* ── Focus ring ─────────────────────────────────────────── */
-  --ring: 0 0 0 2px var(--accent);
-}
+  /* Composed, not hardcoded: `:root` outranks the class next/font puts on <html>, so a
+     literal family name here would silently win over the vendored TTF and render the whole
+     brand in system-ui. */
+  --font-display: var(--font-display-real), system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: var(--font-mono-real), ui-monospace, "SF Mono", Menlo, monospace;
+  /* The inscriptional face. Cinzel is a Roman square-capital family descended from the
+     letterforms cut into the Flavian amphitheatre's own arch keystones, so it is being used
+     for the thing it was derived from: display, numerals, and nothing else. Body copy stays
+     on the grotesque, which is the more legible decision at 16px on a dark ground. */
+  --font-roman: var(--font-roman-real), "Trajan Pro", Georgia, "Times New Roman", serif;
 
-/* Reduced motion: kill animations globally. */
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-  }
+  /* Type scale. `--fs-*`, because `--t-*` is already reserved for durations below and a
+     reader who meets `--t-small` beside `--t-tap` has to guess which prefix means what. */
+  --fs-micro: 0.6875rem;
+  --fs-small: 0.8438rem;
+  --fs-body: clamp(1rem, 0.55vw + 0.9rem, 1.0625rem);
+  --fs-sub: clamp(1.15rem, 1.2vw + 0.7rem, 1.5rem);
+  --fs-title: clamp(1.5rem, 2.2vw + 0.8rem, 2rem);
+  --fs-lede: clamp(1.15rem, 1.1vw + 0.85rem, 1.5rem);
+  --fs-act: clamp(2.1rem, 5.4vw, 4.25rem);
+  --fs-hero: clamp(3rem, 12vw, 8.5rem);
+
+  /* Inscriptional tracking. Roman capitals are cut wide; a grotesque is not. */
+  --track-roman: 0.045em;
+  --track-hero: 0.08em;
+  --track-micro: 0.2em;
+
+  /* Spacing scale. */
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 14px;
+  --s-4: 18px;
+  --s-5: 28px;
+  --s-6: 44px;
+  --s-7: 68px;
+
+  --ease-ignite: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-cool: cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-temper: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  /* Mirrors `motion.duration` in src/lib/forge.ts — JS animations and CSS must not drift. */
+  --t-tap: 120ms;
+  --t-small: 160ms;
+  --t-state: 240ms;
+  --t-pour: 400ms;
+  --t-quench: 700ms;
+
+  --ring: 0 0 0 2px var(--bg0), 0 0 0 4px var(--hot);
+  --pad: clamp(16px, 4vw, 32px);
+  --radius: 10px;
 }
