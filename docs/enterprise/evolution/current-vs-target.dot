@@ -1,0 +1,75 @@
+// Crucible — current evidence vs enterprise target, as an evolution map.
+// Read with docs/enterprise/roadmap.md (which owns the build order S1-S5) and
+// DEEP_RESEARCH_Crucible_Enterprise_Readiness.md (which owns the evidence).
+// This file is a VIEW, not a source of truth: every node names the file or line
+// that decides it, and nodes are styled by whether they are implemented today.
+//
+// Legend of styling:
+//   filled  = implemented and tested in this tree
+//   dashed  = PROPOSED / TARGET, not implemented
+//   dotted  = exists but unwired (the code is there, nothing calls it)
+digraph crucible_evolution {
+  rankdir=LR;
+  fontname="sans-serif";
+  labelloc="t";
+  label="Crucible: what an enterprise reviewer demands vs what the tree proves — 2026-10-29 (develop @ ee4930d)\n[ ] solid=filled+tested · [ ] dashed=proposed target · [ ] dotted=exists, unwired";
+
+  node [shape=box, style="rounded,filled", fillcolor="#e8e8e8", fontsize=10];
+  edge [fontsize=8];
+
+  subgraph cluster_current {
+    label="CURRENT — evidenced in the tree";
+    style="rounded"; color="#888888";
+
+    C_escrow   [label="Pull-payment settlement\nCrucibleTrials.sol:802 only call{value}\nADR-0003", fillcolor="#b7e1a9"];
+    C_conserve [label="Conservation invariant (legacy law only)\nInvariants.t.sol:189-191\nexcl. escrow+registry as target AND sender", fillcolor="#b7e1a9"];
+    C_digest   [label="spec/tests CID + runHash\nEIP-712 runner signature\nCrucibleTrials.sol:112-118,182", fillcolor="#b7e1a9"];
+    C_cidstore [label="Content re-verified on every read\nsha256 vs CID, ContentCorruptedError\nstore.ts:349", fillcolor="#b7e1a9"];
+    C_determin [label="Deterministic outranks rubric\nnull on grader failure = NON-VOTING\nargus/rubric.ts:132-184", fillcolor="#b7e1a9"];
+    C_alloy    [label="Non-transferable reputation\nno transfer/approve/mint; ERC-5192 locked\nidentity epochs (ADR-0012)\nAlloyRegistry.sol:58,134,212", fillcolor="#b7e1a9"];
+    C_sandbox  [label="Container hardening\n--cap-drop=ALL --read-only --network=none\nno socket, no privileged\nsandbox.ts:329-371", fillcolor="#b7e1a9"];
+    C_gate     [label="RPC edge gate: 24 methods allowed\neth_accounts/anvil_*/debug_* refused\ngate.mjs:22-47 + live probe", fillcolor="#b7e1a9"];
+    C_panel    [label="Fixed 2-of-3 Argus committee\nADR-0004, seats=3 quorum=2\nbranch coverage 55.56% (floor 50)", fillcolor="#f2d38a"];
+    C_auth     [label="SIWE session: nonce-bound, HMAC,\naudience, replay-handled — auth.ts\nCALLED BY NO ROUTE, CHECKED BY NONE", style="rounded,dotted", fillcolor="#f2d38a"];
+    C_rbac     [label="ROLE_PERMISSIONS + Principal\npackages/agent-security\nimported only by forge-runner", style="rounded,dotted", fillcolor="#f2d38a"];
+    C_fee      [label="TWO fee laws: 500 legacy (agent, at settle)\n1500 Arena (sponsor, at post, refunded on\nO3/O6/O7/O8) — UI publishes ONE scalar", fillcolor="#f2d38a"];
+    C_reg      [label="300-row evidence register\nrow 180 claimed Existing for a label\nno reader can reach — corrected 2026-10-29", fillcolor="#f2d38a"];
+    C_image    [label="imageDigest field receives\n'crucible/verifier:latest'\nmanifest.ts:114 vs its own doc comment", fillcolor="#f5b3a9"];
+    C_degr     [label="Degraded run label written to manifest\nrunner.ts:171-175 — never projected,\nnever rendered", fillcolor="#f5b3a9"];
+  }
+
+  subgraph cluster_target {
+    label="TARGET — proposed, gated on a validation signal";
+    style="rounded"; color="#4444aa";
+
+    T_pin [label="S2a PROPOSED: image resolved to repo digest\nbefore run; fail closed or mark degraded\nsignal: resolver unit test + Docker suite", style="rounded,dashed"];
+    T_qual[label="S2b PROPOSED: isolation mode projected to\ntrial API + page in words\nsignal: degraded run cannot render as clean", style="rounded,dashed"];
+    T_sched[label="S2 PROPOSED (ADR-0019): economics as a LIST,\none entry per wired protocol with provenance\nsignal: fee renders ⇒ protocol named", style="rounded,dashed"];
+    T_arena[label="S2 PROPOSED: /arena read surface\n(15% stops being an invisible constant)\nsignal: printed rate == Arena.FEE read on-chain", style="rounded,dashed"];
+    T_panel[label="S3 PROPOSED: seats as a modelled parameter\n+ COI exclusion as hard precondition\nsignal: published attacker-majority curve\n        for the deployed seat count", style="rounded,dashed"];
+    T_ten  [label="S4 PROPOSED: orgs/roles enforced server-side\n+ tenant-isolation regression in CI\nsignal: ASVS 4.2.1-style IDOR tests per object", style="rounded,dashed"];
+    T_sess [label="S4 PROPOSED: session authoritative on every\nmutation route; owner = signature not claim\nsignal: /faucet/applications refuses a claimed address", style="rounded,dashed"];
+    T_att  [label="S5 PROPOSED: provenance at a NAMED SLSA level\n+ SBOM in a named format + signed images\nsignal: verifier command in CI, not a claim", style="rounded,dashed"];
+    T_replay[label="S5 PROPOSED: independent replay on a bench\n(the v2 copy promises three agreeing runs;\nclaims/registry.ts:171 admits one hash)", style="rounded,dashed"];
+    T_slo  [label="S5 PROPOSED: measured SLIs before any SLA sentence\nsignal: status page numbers from a query, not a hope", style="rounded,dashed"];
+  }
+
+  C_digest -> T_pin [label="artifact must name the env"];
+  C_image -> T_pin [label="one-line resolution", style="bold", color="#cc0000"];
+  C_sandbox -> T_qual [label="enforce is not attest"];
+  C_degr -> T_qual [label="projection missing", style="bold", color="#cc0000"];
+  C_fee -> T_sched -> T_arena;
+  C_panel -> T_panel;
+  C_determin -> T_panel [label="non-voting already holds"];
+  C_rbac -> T_ten;
+  C_auth -> T_sess [label="wiring only"];
+  T_sess -> T_ten [label="roles need a caller"];
+  C_cidstore -> T_att;
+  C_escrow -> T_att;
+  C_gate -> T_att [label="deploy-probe precedent"];
+  T_pin -> T_replay [label="reproducible first"];
+  T_qual -> T_replay [label="then re-runnable"];
+  C_conserve -> T_sched [label="books must reconcile"];
+  C_alloy -> T_panel [label="earned, not bought"];
+  C_reg -> T_slo [label="evidence discipline"];
+}
