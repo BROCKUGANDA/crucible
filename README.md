@@ -40,18 +40,18 @@ Open ──claim──> Assigned ──submitRun──> Judging ──fileBreak�
    settlement transaction and the identity registration that earned it. The
    contracts are in `crucible-contracts/contracts` with 333 tests (329 passed; 4 of them ERC-8004
    fork tests, which skip without an RPC). The workspace suites
-   add 2198 more - web 431, grader 309, api 286, smith 224, forge-runner 188 (6 of them need a
+   add 2202 more - web 435, grader 309, api 286, smith 224, forge-runner 188 (6 of them need a
     Docker daemon and skip without one), indexer 154, agent-security 153, cidstore 106, juror 84,
     keeper 48, datasets 50, argus 45, eval 36, warden 24, funder 24, crypto 12, frame 12, registry
     12 — and `npm test` runs all of them plus the
    Foundry suite; the contracts half needs Foundry (`forge test`), which the seed image runs on a
    machine without a local forge. The edge suite (`npm run test:edge`, 15 tests over the RPC method
    gate, its live probe and the installer that deploys them) is not a workspace, so it rides
-   `npm run verify:all` and CI as its own step. Counted per workspace on 2026-10-29: **2198 passed,
+   `npm run verify:all` and CI as its own step. Counted per workspace on 2026-10-29: **2202 passed,
     6 skipped**
     across the eighteen TypeScript workspaces, **15 passed** at the edge and **329 passed, 4 skipped**
-    in Foundry — 2542
-    passing, 2552 counted. Run `npm run verify:all` to reproduce them.
+    in Foundry — 2546
+    passing, 2556 counted. Run `npm run verify:all` to reproduce them.
 4. Replay the whole loop against a running chain — register, post, claim,
    runner-signed runs, a break that Argus slashes, and the permissionless quench
    after the window really closes — with `crucible-contracts/script/GoldenPath.s.sol`:
@@ -382,8 +382,8 @@ npm run demo                # anvil + deploy + the whole loop, settles a real ve
 npm run agent:live          # the real agent against a real model in a real sandbox
 ```
 
-**2542 tests pass, 10 skipped** — 2198 TypeScript passed with 6 skipped, 15 at the edge, and 329
-Foundry passed with 4 skipped, so 2552 counted. Measured per workspace on 2026-10-29 on the working
+**2546 tests pass, 10 skipped** — 2202 TypeScript passed with 6 skipped, 15 at the edge, and 329
+Foundry passed with 4 skipped, so 2556 counted. Measured per workspace on 2026-10-29 on the working
 tree; the six skips are `forge-runner` tests that ask for a Docker daemon, the four are the fork
 tests below. The edge's 15 are `node --test` over `deploy/edge`, not a workspace: 6 refusals at the
 RPC gate, 3 on the probe that asks the live endpoint those methods (one of them a negative control
@@ -470,21 +470,37 @@ Two things are worth knowing about the dependency choices:
 
 ## The voice host (optional)
 
-Frenchy has two halves, and the site shows each only when its own server side is configured.
+Frenchy has three halves, and the site shows each only when its own server side is configured.
 
 - **One-way speech** — an ElevenLabs text-to-speech host that reads fixed lines: the greeting,
   the tour, a paid verdict. `VoiceControl` in the header.
 - **A conversation** — `Ask Frenchy (AI)`, which takes a question by microphone or typed and
   sends it to the LLM behind `POST /frenchy`. The microphone and the speech-to-text are here, in
   this half, and they were added deliberately: the site asks a visitor for the microphone.
+- **A recorded conversation** — `/voice`, the voice room: the same brain and the same voice, with
+  the **transcription on the host** and every turn written down. `POST /sts/session/:id/turn`
+  takes an utterance and returns the words and the speech; the turn monitor reads the host's own
+  ledger — who spoke, what was said, and what each of the three steps cost. ADR-0018.
 
-Both are **off by default, and both are invisible until the API proves it can answer.** The TTS
-half reads `GET /voice/status`. The conversational half has no status route, so the control asks
+The third half differs from the second in exactly one thing: **whether the turns are kept.** The
+panel transcribes in the browser and writes nothing down; the voice room transcribes on the host
+and keeps a ledger. The panel is the quick question; the voice room is the conversation that is
+written down.
+
+All three are **off by default, and invisible until the API proves it can answer.** The TTS
+half reads `GET /voice/status`. The recorded half reads `GET /sts/status`, which names the piece
+that is missing — transcription, brain or voice — rather than a flat "not configured". The
+conversational half has no status route, so the control asks
 the brain itself with an empty body: `/frenchy` checks its configuration before it reads the
 request, so a host with no key answers `503 "Frenchy's brain is not configured"` and a host with
 one answers `400 "prompt is required"`. Neither path reaches a vendor, so the question that asks
 whether the LLM exists never calls the LLM. A `404` or an unreachable host hides the control too
 — the probe can only ever remove a button, never invent one.
+
+The microphone policy says `microphone=(self)`: this origin may ask, no other origin may, and
+**the browser still asks the visitor**. It used to say `microphone=()`, which made the browser
+refuse the header's Listen button before the visitor was prompted — the control could not work,
+and it told the visitor to change their browser settings for it.
 
 The policy lives in [`apps/web/src/lib/voice.ts`](./apps/web/src/lib/voice.ts),
 [`apps/web/src/lib/frenchy/status.ts`](./apps/web/src/lib/frenchy/status.ts) and
@@ -533,18 +549,27 @@ FRENCHY_LLM_MODEL=gpt-4o-mini
 # FRENCHY_LLM_BASE_URL=...         # the provider's own base URL, if not api.openai.com
 # FRENCHY_DISABLED=1               # kill switch with the credentials present
 # FRENCHY_TTS_DISABLED=1           # answer in words only, never in the premium voice
+
+# The recorded conversation (ADR-0018). It borrows the brain and the key above,
+# so it is on wherever they are; this is its own model and its kill switch.
+ELEVENLABS_STT_MODEL_ID=scribe_v1  # the transcription model the host posts to
+# STS_DISABLED=1                     # kill switch with the credentials present
 ```
 
 Both voice routes spend a vendor credit, so `/frenchy*` carries its own bucket once a brain is
 configured — 20 requests a minute, burst 5 — on top of the global one. A host with no brain has
-nothing to bill and no bucket.
+nothing to bill and no bucket. The recorded half has two buckets of its own: **20 turns a minute**
+(three provider calls each) and **120 session reads a minute** for the monitor's phase poll, and
+the turn itself is bounded at 256 KiB of audio, 40 turns a session, 50 sessions a host and a
+30-minute idle TTL.
 
 Leave the key or the voice id blank and `GET /voice/status` reports `configured:false`, while
-`POST /frenchy` reports 503; the web hides both controls and the rest of the product is
-unchanged. The API holds these vendor keys and no chain key: a leak spends TTS and inference
-credits and cannot move escrow. The "hear the spec" moment in the PRD is not wired because the
-web app carries only the spec CID, not its text; the `spec` moment exists for a future spec
-viewer and is capped at 600 characters.
+`POST /frenchy` reports 503 and `GET /sts/status` names the piece that is missing; the web hides
+every control and the rest of the product is
+unchanged. The API holds these vendor keys and no chain key: a leak spends TTS, transcription and
+inference credits and cannot move escrow. The "hear the spec" moment in the PRD is not wired
+because the web app carries only the spec CID, not its text; the `spec` moment exists for a
+future spec viewer and is capped at 600 characters.
 
 ## Running the agent against a real model
 
