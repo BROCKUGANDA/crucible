@@ -18,6 +18,25 @@ Start with the question you have, not the folder.
 - [`docs/pipeline-ledger.md`](pipeline-ledger.md) — the CI/promotion/deploy
   history and the failures that shaped it.
 
+## I want to know what it would take to make this enterprise-grade
+
+- [`docs/enterprise/`](enterprise/) — the enterprise engagement:
+  [`assessment.md`](enterprise/assessment.md) (what the tree actually is,
+  measured, with a requirements-to-code matrix),
+  [`roadmap.md`](enterprise/roadmap.md) (the five slices and their gates),
+  [`target-architecture.md`](enterprise/target-architecture.md),
+  [`evaluation-protocol.md`](enterprise/evaluation-protocol.md),
+  [`economics-and-incentives.md`](enterprise/economics-and-incentives.md)
+  (the two fee schedules, the flow table, and what must not change without
+  an ADR),
+  [`game-theory.md`](enterprise/game-theory.md) (the mechanism, the
+  adversaries, and the equilibria that are still untested),
+  [`security-threat-model.md`](enterprise/security-threat-model.md),
+  [`collaboration-and-governance.md`](enterprise/collaboration-and-governance.md),
+  and [`production-checklist-300.md`](enterprise/production-checklist-300.md)
+  (all 300 requirements with a status, an owner, the evidence that decides
+  it, a dependency and a release phase).
+
 ## I want the business case
 
 - [`docs/business/plan.md`](business/plan.md) — problem, money loop, model,
