@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Crucible — Pitch Deck</title>
+  <style>
+    @page {
+      size: 1920px 1080px;
+      margin: 0;
+    }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0b0a09;
+      color: #ece5d8;
+      width: 1920px;
+    }
+    .slide {
+      width: 1920px;
+      height: 1080px;
+      page-break-inside: avoid;
+      break-inside: avoid;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      background: #0b0a09;
+      padding: 60px 80px;
+      overflow: hidden;
+    }
+    .slide:not(:last-child) {
+      page-break-after: always;
+    }
+    .slide img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    .slide.img-slide {
+      padding: 0;
+    }
+    .slide-number {
+      position: absolute;
+      bottom: 40px;
+      right: 40px;
+      font-size: 24px;
+      opacity: 0.5;
+      font-family: 'JetBrains Mono', monospace;
+      z-index: 10;
+    }
+    @media print {
+      .slide-number { display: none; }
+      body { width: 100%; height: auto; }
+    }
+    /* text slides */
+    .eyebrow {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 26px;
+      letter-spacing: 4px;
+      text-transform: uppercase;
+      color: #c9a227;
+      margin-bottom: 24px;
+    }
+    h1.slide-title {
+      font-size: 56px;
+      font-weight: 700;
+      line-height: 1.05;
+      margin-bottom: 16px;
+      color: #f4ecd8;
+    }
+    .subtitle {
+      font-size: 26px;
+      color: #b8ad94;
+      margin-bottom: 40px;
+      max-width: 1500px;
+    }
+    .grid2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 40px;
+      flex: 1;
+    }
+    .card {
+      background: #15130f;
+      border: 1px solid #2a2620;
+      border-radius: 16px;
+      padding: 24px 28px;
+    }
+    .card h3 {
+      font-size: 26px;
+      color: #c9a227;
+      margin-bottom: 12px;
+    }
+    .card p, .card li {
+      font-size: 20px;
+      line-height: 1.4;
+      color: #d9d0bc;
+    }
+    .card ul { list-style: none; }
+    .card li { margin-bottom: 10px; padding-left: 24px; position: relative; }
+    .card li::before { content: "▸"; position: absolute; left: 0; color: #c9a227; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 18px;
+    }
+    th, td {
+      padding: 8px 12px;
+      text-align: left;
+      border-bottom: 1px solid #2a2620;
+    }
+    th {
+      background: #1a1712;
+      color: #c9a227;
+      font-weight: 600;
+      font-size: 17px;
+    }
+    td { color: #d9d0bc; }
+    tr:last-child td { border-bottom: none; }
+    .highlight { color: #f4ecd8; font-weight: 600; }
+    .mono { font-family: 'JetBrains Mono', monospace; }
+    .footnote {
+      font-size: 16px;
+      color: #7a7260;
+      margin-top: 20px;
+    }
+    .stat-row {
+      display: flex;
+      gap: 60px;
+      margin-top: 20px;
+    }
+    .stat {
+      flex: 1;
+    }
+    .stat .num {
+      font-size: 44px;
+      font-weight: 700;
+      color: #c9a227;
+      line-height: 1;
+    }
+    .stat .lbl {
+      font-size: 18px;
+      color: #b8ad94;
+      margin-top: 8px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- 1 Cover -->
+  <div class="slide">
+    <div class="badge">Colosseum Hackathon — MVP</div>
+    <h1 class="slide-title">Crucible</h1>
+    <p class="subtitle">A proving ground where AI agents are forged into on-chain trust.<br>Sponsors post trials. Agents stake. Skeptics attack. Only verified work earns Alloy.</p>
+    <div class="stat-row" style="margin-top:40px">
+      <div class="stat"><div class="num">2,332+</div><div class="lbl">Passing tests</div></div>
+      <div class="stat"><div class="num">1</div><div class="lbl">Command E2E demo</div></div>
+      <div class="stat"><div class="num">0</div><div class="lbl">Tokens issued</div></div>
+    </div>
+    <p class="footnote">Solo builder: Otema Andrew. Live deploy: crucible.svalley.tech. Contracts + web + API + indexer + runner shipped.</p>
+    <div class="slide-number">1 / 12</div>
+  </div>
+
+  <!-- 2 Problem -->
+  <div class="slide">
+    <div class="eyebrow">Problem</div>
+    <h1 class="slide-title">Nobody can tell which agent to trust.</h1>
+    <p class="subtitle">Buyers of agent labor have no credential they can check without trusting the seller.</p>
+    <div class="grid2">
+      <div class="card">
+        <h3>Self-reported benchmarks</h3>
+        <p>Agents quote scores they control. Benchmarks are marketing, not evidence.</p>
+      </div>
+      <div class="card">
+        <h3>Portable reviews</h3>
+        <p>Reviews are copied between platforms. History is writable, not auditable.</p>
+      </div>
+      <div class="card">
+        <h3>Cheap to fake</h3>
+        <p>A good landing page costs the same as a good model. Trust is a claim, not a balance sheet.</p>
+      </div>
+      <div class="card">
+        <h3>No adversarial gate</h3>
+        <p>Eval platforms test. They do not pay people to break the run and prove it.</p>
+      </div>
+    </div>
+    <div class="slide-number">2 / 12</div>
+  </div>
+
+  <!-- 3 Solution / Money Loop -->
+  <div class="slide">
+    <div class="eyebrow">Solution</div>
+    <h1 class="slide-title">Trust becomes a balance sheet.</h1>
+    <p class="subtitle">A sponsor posts a trial. An agent stakes a bond. Skeptics try to break it. What survives becomes an on-chain credential no one can buy.</p>
+    <div class="grid2">
+      <div class="card">
+        <h3>Post</h3>
+        <p>Sponsor escrows the reward. Spec and suite are pinned by digest.</p>
+      </div>
+      <div class="card">
+        <h3>Claim</h3>
+        <p>Agent posts a 20% bond (floor 0.01 ETH). Bond is real money.</p>
+      </div>
+      <div class="card">
+        <h3>Break</h3>
+        <p>Skeptics stake ≥1% and try to break the run within a window.</p>
+      </div>
+      <div class="card">
+        <h3>Settle</h3>
+        <p>Escrow pays out by contract. 5% fee to protocol. Bond split on break.</p>
+      </div>
+    </div>
+    <p class="footnote">Pull-only withdrawals. No chain keys in the app. Settlement is a transaction, not a log line.</p>
+    <div class="slide-number">3 / 12</div>
+  </div>
+
+  <!-- 4 Architecture & Money Rules -->
+  <div class="slide">
+    <div class="eyebrow">Architecture · Money Rules</div>
+    <h1 class="slide-title">6 invariants. No exceptions.</h1>
+    <p class="subtitle">The protocol enforces trust by construction, not by policy.</p>
+    <div class="grid2">
+      <div class="card">
+        <h3>1. Native ETH only</h3>
+        <p>All escrow, bonds, and fees settle in ETH. No wrapped tokens, no bridges.</p>
+        <h3 style="margin-top:18px">2. Pull-only</h3>
+        <p>Users withdraw explicitly. Funds are never pushed to an address silently.</p>
+        <h3 style="margin-top:18px">3. Conservation</h3>
+        <p>Every mint, burn, and transfer is balanced. No inflation leak.</p>
+      </div>
+      <div class="card">
+        <h3>4. Permissionless</h3>
+        <p>Any agent can post, claim, or challenge. No KYC gate on the protocol.</p>
+        <h3 style="margin-top:18px">5. No chain key</h3>
+        <p>The web app never holds a private key. Users sign in their own wallets.</p>
+        <h3 style="margin-top:18px">6. 16 packed fields</h3>
+        <p>Trials, runs, verdicts, and identities are stored in 16 canonical fields. Gas-optimized, auditable, indexable.</p>
+      </div>
+    </div>
+    <div class="slide-number">4 / 12</div>
+  </div>
+
+  <!-- 5 Revenue Model -->
+  <div class="slide">
+    <div class="eyebrow">Revenue Model</div>
+    <h1 class="slide-title">Three native-ETH streams. Zero invoicing.</h1>
+    <p class="subtitle">Revenue is taken by the contract at settlement. No billing, no collection risk, no churn.</p>
+    <table>
+      <thead>
+        <tr><th>Stream</th><th>Trigger</th><th>Protocol take</th><th>Notes</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Settlement fee</td><td>Agent wins</td><td>5% of payout</td><td>Canonical; enforced in contract</td></tr>
+        <tr><td>Break treasury</td><td>Skeptic wins</td><td>70% of 20% bond</td><td>14% of reward value to treasury</td></tr>
+        <tr><td>Slash remainder</td><td>Timeout / no show</td><td>Pro-rata remainder</td><td>Residual to treasury after splits</td></tr>
+      </tbody>
+    </table>
+    <div class="stat-row" style="margin-top:24px">
+      <div class="stat"><div class="num">5%</div><div class="lbl">Settlement fee</div></div>
+      <div class="stat"><div class="num">14%</div><div class="lbl">Break treasury yield</div></div>
+      <div class="stat"><div class="num">~9%</div><div class="lbl">Blended effective rate at 60% win rate</div></div>
+    </div>
+    <p class="footnote">No subscription. No token. No token sale. Alloy is non-transferable by construction.</p>
+    <div class="slide-number">5 / 12</div>
+  </div>
+
+  <!-- 6 5-Year Projection -->
+  <div class="slide">
+    <div class="eyebrow">5-Year Projection</div>
+    <h1 class="slide-title">Volume compounds. Revenue follows.</h1>
+    <p class="subtitle">Conservative to Bull scenarios, with ETH and USD equivalents at $3,000/ETH.</p>
+    <table>
+      <thead>
+        <tr><th>Scenario</th><th>Trials / mo</th><th>Avg reward</th><th>Eff. rate</th><th>ETH / yr</th><th>USD / yr</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Conservative</td><td>100</td><td>0.10 ETH</td><td>8.0%</td><td>9.6</td><td>$28,800</td></tr>
+        <tr><td class="highlight">Base</td><td class="highlight">1,000</td><td class="highlight">0.20 ETH</td><td class="highlight">8.6%</td><td class="highlight">206.4</td><td class="highlight">$619,200</td></tr>
+        <tr><td>Bull</td><td>5,000</td><td>0.50 ETH</td><td>9.0%</td><td>2,700</td><td>$8,100,000</td></tr>
+      </tbody>
+    </table>
+    <p class="footnote">Assumptions: ETH = $3,000; agent-win rate 60%; effective rate = 0.05·w + 0.14·(1−w). Projections for an MVP, not audited results.</p>
+    <div class="slide-number">6 / 12</div>
+  </div>
+
+  <!-- 7 Operating Cost Model -->
+  <div class="slide">
+    <div class="eyebrow">Operating Cost Model</div>
+    <h1 class="slide-title">What it takes to reach break-even.</h1>
+    <p class="subtitle">First-year cash need to ship mainnet, then year-two break-even under base case.</p>
+    <table>
+      <thead>
+        <tr><th>Item</th><th>Low</th><th>High</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Staff / founder runway</td><td>$60K</td><td>$180K</td></tr>
+        <tr><td>External audit</td><td>$50K</td><td>$150K</td></tr>
+        <tr><td>Legal formation + counsel</td><td>$20K</td><td>$50K</td></tr>
+        <tr><td>Gas / infra / RPC / indexer</td><td>$12K</td><td>$48K</td></tr>
+        <tr><td>Genesis sponsor incentives</td><td>$20K</td><td>$60K</td></tr>
+        <tr><td>Mainnet deploy + ops</td><td>$10K</td><td>$40K</td></tr>
+        <tr><td>Contingency (20%)</td><td>$34K</td><td>$106K</td></tr>
+        <tr class="highlight"><td>Total first-year cash</td><td>$206K</td><td>$634K</td></tr>
+      </tbody>
+    </table>
+    <p class="footnote">Base revenue covers high-end cost in year one; break-even lands month 9–14. Conservative revenue requires funding. Bull revenue is an upside case.</p>
+    <div class="slide-number">7 / 12</div>
+  </div>
+
+  <!-- 8 ROI & Unicorn Rating -->
+  <div class="slide">
+    <div class="eyebrow">ROI · Unicorn Rating</div>
+    <h1 class="slide-title">Ask $10M at $200M post. 10–20× for early investors.</h1>
+    <p class="subtitle">5% ask for a pre-revenue MVP with a live product, auditable claims, and a non-transferable credential primitive.</p>
+    <div class="grid2">
+      <div class="card">
+        <h3>Ask</h3>
+        <p>$10M raise at a $200M post-money valuation. Founder retains 95%.</p>
+        <h3 style="margin-top:18px">Investor returns</h3>
+        <p>10–20× on paper if Crucible becomes the default verification rail for agent hiring.</p>
+      </div>
+      <div class="card">
+        <h3>Unicorn path</h3>
+        <p>Year 3 target: $1B+ implied valuation on audited volume + enterprise contracts.</p>
+        <h3 style="margin-top:18px">Downside floor</h3>
+        <p>Contracts + code + brand. Acqui-hire range: $0–$5M if mainnet never ships.</p>
+      </div>
+    </div>
+    <p class="footnote">Model dilution at 20–30% per priced round. These are gross multiples, before fees, taxes, and later dilution.</p>
+    <div class="slide-number">8 / 12</div>
+  </div>
+
+  <!-- 9 Market Penetration & Upside -->
+  <div class="slide">
+    <div class="eyebrow">Market Penetration · Upside</div>
+    <h1 class="slide-title">Start narrow. Expand to the agent economy.</h1>
+    <p class="subtitle">Beachhead in agent evaluation. Defensibility through verified history, skeptics, and non-transferable credentials.</p>
+    <div class="grid3">
+      <div class="card">
+        <h3>TAM</h3>
+        <p>Global AI agent market projected to exceed $200B by 2030. Every agent needs a verifiable credential.</p>
+      </div>
+      <div class="card">
+        <h3>Beachhead</h3>
+        <p>Agent evaluation labs, coding frameworks, and hiring platforms that already pay for trust signals.</p>
+      </div>
+      <div class="card">
+        <h3>Expansion</h3>
+        <p>Cross-chain reputation. RWA custody evaluation. Compliance-grade agent audits.</p>
+      </div>
+    </div>
+    <div class="grid2" style="margin-top:28px">
+      <div class="card">
+        <h3>Defensibility</h3>
+        <p>Settled history is the moat. Skeptics are the supply side. Non-transferable credentials are the product.</p>
+      </div>
+      <div class="card">
+        <h3>Go-to-market</h3>
+        <p>Sponsor-first. Post rewards → attract agents → attract skeptics → earn Alloy → attract more sponsors.</p>
+      </div>
+    </div>
+    <div class="slide-number">9 / 12</div>
+  </div>
+
+  <!-- 10 Competitive Landscape -->
+  <div class="slide">
+    <div class="eyebrow">Competitive Landscape</div>
+    <h1 class="slide-title">7 competitors. Crucible is the only adversarial on-chain verifier.</h1>
+    <p class="subtitle">Web2 eval is funded. Web3 agent infra is tokenized. Crucible is neither.</p>
+    <table>
+      <thead>
+        <tr><th>Competitor</th><th>Bucket</th><th>Funding / valuation</th><th>Crucible edge</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Braintrust</td><td>Web2 eval</td><td>$121M, $800M val</td><td>No on-chain settlement; credentials are portable</td></tr>
+        <tr><td>Patronus AI</td><td>Web2 eval/sim</td><td>$70M total</td><td>Simulated environments, not adversarial real runs</td></tr>
+        <tr><td>LMArena</td><td>Web2 eval</td><td>$150M, $1.7B post</td><td>Community benchmarks, no economic stakes</td></tr>
+        <tr><td>CrewAI</td><td>Web2 agents</td><td>$6M seed</td><td>Orchestration only; no trust layer</td></tr>
+        <tr><td>Virtuals Protocol</td><td>Web3 agents</td><td>$2.19M ICO, >$1B eco</td><td>Tokenized co-ownership; credentials are tradeable</td></tr>
+        <tr><td>Olas (Autonolas)</td><td>Web3 agents</td><td>$13.8M</td><td>Agent marketplace; no adversarial verification</td></tr>
+        <tr><td>Fetch.ai / ASI</td><td>Web3 agents</td><td>FET token, ~$470M mcap</td><td>Infrastructure layer; no eval primitive</td></tr>
+      </tbody>
+    </table>
+    <p class="footnote">Alloy is non-transferable by construction. Settlement is a transaction, not a dashboard.</p>
+    <div class="slide-number">10 / 12</div>
+  </div>
+
+  <!-- 11 Why Crucible Is Different -->
+  <div class="slide">
+    <div class="eyebrow">Why Crucible Is Different</div>
+    <h1 class="slide-title">8 moats. None of them copyable by fork.</h1>
+    <p class="subtitle">Trust stops being a claim and starts being a balance sheet.</p>
+    <div class="grid2">
+      <div class="card">
+        <h3>1. Verified history</h3>
+        <p>Every credential points at re-executed trials with on-chain verdicts.</p>
+        <h3 style="margin-top:14px">2. Skeptics as a service</h3>
+        <p>Paid challengers price verification as a market, not a checklist.</p>
+        <h3 style="margin-top:14px">3. Non-transferable Alloy</h3>
+        <p>No transfer function. Cannot be sold, lent, or rented.</p>
+        <h3 style="margin-top:14px">4. Checkability as marketing</h3>
+        <p>Every headline claim verifies in 60 seconds.</p>
+      </div>
+      <div class="card">
+        <h3>5. No token</h3>
+        <p>No ERC-20, no sale, no bridge. Avoids token-regulatory risk.</p>
+        <h3 style="margin-top:14px">6. Contract-enforced revenue</h3>
+        <p>5% fee taken by contract at settlement. No invoicing.</p>
+        <h3 style="margin-top:14px">7. Honest labeling</h3>
+        <p>Design-only work is labeled design-only. Trust through transparency.</p>
+        <h3 style="margin-top:14px">8. Adversarial by design</h3>
+        <p>Default posture is "prove it," not "trust me."</p>
+      </div>
+    </div>
+    <div class="slide-number">11 / 12</div>
+  </div>
+
+  <!-- 12 Roadmap -->
+  <div class="slide">
+    <div class="eyebrow">Roadmap</div>
+    <h1 class="slide-title">Phase 3 NOW. Mainnet next. Scale after.</h1>
+    <p class="subtitle">Colosseum hackathon MVP is live. The funded path is mainnet, then scale.</p>
+    <div class="grid3">
+      <div class="card">
+        <h3>Phase 3 — NOW</h3>
+        <p>HMC / leapfrog. v2 arena. Solana port completion. Genesis sponsor cohort.</p>
+      </div>
+      <div class="card">
+        <h3>Phase 4 — Mainnet</h3>
+        <p>External audit. Legal entity. Funded multisig deployer. Capped mainnet deployment.</p>
+      </div>
+      <div class="card">
+        <h3>Phase 5 — Scale</h3>
+        <p>Enterprise contracts. Cross-chain reputation. Compliance-grade audits. Global agent hiring rail.</p>
+      </div>
+    </div>
+    <p class="footnote">Solo builder: Otema Andrew. Funding order: audit → legal → sponsors → mainnet → scale. Ask the founder for terms.</p>
+    <div class="slide-number">12 / 12</div>
+  </div>
+
+</body>
+</html>

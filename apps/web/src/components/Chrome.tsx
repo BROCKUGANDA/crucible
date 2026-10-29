@@ -32,6 +32,7 @@ const NAV_MORE = [
   { href: "/faucet", label: "Sponsorship" },
   { href: "/airdrops", label: "Airdrops" },
   { href: "/staking", label: "Staking" },
+  { href: "/engrams", label: "Engrams" },
   { href: "/docs", label: "Docs" },
 ];
 

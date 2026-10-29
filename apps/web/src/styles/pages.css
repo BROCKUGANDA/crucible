@@ -177,3 +177,41 @@
   margin-top: var(--s-3);
   flex-wrap: wrap;
 }
+
+/*
+ * The money-sound switch, in the header beside the voice control.
+ *
+ * It is quiet on purpose: an un-muted audio control that shouts is a control visitors turn off
+ * out of spite. The state is carried by the glyph and the accent border, so it reads at a glance
+ * without colour being the only signal (the accessibility rule this site keeps to).
+ */
+.sound-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: 0.3rem 0.6rem;
+  border: 1px solid var(--bg2);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--dim);
+  font: inherit;
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.sound-toggle__mark {
+  font-size: 0.95rem;
+  line-height: 1;
+}
+
+.sound-toggle--on {
+  color: var(--text);
+  border-color: var(--gold);
+}
+
+.sound-toggle:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}

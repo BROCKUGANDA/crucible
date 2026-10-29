@@ -6,6 +6,7 @@ import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 
 import { Chrome, Quenching, SignalLost, TxLink, TxStates } from "@/components/Chrome";
 import { TxSheetStatus } from "@/components/TxSheetStatus";
 import { BreakPanel } from "@/components/BreakPanel";
+import { MoneyTreesChip } from "@/components/MoneyTreesChip";
 import { useSnapshot } from "@/lib/useSnapshot";
 import { API_BASE } from "@/lib/apiBase";
 import {
@@ -253,6 +254,9 @@ export default function TrialDetailPage() {
                     ? "Broken. The skeptic's proof held. Bond split: 30% to the skeptic, 70% to the treasury. Sponsor refunded."
                     : "Reclaimed. No run arrived before the deadline. The reward went home; the agent's bond went back."}
               </p>
+              {/* Gate 434: the celebration is the paid verdict, so the chip asks for the paid
+                  verdict. On a slash or a refund `settled` is false and it renders nothing. */}
+              <MoneyTreesChip settled={trial.verdict === "paid"} />
             </div>
           ) : trial.status === "challenged" ? (
             <p className="hint hint--block">
