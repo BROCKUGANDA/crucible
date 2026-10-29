@@ -130,8 +130,19 @@ let now = () => Date.now();
  *
  * Exported for the same reason `buildContext` is: one brain, one prompt, one place
  * where the refusal to answer an empty question lives.
+ *
+ * `signal` lets the caller stop the request. The speech host uses it to abandon a
+ * turn the visitor has already answered again: the provider call is torn down
+ * rather than left running to produce an answer nobody wants. The timeout is
+ * composed with it, so a call that is neither interrupted nor timed out still
+ * cannot hang.
  */
-export async function askLLM(config: FrenchyBrain, prompt: string, history: { role: "user" | "assistant"; content: string }[]): Promise<string> {
+export async function askLLM(
+  config: FrenchyBrain,
+  prompt: string,
+  history: { role: "user" | "assistant"; content: string }[],
+  signal?: AbortSignal,
+): Promise<string> {
   const baseUrl = (config.baseUrl ?? "https://api.openai.com/v1").replace(/\/+$/, "");
   const url = `${baseUrl}/chat/completions`;
 
@@ -153,7 +164,9 @@ export async function askLLM(config: FrenchyBrain, prompt: string, history: { ro
       max_tokens: 300,
       temperature: 0.7,
     }),
-    signal: AbortSignal.timeout(15_000),
+    signal: signal
+      ? AbortSignal.any([signal, AbortSignal.timeout(15_000)])
+      : AbortSignal.timeout(15_000),
   });
 
   if (!res.ok) {
@@ -179,8 +192,14 @@ export async function askLLM(config: FrenchyBrain, prompt: string, history: { ro
  * The bytes are returned rather than a `Blob` because the speech-to-speech host
  * needs the length of the audio as a number and the audio itself as a payload, and
  * two shapes of the same call is two places for the provider's request to drift.
+ *
+ * `signal` stops the synthesis when the turn that asked for it has been superseded.
  */
-export async function speakAudio(config: FrenchyTts, text: string): Promise<Uint8Array> {
+export async function speakAudio(
+  config: FrenchyTts,
+  text: string,
+  signal?: AbortSignal,
+): Promise<Uint8Array> {
   const baseUrl = (config.baseUrl ?? "https://api.elevenlabs.io").replace(/\/+$/, "");
   const url = `${baseUrl}/v1/text-to-speech/${encodeURIComponent(config.voiceId)}/stream`;
 
@@ -196,7 +215,9 @@ export async function speakAudio(config: FrenchyTts, text: string): Promise<Uint
       model_id: config.modelId ?? "eleven_multilingual_v4",
       voice_settings: { stability: 0.55, style: 0.35, speed: 0.95 },
     }),
-    signal: AbortSignal.timeout(15_000),
+    signal: signal
+      ? AbortSignal.any([signal, AbortSignal.timeout(15_000)])
+      : AbortSignal.timeout(15_000),
   });
 
   if (!res.ok || !res.body) {

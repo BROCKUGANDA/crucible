@@ -151,14 +151,16 @@ describe("the host conversation", () => {
     expect(await fetchStsStatus("http://api.test", refusing)).toBeNull();
   });
 
-  it("opens a session and returns the host's id", async () => {
+  it("opens a session and returns the token that owns it", async () => {
     const fetchImpl = vi.fn(async () =>
-      new Response(JSON.stringify({ sessionId: "abc" }), {
+      new Response(JSON.stringify({ token: "the-token", ref: "abcd1234", phase: "idle" }), {
         status: 201,
         headers: { "content-type": "application/json" },
       }),
     ) as unknown as typeof fetch;
-    expect(await openStsSession("http://api.test", { fetchImpl })).toBe("abc");
+    const session = await openStsSession("http://api.test", { fetchImpl });
+    expect(session?.token).toBe("the-token");
+    expect(session?.ref).toBe("abcd1234");
   });
 
   it("returns null when the host will not open a session", async () => {
@@ -166,16 +168,27 @@ describe("the host conversation", () => {
     expect(await openStsSession("http://api.test", { fetchImpl: refusing })).toBeNull();
   });
 
-  it("reads a session back", async () => {
-    const fetchImpl = vi.fn(async () =>
-      new Response(JSON.stringify({ sessionId: "abc", phase: "thinking", turns: [turn()] }), {
+  it("reads a session back, with the token in a header and not in the URL", async () => {
+    let seen: { url: string; token: string | undefined } | null = null;
+    const fetchImpl = (async (url: string, init: RequestInit) => {
+      seen = {
+        url: String(url),
+        token: (init.headers as Record<string, string>)["x-crucible-session"],
+      };
+      return new Response(JSON.stringify({ ref: "abcd1234", phase: "thinking", turns: [turn()] }), {
         status: 200,
         headers: { "content-type": "application/json" },
-      }),
-    ) as unknown as typeof fetch;
-    const view = await readStsSession("http://api.test", "abc", fetchImpl);
+      });
+    }) as unknown as typeof fetch;
+    const view = await readStsSession("http://api.test", "the-token", fetchImpl);
     expect(view?.phase).toBe("thinking");
     expect(view?.turns).toHaveLength(1);
+    // The credential travels in the header, and the URL carries no session
+    // reference at all — a path segment would land in an access log, in the
+    // browser's history and in a Referer.
+    expect(seen!.token).toBe("the-token");
+    expect(seen!.url).toBe("http://api.test/sts/session");
+    expect(seen!.url).not.toContain("the-token");
   });
 
   it("returns null when the session cannot be read", async () => {
@@ -183,10 +196,15 @@ describe("the host conversation", () => {
     expect(await readStsSession("http://api.test", "abc", refusing)).toBeNull();
   });
 
-  it("sends the audio with the type it arrived as", async () => {
-    let seen: { type: string; body: unknown } | null = null;
-    const fetchImpl = (async (_url: string, init: RequestInit) => {
-      seen = { type: (init.headers as Record<string, string>)["content-type"]!, body: init.body };
+  it("sends the audio with the type it arrived as, and the token in a header", async () => {
+    let seen: { type: string; body: unknown; token: string | undefined; url: string } | null = null;
+    const fetchImpl = (async (url: string, init: RequestInit) => {
+      seen = {
+        url: String(url),
+        type: (init.headers as Record<string, string>)["content-type"]!,
+        token: (init.headers as Record<string, string>)["x-crucible-session"],
+        body: init.body,
+      };
       return new Response(
         JSON.stringify({
           transcript: "hello",
@@ -201,10 +219,13 @@ describe("the host conversation", () => {
     }) as unknown as typeof fetch;
 
     const blob = new Blob([new Uint8Array([1, 2, 3])], { type: "audio/webm" });
-    const result = await sendStsTurn("http://api.test", "abc", blob, fetchImpl);
+    const result = await sendStsTurn("http://api.test", "the-token", blob, { fetchImpl });
     expect(result?.reply).toBe("good day");
     expect(seen!.type).toBe("audio/webm");
     expect(seen!.body).toBe(blob);
+    expect(seen!.token).toBe("the-token");
+    expect(seen!.url).toBe("http://api.test/sts/turn");
+    expect(seen!.url).not.toContain("the-token");
   });
 
   it("keeps the voice failure in the answer instead of swallowing it", async () => {
@@ -220,10 +241,36 @@ describe("the host conversation", () => {
         }),
         { status: 200, headers: { "content-type": "application/json" } },
       )) as unknown as typeof fetch;
-    const result = await sendStsTurn("http://api.test", "abc", new Blob(), fetchImpl);
+    const result = await sendStsTurn("http://api.test", "abc", new Blob(), { fetchImpl });
     expect(result?.voiceError).toBe("the voice failed");
     expect(result?.reply).toBe("good day");
     expect(audioBlob(result)).toBeNull();
+  });
+
+  it("reports a superseded turn as interrupted, not as a failure", async () => {
+    const fetchImpl = (async () =>
+      new Response(JSON.stringify({ interrupted: true, turns: [] }), {
+        status: 409,
+        headers: { "content-type": "application/json" },
+      })) as unknown as typeof fetch;
+    const result = await sendStsTurn("http://api.test", "abc", new Blob(), { fetchImpl });
+    expect(result?.interrupted).toBe(true);
+    expect(result?.reply).toBeNull();
+  });
+
+  it("reports an aborted turn as interrupted rather than as a transport failure", async () => {
+    // The visitor answered again: the request is abandoned on purpose, and the
+    // answer nobody wants is not played.
+    const controller = new AbortController();
+    const fetchImpl = (async (_url: string, _init: RequestInit) => {
+      controller.abort();
+      throw new DOMException("The operation was aborted.", "AbortError");
+    }) as unknown as typeof fetch;
+    const result = await sendStsTurn("http://api.test", "abc", new Blob(), {
+      fetchImpl,
+      signal: controller.signal,
+    });
+    expect(result?.interrupted).toBe(true);
   });
 
   it("turns the returned audio into something a browser can play", () => {
@@ -232,6 +279,7 @@ describe("the host conversation", () => {
       reply: null,
       audio: { contentType: "audio/mpeg", bytes: 2, base64: "AQI=" },
       voiceError: null,
+      interrupted: false,
       phase: "idle",
       turns: [],
     });

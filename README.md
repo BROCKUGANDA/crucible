@@ -40,18 +40,18 @@ Open ──claim──> Assigned ──submitRun──> Judging ──fileBreak�
    settlement transaction and the identity registration that earned it. The
    contracts are in `crucible-contracts/contracts` with 333 tests (329 passed; 4 of them ERC-8004
    fork tests, which skip without an RPC). The workspace suites
-   add 2202 more - web 435, grader 309, api 286, smith 224, forge-runner 188 (6 of them need a
+   add 2212 more - web 437, grader 309, api 294, smith 224, forge-runner 188 (6 of them need a
     Docker daemon and skip without one), indexer 154, agent-security 153, cidstore 106, juror 84,
     keeper 48, datasets 50, argus 45, eval 36, warden 24, funder 24, crypto 12, frame 12, registry
     12 — and `npm test` runs all of them plus the
    Foundry suite; the contracts half needs Foundry (`forge test`), which the seed image runs on a
    machine without a local forge. The edge suite (`npm run test:edge`, 15 tests over the RPC method
    gate, its live probe and the installer that deploys them) is not a workspace, so it rides
-   `npm run verify:all` and CI as its own step. Counted per workspace on 2026-10-29: **2202 passed,
+   `npm run verify:all` and CI as its own step. Counted per workspace on 2026-10-29: **2212 passed,
     6 skipped**
     across the eighteen TypeScript workspaces, **15 passed** at the edge and **329 passed, 4 skipped**
-    in Foundry — 2546
-    passing, 2556 counted. Run `npm run verify:all` to reproduce them.
+    in Foundry — 2556
+    passing, 2566 counted. Run `npm run verify:all` to reproduce them.
 4. Replay the whole loop against a running chain — register, post, claim,
    runner-signed runs, a break that Argus slashes, and the permissionless quench
    after the window really closes — with `crucible-contracts/script/GoldenPath.s.sol`:
@@ -382,8 +382,8 @@ npm run demo                # anvil + deploy + the whole loop, settles a real ve
 npm run agent:live          # the real agent against a real model in a real sandbox
 ```
 
-**2546 tests pass, 10 skipped** — 2202 TypeScript passed with 6 skipped, 15 at the edge, and 329
-Foundry passed with 4 skipped, so 2556 counted. Measured per workspace on 2026-10-29 on the working
+**2556 tests pass, 10 skipped** — 2212 TypeScript passed with 6 skipped, 15 at the edge, and 329
+Foundry passed with 4 skipped, so 2566 counted. Measured per workspace on 2026-10-29 on the working
 tree; the six skips are `forge-runner` tests that ask for a Docker daemon, the four are the fork
 tests below. The edge's 15 are `node --test` over `deploy/edge`, not a workspace: 6 refusals at the
 RPC gate, 3 on the probe that asks the live endpoint those methods (one of them a negative control
@@ -478,9 +478,11 @@ Frenchy has three halves, and the site shows each only when its own server side 
   sends it to the LLM behind `POST /frenchy`. The microphone and the speech-to-text are here, in
   this half, and they were added deliberately: the site asks a visitor for the microphone.
 - **A recorded conversation** — `/voice`, the voice room: the same brain and the same voice, with
-  the **transcription on the host** and every turn written down. `POST /sts/session/:id/turn`
-  takes an utterance and returns the words and the speech; the turn monitor reads the host's own
-  ledger — who spoke, what was said, and what each of the three steps cost. ADR-0018.
+  the **transcription on the host** and every turn written down. `POST /sts/turn` takes an
+  utterance and returns the words and the speech; the turn monitor reads the host's own
+  ledger — who spoke, what was said, and what each of the three steps cost. The session's
+  credential is a bearer token in a header, never in a URL, and the host keeps only its
+  digest. ADR-0018.
 
 The third half differs from the second in exactly one thing: **whether the turns are kept.** The
 panel transcribes in the browser and writes nothing down; the voice room transcribes on the host

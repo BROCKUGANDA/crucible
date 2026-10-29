@@ -57,6 +57,8 @@ export interface StsTurnResult {
   reply: string | null;
   audio: { contentType: string; bytes: number; base64: string } | null;
   voiceError: string | null;
+  /** The turn was superseded by a newer one, so there is no answer to show. */
+  interrupted: boolean;
   phase: string;
   turns: StsTurn[];
 }
@@ -195,22 +197,58 @@ export async function fetchStsStatus(apiBase: string, fetchImpl?: Fetcher): Prom
   }
 }
 
-/** Open a conversation. The id is the host's, and it is what the ledger is keyed by. */
+/**
+ * The header the session token travels in.
+ *
+ * The same name the API reads. It is a header rather than a path segment because
+ * **a path segment travels**: it lands in an access log, in the browser's history
+ * and in a `Referer` when the page links anywhere. A credential in any of those is
+ * a credential in three places it was not meant to be.
+ */
+export const STS_TOKEN_HEADER = "x-crucible-session";
+
+/**
+ * The conversation's credential.
+ *
+ * It is a bearer token: whoever holds it may read that conversation. The API holds
+ * only its digest, so a memory dump of the host is not a list of conversations.
+ */
+export interface StsSession {
+  token: string;
+  /** A short public handle for the panel: not a credential. */
+  ref: string;
+  phase: string;
+  startedAt: number;
+  turns: StsTurn[];
+}
+
+/**
+ * Open a conversation.
+ *
+ * The token is returned **once**. There is no route that hands it out again, so it
+ * is kept in this tab's memory and nowhere else.
+ */
 export async function openStsSession(
   apiBase: string,
   options: { wallet?: string | null; fetchImpl?: Fetcher } = {},
-): Promise<string | null> {
-  const fetchImpl = options.fetchImpl;
+): Promise<StsSession | null> {
+  const fetchImpl = resolveFetch(options.fetchImpl);
   try {
-    const res = await resolveFetch(fetchImpl)(`${apiBase}/sts/session`, {
+    const res = await fetchImpl(`${apiBase}/sts/session`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(options.wallet ? { wallet: options.wallet } : {}),
     });
     if (!res.ok) return null;
-    const body = (await res.json().catch(() => null)) as { sessionId?: unknown } | null;
-    if (!body || typeof body.sessionId !== "string" || body.sessionId.length === 0) return null;
-    return body.sessionId;
+    const body = (await res.json().catch(() => null)) as Partial<StsSession> | null;
+    if (!body || typeof body.token !== "string" || body.token.length === 0) return null;
+    return {
+      token: body.token,
+      ref: typeof body.ref === "string" ? body.ref : "",
+      phase: typeof body.phase === "string" ? body.phase : "idle",
+      startedAt: typeof body.startedAt === "number" ? body.startedAt : 0,
+      turns: Array.isArray(body.turns) ? body.turns : [],
+    };
   } catch {
     return null;
   }
@@ -219,11 +257,13 @@ export async function openStsSession(
 /** Read the session: where it is, and what has been said in it. */
 export async function readStsSession(
   apiBase: string,
-  sessionId: string,
+  token: string,
   fetchImpl?: Fetcher,
 ): Promise<StsSessionView | null> {
   try {
-    const res = await resolveFetch(fetchImpl)(`${apiBase}/sts/session/${encodeURIComponent(sessionId)}`);
+    const res = await resolveFetch(fetchImpl)(`${apiBase}/sts/session`, {
+      headers: { [STS_TOKEN_HEADER]: token },
+    });
     if (!res.ok) return null;
     const body = (await res.json().catch(() => null)) as StsSessionView | null;
     if (!body || !Array.isArray(body.turns)) return null;
@@ -238,31 +278,65 @@ export async function readStsSession(
  *
  * The audio goes up as the bytes it is, with the type it arrived as, so the host
  * can hand them to the transcription provider without guessing a format.
+ *
+ * `signal` supersedes a turn that is already running: the caller aborts, and the
+ * host stops the work rather than finishing an answer nobody is waiting for.
  */
 export async function sendStsTurn(
   apiBase: string,
-  sessionId: string,
+  token: string,
   audio: Blob,
-  fetchImpl?: Fetcher,
+  options: { fetchImpl?: Fetcher; signal?: AbortSignal } = {},
 ): Promise<StsTurnResult | null> {
-  const doFetch = resolveFetch(fetchImpl);
+  const doFetch = resolveFetch(options.fetchImpl);
   try {
-    const res = await doFetch(`${apiBase}/sts/session/${encodeURIComponent(sessionId)}/turn`, {
+    const res = await doFetch(`${apiBase}/sts/turn`, {
       method: "POST",
-      headers: { "content-type": audio.type || "audio/webm" },
+      headers: {
+        "content-type": audio.type || "audio/webm",
+        [STS_TOKEN_HEADER]: token,
+      },
       body: audio,
+      signal: options.signal,
     });
-    const body = (await res.json().catch(() => null)) as Partial<StsTurnResult> | null;
+    const body = (await res.json().catch(() => null)) as Partial<StsTurnResult> & {
+      interrupted?: boolean;
+    } | null;
     if (!body) return null;
+    if (body.interrupted) {
+      return {
+        transcript: null,
+        reply: null,
+        audio: null,
+        voiceError: null,
+        interrupted: true,
+        phase: body.phase ?? "idle",
+        turns: Array.isArray(body.turns) ? body.turns : [],
+      };
+    }
     return {
       transcript: body.transcript ?? null,
       reply: body.reply ?? null,
       audio: body.audio ?? null,
       voiceError: body.voiceError ?? null,
+      interrupted: false,
       phase: body.phase ?? "idle",
       turns: Array.isArray(body.turns) ? body.turns : [],
     };
-  } catch {
+  } catch (err) {
+    // An abort is the caller superseding the turn, not a failure: the host is
+    // told by the next turn, and the answer nobody wanted is not played.
+    if (options.signal?.aborted) {
+      return {
+        transcript: null,
+        reply: null,
+        audio: null,
+        voiceError: null,
+        interrupted: true,
+        phase: "idle",
+        turns: [],
+      };
+    }
     return null;
   }
 }

@@ -26,9 +26,12 @@ which is what the voice room in the web app uses.
   browser never receives the key.
 - `GET /sts/status` → `{configured, stt, brain, tts, model}`. The voice room
   says which piece is missing rather than a flat "not configured".
-- `POST /sts/session` opens a conversation; `GET /sts/session/:id` reads it;
-  `POST /sts/session/:id/turn` takes **audio** and returns the words and the
-  speech. There is no socket: the exchange is one request and one response.
+- `POST /sts/session` opens a conversation and returns the **token** that owns
+  it — once. `GET /sts/session` reads it back and `POST /sts/turn` sends one
+  utterance; both carry the token in the `x-crucible-session` header, and
+  **neither URL carries an identifier**. The host keeps only the token's digest.
+- The exchange is one request and one response: **there is no socket**. The
+  monitor polls `GET /sts/session` for the phase while a turn runs.
 - The **caller brings audio, not words.** The host transcribes it with our key,
   the brain composes the answer, and only the model's words reach the
   synthesiser — so the boundary below is kept from the other side rather than
@@ -37,6 +40,8 @@ which is what the voice room in the web app uses.
   refuses still returns the transcript and the reply with the failure named.
 - The **turn monitor** is the host's own ledger, written by the party that did
   the work. A step that did not finish carries `null`, never `0`.
+- **A turn that is superseded is `interrupted`, not `failed`.** A visitor who
+  answers again stops the turn in flight, and the ledger says so.
 - `apps/web/src/app/voice/page.tsx` is the page; `TurnMonitor.tsx` is the panel.
 
 ## Configure

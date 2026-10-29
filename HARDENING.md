@@ -1375,9 +1375,21 @@ guards is the decoration it exists to detect.
   panel that printed `0 ms` for it would be reporting a measurement that was never
   taken. The host publishes the phase it is in while a turn runs, and the client
   polls it over ordinary HTTP: **no second SSE stream and no WebSocket**, so the
-  security whitepaper's never-list still holds. **Measured:** 26 API tests and 19
-  client tests, with **15 and 7 mutations** proven red and restored. **The
-  microphone is open to this origin, and that is a correction**: the policy said
+  security whitepaper's never-list still holds. **Measured:** 34 API tests and 21
+  client tests, with **15 and 7 mutations** proven red and restored for the host
+  and the client, and **8 more** for the credential and the superseding.
+  **The credential does not travel in a URL**: the session is opened once and the
+  token — 256 bits, returned once — goes in a header, because a path segment
+  lands in an access log, in the browser's history and in a `Referer`; the host
+  keeps only its `sha256`, so a memory dump of the process is not a list of
+  conversations; and the routes carry no identifier at all. It is still a
+  **bearer** credential — whoever holds it may read that conversation, and it is
+  not a signature, because the voice room has to work for a visitor who has not
+  connected a wallet. **A turn the visitor answered over is `interrupted`, not
+  `failed`**: the provider calls are torn down through an abort signal, and
+  closing a turn is idempotent so a late handler cannot reopen a turn a newer
+  turn has already superseded. **The microphone is open to this origin, and that
+  is a correction**: the policy said
   `microphone=()` while the header's Frenchy control has asked for the microphone
   since 2026-10-28, so the browser refused it before the visitor was prompted and
   the button could not work — and the refusal told the visitor to change their
@@ -1387,10 +1399,11 @@ guards is the decoration it exists to detect.
   microphone was closed everywhere and could be opened on one route; it could not,
   because the header's panel is global and a route-scoped exception would have
   left the shipped control dead on every page but one, so the policy was
-  corrected instead. **What this does not close:** the session id
-  is the only credential, so anyone holding it can read that conversation; the
+  corrected instead. **What this does not close:** the session credential is a
+  bearer token, so anyone holding it may read that conversation; the
   visitor's speech is text on our key before it is text anywhere else; a turn is a
-  request and not a stream, so there is no barge-in; and no browser has spoken
+  request and not a stream, so interrupting an answer mid-sentence is not
+  shipped; and no browser has spoken
   through this host, because the deployment has no ElevenLabs key.
 
 - **Fifteen variables the API reads were passed to no container, so a shipped feature

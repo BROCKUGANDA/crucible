@@ -708,7 +708,7 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
    * actually received as well, because a `chunked` body announces no length.
    */
   const bodyCeilings: Record<string, number> = {
-    "/sts/session/": STS_MAX_AUDIO_BYTES,
+    "/sts/": STS_MAX_AUDIO_BYTES,
   };
   app.use("*", bodyLimit(security, bodyCeilings));
 
@@ -719,7 +719,7 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
    * 504 for work that was about to finish. The ceiling is still a ceiling.
    */
   const pathTimeouts: Record<string, number> = {
-    "/sts/session/": STS_TURN_TIMEOUT_MS,
+    "/sts/": STS_TURN_TIMEOUT_MS,
   };
   app.use("*", requestTimeout(security, pathTimeouts));
 
@@ -777,7 +777,7 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
    */
   if (opts.stsRateLimit !== false) {
     app.use(
-      "/sts/session/:id/turn",
+      "/sts/turn",
       rateLimit({
         limit: 20,
         windowMs: 60_000,

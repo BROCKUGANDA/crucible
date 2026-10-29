@@ -11,6 +11,7 @@ import {
   openStsSession,
   readStsSession,
   sendStsTurn,
+  type StsSession,
   type StsStatus,
   type StsTurn,
 } from "@/lib/sts";
@@ -43,13 +44,15 @@ export default function VoicePage() {
   const { address, isConnected } = useAccount();
   const [status, setStatus] = useState<StsStatus | null>(null);
   const [phase, setPhase] = useState<Phase>("idle");
-  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [session, setSession] = useState<StsSession | null>(null);
   const [turns, setTurns] = useState<StsTurn[]>([]);
   const [hostPhase, setHostPhase] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const recorder = useRef<ReturnType<typeof createStsRecorder> | null>(null);
   const audio = useRef<HTMLAudioElement | null>(null);
   const polling = useRef<ReturnType<typeof setInterval> | null>(null);
+  /** The turn in flight, and the handle that supersedes it. */
+  const inflight = useRef<AbortController | null>(null);
 
   /**
    * What the host can do.
@@ -86,6 +89,7 @@ export default function VoicePage() {
   useEffect(() => {
     return () => {
       stopPolling();
+      inflight.current?.abort();
       recorder.current?.stop();
     };
   }, [stopPolling]);
@@ -98,11 +102,11 @@ export default function VoicePage() {
    * and not as a client that lost track.
    */
   const startPolling = useCallback(
-    (id: string) => {
+    (token: string) => {
       stopPolling();
       polling.current = setInterval(() => {
         void (async () => {
-          const view = await readStsSession(API_BASE, id);
+          const view = await readStsSession(API_BASE, token);
           if (!view) return;
           setHostPhase(view.phase);
           setTurns(view.turns);
@@ -114,19 +118,30 @@ export default function VoicePage() {
 
   async function beginRecording() {
     setError(null);
+
+    // **A new turn supersedes the one in flight.** The visitor answered again, so
+    // the answer to the previous words is not the answer they want: the request is
+    // abandoned here and the host is told by the next turn.
+    if (inflight.current) {
+      inflight.current.abort();
+      inflight.current = null;
+      stopPolling();
+    }
+
     if (!status?.configured) {
       setError("This host cannot speak yet: it has no transcription, no brain or no voice.");
       return;
     }
 
-    let id = sessionId;
-    if (!id) {
-      id = await openStsSession(API_BASE, { wallet: address ?? null });
-      if (!id) {
+    let current = session;
+    if (!current) {
+      const opened = await openStsSession(API_BASE, { wallet: address ?? null });
+      if (!opened) {
         setError("The host would not open a conversation. Nothing was recorded.");
         return;
       }
-      setSessionId(id);
+      current = opened;
+      setSession(opened);
     }
 
     if (!recorder.current) recorder.current = createStsRecorder();
@@ -141,8 +156,7 @@ export default function VoicePage() {
   async function sendRecording() {
     const current = recorder.current;
     if (!current) return;
-    const id = sessionId;
-    if (!id) return;
+    if (!session) return;
 
     const blob = await current.stop();
     setPhase("thinking");
@@ -152,12 +166,25 @@ export default function VoicePage() {
       return;
     }
 
-    startPolling(id);
-    const result = await sendStsTurn(API_BASE, id, blob);
+    const controller = new AbortController();
+    inflight.current = controller;
+    startPolling(session.token);
+    const result = await sendStsTurn(API_BASE, session.token, blob, { signal: controller.signal });
     stopPolling();
+    if (inflight.current === controller) inflight.current = null;
 
     if (!result) {
       setError("The host did not answer. The turn was not recorded.");
+      setPhase("ready");
+      return;
+    }
+
+    if (result.interrupted) {
+      // Superseded by a newer turn: there is no answer to show, and the panel
+      // says so rather than showing silence.
+      setTurns(result.turns);
+      setHostPhase("idle");
+      setError("That turn was superseded — Frenchy was already answering something else.");
       setPhase("ready");
       return;
     }
@@ -242,13 +269,23 @@ export default function VoicePage() {
             <button
               className="btn btn-primary"
               type="button"
-              disabled={busy || !status?.configured}
+              disabled={!status?.configured}
               onClick={() => void beginRecording()}
+              title={
+                busy
+                  ? "Answer again — this supersedes the turn Frenchy is still on."
+                  : "Your browser will ask for the microphone before anything is recorded."
+              }
             >
-              {busy ? "Frenchy is thinking…" : "Talk to Frenchy"}
+              {busy ? "Answer again" : "Talk to Frenchy"}
             </button>
           )}
         </div>
+        {busy ? (
+          <p className="hint" role="status">
+            Frenchy is thinking. Answer again to supersede this turn.
+          </p>
+        ) : null}
         {recording ? (
           <p className="hint" role="status">
             Recording. Press “Send it” when you are done.

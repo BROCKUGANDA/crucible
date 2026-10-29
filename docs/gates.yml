@@ -1472,6 +1472,12 @@
 - id: 911
   title: The turn monitor is the host's record, with every cost measured (the API writes the ledger - who spoke, what was said, what each of the three steps cost - and a step that did not finish carries null rather than 0, so a panel can never print a duration it does not have; the host publishes the phase it is in while a turn runs, and the client polls it over ordinary HTTP rather than opening a second stream, which is why the whitepaper's never-list of second SSE streams and WebSockets still holds)
   frameworks: [soc2]
+- id: 914
+  title: The conversation's credential does not travel in a URL (the session is opened once and the token is returned once - 256 bits of randomness in a header, never in a path, because a path segment lands in an access log, in the browser's history and in a Referer; the host keeps only sha256 of it, so a memory dump of the process is not a list of conversations; the routes carry no identifier at all - POST /sts/session, GET /sts/session, POST /sts/turn)
+  frameworks: [soc2]
+- id: 915
+  title: A turn the visitor answered over is interrupted, not failed (a turn that arrives while another is running tears the running one's provider calls down through an abort signal and records it as interrupted, because a failed turn is the host's problem and an interrupted one is the visitor changing their mind; closing a turn is idempotent, so a late handler cannot reopen a turn a newer turn has already superseded)
+  frameworks: [soc2]
 - id: 912
   title: The microphone policy matches the product, and the speech host is bounded (Permissions-Policy said microphone=() while the header's Frenchy control has asked for the microphone since 2026-10-28, so the browser refused it before the visitor was prompted and the button could not work; it is now microphone=(self) on every page - the narrowest thing that lets the shipped control work, and the browser still asks the visitor; the body ceiling is per path so the 256 KiB of an utterance does not raise the limit for every route, and the turn is bounded at 20 a minute, 40 turns a session, 50 sessions a host and a 30-minute idle TTL)
   frameworks: [owasp-top10, soc2]
