@@ -87,7 +87,7 @@ export default function TrialsPage() {
         // A filter that matches nothing is not a cold forge — the trials exist, they are
         // simply elsewhere. The clear-the-filter button is a real action here, so a reader is
         // never stranded on an empty tab with no way back to the whole board.
-        <div className="surface cold-forge">
+        <div className="surface cold-forge" id="trial-table">
           <p className="cold-forge__line">{emptyFor(active)}</p>
           <button
             type="button"

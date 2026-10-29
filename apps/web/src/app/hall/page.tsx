@@ -46,7 +46,7 @@ export default function HallPage() {
       ) : null}
 
       {data ? (
-        <div className="hall-rows">
+        <div className="hall-rows" id="hall-list">
           {data.hall.map((e, i) => (
             <HallRow key={e.agentId} entry={e} rank={i + 1} />
           ))}

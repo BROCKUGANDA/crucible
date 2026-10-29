@@ -246,7 +246,7 @@ export default function EngramsPage() {
           {openedEngrams.length > 0 && (
             <>
               <h2 className="section-title">Decrypted</h2>
-              <ul className="stack">
+              <ul className="stack" id="engram-vault">
                 {openedEngrams.map((eng) => (
                   <li key={eng.id} className="surface detail-panel">
                     <div className="engram-row">

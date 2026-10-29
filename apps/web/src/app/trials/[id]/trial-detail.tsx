@@ -153,7 +153,7 @@ export function TrialDetail({ id }: { id: number }) {
       {tab === 0 ? (
         <div
           role="tabpanel"
-          id="trial-panel-The charge"
+          id="trial-charge"
           aria-labelledby="trial-tab-The charge"
           className="surface detail-panel"
         >

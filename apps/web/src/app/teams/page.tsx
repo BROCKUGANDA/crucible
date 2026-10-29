@@ -98,7 +98,7 @@ export default function TeamsPage() {
     <Chrome>
       <p className="kicker">Attribution beside the escrow</p>
       <h1 className="page-title">Teams</h1>
-      <p className="hint hint--block">
+      <p className="hint hint--block" id="teams-summary">
         {view.rows.length === 0 ? (
           <>This host indexes a team ledger and it holds no teams yet.</>
         ) : (

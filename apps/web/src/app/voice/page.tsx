@@ -242,7 +242,7 @@ export default function VoicePage() {
         </p>
       ) : null}
 
-      <div className="surface detail-panel">
+      <div className="surface detail-panel" id="voice-room">
         <p className="kv">
           <span className="kv__key">Transcription</span>
           <span>{status?.stt ? (status.model ?? "on") : "—"}</span>

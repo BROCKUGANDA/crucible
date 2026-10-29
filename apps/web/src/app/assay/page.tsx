@@ -121,7 +121,7 @@ export default function AssayPage() {
         </p>
       ) : null}
 
-      <section className="surface detail-panel assay-verdict" aria-label="Current reading">
+      <section className="surface detail-panel assay-verdict" id="assay-panel" aria-label="Current reading">
         <h2 className="section-title section-title--tight">Where the reading stands</h2>
         <p className="mono assay-verdict__reach" data-tone={view.reachTone}>
           {view.reach}

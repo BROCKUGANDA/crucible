@@ -41,7 +41,7 @@ export default function ClaimsPage() {
         deployment does not measure says so instead of showing a score.
       </p>
 
-      <div className="surface detail-panel">
+      <div className="surface detail-panel" id="claim-matrix">
         {CLAIMS.map((claim) => (
           <section key={claim.id} className="row" aria-label={`Claim ${claim.id}`}>
             <span className="chip" data-tone={TONE[claim.status]}>
