@@ -1326,7 +1326,7 @@ guards is the decoration it exists to detect.
   `Sponsorship application: 0xabcdef… asked for 0.01 ETH and was refused (…)`; a
   stranger asking for the queue got 403. **Three mutations were proven and
   restored** - record nothing (5 of 12 tests red), do not deliver the notice (4
-  red), let every wallet be the owner (3 red) - and the web suite adds 13 tests
+  red), let every wallet be the owner (3 red) - and the web suite adds 15 tests
   over the reading of the host's answer, where "the queue is empty" and "the host
   could not answer" are kept apart. **What this does not close:** the owner gate
   compares an address the caller *claims*, so it is a demo gate and not a
@@ -1869,6 +1869,25 @@ much of the product's promise each one costs.
     Windows is a scanned, shared directory, so a passing full-tree run here is a weaker signal than it
     looks. Costed last because it costs no promise to a judge; it costs the next agent an hour of
     believing the product regressed.
+
+23. **The whole-tree gate on this box is red on wall-clock budgets, and the quantity each one
+    depends on is named here rather than the word "flaky".** Four separate runs of
+    `npm run verify:all` on 2026-10-29 were red, each time on a *different* test, and each time
+    outside the slice under test: the API's `passport.test.ts` timing out at vitest's 5,000 ms
+    default, the indexer's `mock-shape.test.ts` timing out at the same 5,000 ms, the datasets'
+    `sybil-labels.test.ts` timing out at the same 5,000 ms, and the API's `stream-latency.test.ts`
+    measuring 554 ms against a 400 ms budget for delivering a change to twenty SSE clients. **The
+    quantity is wall-clock under a saturated fan-out** - a dozen-plus concurrent vitest processes
+    on a Windows box that another agent is also running tests on - and each of the four passes in
+    isolation: the API workspace 282/282, the indexer's `mock-shape` 1/1, the datasets' sybil-labels
+    7/7, the juror's `state` 8/8. **The check that distinguishes the two stories is to re-run the
+    one workspace before believing a regression**, exactly as item 22 says for the durability test,
+    and the residue is the same residue: a green full-tree run on this box is a weaker signal than
+    it looks, because a 5-second budget is a statement about the machine and not about the code.
+    The slice that added the sponsorship queue was measured green on a whole-tree run on the same
+    day (`npm run verify:all` exit 0) before its last two web tests were added; the two API and
+    fifteen web tests it owns are green in every run. Nothing here is a money gate and nothing was
+    re-rolled for a green.
 
 Report a vulnerability as described in [`SECURITY.md`](SECURITY.md), not in a public issue.
  
