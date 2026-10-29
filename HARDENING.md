@@ -1448,6 +1448,54 @@ guards is the decoration it exists to detect.
   restores the vocabulary and layers the new semantic names additively, each bound
   to the arena colour it already means rather than to a new hue.
 
+- **Frenchy answers in depth, and she can act — and the action is checked against the site itself.**
+  She had two limits that were not the model's fault. The prompt said *"you answer in 3 spoken
+  sentences MAXIMUM"* and the voice route refused anything over 600 characters, so "she never goes
+  into detail" was the design working as written. And she could only talk: the brain returned
+  `{reply}`, a string, so there was no channel for an action at all.
+  **She now answers in three parts** — `spoken` (three sentences the voice can carry), `detail`
+  (the depth: the numbers, the lists, one line per item, which lands in the panel where it can be
+  *read*), and `action` (one of two verbs). The mouth and the screen are separate, which is the
+  usual division for a voice interface and the one that answers "she doesn't go into much detail"
+  without making the audio a paragraph. **She can now move the visitor**: `navigate` to a page, or
+  `point` at an element on it, and it happens *at the same time as the speech*. The rule that makes
+  this safe is one rule, in one place — `@crucible/site-index` — because the server and the browser
+  both have to refuse exactly what the other would refuse, and two copies of one rule are two
+  chances to disagree. A path that is not a page of this site, a point the page does not declare, a
+  verb that is not navigate or point, and a path without its leading slash are all **refused and
+  recorded**, never repaired into the nearest match: a navigation to the wrong page is worse than
+  no navigation, because the visitor is moved somewhere and told they were somewhere else.
+  **Two things this needed that the first design did not have.** The map the assistant acts on is
+  now **generated from the pages themselves** — every route declares a descriptor beside its own
+  page, and `scripts/site-index.ts` refuses to write a map that lies (a route with no descriptor, a
+  descriptor whose path disagrees with its route, or a point the page does not carry is an error) —
+  so Frenchy cannot send anyone to a page that does not exist, and the **Tour page** shows the same
+  map to a person. And **a signature outranks a redirect**: while a wallet signature is open she
+  speaks and *offers* the destination instead of taking it, because the wallet's dialog belongs to
+  the page that opened it and navigating underneath it would leave a confirmed transaction with no
+  receipt on screen.
+  **Measured, in a real browser against a real provider** (`meta/llama-3.2-11b-vision-instruct`,
+  the local API, the production build): asked "where is my money? take me there" on the Tour page,
+  she answered *"Your escrow is on the escrow page, split three ways: locked in trials, free stake,
+  and claimable. Let me take you there."*, the panel showed the three books under **IN DETAIL** with
+  a **Read it to me** button, the browser moved from `/tour` to `/escrow` **while she was still
+  speaking**, and the answer was still on the page she sent the visitor to. Asked "which trials are
+  open, and what is the fee?" she answered with both the fee laws (five percent for the v1 escrow,
+  fifteen for the v2 arena — two products, not one) and **did not move the visitor**, because a
+  question answerable where they stand gets no action.
+  **Four mutations were proven and restored**: dropping the page check (4 tests red), dropping the
+  point check (1 red), dropping the leading-slash check (1 red), and dropping the newline
+  normalisation (1 red). 31 API tests over the envelope and the brain, 23 over the index, 15 over
+  the browser's half.
+  **What this does not close:** the brain is still a model, and a model that ignores the envelope
+  falls back to plain text — the fallback is the old behaviour (the raw answer, cut to what the
+  voice can carry, with the whole of it in the panel), so a bad answer is a worse answer and not a
+  broken one. The **signature rule only covers `useTx`**, so a signature requested by anything else
+  would not hold the page still. The **voice path was not exercised end to end**: the ElevenLabs
+  call failed in the local stack, and the browser's own speech synthesis spoke the line instead, so
+  what is proven here is the *answer and the redirect*, not the audio. And the index is public: it
+  is a map of the site, and a map is not a secret.
+
 ## Unresolved from the 2026-10-27 pass (continues the open list)
 
 23. **`apps/api` reported one failing test once, inside a saturated fan-out, and it has not been
