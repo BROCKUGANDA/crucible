@@ -14,7 +14,8 @@ by **what blocks what**, and one slice is out of the brief's order on purpose.
 ```
 P0  S1   Evaluation manifest                     ✅ shipped (ADR-0017)
 P0  S1b  The runner emits one                     ✅ shipped (schema + emission)
-P0  S1c  The grader consumes one                  ← NEXT
+P0  S1c  The grader consumes one                  ✅ shipped (rows carry it)
+P0  S1d  The leaderboard refuses an incomparable pair  ← NEXT
 P0  S2   Two typed schedules, one consumer API
 P0  S3   Adversary simulation
 P1  S4   Organisation and tenancy
@@ -22,13 +23,14 @@ P2  S5   Release evidence (SBOM, DR drill, SLOs)
 P3  --   Solana, frontier tier, pricing proposal
 ```
 
-**Why S1c is next rather than S2 or S4.** The manifest exists, the runner
-emits one, and **the grader still does not consume it** — so a score in this
-system is still not attached to the conditions that produced it. S1c is the
-last step of the chain: the grader attaches the manifest digest to every
-scorecard row, and refuses a row whose manifest it cannot verify. It is the
-smallest slice that makes the manifest a *fact about a published score*
-rather than a fact about a run, and it is the precondition for every
+**Why S1d is next rather than S2 or S4.** The manifest exists, the runner
+emits one, and the grader attaches one to every row — but **nothing refuses an
+incomparable pair yet**. The guard is written and mutation-proven; no caller
+consults it, so a leaderboard that ranked rows across two corpora would still
+rank them. S1d is the last step of the chain: the ranking path reads the
+manifests, refuses a pair whose conditions differ, and says which field moved.
+It is the smallest slice that makes the manifest a *fact about a published
+score* rather than a fact about a run, and it is the precondition for every
 statistical, eligibility and reproducibility requirement in the brief —
 items 022 through 030, 041 through 050, 176, 286, and the whole of S2's
 schedule identity.
@@ -92,24 +94,80 @@ rule applies to the rubric version, the dataset digest and the scaffold.
 2. ✅ A run with no digests emits **no** manifest, and that is asserted.
 3. ✅ A third party holding only the run's inputs recomputes the same digest
    (the manifest is a pure function of the inputs).
-4. ⬜ The grader attaches the manifest digest to every scorecard row, so a
-   leaderboard row points at the conditions that produced it. **This is the
-   remaining half of S1b** and it is not yet built.
-5. ⬜ Two rows with different manifests are refused by the comparator, and the
-   refusal names the field that moved. The comparator exists and is
-   mutation-proven; **it is not yet wired to the grader's rows.**
+4. ✅ The grader attaches the manifest digest to every scorecard row, so a
+   leaderboard row points at the conditions that produced it — delivered as
+   **S1c**, below.
+5. ✅ Two rows with different manifests are **not comparable**, and the refusal
+   names the field that moved. Delivered as **S1c**.
 
 **Delivered:** `packages/forge-runner/src/manifest.ts`,
 `packages/forge-runner/test/manifest.test.ts`, and the runner wiring in
 `packages/forge-runner/src/runner.ts`. Nine mutations proven and restored.
 
-**What this does not close:** the grader still does not consume a manifest,
-so a score is not yet attached to the conditions that produced it. That is
-gate 4 above, and it is the last step before the statistics in S3 have
-something to compare.
+**What this does not close:** nothing refuses an incomparable comparison yet —
+the guard exists and names the field, but no caller consults it. That is the
+next line of work, and it is small.
 
 **Closes:** 022, 023, 024, 025, 026, 027, 050, 070, 176, 286 — and opens
 041–049 (the statistics), 172 and 176.
+
+### S1c — The grader consumes the manifest ✅ **shipped**
+
+The grader reads the manifest and attaches it to every scorecard row, so a
+published score points at the conditions that produced it.
+
+`ScorecardRow` carries `manifestDigest` and the `manifest` itself — both
+**required**, for the same reason `suiteEpoch` is: a row that cannot be
+compared to another row wearing the same `suite` name has no honest
+placeholder for its conditions. The digest names the document; carrying the
+document beside it means a reader who is told "these two rows are not
+comparable" can see *which field* differs.
+
+**The grader's manifest is its own evaluation, not a runner's.** A grader run
+evaluates a *model* against a corpus; it does not execute an agent in a
+sandbox. So there is no scaffold, no tool set and no sandbox image — the
+manifest says so by omission rather than filling them in. What it does record:
+the corpus digest, the evaluator and its rubric, the model's **exact
+snapshot** from its card, the seed and the draw hash, the prompt version, and
+the thresholds in force.
+
+**The split of knowledge is the design.** The arena knows the model, the suite
+and the corpus digest; it does **not** know the provider, the model card, the
+seed or the thresholds — the caller does. So the manifest builder is supplied
+by the caller (`scripts/grade-arena.mjs` passes one) and the arena asks it per
+row. A caller with no card and no seed gets a **degraded** manifest — the
+corpus is named, the seed reads `unset`, the model reads `unpinned` — which is
+strictly more useful and strictly more honest than a row with no conditions
+at all.
+
+**The comparability guard excludes the model, and that distinction is the
+whole point.** `manifestsComparable` asks *"is this the same evaluation?"* —
+the answer must be yes for a repeat measurement, so it includes the model.
+`scoresComparable` asks *"may these two numbers be set side by side?"* — and
+there the model is the **subject** of the comparison, not a condition of it.
+Including it would report every pair of candidates as incomparable and refuse
+to rank anything. Two rows that differ only in their model are exactly the
+rows a leaderboard is made of. Everything else — the corpus, the evaluator,
+the rubric, the seed, the thresholds — is a condition, and a difference in any
+of them means the two numbers are not the same measurement.
+
+**Measured:** `npm run test --workspace @crucible/grader` is 309/309 green;
+`npm run arena:grade -- --provider stub --seed trial-0001 --artifacts 4`
+produces a real row carrying the real seed, the real thresholds and the real
+corpus digest, and the ledger row carries the manifest digest beside it.
+**Ten mutations were proven and restored** — the manifest recording the wrong
+seed, dropping the corpus digest, accepting a moving alias, the default
+claiming an adapter id is a pinned version, the guard including the model, the
+guard ignoring the corpus, the arena detaching the digest, and the arena
+attaching another model's manifest.
+
+**What this does not close:** the grader attaches the manifest but nothing
+**refuses** a comparison yet — `incomparability` names the field that moved,
+but no caller consults it. A leaderboard that ranked rows across two corpora
+would still rank them. That is the next line of work, and it is small.
+
+**Closes:** 022, 023, 025, 026, 030, 042, 043, 044, 045, 050, 152, 153, 158,
+176, 257, 287 — and opens the statistics in S3.
 
 ### S2 — Two typed schedules, one consumer API
 

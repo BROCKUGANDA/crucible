@@ -9,10 +9,12 @@ import type {
   SuiteEpoch,
   SuiteName,
 } from "./types.js";
+import type { EvalManifest } from "@crucible/smith";
 import { buildScorecard, scorecardLine } from "./scorer.js";
 import { MemoryEvalCache, gradeCached, gradeFresh, type EvalCache } from "./cache.js";
 import { suiteEpoch } from "./suites.js";
 import type { SpendLedger } from "./frontier.js";
+import { defaultGraderManifest, type ManifestBuilder } from "./manifest.js";
 
 const DEFAULT_THRESHOLDS: SmokeThresholds = {
   maxFalsePassRate: 0.01, // <= 1% hard disqualifier
@@ -51,9 +53,21 @@ export class Arena {
   private readonly cache: EvalCache;
 
   /**
+   * Builds the evaluation manifest for each row.
+   *
+   * The arena knows the model, the suite and the corpus digest; it does not
+   * know the provider, the model card, the seed or the thresholds. So the
+   * builder is supplied by the caller - which holds those facts - and the
+   * arena asks it per row. A row without a manifest would have no conditions
+   * recorded at all, and a published score with no conditions is not
+   * attributable to anything.
+   */
+  private readonly manifestFor: ManifestBuilder;
+
+  /**
    * When supplied, the scorecard's cost column is measured instead of declared. The ledger is fed
    * by `withFrontierGuard` at the adapter boundary, so the arena reads back what the calls
-   * actually cost rather than a number it invented — `avgCostUsd` used to be a literal `0`, which
+   * actually cost rather than a number it invented - `avgCostUsd` used to be a literal `0`, which
    * is the same shape as a metric no code path can increment.
    *
    * The seam is `EvalCache`, not `MemoryEvalCache`. The hot tier is one process and one run, so a
@@ -64,8 +78,10 @@ export class Arena {
   constructor(
     cache?: EvalCache,
     private readonly spend?: SpendLedger,
+    manifestFor: ManifestBuilder = defaultGraderManifest,
   ) {
     this.cache = cache ?? new MemoryEvalCache();
+    this.manifestFor = manifestFor;
   }
 
   /**
@@ -148,8 +164,9 @@ export class Arena {
       results: EvalResult[];
       perArtifactConsistency: Map<string, Array<"PASS" | "VOID" | "FAIL">>;
       avgCostUsd: number;
+      manifest: EvalManifest;
+      manifestDigest: string;
     }> = [];
-
     for (const adapter of adapters) {
       for (const [suiteName, suiteFn] of Object.entries(suiteFns)) {
         const artifacts = suiteFn();
@@ -159,7 +176,6 @@ export class Arena {
         const epoch = suiteEpoch(artifacts);
         const results: EvalResult[] = [];
         const perArtifact = new Map<string, Array<"PASS" | "VOID" | "FAIL">>();
-
         for (const artifact of artifacts) {
           const draws: Array<ModelVerdict & { cached: boolean }> = [];
           for (let r = 0; r < retests; r++) {
@@ -218,6 +234,11 @@ export class Arena {
           });
         }
 
+        const built = this.manifestFor({
+            modelId: adapter.id,
+            suite: suiteName as SuiteName,
+            suiteEpoch: epoch,
+          });
         entries.push({
           modelId: adapter.id,
           promptVersion: "v1",
@@ -226,6 +247,8 @@ export class Arena {
           results,
           perArtifactConsistency: perArtifact,
           avgCostUsd: this.spend?.averageUsd(adapter.id) ?? 0,
+          manifest: built.manifest,
+          manifestDigest: built.digest,
         });
       }
     }
