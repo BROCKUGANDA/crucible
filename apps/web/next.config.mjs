@@ -167,7 +167,20 @@ const securityHeaders = [
   { key: "Referrer-Policy", value: "no-referrer" },
   {
     key: "Permissions-Policy",
-    value: "camera=(), microphone=(), geolocation=(), payment=(), usb=(), display-capture=()",
+    // The microphone is open to this origin, and that is a correction rather
+    // than a relaxation.
+    //
+    // The policy said `microphone=()` while the product has shipped a voice
+    // control since 2026-10-28: the header's Frenchy panel asks for the
+    // microphone, and `microphone=()` makes the browser refuse it before the
+    // visitor is ever prompted. The button could not work, and the refusal it
+    // produced told the visitor to change their browser settings - which is not
+    // what was wrong.
+    //
+    // `microphone=(self)` is the narrowest thing that lets the feature work:
+    // this origin may ask, no other origin may, and the browser still asks the
+    // visitor. The microphone is requested only when somebody presses Listen.
+    value: "camera=(), microphone=(self), geolocation=(), payment=(), usb=(), display-capture=()",
   },
   ...(isProductionBuild ? [{ key: "Content-Security-Policy", value: CSP }] : []),
 ];
@@ -191,28 +204,6 @@ const nextConfig = {
       {
         source: "/:path*",
         headers: securityHeaders,
-      },
-      // The voice room is the one page that may hear the room.
-      //
-      // Every other route keeps `microphone=()`, so a page that asks for the
-      // microphone anywhere else is refused by the browser rather than by our
-      // good intentions. Here the policy is opened to `self` only — the document
-      // may use the microphone, and no frame and no other origin may.
-      //
-      // This rule comes **after** the `/:path*` rule on purpose: Next applies the
-      // matching header rules in order and the last one to set a key wins, so the
-      // narrow rule has to be the later one. Put it first and every page would
-      // keep the microphone closed, which would make this page look broken rather
-      // than deliberate.
-      {
-        source: "/voice",
-        headers: [
-          {
-            key: "Permissions-Policy",
-            value:
-              "camera=(), microphone=(self), geolocation=(), payment=(), usb=(), display-capture=()",
-          },
-        ],
       },
       // Gate 478-482: X-Robots-Tag noindex on internal surfaces so crawlers never index
       // SSE streams, API endpoints, or replay views even if a link leaks.

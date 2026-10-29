@@ -99,13 +99,46 @@ words is decoration, and it does not stand in for the reply.
 | Body ceiling | per path, 256 KiB on `/sts/session/` | the default 64 KiB stays for every other route |
 | Request timeout | 45 s on `/sts/session/` | three round trips; still a ceiling, not an absent one |
 
-### The microphone is opened on one route
+### The microphone is open to this origin, and that is a correction
 
-`Permissions-Policy: microphone=(self)` on `/voice`, and `microphone=()` on every
-other route in the app. The narrow rule is registered **after** the global one,
-because Next applies matching header rules in order and the last one to set a key
-wins — put it first and every page would keep the microphone closed, which would
-make the page look broken rather than deliberate.
+`Permissions-Policy: microphone=(self)` on every page, `microphone=()` nowhere.
+
+The policy used to say `microphone=()` on every page — and the product has
+shipped a voice control since 2026-10-28: the header's Frenchy panel asks for
+the microphone, and `microphone=()` makes the browser refuse it **before the
+visitor is ever prompted**. The button could not work, and the refusal it
+produced told the visitor to change their browser settings, which was not what
+was wrong. The policy contradicted the product.
+
+`microphone=(self)` is the narrowest thing that lets the shipped feature work:
+this origin may ask, no other origin may, and **the browser still asks the
+visitor**. The microphone is requested only when somebody presses a button.
+
+This is a correction to the deployment, not a widening of it, and it is recorded
+here because the first draft of this ADR assumed the microphone was closed
+everywhere and could be opened on one route. It could not: the header's panel is
+global, so a route-scoped exception would have left the shipped control dead on
+every page but one.
+
+### Two voice paths, and what tells them apart
+
+The header's Frenchy panel and the voice room are the same brain and the same
+voice, and they are not the same conversation:
+
+| | Header's Frenchy panel | The voice room |
+|---|---|---|
+| Transcription | the browser, against ElevenLabs Scribe Realtime | the **host**, against the same provider over HTTP |
+| The turn record | none — the conversation lives in the browser | the host's ledger, with each step's cost measured |
+| Answers with | words and voice | words and voice |
+
+The difference is **whether the turns are kept**. The panel is the quick
+question; the voice room is the conversation that is written down. Neither is a
+second answer to the same question, and only one of them is a measurement.
+
+Merging them — routing the panel through the speech host so there is one voice
+path and one ledger — is the shape this would take if the panel were ever
+rebuilt. It is not done here because it would rewrite a shipped panel, and
+because the quick question and the recorded conversation are different products.
 
 ## Consequences
 
@@ -126,6 +159,11 @@ make the page look broken rather than deliberate.
   anyone holding it can read that conversation. For a demo host whose
   conversations contain a wallet address and nothing else, that is the honest
   trade — and it is a trade, not a protection.
+- **The microphone policy was corrected, not narrowed.** The app shipped a voice
+  control under a `microphone=()` policy, so the control could not work. The
+  policy now matches the product. A deployment that wants the microphone closed
+  should remove the control rather than the permission: a button that cannot
+  work is a control that lies.
 - **The turn cost is a measurement of three provider calls, not of the
   conversation.** A slow provider reads as a slow provider.
 
@@ -161,5 +199,8 @@ make the page look broken rather than deliberate.
 - `apps/web/src/components/TurnMonitor.tsx` — the panel.
 - `apps/web/src/app/voice/page.tsx` — the one page that may hear the room.
 - `apps/web/test/sts.test.ts` — 18 tests; 7 mutations proven and restored.
-- `apps/web/next.config.mjs` — the Permissions-Policy exception.
+- `apps/web/next.config.mjs` — the Permissions-Policy correction.
 - `docs/key-inventory.md` — the credential this spends.
+- `apps/api/test/compose-env.test.ts` — the deployment hands the API every
+  variable it reads, which is how the speech host's own switches were found
+  missing from the container.

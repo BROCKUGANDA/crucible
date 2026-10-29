@@ -39,7 +39,7 @@ request — it is a product pivot requiring a new ADR and a new contract review.
 
 ```bash
 npm run verify:all          # typecheck + every workspace suite + the edge suite
-npm test                    # all workspaces + Foundry; currently 2538 tests (2194 TS + 329 Foundry)
+npm test                    # all workspaces + Foundry; currently 2542 tests (2198 TS + 329 Foundry)
 npm run test:edge           # deploy/edge: the RPC gate's refusals, its live probe, the installer
 #   The edge is not a workspace, so `npm test` never reaches it. That is how `gate.test.mjs` sat
 #   green on a laptop for five days while the deployed edge proxied /anvil straight to the node.

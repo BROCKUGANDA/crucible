@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { useFrenchy } from "@/lib/frenchy/provider";
 import { fetchFrenchyBrainStatus } from "@/lib/frenchy/status";
 import { guardPastedText, detectMnemonic, SEED_PHRASE_GUARANTEE } from "@/lib/safety";
@@ -191,6 +192,17 @@ export function FrenchyAsk() {
           ) : null}
 
           {lastAnswer ? <span className="hint hint--block">{lastAnswer}</span> : null}
+
+          {/*
+            The voice room is the same brain and the same voice, and it is the
+            one that keeps the conversation: this panel transcribes in the
+            browser and writes nothing down, while the voice room transcribes on
+            the host and records every turn with what each step cost. The link
+            is here so the recorded one is discoverable from the quick one.
+          */}
+          <Link href="/voice" className="hint">
+            Take it to the voice room, where the conversation is written down
+          </Link>
         </div>
       ) : null}
     </span>
