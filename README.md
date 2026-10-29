@@ -40,18 +40,18 @@ Open ──claim──> Assigned ──submitRun──> Judging ──fileBreak�
    settlement transaction and the identity registration that earned it. The
    contracts are in `crucible-contracts/contracts` with 333 tests (329 passed; 4 of them ERC-8004
    fork tests, which skip without an RPC). The workspace suites
-   add 2056 more — web 397, grader 285, api 243, smith 201, forge-runner 170 (6 of them need a
-   Docker daemon and skip without one), indexer 154, agent-security 153, cidstore 106, juror 84,
-   argus 45, keeper 48, datasets 50, eval 36, warden 24, funder 24, crypto 12, frame 12, registry
-   12 — and `npm test` runs all of them plus the
+   add 2149 more - web 412, grader 309, api 256, smith 224, forge-runner 188 (6 of them need a
+    Docker daemon and skip without one), indexer 154, agent-security 153, cidstore 106, juror 84,
+    keeper 48, datasets 50, argus 45, eval 36, warden 24, funder 24, crypto 12, frame 12, registry
+    12 — and `npm test` runs all of them plus the
    Foundry suite; the contracts half needs Foundry (`forge test`), which the seed image runs on a
    machine without a local forge. The edge suite (`npm run test:edge`, 15 tests over the RPC method
    gate, its live probe and the installer that deploys them) is not a workspace, so it rides
-   `npm run verify:all` and CI as its own step. Counted per workspace on 2026-10-28: **2056 passed,
-   6 skipped**
-   across the eighteen TypeScript workspaces, **15 passed** at the edge and **329 passed, 4 skipped**
-   in Foundry — 2400
-   passing, 2410 counted. Run `npm run verify:all` to reproduce them.
+   `npm run verify:all` and CI as its own step. Counted per workspace on 2026-10-29: **2149 passed,
+    6 skipped**
+    across the eighteen TypeScript workspaces, **15 passed** at the edge and **329 passed, 4 skipped**
+    in Foundry — 2493
+    passing, 2503 counted. Run `npm run verify:all` to reproduce them.
 4. Replay the whole loop against a running chain — register, post, claim,
    runner-signed runs, a break that Argus slashes, and the permissionless quench
    after the window really closes — with `crucible-contracts/script/GoldenPath.s.sol`:
@@ -382,8 +382,8 @@ npm run demo                # anvil + deploy + the whole loop, settles a real ve
 npm run agent:live          # the real agent against a real model in a real sandbox
 ```
 
-**2400 tests pass, 10 skipped** — 2056 TypeScript passed with 6 skipped, 15 at the edge, and 329
-Foundry passed with 4 skipped, so 2410 counted. Measured per workspace on 2026-10-28 on the working
+**2493 tests pass, 10 skipped** — 2149 TypeScript passed with 6 skipped, 15 at the edge, and 329
+Foundry passed with 4 skipped, so 2503 counted. Measured per workspace on 2026-10-29 on the working
 tree; the six skips are `forge-runner` tests that ask for a Docker daemon, the four are the fork
 tests below. The edge's 15 are `node --test` over `deploy/edge`, not a workspace: 6 refusals at the
 RPC gate, 3 on the probe that asks the live endpoint those methods (one of them a negative control
