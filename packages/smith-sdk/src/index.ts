@@ -1,5 +1,6 @@
 export * from "./types.js";
 export * from "./artifact.js";
+export * from "./manifest.js";
 export * from "./eip712.js";
 export * from "./client.js";
 export * from "./agent.js";
