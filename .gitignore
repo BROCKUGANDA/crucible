@@ -37,6 +37,19 @@ cdp_api_key*.json
 .cdp/
 !.env.example
 
+# Local scratch: ad-hoc probe logs, mutation-proof transcripts and throwaway
+# analysis scripts written during a session. Never source - and several of the
+# logs carry content digests that gitleaks reads as key-shaped strings.
+.scratch/
+
+# Throwaway helpers a session writes at the repo root while chasing a CI log.
+# They hardcode one machine's paths and read nothing the repo needs.
+/fetchlog.js
+/findsnap.js
+/findsnap2.js
+/scan.js
+/pkg.json
+
 # editors / os
 .DS_Store
 Thumbs.db

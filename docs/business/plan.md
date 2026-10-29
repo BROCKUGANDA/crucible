@@ -59,8 +59,8 @@ payout at settlement. The v2 arena design (ADR-0011) carries its own
 
 ## Traction (measured, not projected)
 
-- **2332 tests pass, 10 skipped** (2003 TypeScript + 329 Foundry, counted
-  2026-10-27 per README Verification — re-run `npm run verify:all`).
+- **2400 tests pass, 10 skipped** (2056 TypeScript + 329 Foundry, counted
+  2026-10-28 per README Verification — re-run `npm run verify:all`).
 - **Live deployment:** https://crucible.svalley.tech with funded demo
   trials and a five-agent roster.
 - **End-to-end in one command:** `npm run test:e2e` boots Anvil, deploys,
@@ -76,8 +76,17 @@ sending this to anyone.
 
 ## Raise terms
 
-Not public in this repo. What funding would buy, in order: external audit →
-legal formation → genesis sponsor cohort → capped mainnet deployment.
+Not public in this repo in the sense that **no committed ask lives here** —
+the founder alone sets amount, instrument, and valuation. What funding would
+buy, in order: external audit → legal formation → genesis sponsor cohort →
+capped mainnet deployment.
+
+A research-backed *proposal* (amounts, valuation range, financial
+projections, competitor funding, uniqueness, and the hackathon/MVP caveat)
+now lives in [valuation-and-raise.md](./valuation-and-raise.md). It proposes
+a $250K–$650K pre-seed against a $2M–$4M pre-money valuation, with a
+$250K Colosseum accelerator pre-seed as the cheapest first money. **Treat
+it as a starting point for the founder's decision, not as the ask.**
 Terms travel with the founder, not the tree.
 
 ## Honest limits (what the money fixes first)

@@ -1,13 +1,13 @@
 /**
- * Money Trees deep-link config (gates 434-438).
+ * Money Trees deep-link config (gates 434-438, 904).
  *
- * Rule: never embed commercial audio. We deep-link to the user's own streaming
- * app at a chosen timestamp — the scan lays the song on *their* device, from
- * *their* subscription. Zero audio files, zero player code, zero bundle weight.
+ * Rule: never embed commercial audio. The chip links out to the visitor's own search for the
+ * record, so the song plays on *their* device, from *their* subscription — zero audio files,
+ * zero player code, zero bundle weight, and nothing in this repository to license.
  *
- * The URL is remote-config-driven (437): timestamp and source are swappable
- * without a rebuild. Defaults to the YouTube timestamp hook — the most universal
- * format, no subscription needed.
+ * The link is remote-config-driven (437): source, url and cue are swappable without a rebuild.
+ * An override may name any subset, and what it does not name is derived — so a chip told to
+ * speak on another service never falls back to a YouTube page.
  */
 
 export interface MoneyTreesConfig {
@@ -24,47 +24,46 @@ export interface MoneyTreesConfig {
   version: number;
 }
 
+/** The record the chip names. Search terms, never a recording. */
+const MONEY_TREES_TERMS = "kendrick lamar money trees";
+
 /**
- * Default: the visitor's own search for the record, on YouTube.
+ * The search deep link for a source — the only place these URLs are written.
  *
- * The URL this file shipped before was a specific video id that belonged to a different song
- * entirely — Rick Astley, not Kendrick — and the cue text quoted a line of the lyric, which a
- * public repository has no business reproducing. Both are gone, and the comment deliberately
- * does not restate the literal patterns: `apps/web/test/money-sound.test.ts` scans this file for
- * them, and a doc comment naming what it forbids is the self-match AGENTS.md warns about.
- * A search link names the work without pointing at a copy of it, so the deep link cannot rot when
- * a channel is taken down, and there is nothing here to license.
+ * This file once shipped a specific video id belonging to a different song entirely, with a cue
+ * that quoted the lyric. Neither is restated here, on purpose: `apps/web/test/money-sound.test.ts`
+ * scans this source for the old id and for a recording-link shape, and a doc comment that names
+ * what its own gate forbids is the self-match AGENTS.md warns about. A search names the work
+ * without pointing at a copy of it, so the link cannot rot when a channel is taken down and there
+ * is nothing here to license.
  */
+export function streamLink(source: MoneyTreesConfig["source"]): string {
+  const terms = encodeURIComponent(MONEY_TREES_TERMS);
+  if (source === "spotify") return `https://open.spotify.com/search/${terms}`;
+  if (source === "apple-music") return `https://music.apple.com/search?term=${terms}`;
+  return `https://www.youtube.com/results?search_query=${terms}`;
+}
+
+/** Default: the visitor's own search for the record, on YouTube. */
 export const DEFAULT_MONEY_TREES: MoneyTreesConfig = {
   source: "youtube",
-  url: "https://www.youtube.com/results?search_query=kendrick+lamar+money+trees",
+  url: streamLink("youtube"),
   cue: "their speakers, their subscription — the hook, not a copy of it",
-  version: 2,
+  version: 3,
 };
 
-/** Search deep links, one per source. No asset, no id, no clip. */
-export function streamLink(source: MoneyTreesConfig["source"]): string {
-  const q = "kendrick lamar money trees";
-  if (source === "spotify") return `https://open.spotify.com/search/${encodeURIComponent(q)}`;
-  if (source === "apple-music") return `https://music.apple.com/search?term=${encodeURIComponent(q)}`;
-  return `https://www.youtube.com/results?search_query=${encodeURIComponent(q.replace(/ /g, "+"))}`;
-}
-
 /**
- * Resolve MoneyTreesConfig from remote config. Falls back to the default so the
- * chip never crashes the settlement screen when remote config is unavailable.
+ * Resolve a remote-config override. Remote config names whatever it names, so every field falls
+ * back on its own — a source with no url gets that source's search link, not the default one.
  */
-export function resolveMoneyTrees(remote: MoneyTreesConfig | null | undefined): MoneyTreesConfig {
-  if (!remote) return DEFAULT_MONEY_TREES;
+export function resolveMoneyTrees(remote?: Partial<MoneyTreesConfig> | null): MoneyTreesConfig {
+  const source = remote?.source ?? DEFAULT_MONEY_TREES.source;
   return {
-    source: remote.source ?? DEFAULT_MONEY_TREES.source,
-    url: remote.url ?? DEFAULT_MONEY_TREES.url,
-    cue: remote.cue ?? DEFAULT_MONEY_TREES.cue,
-    version: remote.version ?? DEFAULT_MONEY_TREES.version,
+    source,
+    // `||` rather than `??`: an override that answers with an empty string has no link, and an
+    // empty href is a chip that goes nowhere.
+    url: remote?.url || streamLink(source),
+    cue: remote?.cue ?? DEFAULT_MONEY_TREES.cue,
+    version: remote?.version ?? DEFAULT_MONEY_TREES.version,
   };
-}
-
-/** Audit string for the chip label — never the album art or logo treatment. */
-export function moneyTreesAuditLine(config: MoneyTreesConfig): string {
-  return `money_trees_mode v${config.version} · ${config.source} · ${config.cue}`;
 }

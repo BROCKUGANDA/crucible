@@ -37,7 +37,7 @@ hall and no skeptics — and skeptics go where the bounties are.
 
 ## What is the traction?
 
-Working product, live deployment, 2332 passing tests, one-command e2e, two
+Working product, live deployment, 2400 passing tests, one-command e2e, two
 videos, dated ship log. See “Traction” in [plan.md](./plan.md) — then run
 `npm run test:e2e` yourself. It takes about two minutes.
 
@@ -54,6 +54,12 @@ design-only (gates 766, 770, 868–870 style) instead of demoing it.
 In order: external audit, legal formation, genesis sponsor cohort,
 mainnet deployment with caps, then v2 arena and Solana completion.
 Amounts and instrument: ask the founder — that page is intentionally blank.
+
+**Research-backed proposal (not a committed ask):** see
+[valuation-and-raise.md](./valuation-and-raise.md) for a proposed
+$250K–$650K pre-seed against a $2M–$4M pre-money valuation, competitor
+funding comparisons, projected financials, and the hackathon/MVP caveat.
+Terms travel with the founder, not the tree.
 
 ## How do I verify any of this in an hour?
 

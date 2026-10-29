@@ -10,6 +10,7 @@ import {
   type AudioContextLike,
 } from "@/lib/money-sound";
 import { celebrate, disposeSound, isSoundEnabled, soundSupported } from "@/lib/sound-pref";
+import { DEFAULT_MONEY_TREES, resolveMoneyTrees, streamLink } from "@/lib/frenchy/money-trees";
 
 /**
  * The money sound: what plays, whether it can be proven, and where it is wired.
@@ -265,5 +266,42 @@ describe("the wiring", () => {
     // is a claim about a specific recording nobody in this repository opened.
     expect(trees).not.toMatch(/dQw4w9WgXcQ/);
     expect(trees).toMatch(/search_query|\/search\//);
+  });
+
+  it("mounts the CUE IT chip on the paid verdict, and only there", () => {
+    const page = src("app/trials/[id]/page.tsx");
+    expect(page).toMatch(/import \{ MoneyTreesChip \} from "@\/components\/MoneyTreesChip";/);
+    expect(page).toMatch(/<MoneyTreesChip settled=\{trial\.verdict === "paid"\} \/>/);
+    // Position, not prose: the chip must land inside the verdict branch, so it cannot render on a
+    // `none` trial. An index comparison survives the panel's own markup, which a fixed-size window
+    // did not — the first version of this check measured 700 characters and missed.
+    const guard = page.indexOf('trial.verdict !== "none"');
+    const chip = page.indexOf("<MoneyTreesChip settled=");
+    const nextBranch = page.indexOf(') : trial.status === "challenged"');
+    expect(guard).toBeGreaterThanOrEqual(0);
+    expect(nextBranch).toBeGreaterThan(guard);
+    expect(chip, "the chip must sit between the verdict guard and the branch after it").toBeGreaterThan(guard);
+    expect(chip).toBeLessThan(nextBranch);
+  });
+});
+
+describe("the deep link", () => {
+  it("writes each source's link once, and derives the default from it", () => {
+    expect(DEFAULT_MONEY_TREES.url).toBe(streamLink(DEFAULT_MONEY_TREES.source));
+    for (const source of ["youtube", "spotify", "apple-music"] as const) {
+      const link = streamLink(source);
+      expect(link).toMatch(/search/);
+      // `%2B` is what an earlier draft produced by encoding its own plus separators — YouTube
+      // reads that as a literal plus and searches for the wrong thing. A `t=` is a timestamp on
+      // somebody else's recording, which is the shape this file is not allowed to link.
+      expect(link).not.toMatch(/%2B|[?&]t=\d/);
+    }
+    expect(streamLink("spotify")).toBe("https://open.spotify.com/search/kendrick%20lamar%20money%20trees");
+  });
+
+  it("follows a remote source that brings no url, so a Spotify chip never opens YouTube", () => {
+    expect(resolveMoneyTrees({ source: "spotify" }).url).toContain("open.spotify.com");
+    expect(resolveMoneyTrees({ url: "" }).url).toBe(streamLink("youtube"));
+    expect(resolveMoneyTrees(null)).toEqual(DEFAULT_MONEY_TREES);
   });
 });

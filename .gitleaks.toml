@@ -43,4 +43,16 @@ regexes = [
   # The fixture now uses a repeated byte instead; this entry exists only for the published commit.
   # Exception is the exact literal, so any other key-shaped string still fails.
   '''0x53228c6de8ea8e72bc48ccf8e7ce7899cbb5490d296b84a8cae9b89731d43e3b''',
+  # The localStorage slot the engram vault reads and writes: `const STORAGE_KEY =
+  # "crucible.engram.vault.v1"` in `apps/web/src/app/engrams/page.tsx`, added in commit
+  # 75c4643. It is a browser storage key - a name the page invents for itself - and it
+  # controls no account, signs nothing and grants no access. It tripped gitleaks'
+  # generic-api-key rule only because the value sits next to an identifier ending in
+  # `_KEY`, and the rule scores the entropy of the string rather than what it is for.
+  #
+  # The identifier is now `VAULT_STORAGE_ID`, so nothing new looks like a key. This
+  # entry exists only because the commit is published and the job scans
+  # `--log-opts=--all`, so the old assignment reddens every branch until it is named.
+  # Exception is the exact literal, so any other key-shaped string still fails.
+  '''crucible\.engram\.vault\.v1''',
 ]
