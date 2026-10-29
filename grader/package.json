@@ -16,7 +16,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@crucible/smith": "0.1.0"
+    "@crucible/smith": "*"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",
