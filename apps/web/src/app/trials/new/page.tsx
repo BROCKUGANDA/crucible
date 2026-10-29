@@ -20,6 +20,7 @@ import { OnrampButton } from "@/components/OnrampButton";
  */
 
 const KICKERS = ["01 — STRIKE", "02 — FUEL", "03 — IGNITE"] as const;
+const STEPS = ["Subject", "Spec", "Tests & reward", "Timing", "Review", "Launch"] as const;
 
 export default function NewTrialPage() {
   const [values, setValues] = useState<WizardValues>(EMPTY_WIZARD);
@@ -38,6 +39,22 @@ export default function NewTrialPage() {
     <Chrome>
       <WrongNetworkNotice requiredChainId={dep.chainId} />
       <h1 className="page-title">Light a trial</h1>
+
+      <nav className="wizard-stepper" aria-label="Wizard progress">
+        {STEPS.map((s, i) => {
+          const active = i === (step === 0 ? 1 : step === 1 ? 3 : 5);
+          const done = i < (step === 0 ? 1 : step === 1 ? 3 : 5);
+          return (
+            <span
+              key={s}
+              className={`wizard-stepper__step ${done ? "is-done" : ""} ${active ? "is-active" : ""}`}
+            >
+              {i + 1}. {s}
+            </span>
+          );
+        })}
+      </nav>
+
       <p className="kicker">{KICKERS[step]}</p>
 
       {step === 0 ? (

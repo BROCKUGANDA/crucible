@@ -8,7 +8,6 @@ import { TxSheetStatus } from "@/components/TxSheetStatus";
 import { BreakPanel } from "@/components/BreakPanel";
 import { MoneyTreesChip } from "@/components/MoneyTreesChip";
 import { useSnapshot } from "@/lib/useSnapshot";
-import { API_BASE } from "@/lib/apiBase";
 import {
   formatDuration,
   formatEth,
@@ -316,14 +315,21 @@ function Field({ label, value, mono }: { label: string; value: ReactNode; mono?:
  * The chain only ever held a keccak digest, and this host published the sha256 CID beside it.
  * Reading the file itself used to need the process that pinned it; `/content/:cid` serves it from
  * the store, so a stranger can check the claim against the suite rather than against a hash of it.
+ *
+ * The link opens the **viewer**, not the raw route. The route answers JSON for every failure, so a
+ * visitor who clicked a hash used to land in a browser tab showing
+ * `{"error":"the content store could not be read", ...}` with no explanation and no way back. The
+ * viewer fetches the same route and says what happened, in words, in the product's own voice -
+ * "not here" is not "broken here", and the distinction is the one a reader needs. The raw route
+ * stays one click away for anyone who wants the bytes themselves.
  */
 function Pinned({ cid }: { cid: string }) {
   return (
     <>
-      <a href={`${API_BASE}/content/${cid}`} className="mono">
+      <a href={`/content/${encodeURIComponent(cid)}`} className="mono">
         {cid}
       </a>{" "}
-      <a href={`${API_BASE}/content/${cid}`} rel="noreferrer">
+      <a href={`/content/${encodeURIComponent(cid)}`} rel="noreferrer">
         read what it names
       </a>
     </>
