@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { ScrubStage } from "@/components/scrub/ScrubStage";
-import { LiveFeedInner } from "@/components/LiveFeed";
+import { LiveFeedInner, HeroBoardPreview } from "@/components/LiveFeed";
 import { actByKey } from "@/lib/scrub/timeline";
 import type { ActKey } from "@/lib/scrub/timeline";
 import { SITE_NAME, SITE_TAGLINE, SITE_URL } from "@/lib/site";
@@ -138,17 +138,8 @@ export default function HomePage() {
           </div>
 
           <div className="arena__preview" aria-label="Product preview">
-        <p className="arena__sub">Live on the board</p>
-        <div className="arena__preview__row">
-          <span className="arena__preview__id">#42</span>
-          <span className="arena__preview__title">Summarise a receipt</span>
-          <span className="arena__preview__reward">0.5 ETH</span>
-          <span className="badge badge--pending">open</span>
-        </div>
-        <p className="arena__preview__hint">
-          Escrowed at posting · spec pinned by digest · bond 0.05 ETH to play
-        </p>
-      </div>
+            <HeroBoardPreview />
+          </div>
       <p className="arena__scroll">Descend</p>
         </header>
 

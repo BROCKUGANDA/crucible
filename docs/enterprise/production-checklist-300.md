@@ -31,8 +31,8 @@ mechanisms.
 | Status | Count |
 |---|---|
 | Verified | 20 |
-| Existing | 100 |
-| Partial | 99 |
+| Existing | 99 |
+| Partial | 100 |
 | Missing | 76 |
 | Unverified | 0 |
 | Blocked | 5 |
@@ -227,8 +227,8 @@ dependency column names the slice that closes it.
 
 | # | Requirement | Status | Owner | Evidence / test | Depends on | Phase |
 |---|---|---|---|---|---|---|
-| 131 | Estimate gas before wallet confirmation and display the estimate | **Partial** | Principal engineer | the web app transacts via wagmi; no gas estimate is displayed | S2 | P1 |
-| 132 | Show actual gas after confirmation and distinguish it from protocol fee | **Partial** | Principal engineer | the fee is published as a RATE; gas and fee are separate concepts but not separately displayed | S2 | P1 |
+| 131 | Estimate gas before wallet confirmation and display the estimate | **Partial** | Principal engineer | no gas estimate is taken or shown; apps/web/src/components/SigningNotice.tsx now states at both signing surfaces that the fee is not measured here and defers to the wallet figure (apps/web/test/signing-notice.test.ts) | S2 | P1 |
+| 132 | Show actual gas after confirmation and distinguish it from protocol fee | **Partial** | Principal engineer | the protocol fee is published as a RATE; SigningNotice separates network charge from protocol fee in words, but no numeric gas is read yet | S2 | P1 |
 | 133 | Record gas payer and gas sponsorship budget if applicable | **Missing** | Principal engineer | — | S2 | P2 |
 | 134 | Reward scales with task difficulty and verification cost under a documented formula | **Partial** | Principal engineer | packages/eval/src/gates.ts targetDifficulty(r, accuracy) raises difficulty with rating; the reward formula is not tied to verification cost | S3 | P2 |
 | 135 | Cap maximum stake and maximum loss per trial and per organization | **Partial** | Principal engineer | MAX_REWARD and MAX_TOTAL_ESCROWED cap the protocol; no per-organization cap exists | S4 | P1 |
@@ -289,14 +289,14 @@ dependency column names the slice that closes it.
 |---|---|---|---|---|---|---|
 | 171 | Make Overview, Trials, Evaluation Studio, Runs and Compare easy to find | **Partial** | Principal engineer | apps/web has trials, engrams, assay, compliance; no Runs/Compare surfaces | S4 | P2 |
 | 172 | Onboarding that explains the trust model in plain language | **Partial** | Principal engineer | docs/business/investor-faq.md is the 60-second version; no in-product onboarding flow | S4 | P2 |
-| 173 | Explain bond, escrow, gas, commission and dispute risk before signing | **Partial** | Principal engineer | packages/eval/src/gates.ts has the policy helpers; not surfaced before a transaction | S2 | P2 |
+| 173 | Explain bond, escrow, gas, commission and dispute risk before signing | **Partial** | Principal engineer | SigningNotice at /trials/new and /forge covers test-money, gas and bond risk before a signature; dispute risk and commission still live on /clock and /docs, not at the action | S2 | P2 |
 | 174 | Show immutable hashes and evaluator versions on trial detail pages | **Partial** | Principal engineer | apps/web/src/app/trials/[id]/page.tsx shows the spec/suite digests; the runner emits a manifest and the grader attaches it to every row, but there is no view | S1d, S4 | P2 |
 | 175 | Show model/scaffold, environment, score, confidence and cost on result pages | **Partial** | Principal engineer | the grader rows carry them and the manifest names the conditions; the web product shows the settlement receipt | S1d, S4 | P2 |
 | 176 | Warn when comparison protocols are incompatible | **Verified** | Principal engineer | manifestsComparable + compareManifests + scoresComparable + the grader's `incomparability` - implemented and mutation-proven on both sides; the ranking path does not yet consult the guard | S1d | P2 |
-| 177 | Loading, empty, offline, pending, failure and retry states | **Partial** | Principal engineer | apps/web/src/app/global-error.tsx and route error boundaries; no offline state | S4 | P2 |
+| 177 | Loading, empty, offline, pending, failure and retry states | **Partial** | Principal engineer | verify page maps five states (apps/web/src/lib/verify-view.ts, test/verify-view.test.ts); hero card maps unread/empty/trial (lib/hero-board.ts); global-error and route boundaries as before; no offline state | S4 | P2 |
 | 178 | Keyboard navigation and semantic labels | **Partial** | Principal engineer | semantic markup throughout; no axe gate in CI | S4 | P2 |
 | 179 | Respect reduced-motion preferences and colour-contrast requirements | **Partial** | Principal engineer | apps/web/src/styles/motion.css; contrast is not gated | S4 | P2 |
-| 180 | Never use colour alone for status; never hide skipped or degraded results | **Existing** | Principal engineer | the degraded label is a text label; skips are reported, not hidden (README states the counts) | — | P1 |
+| 180 | Never use colour alone for status; never hide skipped or degraded results | **Partial** | Principal engineer | CORRECTED 2026-10-29: the degraded run-quality label never reaches a reader. forge-runner/src/runner.ts:171-175 writes it into the manifest only, and grep for degraded across apps/web/src finds no surface. The verify page now prints its state in words | — | P1 |
 ## Authentication and wallet safety
 
 | # | Requirement | Status | Owner | Evidence / test | Depends on | Phase |
