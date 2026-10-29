@@ -185,7 +185,7 @@ const voice = (() => {
   const apiKey = process.env.ELEVENLABS_API_KEY?.trim();
   const voiceId = process.env.ELEVENLABS_VOICE_ID?.trim();
   const baseUrl = process.env.ELEVENLABS_BASE_URL?.trim() || undefined;
-  const modelId = process.env.ELEVENLABS_MODEL_ID?.trim() || "eleven_multilingual_v4";
+  const modelId = process.env.ELEVENLABS_MODEL_ID?.trim() || "eleven_multilingual_v2";
   if (!apiKey || !voiceId) return null;
   if (baseUrl && !/^https?:\/\//.test(baseUrl)) {
     throw new Error(`ELEVENLABS_BASE_URL must be an http(s) URL; got "${baseUrl}"`);
@@ -202,6 +202,20 @@ const frenchy = (() => {
   const llmApiKey = process.env.FRENCHY_LLM_API_KEY?.trim();
   const llmModel = process.env.FRENCHY_LLM_MODEL?.trim() || "gpt-4o-mini";
   const llmBaseUrl = process.env.FRENCHY_LLM_BASE_URL?.trim() || undefined;
+  // How long the brain may take. A provider that is slow is slow, not broken,
+  // and the browser says "Thinking..." the whole time - so this is a budget
+  // rather than a verdict.
+  const llmTimeoutMs = (() => {
+    const raw = process.env.FRENCHY_LLM_TIMEOUT_MS?.trim();
+    if (!raw) return undefined;
+    const value = Number(raw);
+    if (!Number.isFinite(value) || value < 1_000 || value > 120_000) {
+      throw new Error(
+        `FRENCHY_LLM_TIMEOUT_MS must be a whole number of milliseconds between 1000 and 120000; got "${raw}"`,
+      );
+    }
+    return value;
+  })();
   if (!llmApiKey) return null;
   if (llmBaseUrl && !/^https?:\/\//.test(llmBaseUrl)) {
     throw new Error(`FRENCHY_LLM_BASE_URL must be an http(s) URL; got "${llmBaseUrl}"`);
@@ -213,7 +227,7 @@ const frenchy = (() => {
     const ttsApiKey = process.env.ELEVENLABS_API_KEY?.trim();
     const ttsVoiceId = process.env.ELEVENLABS_VOICE_ID?.trim();
     const ttsBaseUrl = process.env.ELEVENLABS_BASE_URL?.trim() || undefined;
-    const ttsModelId = process.env.ELEVENLABS_MODEL_ID?.trim() || "eleven_multilingual_v4";
+    const ttsModelId = process.env.ELEVENLABS_MODEL_ID?.trim() || "eleven_multilingual_v2";
     if (ttsApiKey && ttsVoiceId) {
       if (ttsBaseUrl && !/^https?:\/\//.test(ttsBaseUrl)) {
         throw new Error(`ELEVENLABS_BASE_URL must be an http(s) URL; got "${ttsBaseUrl}"`);
@@ -236,7 +250,12 @@ const frenchy = (() => {
     }
   }
 
-  return { llm: { apiKey: llmApiKey, model: llmModel, baseUrl: llmBaseUrl }, tts, scribe };
+  return { llm: {
+      apiKey: llmApiKey,
+      model: llmModel,
+      baseUrl: llmBaseUrl,
+      ...(llmTimeoutMs ? { timeoutMs: llmTimeoutMs } : {}),
+    }, tts, scribe };
 })();
 
 /**
