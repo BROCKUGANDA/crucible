@@ -27,7 +27,7 @@
   },
   "dependencies": {
     "json-canonicalize": "^3.0.1",
-    "viem": "^2.57.7"
+    "viem": "^2.57.10"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",
