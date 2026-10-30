@@ -22,6 +22,10 @@ pub enum TrialStatus {
     Expired,
 }
 
+impl anchor_lang::Space for TrialStatus {
+    const INIT_SPACE: usize = 1;
+}
+
 #[account]
 #[derive(Default, InitSpace)]
 pub struct Config {
@@ -52,6 +56,13 @@ pub struct Trial {
     pub suite_digest: [u8; 32],
     pub holdout_commitment: [u8; 32],
     pub nonce: u64,
+    pub submitted_at: i64,
+    pub window_end: i64,
+    pub holdout_due_by: i64,
+    pub run_hash: [u8; 32],
+    pub verdict_hash: [u8; 32],
+    pub replay_hash: [u8; 32],
+    pub model_harness_id: [u8; 32],
     pub mint: Pubkey,
     pub claim_span_override: u32,
 }

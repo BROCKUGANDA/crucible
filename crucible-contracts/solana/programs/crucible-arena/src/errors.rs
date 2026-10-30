@@ -26,8 +26,8 @@ pub enum ArenaError {
     ClaimTimeout,
     #[msg("unrevealed commit")]
     UnrevealedCommit,
-    #[msg("overflow")]
-    Overflow,
+    #[msg("stake too small")]
+    StakeTooSmall,
     #[msg("too small")]
     TooSmall,
     #[msg("bad window")]
@@ -48,8 +48,10 @@ pub enum ArenaError {
     TooManyActiveClaims,
     #[msg("yield cooldown")]
     YieldCooldown,
-    #[msg("stake too small")]
-    StakeTooSmall,
+    #[msg("window still open")]
+    WindowStillOpen,
     #[msg("spec or suite digest zero")]
     ZeroDigest,
+    #[msg("overflow")]
+    Overflow,
 }

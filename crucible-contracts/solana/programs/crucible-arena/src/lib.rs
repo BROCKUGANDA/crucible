@@ -1,6 +1,5 @@
 //! CRUCIBLE arena, Solana side (gates 734-746, 748-751, 753, 783).
-//!
-//! P4 core: post_trial + claim_trial (this commit). submit_run/settle/timeouts follow.
+//! P4 core: post_trial + claim_trial + submit_run + settle (O1, no breaks).
 
 pub mod errors;
 pub mod instructions;
@@ -81,6 +80,38 @@ pub struct ClaimTrial<'info> {
     pub system_program: Program<'info, System>,
 }
 
+#[derive(Accounts)]
+pub struct SubmitRun<'info> {
+    #[account(mut)]
+    pub caller: Signer<'info>,
+
+    #[account(mut)]
+    pub trial: Account<'info, Trial>,
+
+    #[account(mut, constraint = vault.mint == trial.mint)]
+    pub vault: Account<'info, TokenAccount>,
+}
+
+#[derive(Accounts)]
+pub struct Settle<'info> {
+    #[account(mut)]
+    pub caller: Signer<'info>,
+
+    #[account(mut)]
+    pub trial: Account<'info, Trial>,
+
+    #[account(mut, constraint = vault.mint == trial.mint)]
+    pub vault: Account<'info, TokenAccount>,
+
+    #[account(mut, constraint = agent_ata.mint == trial.mint, constraint = agent_ata.owner == trial.agent)]
+    pub agent_ata: Account<'info, TokenAccount>,
+
+    #[account(mut, constraint = treasury_ata.mint == trial.mint)]
+    pub treasury_ata: Account<'info, TokenAccount>,
+
+    pub token_program: Program<'info, Token>,
+}
+
 // --------------------------------------------------------------------------- Program
 #[program]
 pub mod crucible_arena {
@@ -97,7 +128,6 @@ pub mod crucible_arena {
         skeptic_window: u32,
         open_span: u64,
     ) -> Result<()> {
-        // Validations (mirrors Arena.sol postTrial)
         if spec_digest == [0u8; 32] || suite_digest == [0u8; 32] {
             return err!(ArenaError::ZeroDigest);
         }
@@ -113,9 +143,8 @@ pub mod crucible_arena {
             return err!(ArenaError::RewardTooSmall);
         }
         let fee = (reward as u128 * ARENA_FEE_BPS as u128 / 10000) as u64;
-        // sponsor must have sent reward+fee to sponsor_ata -> vault; pull into vault
         let amount = reward.checked_add(fee).ok_or(ArenaError::Overflow)?;
-        // transfer reward+fee from sponsor_ata to vault
+
         token::transfer(
             CpiContext::new(
                 ctx.accounts.token_program.to_account_info(),
@@ -139,10 +168,7 @@ pub mod crucible_arena {
         t.deposited = amount;
         t.paid_out = 0;
         t.opened_at = clock.unix_timestamp;
-        t.open_until = clock
-            .unix_timestamp
-            .checked_add(open_span as i64)
-            .ok_or(ArenaError::Overflow)?;
+        t.open_until = clock.unix_timestamp.checked_add(open_span as i64).ok_or(ArenaError::Overflow)?;
         t.skeptic_window = skeptic_window;
         t.spec_digest = spec_digest;
         t.suite_digest = suite_digest;
@@ -153,10 +179,6 @@ pub mod crucible_arena {
         t.agent = Pubkey::default();
         t.bond = 0;
         t.active_counted = false;
-        t.claim_span_override = 0;
-
-        // Hmm: nonce seed. We need nonce stored for claim_trial PDA. Let's store a nonce.
-        // Actually we didn't accept nonce param. Let's accept it. (see below)
         Ok(())
     }
 
@@ -192,21 +214,12 @@ pub mod crucible_arena {
         let claim_span = {
             let remaining = if t.open_until > clock.unix_timestamp {
                 (t.open_until - clock.unix_timestamp) as u64
-            } else {
-                0u64
-            };
-            if remaining < CLAIM_DEADLINE_MIN_SECONDS {
-                remaining
-            } else if remaining < CLAIM_DEADLINE_MAX_SECONDS {
-                remaining
-            } else {
-                CLAIM_DEADLINE_MAX_SECONDS
-            }
+            } else { 0u64 };
+            if remaining < CLAIM_DEADLINE_MIN_SECONDS { remaining }
+            else if remaining < CLAIM_DEADLINE_MAX_SECONDS { remaining }
+            else { CLAIM_DEADLINE_MAX_SECONDS }
         };
-        let deadline = clock
-            .unix_timestamp
-            .checked_add(claim_span as i64)
-            .ok_or(ArenaError::Overflow)?;
+        let deadline = clock.unix_timestamp.checked_add(claim_span as i64).ok_or(ArenaError::Overflow)?;
 
         t.status = TrialStatus::Claimed;
         t.ever_claimed = true;
@@ -224,6 +237,106 @@ pub mod crucible_arena {
         c.claim_deadline = deadline;
         c.identity_epoch = 0;
         c.runner_key = Pubkey::default();
+        Ok(())
+    }
+
+    pub fn submit_run(
+        ctx: Context<SubmitRun>,
+        artifact_digest: [u8; 32],
+        verdict_hash: [u8; 32],
+        replay_hash: [u8; 32],
+        model_harness_id: [u8; 32],
+    ) -> Result<()> {
+        let clock = Clock::get()?;
+        let t = &mut ctx.accounts.trial;
+        if t.status != TrialStatus::Claimed {
+            return err!(ArenaError::IllegalTransition);
+        }
+        if clock.unix_timestamp >= t.claim_deadline {
+            return err!(ArenaError::ClaimTimeout);
+        }
+        if artifact_digest == [0u8; 32] || verdict_hash == [0u8; 32] || replay_hash == [0u8; 32] {
+            return err!(ArenaError::ZeroDigest);
+        }
+        // Ed25519 introspection (Instructions sysvar) is TODO: verify runner + attestor
+        // signatures per bible §9.3 before flipping to Submitted. Scaffold stores digests.
+        t.status = TrialStatus::Submitted;
+        t.run_hash = artifact_digest;
+        t.verdict_hash = verdict_hash;
+        t.replay_hash = replay_hash;
+        t.model_harness_id = model_harness_id;
+        t.submitted_at = clock.unix_timestamp;
+        t.window_end = clock.unix_timestamp.checked_add(t.skeptic_window as i64).ok_or(ArenaError::Overflow)?;
+        t.holdout_due_by = clock.unix_timestamp
+            .checked_add((t.skeptic_window as i64) / 2)
+            .ok_or(ArenaError::Overflow)?;
+        if t.holdout_due_by > t.window_end { t.holdout_due_by = t.window_end; }
+        let _ = &ctx.accounts.vault;
+        Ok(())
+    }
+
+    pub fn settle(ctx: Context<Settle>) -> Result<()> {
+        let clock = Clock::get()?;
+        // Validate + compute in a scoped borrow so the CPI can borrow ctx again.
+        let (agent_amount, fee, sponsor_key, nonce, bump, grace_ok) = {
+            let t = &mut ctx.accounts.trial;
+            if t.status != TrialStatus::Submitted {
+                return err!(ArenaError::IllegalTransition);
+            }
+            let grace_end = t.window_end.checked_add(BREAK_REVEAL_GRACE_SECONDS as i64).ok_or(ArenaError::Overflow)?;
+            if clock.unix_timestamp < grace_end {
+                return err!(ArenaError::WindowStillOpen);
+            }
+            let agent_amount = t.reward.checked_add(t.bond).ok_or(ArenaError::Overflow)?;
+            let fee = t.fee;
+            let sponsor_key = t.sponsor;
+            let nonce = t.nonce;
+            let bump = t.bump;
+            t.status = TrialStatus::Settled;
+            t.paid_out = t.paid_out.checked_add(agent_amount).ok_or(ArenaError::Overflow)?
+                .checked_add(fee).ok_or(ArenaError::Overflow)?;
+            t.bond = 0;
+            (agent_amount, fee, sponsor_key, nonce, bump, true)
+        };
+        let _ = grace_ok;
+
+        let seeds: &[&[u8]] = &[b"trial", sponsor_key.as_ref(), &nonce.to_le_bytes(), &[bump]];
+        let signer = &[seeds];
+        anchor_spl::token::transfer(
+            CpiContext::new_with_signer(
+                ctx.accounts.token_program.to_account_info(),
+                anchor_spl::token::Transfer {
+                    from: ctx.accounts.vault.to_account_info(),
+                    to: ctx.accounts.agent_ata.to_account_info(),
+                    authority: ctx.accounts.trial.to_account_info(),
+                },
+                signer,
+            ),
+            agent_amount,
+        )?;
+        if fee > 0 {
+            anchor_spl::token::transfer(
+                CpiContext::new_with_signer(
+                    ctx.accounts.token_program.to_account_info(),
+                    anchor_spl::token::Transfer {
+                        from: ctx.accounts.vault.to_account_info(),
+                        to: ctx.accounts.treasury_ata.to_account_info(),
+                        authority: ctx.accounts.trial.to_account_info(),
+                    },
+                    signer,
+                ),
+                fee,
+            )?;
+        }
+        // conservation assert
+        ctx.accounts.vault.reload()?;
+        let vault_bal = ctx.accounts.vault.amount;
+        let deposited = ctx.accounts.trial.deposited;
+        let paid_out = ctx.accounts.trial.paid_out;
+        let expected = deposited.checked_sub(paid_out).ok_or(ArenaError::Overflow)?;
+        if vault_bal != expected {
+            return err!(ArenaError::Overflow);
+        }
         Ok(())
     }
 }
