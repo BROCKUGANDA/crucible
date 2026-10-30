@@ -50,6 +50,7 @@ pub struct Trial {
     pub skeptic_window: u32,
     pub claim_deadline: i64,
     pub agent: Pubkey,
+    pub runner_key: Pubkey,
     pub bond: u64,
     pub active_counted: bool,
     pub spec_digest: [u8; 32],

@@ -52,6 +52,8 @@ pub enum ArenaError {
     WindowStillOpen,
     #[msg("spec or suite digest zero")]
     ZeroDigest,
+    #[msg("bad signer")]
+    BadSigner,
     #[msg("overflow")]
     Overflow,
 }
