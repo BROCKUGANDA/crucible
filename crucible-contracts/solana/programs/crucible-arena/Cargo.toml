@@ -1,0 +1,22 @@
+[package]
+name = "crucible-arena"
+version = "0.1.0"
+edition = "2021"
+description = "CRUCIBLE arena - Solana program (gates 734-746, 748-751, 753, 783). Scaffold: account/instruction stubs; handlers land per phase."
+license = "UNLICENSED"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "crucible_arena"
+
+[features]
+default = []
+cpi = ["no-entrypoint"]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
+
+[dependencies]
+anchor-lang = { workspace = true }
+anchor-spl = { workspace = true }

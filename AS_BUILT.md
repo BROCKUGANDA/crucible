@@ -19,7 +19,7 @@ showed it green and the date. A tool or artifact not listed here is not claimed.
 | Program | Id | Notes |
 | --- | --- | --- |
 | `work_escrow` (Solana, localnet) | `AnctSTeT8TNQ4riTxkh8Kh8hKpQGfmhQjhd3M15VaJAD` | Re-synced 2026-10-24 to the local keypair (`target/deploy/work_escrow-keypair.json`, gitignored). The bible's `7Tvrs…` id is retired: its keypair never existed in this repo. `.so` ≈ 367 KB, sha256 not yet recorded — record at the devnet deploy |
-| `crucible-arena` (Solana, v2) | — | Not yet built (P4) |
+| `crucible-arena` (Solana, v2) | `AikvHhtXSuZ8PuKoqYG5WASJGWTEu4RQYmYbeSzoPLJV` | Scaffold built 2026-10-30 (`programs/crucible-arena`, `init_config` only); `.so` ≈ 200 KB; keypair generated on the build host (back up before deploy). Handlers land per phase. |
 | EVM contracts | Anvil/local, chain 31337; addresses in `apps/web` deployment env | Foundry 144 tests + coverage gate green 2026-10-23 |
 
 ## Params (v2)
