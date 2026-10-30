@@ -1,74 +1,72 @@
-//! Account state stubs (§9.1). Fields are minimal placeholders; full layouts land with handlers.
+//! Account state for crucible-arena (§9.1). Layouts are minimal but typed; fields
+//! grow as handlers land. All amounts are in the trial mint's base units.
 
 use anchor_lang::prelude::*;
+use anchor_spl::token::TokenAccount;
+
+pub const TRIAL_SEED: &[u8] = b"trial";
+pub const VAULT_SEED: &[u8] = b"vault";
+pub const CLAIM_SEED: &[u8] = b"claim";
+pub const CONFIG_SEED: &[u8] = b"config";
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq, Default)]
+pub enum TrialStatus {
+    #[default]
+    Open,
+    Claimed,
+    Submitted,
+    Docketed,
+    Panel,
+    Settled,
+    Cancelled,
+    Expired,
+}
 
 #[account]
 #[derive(Default, InitSpace)]
 pub struct Config {
     pub bump: u8,
     pub paused: bool,
+    pub authority: Pubkey,
 }
 
 #[account]
-#[derive(Default)]
+#[derive(Default, InitSpace)]
 pub struct Trial {
     pub bump: u8,
     pub sponsor: Pubkey,
-    pub state: u8,
+    pub status: TrialStatus,
+    pub ever_claimed: bool,
+    pub reward: u64,
+    pub fee: u64,
+    pub deposited: u64,
+    pub paid_out: u64,
+    pub opened_at: i64,
+    pub open_until: i64,
+    pub skeptic_window: u32,
+    pub claim_deadline: i64,
+    pub agent: Pubkey,
+    pub bond: u64,
+    pub active_counted: bool,
+    pub spec_digest: [u8; 32],
+    pub suite_digest: [u8; 32],
+    pub holdout_commitment: [u8; 32],
+    pub nonce: u64,
+    pub mint: Pubkey,
+    pub claim_span_override: u32,
 }
 
 #[account]
-#[derive(Default)]
-pub struct Vault {
-    pub bump: u8,
-}
-
-#[account]
-#[derive(Default)]
+#[derive(Default, InitSpace)]
 pub struct Claim {
     pub bump: u8,
+    pub trial: Pubkey,
+    pub agent: Pubkey,
+    pub bond: u64,
+    pub claim_deadline: i64,
+    pub identity_epoch: u64,
+    pub runner_key: Pubkey,
 }
 
-#[account]
-#[derive(Default)]
-pub struct Break {
-    pub bump: u8,
-}
-
-#[account]
-#[derive(Default)]
-pub struct SeatPool {
-    pub bump: u8,
-}
-
-#[account]
-#[derive(Default)]
-pub struct Seat {
-    pub bump: u8,
-    pub operator: Pubkey,
-}
-
-#[account]
-#[derive(Default)]
-pub struct Panel {
-    pub bump: u8,
-}
-
-#[account]
-#[derive(Default)]
-pub struct Standing {
-    pub bump: u8,
-}
-
-#[account]
-#[derive(Default)]
-pub struct Credential {
-    pub bump: u8,
-}
-
-#[account]
-#[derive(Default)]
-pub struct Runner {
-    pub bump: u8,
-    pub agent_identity: Pubkey,
-}
+// Vault is a TokenAccount (PDA-owned); no separate struct needed.
+pub type Vault = TokenAccount;

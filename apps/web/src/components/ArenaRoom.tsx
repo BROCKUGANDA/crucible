@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { ARENA_STAGES, type ArenaEvent, type ArenaStage } from "@crucible/arena-events";
 
 /**
@@ -20,14 +20,33 @@ const STAGE_LABEL: Record<ArenaStage, string> = {
   VII: "Ludi",
 };
 
-export function ArenaRoom({ events }: { events: ArenaEvent[] }) {
+export function ArenaRoom({ events, trialId }: { events?: ArenaEvent[]; trialId?: string }) {
+  const [liveEvents, setLiveEvents] = useState<ArenaEvent[]>(events ?? []);
+  const allEvents = events ?? liveEvents;
+
+  // Subscribe to the trial-scoped SSE stream (bible §16.10 transport).
+  useEffect(() => {
+    if (!trialId) return;
+    const base = (process.env.NEXT_PUBLIC_API_URL as string) || "";
+    const es = new EventSource(`${base}/trials/${encodeURIComponent(trialId)}/events`);
+    es.addEventListener("snapshot", (msg) => {
+      try {
+        const body = JSON.parse((msg as MessageEvent).data);
+        if (Array.isArray(body.events)) setLiveEvents(body.events as ArenaEvent[]);
+      } catch {
+        // ignore malformed frames
+      }
+    });
+    return () => es.close();
+  }, [trialId]);
+
   const [judgeMode, setJudgeMode] = useState(false);
 
   const activeStage = useMemo<ArenaStage | null>(() => {
-    if (events.length === 0) return null;
-    const last = events[events.length - 1];
+    if (allEvents.length === 0) return null;
+    const last = allEvents[allEvents.length - 1];
     return last ? last.stage : null;
-  }, [events]);
+  }, [allEvents]);
 
   return (
     <div className="arena-room">
@@ -56,7 +75,7 @@ export function ArenaRoom({ events }: { events: ArenaEvent[] }) {
       </div>
 
       <ul className="arena-room__events">
-        {events.map((e) => (
+        {allEvents.map((e) => (
           <li key={e.id} className="arena-room__event" data-kind={e.kind} data-mode={e.mode}>
             <span className="arena-room__kind">{e.kind}</span>
             {e.actor ? (

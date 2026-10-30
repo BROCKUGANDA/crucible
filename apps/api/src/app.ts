@@ -1914,6 +1914,35 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
     }
   });
 
+  // Trial-scoped live room stream (bible §16.10): SSE fan-out of ArenaEvent envelopes
+  // for one trial. Transport scaffold: heartbeats + a snapshot event. The full room
+  // renderer subscribes via EventSource on the client.
+  app.get("/trials/:id/events", (c) => {
+    const trialId = c.req.param("id");
+    return streamSSE(c, async (stream) => {
+      let running = true;
+      const signal = c.req.raw.signal;
+      signal.addEventListener("abort", () => { running = false; }, { once: true });
+      stream.onAbort(() => { running = false; });
+
+      let lastWriteAt = 0;
+      const HEARTBEAT_MS = 15_000;
+      const maxMs = 10 * 60 * 1000;
+      const started = Date.now();
+
+      await stream.writeSSE({ event: "snapshot", data: JSON.stringify({ trial: trialId, events: [] }) });
+
+      while (running && Date.now() - started < maxMs) {
+        if (Date.now() - lastWriteAt >= HEARTBEAT_MS) {
+          await stream.writeSSE({ event: "heartbeat", data: JSON.stringify({ trial: trialId }) });
+          lastWriteAt = Date.now();
+        }
+        await new Promise((r) => setTimeout(r, 1000));
+        if (signal.aborted) running = false;
+      }
+    });
+  });
+
   app.notFound((c) => c.json({ error: "Lost slag. This page never left the crucible." }, 404));
 
   app.onError((err, c) => {

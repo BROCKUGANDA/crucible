@@ -1,4 +1,4 @@
-//! CRUCIBLE arena error codes (mirrors EVM custom errors; see §9.7).
+//! CRUCIBLE arena error codes (mirrors EVM custom errors; §9.7).
 
 use anchor_lang::prelude::*;
 
@@ -28,4 +28,28 @@ pub enum ArenaError {
     UnrevealedCommit,
     #[msg("overflow")]
     Overflow,
+    #[msg("too small")]
+    TooSmall,
+    #[msg("bad window")]
+    BadWindow,
+    #[msg("bad open span")]
+    BadOpenSpan,
+    #[msg("reward too small")]
+    RewardTooSmall,
+    #[msg("reward mismatch (must be R + F)")]
+    RewardMismatch,
+    #[msg("already claimed")]
+    AlreadyClaimed,
+    #[msg("claim window closed")]
+    ClaimWindowClosed,
+    #[msg("self claim not allowed")]
+    SelfClaim,
+    #[msg("too many active claims")]
+    TooManyActiveClaims,
+    #[msg("yield cooldown")]
+    YieldCooldown,
+    #[msg("stake too small")]
+    StakeTooSmall,
+    #[msg("spec or suite digest zero")]
+    ZeroDigest,
 }
