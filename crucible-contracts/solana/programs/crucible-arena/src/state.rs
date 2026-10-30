@@ -64,6 +64,9 @@ pub struct Trial {
     pub verdict_hash: [u8; 32],
     pub replay_hash: [u8; 32],
     pub model_harness_id: [u8; 32],
+    pub break_count: u16,
+    pub docket_frozen: bool,
+    pub docket_size: u8,
     pub mint: Pubkey,
     pub claim_span_override: u32,
 }
@@ -78,6 +81,23 @@ pub struct Claim {
     pub claim_deadline: i64,
     pub identity_epoch: u64,
     pub runner_key: Pubkey,
+}
+
+#[account]
+#[derive(Default, InitSpace)]
+pub struct Break {
+    pub bump: u8,
+    pub trial: Pubkey,
+    pub skeptic: Pubkey,
+    pub commitment: [u8; 32],
+    pub stake: u64,
+    pub seat_fee: u64,
+    pub committed_at: i64,
+    pub revealed: bool,
+    pub revealed_type: u8,
+    pub evidence_digest: [u8; 32],
+    pub salt: [u8; 32],
+    pub settled: bool,
 }
 
 // Vault is a TokenAccount (PDA-owned); no separate struct needed.

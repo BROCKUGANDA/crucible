@@ -123,6 +123,92 @@ pub struct Settle<'info> {
     pub token_program: Program<'info, Token>,
 }
 
+// --------------------------------------------------------------------------- Accounts: yield/timeout/breaks
+
+#[derive(Accounts)]
+pub struct YieldTrial<'info> {
+    #[account(mut)]
+    pub agent: Signer<'info>,
+
+    #[account(mut)]
+    pub trial: Account<'info, Trial>,
+
+    #[account(mut, constraint = vault.mint == trial.mint)]
+    pub vault: Account<'info, TokenAccount>,
+
+    #[account(mut, constraint = agent_ata.mint == trial.mint, constraint = agent_ata.owner == agent.key())]
+    pub agent_ata: Account<'info, TokenAccount>,
+
+    pub token_program: Program<'info, Token>,
+}
+
+#[derive(Accounts)]
+pub struct ClaimTimeout<'info> {
+    #[account(mut)]
+    pub cranker: Signer<'info>,
+
+    #[account(mut)]
+    pub trial: Account<'info, Trial>,
+
+    #[account(mut, constraint = vault.mint == trial.mint)]
+    pub vault: Account<'info, TokenAccount>,
+
+    #[account(mut, constraint = sponsor_ata.mint == trial.mint)]
+    pub sponsor_ata: Account<'info, TokenAccount>,
+
+    #[account(mut, constraint = agent_ata.mint == trial.mint)]
+    pub agent_ata: Account<'info, TokenAccount>,
+
+    pub token_program: Program<'info, Token>,
+}
+
+#[derive(Accounts)]
+#[instruction(commitment: [u8;32])]
+pub struct CommitBreak<'info> {
+    #[account(mut)]
+    pub skeptic: Signer<'info>,
+
+    #[account(mut)]
+    pub trial: Account<'info, Trial>,
+
+    #[account(
+        init,
+        seeds = [b"break", trial.key().as_ref(), skeptic.key().as_ref(), &trial.break_count.to_le_bytes()],
+        bump,
+        payer = skeptic,
+        space = 8 + Break::INIT_SPACE,
+    )]
+    pub brk: Account<'info, Break>,
+
+    #[account(mut, constraint = skeptic_ata.mint == trial.mint, constraint = skeptic_ata.owner == skeptic.key())]
+    pub skeptic_ata: Account<'info, TokenAccount>,
+
+    #[account(mut, constraint = vault.mint == trial.mint)]
+    pub vault: Account<'info, TokenAccount>,
+
+    pub token_program: Program<'info, Token>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct RevealBreak<'info> {
+    pub skeptic: Signer<'info>,
+
+    #[account(mut)]
+    pub trial: Account<'info, Trial>,
+
+    #[account(mut, constraint = brk.trial == trial.key(), constraint = brk.skeptic == skeptic.key())]
+    pub brk: Account<'info, Break>,
+}
+
+#[derive(Accounts)]
+pub struct FreezeDocket<'info> {
+    pub cranker: Signer<'info>,
+
+    #[account(mut)]
+    pub trial: Account<'info, Trial>,
+}
+
 // --------------------------------------------------------------------------- Program
 #[program]
 pub mod crucible_arena {
@@ -387,9 +473,203 @@ pub mod crucible_arena {
         }
         Ok(())
     }
+
+    pub fn yield_trial(ctx: Context<YieldTrial>) -> Result<()> {
+        let clock = Clock::get()?;
+        let t = &mut ctx.accounts.trial;
+        if t.status != TrialStatus::Claimed {
+            return err!(ArenaError::IllegalTransition);
+        }
+        if ctx.accounts.agent.key() != t.agent {
+            return err!(ArenaError::SelfClaim);
+        }
+        // return bond
+        let bump = t.bump;
+        let sponsor_key = t.sponsor;
+        let nonce = t.nonce;
+        let bond = t.bond;
+        t.status = TrialStatus::Open;
+        t.bond = 0;
+        t.agent = Pubkey::default();
+        t.claim_deadline = 0;
+        t.active_counted = false;
+        // cooldown recorded off-chain; transfer bond back with PDA signer
+        let seeds: &[&[u8]] = &[b"trial", sponsor_key.as_ref(), &nonce.to_le_bytes(), &[bump]];
+        let signer = &[seeds];
+        anchor_spl::token::transfer(
+            CpiContext::new_with_signer(
+                ctx.accounts.token_program.to_account_info(),
+                anchor_spl::token::Transfer {
+                    from: ctx.accounts.vault.to_account_info(),
+                    to: ctx.accounts.agent_ata.to_account_info(),
+                    authority: ctx.accounts.trial.to_account_info(),
+                },
+                signer,
+            ),
+            bond,
+        )?;
+        // note: vault authority is trial PDA; need signer seeds. Re-do with signer.
+        let _ = clock;
+        Ok(())
+    }
+
+    pub fn claim_timeout(ctx: Context<ClaimTimeout>) -> Result<()> {
+        let clock = Clock::get()?;
+        let t = &mut ctx.accounts.trial;
+        if t.status != TrialStatus::Claimed {
+            return err!(ArenaError::IllegalTransition);
+        }
+        if clock.unix_timestamp < t.claim_deadline {
+            return err!(ArenaError::ClaimTimeout);
+        }
+        let bond = t.bond;
+        let forfeit = (bond as u128 * CLAIM_TIMEOUT_FORFEIT_BPS as u128 / 10000) as u64;
+        let agent_amount = bond.checked_sub(forfeit).ok_or(ArenaError::Overflow)?;
+        // sponsor gets forfeit, agent gets rest
+        let trial_key = t.sponsor;
+        let nonce = t.nonce;
+        let bump = t.bump;
+        t.status = TrialStatus::Open;
+        t.bond = 0;
+        t.agent = Pubkey::default();
+        t.claim_deadline = 0;
+        t.active_counted = false;
+        t.deposited = t.deposited.checked_sub(bond).ok_or(ArenaError::Overflow)?;
+        t.paid_out = t.paid_out.checked_add(forfeit).ok_or(ArenaError::Overflow)?
+            .checked_add(agent_amount).ok_or(ArenaError::Overflow)?;
+
+        let seeds: &[&[u8]] = &[b"trial", trial_key.as_ref(), &nonce.to_le_bytes(), &[bump]];
+        let signer = &[seeds];
+        if forfeit > 0 {
+            anchor_spl::token::transfer(
+                CpiContext::new_with_signer(
+                    ctx.accounts.token_program.to_account_info(),
+                    anchor_spl::token::Transfer {
+                        from: ctx.accounts.vault.to_account_info(),
+                        to: ctx.accounts.sponsor_ata.to_account_info(),
+                        authority: ctx.accounts.trial.to_account_info(),
+                    },
+                    signer,
+                ),
+                forfeit,
+            )?;
+        }
+        if agent_amount > 0 {
+            anchor_spl::token::transfer(
+                CpiContext::new_with_signer(
+                    ctx.accounts.token_program.to_account_info(),
+                    anchor_spl::token::Transfer {
+                        from: ctx.accounts.vault.to_account_info(),
+                        to: ctx.accounts.agent_ata.to_account_info(),
+                        authority: ctx.accounts.trial.to_account_info(),
+                    },
+                    signer,
+                ),
+                agent_amount,
+            )?;
+        }
+        Ok(())
+    }
+
+    pub fn commit_break(ctx: Context<CommitBreak>, commitment: [u8; 32]) -> Result<()> {
+        // Read immutable trial data before mutable borrow.
+        let trial_key_for_break = ctx.accounts.trial.key();
+        let skeptic_for_break = ctx.accounts.skeptic.key();
+        let clock = Clock::get()?;
+        let t = &mut ctx.accounts.trial;
+        if t.status != TrialStatus::Submitted {
+            return err!(ArenaError::IllegalTransition);
+        }
+        if clock.unix_timestamp >= t.window_end {
+            return err!(ArenaError::WindowStillOpen);
+        }
+        if commitment == [0u8; 32] {
+            return err!(ArenaError::TooSmall);
+        }
+        if ctx.accounts.skeptic.key() == t.agent {
+            return err!(ArenaError::SelfClaim);
+        }
+        let stake_min = (t.reward as u128 * SKEPTIC_STAKE_MIN_BPS as u128 / 10000) as u64;
+        let seat_fee = (t.reward as u128 * SEAT_FEE_BPS as u128 * ARGUS_SEATS as u128 / 10000) as u64;
+        // skeptic must have sent stake+seat_fee; we transfer from skeptic_ata
+        // For scaffold, require the skeptic to have approved; transfer stake+seat_fee.
+        let total = stake_min.checked_add(seat_fee).ok_or(ArenaError::Overflow)?;
+        anchor_spl::token::transfer(
+            CpiContext::new(
+                ctx.accounts.token_program.to_account_info(),
+                anchor_spl::token::Transfer {
+                    from: ctx.accounts.skeptic_ata.to_account_info(),
+                    to: ctx.accounts.vault.to_account_info(),
+                    authority: ctx.accounts.skeptic.to_account_info(),
+                },
+            ),
+            total,
+        )?;
+
+        let brk = &mut ctx.accounts.brk;
+        brk.bump = ctx.bumps.brk;
+        brk.trial = trial_key_for_break;
+        brk.skeptic = skeptic_for_break;
+        brk.commitment = commitment;
+        brk.stake = stake_min;
+        brk.seat_fee = seat_fee;
+        brk.committed_at = clock.unix_timestamp;
+        brk.revealed = false;
+        brk.settled = false;
+
+        t.break_count = t.break_count.checked_add(1).ok_or(ArenaError::Overflow)?;
+        t.deposited = t.deposited.checked_add(total).ok_or(ArenaError::Overflow)?;
+        Ok(())
+    }
+
+    pub fn reveal_break(ctx: Context<RevealBreak>, break_type: u8, evidence_digest: [u8;32], salt: [u8;32]) -> Result<()> {
+        let clock = Clock::get()?;
+        let t = &ctx.accounts.trial;
+        if clock.unix_timestamp < t.window_end {
+            return err!(ArenaError::WindowStillOpen);
+        }
+        let grace_end = t.window_end.checked_add(BREAK_REVEAL_GRACE_SECONDS as i64).ok_or(ArenaError::Overflow)?;
+        if clock.unix_timestamp > grace_end {
+            return err!(ArenaError::ClaimTimeout);
+        }
+        let brk = &mut ctx.accounts.brk;
+        if brk.revealed {
+            return err!(ArenaError::IllegalTransition);
+        }
+        // verify commitment: sha256("CRUCIBLE:break:v1" || trial || skeptic || type || evidence || salt)
+        use anchor_lang::solana_program::hash::hash;
+        let mut buf = Vec::new();
+        buf.extend_from_slice(b"CRUCIBLE:break:v1");
+        buf.extend_from_slice(ctx.accounts.trial.key().as_ref());
+        buf.extend_from_slice(ctx.accounts.skeptic.key().as_ref());
+        buf.push(break_type);
+        buf.extend_from_slice(&evidence_digest);
+        buf.extend_from_slice(&salt);
+        let computed = hash(&buf);
+        if computed.to_bytes() != brk.commitment {
+            return err!(ArenaError::BadSigner);
+        }
+        brk.revealed = true;
+        brk.revealed_type = break_type;
+        brk.evidence_digest = evidence_digest;
+        brk.salt = salt;
+        Ok(())
+    }
+
+    pub fn freeze_docket(ctx: Context<FreezeDocket>) -> Result<()> {
+        let t = &mut ctx.accounts.trial;
+        if t.status != TrialStatus::Submitted {
+            return err!(ArenaError::IllegalTransition);
+        }
+        // scaffold: just mark frozen
+        t.docket_frozen = true;
+        t.docket_size = t.break_count.min(MAX_DOCKET as u16) as u8;
+        Ok(())
+    }
 }
 
-// --------------------------------------------------------------------------- Ed25519 parsing helper
+// --------------------------------------------------------------------------- helpers
+fn _unused() {}
 fn parse_ed25519(data: &[u8]) -> Result<([u8; 32], Vec<u8>)> {
     // Ed25519SigVerify instruction data layout:
     //   [0] num_signatures (u8)
