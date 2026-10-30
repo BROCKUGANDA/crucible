@@ -16,6 +16,7 @@ COPY packages/eval/package.json packages/eval/
 COPY packages/registry/package.json packages/registry/
 COPY packages/forge-runner/package.json packages/forge-runner/
 COPY packages/frame/package.json packages/frame/
+COPY packages/arena-events/package.json packages/arena-events/
 COPY packages/forge-runner/package.json packages/forge-runner/
 COPY packages/indexer/package.json packages/indexer/
 COPY packages/smith-sdk/package.json packages/smith-sdk/

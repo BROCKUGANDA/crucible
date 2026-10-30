@@ -367,6 +367,7 @@ jobs:
             --workspace @crucible/cidstore \
             --workspace @crucible/crypto \
             --workspace @crucible/frame \
+            --workspace @crucible/arena-events \
             --workspace @crucible/forge-runner \
             --workspace @crucible/grader \
             --workspace @crucible/keeper \
@@ -391,6 +392,7 @@ jobs:
             --workspace @crucible/cidstore \
             --workspace @crucible/crypto \
             --workspace @crucible/frame \
+            --workspace @crucible/arena-events \
             --workspace @crucible/forge-runner \
             --workspace @crucible/grader \
             --workspace @crucible/keeper \

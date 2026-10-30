@@ -10,6 +10,7 @@ import { VoiceControl } from "@/components/VoiceControl";
 import { PayoffSound } from "@/components/PayoffSound";
 import { FrenchyAsk } from "@/components/FrenchyAsk";
 import { SeedPhrasePromise } from "@/components/SeedPhrasePromise";
+import { SponsorshipBadge } from "@/components/SponsorshipBadge";
 import { Modal } from "@/components/Modal";
 import { formatWei } from "@/lib/eth";
 import { buildWithdraw, useTx } from "@/lib/useTx";
@@ -124,6 +125,7 @@ export function Chrome({ children }: { children: ReactNode }) {
           <VoiceControl />
           <PayoffSound />
           <FrenchyAsk />
+          <SponsorshipBadge />
           <CreditButton />
           <WalletButton />
         </div>
