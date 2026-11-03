@@ -664,6 +664,7 @@ pub mod crucible_arena {
         // scaffold: just mark frozen
         t.docket_frozen = true;
         t.docket_size = t.break_count.min(MAX_DOCKET as u16) as u8;
+        // O1 scaffold: agent takes R+B; treasury takes fee. O2/O8 deferred to panel tally.
         Ok(())
     }
 }
