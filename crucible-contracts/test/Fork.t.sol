@@ -86,7 +86,7 @@ contract ForkTests is Test {
         seats[2] = makeAddr("f.argus3");
 
         alloy = new AlloyRegistry();
-        trials = new CrucibleTrials(makeAddr("f.treasury"), address(alloy), seats);
+        trials = new CrucibleTrials(makeAddr("f.treasury"), address(this), address(alloy), seats);
         alloy.setForge(address(trials));
 
         bridge = new ReputationBridge(address(trials));
