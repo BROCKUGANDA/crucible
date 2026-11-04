@@ -342,4 +342,64 @@ describe("the claims are falsifiable", () => {
     delete (omitted as Partial<EvalManifest>).datasetDigest;
     expect(compareManifests(present, omitted).map((d) => d.path)).toEqual(["datasetDigest"]);
   });
+
+  it("a builder that accepted a non-canonical resource measurement is caught", () => {
+    expect(() =>
+      baseManifest({ resources: { wallClockMs: "60000.00" } }),
+    ).toThrow(/shortest round-trip/);
+  });
+
+  it("a builder that accepted a non-canonical statistical value is caught", () => {
+    expect(() =>
+      baseManifest({ statistics: { meanScore: "0.90" } }),
+    ).toThrow(/shortest round-trip/);
+  });
+
+  it("a builder that accepted an empty grader id is caught", () => {
+    expect(() =>
+      baseManifest({ grader: { id: "", version: "1.0.0" } }),
+    ).toThrow(/grader/);
+  });
+
+  it("a builder that accepted an empty runner version is caught", () => {
+    expect(() =>
+      baseManifest({ runner: { version: "" } }),
+    ).toThrow(/runner/);
+  });
+
+  it("a digest that ignores the harness version is caught", () => {
+    const base = baseManifest();
+    const withHarness = baseManifest({ harnessVersion: "1.0.0" });
+    expect(manifestDigest(base)).not.toBe(manifestDigest(withHarness));
+  });
+
+  it("a digest that ignores the tool versions is caught", () => {
+    const base = baseManifest();
+    const withTools = baseManifest({ toolVersions: { bash: "5.2", read: "1.0" } });
+    expect(manifestDigest(base)).not.toBe(manifestDigest(withTools));
+  });
+
+  it("a digest that ignores the grader identity is caught", () => {
+    const base = baseManifest();
+    const withGrader = baseManifest({ grader: { id: "crucible-grader", version: "2.0.0" } });
+    expect(manifestDigest(base)).not.toBe(manifestDigest(withGrader));
+  });
+
+  it("a digest that ignores the chain references is caught", () => {
+    const base = baseManifest();
+    const withChain = baseManifest({ chain: { chainId: "1", trialId: "42" } });
+    expect(manifestDigest(base)).not.toBe(manifestDigest(withChain));
+  });
+
+  it("a comparison that ignored the harness version is caught", () => {
+    const base = baseManifest();
+    const withHarness = baseManifest({ harnessVersion: "1.0.0" });
+    expect(manifestsComparable(base, withHarness)).toBe(false);
+  });
+
+  it("a comparison that ignored the tool versions is caught", () => {
+    const base = baseManifest();
+    const withTools = baseManifest({ toolVersions: { bash: "5.2" } });
+    expect(manifestsComparable(base, withTools)).toBe(false);
+  });
 });

@@ -141,6 +141,143 @@ export interface ScoringPin {
   decision: "deterministic-suite" | "rubric" | "both";
   /** Scoring rules version. */
   rulesVersion?: string;
+  /** Version of the scorer implementation that produced the score. */
+  scorerVersion?: string;
+}
+
+/**
+ * Resource measurements recorded during execution.
+ *
+ * All values are strings to preserve exact decimal text across languages.
+ * A manifest that carries `"1.50"` and one that carries `"1.5"` would
+ * otherwise hash alike after JCS, so the builder enforces canonical form.
+ */
+export interface ResourceMeasurements {
+  /** Total wall-clock time in milliseconds. */
+  wallClockMs?: string;
+  /** CPU time consumed in milliseconds. */
+  cpuTimeMs?: string;
+  /** Peak memory usage in bytes. */
+  peakMemoryBytes?: string;
+  /** Total tokens consumed (input + output). */
+  totalTokens?: string;
+  /** Input tokens consumed. */
+  inputTokens?: string;
+  /** Output tokens consumed. */
+  outputTokens?: string;
+  /** Cost in the provider's currency unit. */
+  cost?: string;
+  /** Number of tool calls made. */
+  toolCallCount?: string;
+  /** Number of retries. */
+  retryCount?: string;
+}
+
+/**
+ * Classification of errors that occurred during evaluation.
+ *
+ * Distinguishes model failure from infrastructure failure so a leaderboard
+ * row can say "the model failed" rather than "the run failed" when the
+ * provider timed out.
+ */
+export interface ErrorClassifications {
+  /** Errors caused by the model (hallucination, refusal, malformed output). */
+  modelErrors?: string[];
+  /** Errors caused by infrastructure (timeout, OOM, sandbox crash). */
+  infrastructureErrors?: string[];
+  /** Errors caused by the provider (rate limit, API outage). */
+  providerErrors?: string[];
+  /** Errors caused by an invalid submission (bad signature, wrong format). */
+  submissionErrors?: string[];
+  /** Errors caused by judge disagreement. */
+  judgeDisagreements?: string[];
+}
+
+/**
+ * Statistical analysis of the evaluation result.
+ *
+ * These fields are optional because not every evaluation has enough data
+ * for statistics — a single run has no variance to measure. A leaderboard
+ * that displays a confidence interval must verify these fields are present.
+ */
+export interface StatisticalAnalysis {
+  /** Number of independent repetitions. */
+  repetitions?: string;
+  /** Lower bound of the confidence interval. */
+  ciLower?: string;
+  /** Upper bound of the confidence interval. */
+  ciUpper?: string;
+  /** Confidence level, e.g. "0.95". */
+  ciLevel?: string;
+  /** Standard deviation across repetitions. */
+  stdDev?: string;
+  /** Mean score across repetitions. */
+  meanScore?: string;
+  /** Sample size used for statistical tests. */
+  sampleSize?: string;
+  /** Whether the result is statistically significant. */
+  significant?: "true" | "false";
+  /** p-value from the statistical test. */
+  pValue?: string;
+}
+
+/**
+ * Identity of the grader that produced the evaluation.
+ *
+ * Separate from `evaluator` because the grader is the system that ran the
+ * evaluation, while the evaluator is the judge that scored it. A grader
+ * can use multiple evaluators, and an evaluator can be used by multiple
+ * graders.
+ */
+export interface GraderIdentity {
+  /** Stable identifier of the grader, e.g. `crucible-grader`. */
+  id: string;
+  /** Version of the grader implementation. */
+  version: string;
+  /** Digest of the grader's configuration. */
+  configDigest?: string;
+}
+
+/**
+ * Chain and contract references for on-chain settlement.
+ *
+ * These fields connect the evaluation to the on-chain record without
+ * duplicating the signed artifact. The manifest points to the chain
+ * references; the artifact carries the signature.
+ */
+export interface ChainReferences {
+  /** Chain ID where the trial was submitted. */
+  chainId?: string;
+  /** Address of the verifying contract. */
+  verifyingContract?: string;
+  /** Block number at which the submission was confirmed. */
+  submissionBlock?: string;
+  /** Transaction hash of the submission. */
+  submissionTx?: string;
+  /** Trial ID on chain. */
+  trialId?: string;
+  /** Run hash committed on chain. */
+  runHash?: string;
+}
+
+/**
+ * Version of the runner that executed the evaluation.
+ */
+export interface RunnerVersion {
+  /** Version of the forge-runner or equivalent execution engine. */
+  version: string;
+  /** Digest of the runner's configuration. */
+  configDigest?: string;
+}
+
+/**
+ * Versions of the tools used during evaluation.
+ *
+ * Recorded as a map from tool name to version string, so two runs that
+ * use different versions of the same tool are distinguishable.
+ */
+export interface ToolVersions {
+  [toolName: string]: string;
 }
 
 /**
@@ -183,6 +320,22 @@ export interface EvalManifest {
   /** ISO-8601 timestamps: when the run started and finished. */
   startedAt: string;
   finishedAt: string;
+  /** Version of the harness that orchestrated the evaluation. */
+  harnessVersion?: string;
+  /** Version of the runner that executed the evaluation. */
+  runner?: RunnerVersion;
+  /** Versions of the tools used during evaluation. */
+  toolVersions?: ToolVersions;
+  /** Resource measurements recorded during execution. */
+  resources?: ResourceMeasurements;
+  /** Classification of errors that occurred during evaluation. */
+  errors?: ErrorClassifications;
+  /** Statistical analysis of the evaluation result. */
+  statistics?: StatisticalAnalysis;
+  /** Identity of the grader that produced the evaluation. */
+  grader?: GraderIdentity;
+  /** Chain and contract references for on-chain settlement. */
+  chain?: ChainReferences;
 }
 
 /**
@@ -240,6 +393,9 @@ export const COMPARABLE_MANIFEST_FIELDS = [
   "seed",
   "sampling",
   "scoring",
+  "harnessVersion",
+  "runner",
+  "toolVersions",
 ] as const;
 
 /**
@@ -345,6 +501,9 @@ export const SCORE_COMPARISON_FIELDS = [
   "seed",
   "sampling",
   "scoring",
+  "harnessVersion",
+  "runner",
+  "toolVersions",
 ] as const;
 
 /**
@@ -390,6 +549,22 @@ export function buildEvalManifest(args: {
   scoring: ScoringPin;
   startedAt: string;
   finishedAt: string;
+  /** Version of the harness that orchestrated the evaluation. */
+  harnessVersion?: string;
+  /** Version of the runner that executed the evaluation. */
+  runner?: RunnerVersion;
+  /** Versions of the tools used during evaluation. */
+  toolVersions?: ToolVersions;
+  /** Resource measurements recorded during execution. */
+  resources?: ResourceMeasurements;
+  /** Classification of errors that occurred during evaluation. */
+  errors?: ErrorClassifications;
+  /** Statistical analysis of the evaluation result. */
+  statistics?: StatisticalAnalysis;
+  /** Identity of the grader that produced the evaluation. */
+  grader?: GraderIdentity;
+  /** Chain and contract references for on-chain settlement. */
+  chain?: ChainReferences;
 }): EvalManifest {
   const { evaluator, model, sampling } = args;
   if (evaluator.id.trim() === "" || evaluator.version.trim() === "") {
@@ -437,6 +612,32 @@ export function buildEvalManifest(args: {
       throw new Error("manifest agent.tools must be sorted so two equal sets hash alike");
     }
   }
+  // Validate resource measurements use canonical numbers
+  if (args.resources) {
+    for (const [key, value] of Object.entries(args.resources)) {
+      if (value !== undefined) {
+        assertCanonicalNumber(value, `resources.${key}`);
+      }
+    }
+  }
+  // Validate statistical analysis uses canonical numbers
+  if (args.statistics) {
+    for (const [key, value] of Object.entries(args.statistics)) {
+      if (value !== undefined && typeof value === "string" && key !== "significant") {
+        assertCanonicalNumber(value, `statistics.${key}`);
+      }
+    }
+  }
+  // Validate grader identity
+  if (args.grader) {
+    if (args.grader.id.trim() === "" || args.grader.version.trim() === "") {
+      throw new Error("manifest grader needs an id and a version");
+    }
+  }
+  // Validate runner version
+  if (args.runner && args.runner.version.trim() === "") {
+    throw new Error("manifest runner needs a version");
+  }
   return {
     schemaVersion: EVAL_MANIFEST_SCHEMA_VERSION,
     taskDigest: args.taskDigest,
@@ -451,5 +652,13 @@ export function buildEvalManifest(args: {
     scoring: args.scoring,
     startedAt: args.startedAt,
     finishedAt: args.finishedAt,
+    ...(args.harnessVersion ? { harnessVersion: args.harnessVersion } : {}),
+    ...(args.runner ? { runner: args.runner } : {}),
+    ...(args.toolVersions ? { toolVersions: args.toolVersions } : {}),
+    ...(args.resources ? { resources: args.resources } : {}),
+    ...(args.errors ? { errors: args.errors } : {}),
+    ...(args.statistics ? { statistics: args.statistics } : {}),
+    ...(args.grader ? { grader: args.grader } : {}),
+    ...(args.chain ? { chain: args.chain } : {}),
   };
 }
