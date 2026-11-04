@@ -253,7 +253,6 @@ fi
 echo "$fail of $checks chain assertions FAILED — do not treat this deployment as live" >&2
 exit 1
 
-}
 
 # In production mode, a nonzero on-chain address is not sufficient: the actual
 # immutable treasury and constructor owner must match the independently approved
@@ -394,7 +393,6 @@ fi
 echo "$fail of $checks chain assertions FAILED — do not treat this deployment as live" >&2
 exit 1
 
-}
 
 if [ "$owner" != "$zero" ] && [ -n "$owner" ]; then ok "the owner is set ($owner)"; else bad "the owner is zero"; fi
 if [ "$treasury" != "$zero" ] && [ -n "$treasury" ]; then ok "the treasury is set ($treasury)"; else bad "the treasury is zero"; fi
@@ -535,7 +533,6 @@ fi
 echo "$fail of $checks chain assertions FAILED — do not treat this deployment as live" >&2
 exit 1
 
-}
 
 # In production mode, a nonzero on-chain address is not sufficient: the actual
 # immutable treasury and constructor owner must match the independently approved

@@ -382,6 +382,7 @@ jobs:
             --workspace @crucible/registry \
             --workspace @crucible/site-index \
             --workspace @crucible/funder
+            --workspace @crucible/fork-host
 
       - name: test (every workspace)
         run: |
@@ -407,6 +408,7 @@ jobs:
             --workspace @crucible/registry \
             --workspace @crucible/site-index \
             --workspace @crucible/funder
+            --workspace @crucible/fork-host
 
       # The edge is not a workspace, so `npm test --workspaces` never reaches it — and a
       # gate whose tests nobody runs is a gate that is not tested. The rpc-gate suite was

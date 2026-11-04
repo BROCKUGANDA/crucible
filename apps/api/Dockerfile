@@ -32,6 +32,7 @@ COPY apps/api/package.json apps/api/
 COPY apps/keeper/package.json apps/keeper/
 COPY apps/juror/package.json apps/juror/
 COPY apps/funder/package.json apps/funder/
+COPY apps/fork-host/package.json apps/fork-host/
 COPY apps/web/package.json apps/web/
 RUN npm ci --ignore-scripts
 

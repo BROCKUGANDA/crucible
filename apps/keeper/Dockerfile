@@ -28,6 +28,7 @@ COPY apps/web/package.json apps/web/
 COPY apps/keeper/package.json apps/keeper/
 COPY apps/juror/package.json apps/juror/
 COPY apps/funder/package.json apps/funder/
+COPY apps/fork-host/package.json apps/fork-host/
 RUN npm ci --ignore-scripts
 
 COPY . .
