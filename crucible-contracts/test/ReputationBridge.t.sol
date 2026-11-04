@@ -64,7 +64,10 @@ contract ReputationBridgeTest is Test {
         seats[0] = a1;
         seats[1] = a2;
         seats[2] = a3;
-        trials = new CrucibleTrials(makeAddr("treasury"), address(this), address(alloy), seats);
+        // The owner passed to the constructor must be the same address the owner-only
+        // setters below are called from — under the prank that is `owner`, not the test
+        // contract. A mismatch here is NotOwner() in setUp, before any assertion runs.
+        trials = new CrucibleTrials(makeAddr("treasury"), owner, address(alloy), seats);
         alloy.setForge(address(trials));
         bridge = new ReputationBridge(address(trials));
         registry = new MockReputationRegistry();
