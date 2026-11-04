@@ -1,12 +1,23 @@
-import { createPublicClient, http, decodeEventLog } from "viem";
+import { createPublicClient, http, decodeEventLog, type PublicClient } from "viem";
 import { foundry } from "viem/chains";
 import { TRIALS_ABI } from "@crucible/smith";
-import { toChainLog, type ChainLogWire } from "@crucible/frame";
+import type { ChainLogWire } from "@crucible/frame";
 
 const REPLAY_EVENTS = ["TrialCreated","TrialClaimed","RunSubmitted","BreakWindowOpened","BreakCommitted","BreakRevealed","VerdictSubmitted","TrialSettled"] as const;
 
-export async function fetchTrialEvents(args: { rpcUrl: string; address: `0x${string}`; trialId: number; windowBlocks?: bigint }): Promise<ChainLogWire[]> {
-  const client = createPublicClient({ chain: foundry, transport: http(args.rpcUrl) });
+export async function fetchTrialEvents(args: {
+  rpcUrl: string;
+  address: `0x${string}`;
+  trialId: number;
+  windowBlocks?: bigint;
+  /**
+   * Test seam: a prebuilt client answering getBlockNumber and getLogs. Production
+   * leaves it undefined and gets one built on rpcUrl — the decode path under test
+   * is the real one; only the transport is stood in.
+   */
+  client?: Pick<PublicClient, "getBlockNumber" | "getLogs">;
+}): Promise<ChainLogWire[]> {
+  const client = args.client ?? createPublicClient({ chain: foundry, transport: http(args.rpcUrl) });
   const head = await client.getBlockNumber();
   const wb = args.windowBlocks ?? 200000n;
   const fromBlock = head > wb ? head - wb : 0n;

@@ -22,7 +22,13 @@ const DEV_ACCOUNTS: { address: `0x${string}`; privateKey: `0x${string}` }[] = [
 
 const running = new Map<number, RunningFork>();
 
-function nextPort(): number { return 8546 + running.size; }
+// A monotonic cursor, not `8546 + running.size`: two provisions in flight would
+// both compute the same port and one anvil would lose the bind and die quietly.
+// Wrapping keeps a long-lived host from walking off the top of the port range.
+let portCursor = 0;
+function nextPort(): number {
+  return 8546 + (portCursor++ % 2000);
+}
 
 async function provision(req: ProvisionRequest): Promise<ProvisionResult> {
   const forkUrl = req.forkUrl ?? process.env.FORK_SOURCE_URL ?? "http://127.0.0.1:8545";
@@ -30,9 +36,17 @@ async function provision(req: ProvisionRequest): Promise<ProvisionResult> {
   const srcClient = createPublicClient({ chain: foundry, transport: http(forkUrl) });
   const forkBlock = Number(await srcClient.getBlockNumber());
   const child = spawn(anvilBin, ["--host", "0.0.0.0", "--port", String(p), "--fork-url", forkUrl, "--fork-block-number", String(forkBlock), "--silent"], { stdio: "ignore" });
+  // Without a listener, a spawn failure (no anvil on PATH, a bad binary) surfaces as
+  // an unhandled 'error' event and can take the whole host down. With one, it becomes
+  // a 502 — which is what a provisioner that cannot provision should say.
+  let spawnError: Error | undefined;
+  child.on("error", (err) => {
+    spawnError = err;
+  });
   await new Promise<void>((resolve, reject) => {
     const deadline = Date.now() + 30_000;
     const tick = async () => {
+      if (spawnError) return reject(new Error(`anvil could not start: ${spawnError.message}`));
       if (Date.now() > deadline) return reject(new Error("anvil did not start"));
       try {
         const c = createPublicClient({ chain: foundry, transport: http(`http://127.0.0.1:${p}`) });
