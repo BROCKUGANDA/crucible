@@ -52,10 +52,10 @@ function checkParams() {
   if (!(p.reward_floor && p.reward_floor.eth)) problems.push('no ETH reward floor in params');
 }
 
-function checkSignoff(file, fields) {
+function checkSignoff(file, fields, { skipSigned = false } = {}) {
   const j = loadJson(file, file);
   if (!j) return null;
-  if (j.signed !== true) problems.push(file + ' is not signed (signed must be true)');
+  if (!skipSigned && j.signed !== true) problems.push(file + ' is not signed (signed must be true)');
   for (const f of fields) {
     if (!j[f] || (Array.isArray(j[f]) && j[f].length === 0)) {
       problems.push(file + ' missing field ' + f);
@@ -307,6 +307,8 @@ async function checkEscrow(url, escrow, expectedTreasury, expectedOwner) {
 
 async function checkTreasury(url, auditSignoff) {
   const file = SIGNOFF_DIR + '/treasury.json';
+  // The signature was already judged at the top level, RPC or not; here the record
+  // is deep-verified against the chain, so only its shape and fields are re-read.
   const record = checkSignoff(file, [
     'chainId',
     'asset',
@@ -316,7 +318,7 @@ async function checkTreasury(url, auditSignoff) {
     'verifiedBy',
     'deploymentCommit',
     'evidenceHash',
-  ]);
+  ], { skipSigned: true });
   if (!record) return;
   if (record.chainId !== 1) problems.push(file + ' chainId must be 1');
   if (
@@ -406,6 +408,17 @@ checkSignoff(SIGNOFF_DIR + '/legal-signoff.json', ['entity', 'counsel', 'tosVers
 checkSignoff(SIGNOFF_DIR + '/genesis-cohort.json', ['sponsors', 'agents', 'epochCapEth']);
 checkSignoff(SIGNOFF_DIR + '/timelock.json', ['multisig', 'timelockHours', 'signers']);
 checkSignoff(SIGNOFF_DIR + '/monitoring.json', ['oncall', 'alertChannel', 'dashboards']);
+// treasury.json is signature-checked here with the other templates, so an unsigned
+// record is refused even when no RPC is reachable — the deep on-chain verification
+// stays in checkTreasury, which needs the node. Without this hoist, unplugging the
+// RPC would also unplug the one check that judges the treasury record itself
+// (test: "refuses the unsigned production templates and the missing RPC").
+{
+  const treasuryTemplate = loadJson(SIGNOFF_DIR + '/treasury.json', SIGNOFF_DIR + '/treasury.json');
+  if (treasuryTemplate && treasuryTemplate.signed !== true) {
+    problems.push(SIGNOFF_DIR + '/treasury.json is not signed (signed must be true)');
+  }
+}
 const mainnetRpc = await checkChain();
 if (mainnetRpc) await checkTreasury(mainnetRpc, auditSignoff);
 
