@@ -63,12 +63,19 @@ abstract contract DevKeyScript is Script {
 /// is point-in-time and per-chain, so it should be (re)pointable without redeploying
 /// the contracts that hold user funds.
 contract Deploy is DevKeyScript {
+    error TreasuryMustBeContract(address treasury);
+    error OwnerMustBeContract(address ownerSafe);
+
     function run() external returns (CrucibleTrials trials, AlloyRegistry alloy, VerificationReceipt receipt) {
         uint256 pk = signerKey();
+        address treasury = vm.envAddress("TREASURY_ADDRESS");
+        address ownerSafe = vm.envAddress("OWNER_SAFE_ADDRESS");
+        if (treasury.code.length == 0) revert TreasuryMustBeContract(treasury);
+        if (ownerSafe.code.length == 0) revert OwnerMustBeContract(ownerSafe);
 
         vm.startBroadcast(pk);
         alloy = new AlloyRegistry();
-        trials = new CrucibleTrials(vm.addr(pk), address(alloy), _argusSeats());
+        trials = new CrucibleTrials(treasury, ownerSafe, address(alloy), _argusSeats());
         alloy.setForge(address(trials));
 
         // VerificationReceipt (gates 415-418): deploy, wire into CrucibleTrials, enable.
@@ -81,6 +88,8 @@ contract Deploy is DevKeyScript {
         vm.stopBroadcast();
 
         _report(address(alloy), address(trials));
+        console.log("TreasurySafe", treasury);
+        console.log("OwnerSafe", ownerSafe);
         console.log("VerificationReceipt", address(receipt));
     }
 
