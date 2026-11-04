@@ -6,6 +6,19 @@ import {CrucibleTrials} from "../contracts/CrucibleTrials.sol";
 import {VerificationReceipt} from "../contracts/VerificationReceipt.sol";
 
 contract CrucibleTrialsTest is Base {
+    function test_Constructor_UsesExplicitOwner() public view {
+        assertEq(trials.owner(), address(this));
+    }
+
+    function test_Constructor_RejectsZeroOwner() public {
+        address[] memory seats = new address[](3);
+        seats[0] = a1;
+        seats[1] = a2;
+        seats[2] = a3;
+        vm.expectRevert(CrucibleTrials.ZeroOwner.selector);
+        new CrucibleTrials(makeAddr("treasury"), address(0), address(alloy), seats);
+    }
+
     // ── creation ──
     function test_EIP1559_SettlementIndependentOfGasPrice() public {
         // Gate 410: verdict sigs settle identically at base-fee 0 and at base-fee 30 gwei.
@@ -1094,13 +1107,13 @@ contract CrucibleTrialsTest is Base {
         address[] memory seats = new address[](1);
         seats[0] = a1;
         vm.expectRevert(CrucibleTrials.BadArgusSeatCount.selector);
-        new CrucibleTrials(makeAddr("treasury"), address(alloy), seats);
+        new CrucibleTrials(makeAddr("treasury"), address(this), address(alloy), seats);
     }
 
     function test_Constructor_RejectsNoSeats() public {
         address[] memory seats = new address[](0);
         vm.expectRevert(CrucibleTrials.BadArgusSeatCount.selector);
-        new CrucibleTrials(makeAddr("treasury"), address(alloy), seats);
+        new CrucibleTrials(makeAddr("treasury"), address(this), address(alloy), seats);
     }
 
     function test_Constructor_RejectsTwoSeats() public {
@@ -1108,7 +1121,7 @@ contract CrucibleTrialsTest is Base {
         seats[0] = a1;
         seats[1] = a2;
         vm.expectRevert(CrucibleTrials.BadArgusSeatCount.selector);
-        new CrucibleTrials(makeAddr("treasury"), address(alloy), seats);
+        new CrucibleTrials(makeAddr("treasury"), address(this), address(alloy), seats);
     }
 
     /// Ten seats with a threshold of 2 is the auditor's second repro: two vote to slash,
@@ -1119,7 +1132,7 @@ contract CrucibleTrialsTest is Base {
             seats[i] = makeAddr(string(abi.encodePacked("seat-", vm.toString(i))));
         }
         vm.expectRevert(CrucibleTrials.BadArgusSeatCount.selector);
-        new CrucibleTrials(makeAddr("treasury"), address(alloy), seats);
+        new CrucibleTrials(makeAddr("treasury"), address(this), address(alloy), seats);
     }
 
     /// A duplicated seat is one vote counted twice by two keys that are the same key.
@@ -1129,7 +1142,7 @@ contract CrucibleTrialsTest is Base {
         seats[1] = a2;
         seats[2] = a1;
         vm.expectRevert(CrucibleTrials.DuplicateArgusSeat.selector);
-        new CrucibleTrials(makeAddr("treasury"), address(alloy), seats);
+        new CrucibleTrials(makeAddr("treasury"), address(this), address(alloy), seats);
     }
 
     function test_Constructor_RejectsZeroAddressSeat() public {
@@ -1138,7 +1151,7 @@ contract CrucibleTrialsTest is Base {
         seats[1] = address(0);
         seats[2] = a3;
         vm.expectRevert(CrucibleTrials.ZeroArgusSeat.selector);
-        new CrucibleTrials(makeAddr("treasury"), address(alloy), seats);
+        new CrucibleTrials(makeAddr("treasury"), address(this), address(alloy), seats);
     }
 
     /// Not a repro — the positive guard, so the rejections above cannot be satisfied by a
@@ -1148,7 +1161,7 @@ contract CrucibleTrialsTest is Base {
         seats[0] = a1;
         seats[1] = a2;
         seats[2] = a3;
-        CrucibleTrials fresh = new CrucibleTrials(makeAddr("treasury"), address(alloy), seats);
+        CrucibleTrials fresh = new CrucibleTrials(makeAddr("treasury"), address(this), address(alloy), seats);
         assertEq(uint256(fresh.ARGUS_THRESHOLD()) + 1, seats.length);
         assertTrue(fresh.isArgus(a1));
         assertTrue(fresh.isArgus(a2));
