@@ -79,4 +79,16 @@ describe("best-of-n (gate 728)", () => {
       expect(result.dpo[0].rejected.verdict).not.toBe("PASS");
     }
   });
+  it("carries the scorer's per-weight breakdown into the trajectory (no scalar re-derivation)", async () => {
+    const breakdown = { correctness: 0.7, style: 0.5, safety: 0.9 };
+    const sampler: Sampler = {
+      sample: async () => ({ output: "candidate", latencyMs: 1 }),
+    };
+    const scorer: Scorer = {
+      score: () => ({ score: 0.75, verdict: "PASS", detail: "", weights: breakdown }),
+    };
+    const result = await bestOfN([probe("p1")], sampler, scorer, config);
+    expect(result.sft[0]?.weights).toEqual(breakdown);
+    expect(result.sft[0]?.weights).not.toEqual({ overall: 0.75 });
+  });
 });

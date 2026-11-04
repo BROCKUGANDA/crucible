@@ -171,6 +171,13 @@ export function Chrome({ children }: { children: ReactNode }) {
             reached by guessing the URL. It belongs beside the promise list, in the same
             plain words, because both answer "can I check this myself?". */}
         <Link href="/verify">Check a receipt yourself</Link>
+        {/* Orphan routes — pages exist but had no inbound link, so a visitor could only reach
+            them by guessing the URL. Each door below is the page's own job title in plain
+            words, matching how /claims and /verify are linked. /trials stays as an alias
+            beside the nav so a reader scanning the footer still finds the board. */}
+        <Link href="/ghost">Start a ghost run on a fork</Link>
+        <Link href="/showcase">House bouts on screen</Link>
+        <Link href="/trials">Trials board</Link>
         <SeedPhrasePromise />
       </footer>
     </div>

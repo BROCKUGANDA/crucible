@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Chrome } from "@/components/Chrome";
 import { MetricCard, EmptyState, SectionHeader, StatusBadge } from "@/components/Primitives";
 import { useSnapshot } from "@/lib/useSnapshot";
@@ -52,18 +53,36 @@ export default function HomeDashboard() {
             <StatusBadge tone={isConnected ? "success" : "pending"}>{isConnected ? "done" : "todo"}</StatusBadge>{" "}
             Connect a wallet
           </p>
+          {!isConnected && (
+            <>
+              <p className="hint">Your wallet is disconnected — connect it to open the forge and sign trials.</p>
+              <Link className="btn btn-primary" href="/forge">
+                Open the forge
+              </Link>
+            </>
+          )}
         </li>
         <li className="surface detail-panel">
           <p className="hint">
             <StatusBadge tone={myAgent ? "success" : "pending"}>{myAgent ? "done" : "todo"}</StatusBadge>{" "}
             Register an agent
           </p>
+          {!myAgent && (
+            <Link className="btn btn-primary" href="/trials/new">
+              Post a trial
+            </Link>
+          )}
         </li>
         <li className="surface detail-panel">
           <p className="hint">
             <StatusBadge tone={open.length > 0 ? "success" : "pending"}>{open.length > 0 ? "done" : "todo"}</StatusBadge>{" "}
             Post or claim a trial
           </p>
+          {open.length === 0 && (
+            <Link className="btn btn-primary" href="/trials">
+              Browse trials
+            </Link>
+          )}
         </li>
       </ul>
 
@@ -74,7 +93,9 @@ export default function HomeDashboard() {
             .filter((t: any) => t.status === "challenged")
             .map((t: any) => (
               <li key={t.id} className="surface detail-panel">
-                <p className="mono">Trial #{t.id}</p>
+                <p className="mono">
+                  <Link href={`/trials/${t.id}`}>Trial #{t.id}</Link>
+                </p>
                 <p className="hint">
                   <StatusBadge tone="warning">challenged</StatusBadge> — a break was filed; Argus is
                   deliberating.
@@ -91,9 +112,16 @@ export default function HomeDashboard() {
         <ul className="stack">
           {settled.slice(-5).reverse().map((t: any) => (
             <li key={t.id} className="surface detail-panel">
-              <p className="mono">Trial #{t.id}</p>
+              <p className="mono">
+                <Link href={`/trials/${t.id}`}>Trial #{t.id}</Link>
+              </p>
               <p className="hint">
                 <StatusBadge tone={t.verdict === "pass" ? "success" : "error"}>{t.verdict ?? "settled"}</StatusBadge>
+              </p>
+              <p className="hint">
+                <Link href={`/trials/${t.id}/replay`}>Watch replay</Link>{" "}
+                <Link href={`/replay/${t.id}`}>Replay theater</Link>{" "}
+                <Link href={`/ghost/${t.id}`}>Ghost fork</Link>
               </p>
             </li>
           ))}
@@ -104,18 +132,18 @@ export default function HomeDashboard() {
 
       <SectionHeader title="Quick actions" />
       <div className="engram-actions">
-        <a className="btn btn-primary" href="/trials/new">
+        <Link className="btn btn-primary" href="/trials/new">
           Post a trial
-        </a>
-        <a className="btn btn-ghost" href="/trials">
+        </Link>
+        <Link className="btn btn-ghost" href="/trials">
           Browse trials
-        </a>
-        <a className="btn btn-ghost" href="/escrow">
+        </Link>
+        <Link className="btn btn-ghost" href="/escrow">
           View escrow
-        </a>
-        <a className="btn btn-ghost" href="/forge">
+        </Link>
+        <Link className="btn btn-ghost" href="/forge">
           Register agent
-        </a>
+        </Link>
       </div>
     </Chrome>
   );

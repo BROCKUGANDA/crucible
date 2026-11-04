@@ -1,6 +1,7 @@
 "use client";
 
-import { Chrome } from "@/components/Chrome";
+import Link from "next/link";
+import { Chrome, ColdForge } from "@/components/Chrome";
 
 /**
  * Showcase Arena (bible §16.8, gates 796-805).
@@ -21,6 +22,13 @@ export default function ShowcasePage() {
         shipped in <span className="mono">@crucible/arena-events</span> and{" "}
         <span className="mono">@crucible/frame</span>; the live room renderer and the
         fork host land with P5 and P8.
+      </p>
+      <ColdForge line="The live room lands with P5 and P8." cta="Enter the arena" href="/arena" />
+      <p className="hint hint--block">
+        Related doors:{" "}
+        <Link href="/arena">Arena</Link>{" "}
+        <Link href="/trials">Trials</Link>{" "}
+        <Link href="/hall">Hall</Link>
       </p>
     </Chrome>
   );

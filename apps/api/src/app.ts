@@ -1930,7 +1930,55 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
       const maxMs = 10 * 60 * 1000;
       const started = Date.now();
 
-      await stream.writeSSE({ event: "snapshot", data: JSON.stringify({ trial: trialId, events: [] }) });
+      const buildEvents = async (): Promise<unknown[]> => {
+        const model = deps.getModel();
+        const trial = model.trials.get(Number(trialId));
+        const out: unknown[] = [];
+        if (trial) {
+          const stageMap: Record<string, string> = { open: "I", assigned: "II", judging: "III", challenged: "V", settled: "VII" };
+          const stage = stageMap[trial.status] ?? "I";
+          out.push({
+            v: 1,
+            id: `trial-${trial.id}-posted`,
+            mode: "showcase",
+            trial: String(trial.id),
+            stage,
+            kind: "trial.posted",
+            payload: { sponsor: trial.sponsor, rewardWei: trial.rewardWei.toString(), status: trial.status },
+            at: new Date((trial.createdAt || 0) * 1000).toISOString(),
+          });
+        }
+        try {
+          const mod = await import("@crucible/indexer");
+          const rpcUrl = process.env.RPC_URL ?? "http://127.0.0.1:8545";
+          const trialsAddress = process.env.TRIALS_ADDRESS;
+          if (trialsAddress) {
+            const logs = await mod.fetchTrialEvents({ rpcUrl, address: trialsAddress as `0x${string}`, trialId: Number(trialId) });
+            const stageFor = (name: string): string => {
+              if (name.includes("Settled") || name.includes("Verdict")) return "VII";
+              if (name.includes("Break") || name.includes("Window")) return "IV";
+              if (name.includes("Run") || name.includes("Claim")) return "III";
+              return "I";
+            };
+            for (const log of logs) {
+              out.push({
+                v: 1,
+                id: `${log.transactionHash}-${log.logIndex}`,
+                mode: "showcase",
+                trial: String(trialId),
+                stage: stageFor(log.eventName),
+                kind: log.eventName,
+                payload: log.args,
+                at: new Date().toISOString(),
+                chainRef: { caip2: "eip155:31337", tx: log.transactionHash, slotOrBlock: Number(log.blockNumber), commitment: "confirmed" },
+              });
+            }
+          }
+        } catch { /* indexer optional */ }
+        return out;
+      };
+      const events = await buildEvents();
+      await stream.writeSSE({ event: "snapshot", data: JSON.stringify({ trial: trialId, events }) });
 
       while (running && Date.now() - started < maxMs) {
         if (Date.now() - lastWriteAt >= HEARTBEAT_MS) {

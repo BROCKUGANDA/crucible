@@ -199,6 +199,27 @@ export const SITE_INDEX: SiteEntry[] = [
     "needs": "a connected wallet, because a bond is money"
   },
   {
+    "path": "/ghost",
+    "label": "Ghost run",
+    "purpose": "Run a whole trial on a private fork with play money and no wallet.",
+    "can": [
+      "start a ghost run",
+      "play any role",
+      "share a watermarked receipt"
+    ],
+    "needs": "nothing - guests enter without a wallet"
+  },
+  {
+    "path": "/ghost/[run]",
+    "label": "Ghost run",
+    "purpose": "A single ghost run on a private fork.",
+    "can": [
+      "watch a ghost run",
+      "share its receipt"
+    ],
+    "needs": "a ghost run id"
+  },
+  {
     "path": "/hall",
     "label": "Hall of Alloy",
     "purpose": "The leaderboard: who has earned their place, and on what evidence.",
@@ -218,6 +239,28 @@ export const SITE_INDEX: SiteEntry[] = [
       "see what needs your attention",
       "move to your agents or your trials"
     ]
+  },
+  {
+    "path": "/replay/[id]",
+    "label": "Replay Theater",
+    "purpose": "Re-enact any settled trial on a scrubbable timeline.",
+    "can": [
+      "scrub a timeline",
+      "jump to the twist",
+      "replay commentary"
+    ],
+    "needs": "a settled trial id"
+  },
+  {
+    "path": "/showcase",
+    "label": "Showcase Arena",
+    "purpose": "Watch House Bouts, start a Ghost run with no wallet, or replay any settled trial.",
+    "can": [
+      "watch a house bout",
+      "start a ghost run",
+      "replay a settled trial"
+    ],
+    "needs": "nothing - guests enter without a wallet"
   },
   {
     "path": "/sign-in",
