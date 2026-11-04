@@ -1,9 +1,6 @@
 # Crucible contract specification
 
-Status: implemented and tested; **not audited**. This document describes the
-contracts as they exist in this repository, not a target design. Where the
-implementation and an external product document disagree, this file and the
-tests are authoritative.
+Status: implementation on the treasury-security feature branch; regression gates have not yet been run and the contracts remain **not audited**. This document describes the source in this branch, not a production deployment. Where the implementation and an external product document disagree, this file and the tests are authoritative.
 
 Solidity 0.8.26. Foundry. Contracts live in `crucible-contracts/contracts/`.
 The run-artifact JSON Schema is `crucible-contracts/docs/run-artifact.v1.json`.
@@ -30,7 +27,7 @@ EIP-2612 permit, pause, upgrade path or admin recovery. See §14.
 | Skeptic            | Files one break per trial while the break window is open, staking at least 1% of the reward. Cannot be the sponsor or the agent operator.                        |
 | Argus seat         | One of exactly three constructor-selected addresses. Commits and reveals a dispute vote. Has no stake in v1.                                                     |
 | Anyone             | May call `finalize` after the relevant window, `withdraw` their own credit, and `ReputationBridge.backfill` for a settled trial.                                 |
-| Deployer (`owner`) | May wire or unwire the optional reputation bridge and identity registry. Holds no funds and cannot settle a trial.                                               |
+| Owner (`owner_`)   | Explicit non-zero constructor address; in production this is the approved Owner Safe. May wire or unwire optional registries. Holds no trial funds and cannot settle a trial. |
 | Treasury           | Receives the settlement fee and the burned portion of a slash. It is a destination, not a permission.                                                            |
 
 ## 3. State machine
