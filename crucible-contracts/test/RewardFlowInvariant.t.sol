@@ -47,7 +47,7 @@ contract RewardFlowInvariant is Test {
 
     function setUp() public {
         AlloyRegistry alloy = new AlloyRegistry();
-        trials = new CrucibleTrials(treasury, address(alloy), seats);
+        trials = new CrucibleTrials(treasury, address(this), address(alloy), seats);
         alloy.setForge(address(trials));
         vm.deal(operator, 100 ether);
         vm.prank(operator);
