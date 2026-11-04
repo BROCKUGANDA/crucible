@@ -279,6 +279,27 @@ describe("mainnet preflight", () => {
     }
   });
 
+  it("refuses using the same Safe for treasury and owner roles", async () => {
+    const dir = signedDir();
+    const recordPath = join(dir, "treasury.json");
+    const record = JSON.parse(readFileSync(recordPath, "utf8"));
+    record.ownerSafe.address = record.treasurySafe.address;
+    writeFileSync(recordPath, JSON.stringify(record));
+    const server = await rpc("0x1");
+    try {
+      const res = await run(["--signoffs", dir], {
+        MAINNET_RPC_URL: server.url,
+        TREASURY_ADDRESS,
+        OWNER_SAFE_ADDRESS: TREASURY_ADDRESS,
+      });
+      expect(res.status).toBe(1);
+      expect(res.stderr).toContain("Treasury Safe and Owner Safe must be distinct addresses");
+    } finally {
+      await server.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("refuses a chain that is not mainnet", async () => {
     const dir = signedDir();
     const server = await rpc("0x5");
