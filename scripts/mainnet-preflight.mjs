@@ -13,6 +13,8 @@ const problems = [];
 const notes = [];
 const ZERO = '0x0000000000000000000000000000000000000000';
 const SAFE_SELECTORS = {
+  treasury: '0x61d027b3',
+  owner: '0x8da5cb5b',
   getThreshold: '0xe75235b8',
   getOwners: '0xa0e67e2b',
   getModulesPaginated: '0xcc2f8452',
@@ -267,7 +269,43 @@ async function checkSafe(url, record, label) {
   }
 }
 
-async function checkTreasury(url) {
+async function checkEscrow(url, escrow, expectedTreasury, expectedOwner) {
+  if (!escrow || typeof escrow !== 'object') {
+    problems.push('treasury.json contains an invalid enabled escrow record');
+    return;
+  }
+  if (!isAddress(escrow.address) || normAddress(escrow.address) === ZERO) {
+    problems.push('treasury.json escrow address must be a non-zero address');
+    return;
+  }
+  if (!isBytes32(escrow.runtimeCodeHash)) {
+    problems.push('treasury.json escrow runtimeCodeHash must be bytes32');
+    return;
+  }
+  try {
+    const code = await rpcRequest(url, 'eth_getCode', [escrow.address, 'latest']);
+    if (code === '0x' || code === '0x0') throw new Error('escrow address has no contract code');
+    const codeHash = await rpcRequest(url, 'web3_sha3', [code]);
+    if (normAddress(codeHash) !== normAddress(escrow.runtimeCodeHash)) {
+      throw new Error('escrow runtime bytecode hash mismatch');
+    }
+    const treasuryData = await rpcRequest(url, 'eth_call', [{ to: escrow.address, data: SAFE_SELECTORS.treasury }, 'latest']);
+    const ownerData = await rpcRequest(url, 'eth_call', [{ to: escrow.address, data: SAFE_SELECTORS.owner }, 'latest']);
+    const actualTreasury = addressFromWord(chunks(treasuryData)[0]);
+    const actualOwner = addressFromWord(chunks(ownerData)[0]);
+    if (actualTreasury !== normAddress(expectedTreasury)) {
+      throw new Error('on-chain treasury() does not equal the approved Treasury Safe');
+    }
+    if (actualOwner !== normAddress(expectedOwner)) {
+      throw new Error('on-chain owner() does not equal the approved Owner Safe');
+    }
+    notes.push((escrow.name || 'Escrow') + ' verified: bytecode, immutable treasury and owner');
+  } catch (error) {
+    problems.push((escrow.name || 'Escrow') + ' verification failed: ' + error.message);
+  }
+}
+
+async function checkTreasury(url, auditSignoff) {
   const file = SIGNOFF_DIR + '/treasury.json';
   const record = checkSignoff(file, [
     'chainId',
@@ -281,6 +319,14 @@ async function checkTreasury(url) {
   ]);
   if (!record) return;
   if (record.chainId !== 1) problems.push(file + ' chainId must be 1');
+  if (
+    auditSignoff &&
+    record.deploymentCommit &&
+    auditSignoff.commit &&
+    String(record.deploymentCommit).toLowerCase() !== String(auditSignoff.commit).toLowerCase()
+  ) {
+    problems.push(file + ' deploymentCommit must match audit-signoff.json commit');
+  }
   if (record.asset !== 'native-ETH') problems.push(file + ' asset must be native-ETH');
   if (record.canonicalDeploymentSource && !/^https:\/\/(github\.com\/safe-fndn\/safe-deployments|github\.com\/safe-global\/safe-deployments)\//.test(record.canonicalDeploymentSource)) {
     problems.push(file + ' canonicalDeploymentSource must reference the official Safe deployments repository');
@@ -291,16 +337,53 @@ async function checkTreasury(url) {
   }
   await checkSafe(url, record.treasurySafe, 'Treasury Safe');
   await checkSafe(url, record.ownerSafe, 'Owner Safe');
+
+  const trialsAddress = process.env.TRIALS_ADDRESS || '';
+  if (!isAddress(trialsAddress) || normAddress(trialsAddress) === ZERO) {
+    problems.push('TRIALS_ADDRESS must be set to the production CrucibleTrials address');
+  } else if (!record.escrows || !record.escrows.legacyTrials || !isAddress(record.escrows.legacyTrials.address)) {
+    problems.push(file + ' must pin escrows.legacyTrials.address');
+  } else {
+    if (normAddress(record.escrows.legacyTrials.address) !== normAddress(trialsAddress)) {
+      problems.push(file + ' legacyTrials address does not match TRIALS_ADDRESS');
+    }
+    await checkEscrow(
+      url,
+      { ...record.escrows.legacyTrials, name: 'CrucibleTrials' },
+      record.treasurySafe.address,
+      record.ownerSafe.address,
+    );
+  }
+
+  const arenaAddress = process.env.ARENA_ADDRESS || '';
+  const arenaRecord = record.escrows && record.escrows.arena;
+  if (arenaAddress) {
+    if (!isAddress(arenaAddress) || !arenaRecord || !isAddress(arenaRecord.address)) {
+      problems.push('ARENA_ADDRESS requires a matching treasury.json escrows.arena record');
+    } else {
+      if (normAddress(arenaRecord.address) !== normAddress(arenaAddress)) {
+        problems.push(file + ' arena address does not match ARENA_ADDRESS');
+      }
+      await checkEscrow(
+        url,
+        { ...arenaRecord, name: 'Arena' },
+        record.treasurySafe.address,
+        record.ownerSafe.address,
+      );
+    }
+  } else if (arenaRecord && arenaRecord.address) {
+    problems.push(file + ' has an Arena escrow record but ARENA_ADDRESS is unset');
+  }
 }
 
 checkParams();
-checkSignoff(SIGNOFF_DIR + '/audit-signoff.json', ['auditor', 'reportHash', 'commit']);
+const auditSignoff = checkSignoff(SIGNOFF_DIR + '/audit-signoff.json', ['auditor', 'reportHash', 'commit']);
 checkSignoff(SIGNOFF_DIR + '/legal-signoff.json', ['entity', 'counsel', 'tosVersion']);
 checkSignoff(SIGNOFF_DIR + '/genesis-cohort.json', ['sponsors', 'agents', 'epochCapEth']);
 checkSignoff(SIGNOFF_DIR + '/timelock.json', ['multisig', 'timelockHours', 'signers']);
 checkSignoff(SIGNOFF_DIR + '/monitoring.json', ['oncall', 'alertChannel', 'dashboards']);
 const mainnetRpc = await checkChain();
-if (mainnetRpc) await checkTreasury(mainnetRpc);
+if (mainnetRpc) await checkTreasury(mainnetRpc, auditSignoff);
 
 for (const note of notes) console.log('ok: ' + note);
 if (problems.length) {
