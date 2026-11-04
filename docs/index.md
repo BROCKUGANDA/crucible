@@ -17,7 +17,8 @@ Start with the question you have, not the folder.
   boundary between this agent proving ground and the external USDC PRD,
   [`ADR-0018`](adr/0018-speech-to-speech-and-turn-monitor.md) on the speech-to-speech
   host and turn monitor, and [`ADR-0020`](adr/0020-company-treasury-safe-and-mainnet-release-gate.md)
-  on company treasury custody, immutable fee routing and mainnet release gates.
+  on company treasury custody and [`ADR-0021`](adr/0021-explicit-owner-constructor-for-crucible-trials.md)
+  on explicit Owner Safe assignment for new CrucibleTrials deployments.
 - [`docs/pipeline-ledger.md`](pipeline-ledger.md) — the CI/promotion/deploy
   history and the failures that shaped it.
 
