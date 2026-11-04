@@ -20,6 +20,9 @@ set -eu
 RPC="${RPC_URL:-http://anvil:8545}"
 TRIALS="${TRIALS_ADDRESS:-}"
 ALLOY="${ALLOY_ADDRESS:-}"
+EXPECTED_TREASURY="${EXPECTED_TREASURY_ADDRESS:-}"
+EXPECTED_OWNER="${EXPECTED_OWNER_ADDRESS:-}"
+REQUIRE_EXPECTED_CUSTODY="${REQUIRE_EXPECTED_CUSTODY:-0}"
 PUBLIC_URL="${PUBLIC_URL:-https://crucible.svalley.tech}"
 
 fail=0
@@ -105,6 +108,456 @@ expect "Argus threshold" "2" "$(call_number "$TRIALS" 'ARGUS_THRESHOLD()(uint256
 owner=$(call_address "$TRIALS" 'owner()(address)')
 treasury=$(call_address "$TRIALS" 'treasury()(address)')
 zero="0x0000000000000000000000000000000000000000"
+
+valid_address() {
+  printf "%s\n" "$1" | grep -Eq "^0x[0-9a-fA-F]{40}$"
+}
+
+if [ "$owner" != "$zero" ] && [ -n "$owner" ]; then ok "the owner is set ($owner)"; else bad "the owner is zero"; fi
+if [ "$treasury" != "$zero" ] && [ -n "$treasury" ]; then ok "the treasury is set ($treasury)"; else bad "the treasury is zero"; fi
+
+# Strict production custody mode compares immutable destinations to the approved Safe addresses.
+if [ "$REQUIRE_EXPECTED_CUSTODY" = "1" ]; then
+  if ! valid_address "$EXPECTED_TREASURY" || [ "$(printf "%s" "$EXPECTED_TREASURY" | address)" = "$zero" ]; then
+    bad "EXPECTED_TREASURY_ADDRESS must be a non-zero contract address"
+  else
+    expect "immutable treasury address" "$(printf "%s" "$EXPECTED_TREASURY" | address)" "$treasury"
+    treasury_code=$(cast code "$EXPECTED_TREASURY" --rpc-url "$RPC" 2>/dev/null || echo "0x")
+    treasury_code_len=$(printf "%s" "$treasury_code" | wc -c | tr -d "[:space:]")
+    if [ "$treasury_code_len" -gt 2 ]; then ok "expected Treasury Safe has contract code"; else bad "expected Treasury Safe has no contract code"; fi
+  fi
+  if ! valid_address "$EXPECTED_OWNER" || [ "$(printf "%s" "$EXPECTED_OWNER" | address)" = "$zero" ]; then
+    bad "EXPECTED_OWNER_ADDRESS must be a non-zero contract address"
+  else
+    expect "constructor owner address" "$(printf "%s" "$EXPECTED_OWNER" | address)" "$owner"
+    owner_code=$(cast code "$EXPECTED_OWNER" --rpc-url "$RPC" 2>/dev/null || echo "0x")
+    owner_code_len=$(printf "%s" "$owner_code" | wc -c | tr -d "[:space:]")
+    if [ "$owner_code_len" -gt 2 ]; then ok "expected Owner Safe has contract code"; else bad "expected Owner Safe has no contract code"; fi
+  fi
+elif [ "$REQUIRE_EXPECTED_CUSTODY" != "0" ]; then
+  bad "REQUIRE_EXPECTED_CUSTODY must be 0 or 1"
+fi
+
+# The escrow must point at the registry it settles into, and the registry must
+# accept writes from the escrow and from nobody else. A registry that accepts
+# a second writer is a reputation system anybody can inflate.
+expect "the escrow's alloy registry" "$(printf '%s' "$ALLOY" | address)" "$(call_address "$TRIALS" 'alloy()(address)')"
+expect "the registry's forge" "$(printf '%s' "$TRIALS" | address)" "$(call_address "$ALLOY" 'forge()(address)')"
+
+# ── the money invariant, on the live chain ────────────────────────────────
+# The contract's own invariant: the ETH the contract holds covers everything
+# it owes. A test proves the code cannot break it; this proves the DEPLOYED
+# contract has not.
+#
+# Wei does not fit the shell's arithmetic. `$(( ))` and `[ -le ]` are 64-bit
+# signed, so a contract holding 10.04 ETH made the comparison error out and a
+# healthy surplus print as a FAIL, and a liability sum past 2^63 wraps negative
+# — which would have reported "owes -8 ETH" as a pass. The dangerous direction is
+# the silent one, so the sums below are decimal on digit strings, and the helpers
+# are checked against the numbers from that incident before anything relies on
+# them.
+LC_ALL=C
+export LC_ALL
+
+dec_norm() {
+  d=$1
+  while [ "${d#0}" != "$d" ] && [ -n "$d" ]; do d=${d#0}; done
+  printf '%s' "${d:-0}"
+}
+
+# dec_add <decimal> <decimal> — schoolbook addition, right to left. `${x%?}` and
+# `${x#"$y"}` are POSIX; the substring form `${x:1:1}` is not, and this runs
+# under dash inside the seed container.
+dec_add() {
+  a=$(dec_norm "$1")
+  b=$(dec_norm "$2")
+  carry=0
+  out=""
+  while [ -n "$a" ] || [ -n "$b" ] || [ "$carry" -ne 0 ]; do
+    da=${a#"${a%?}"}
+    a=${a%?}
+    db=${b#"${b%?}"}
+    b=${b%?}
+    [ -n "$da" ] || da=0
+    [ -n "$db" ] || db=0
+    sum=$((da + db + carry))
+    if [ "$sum" -ge 10 ]; then
+      carry=1
+      sum=$((sum - 10))
+    else
+      carry=0
+    fi
+    out="${sum}${out}"
+  done
+  printf '%s' "$(dec_norm "$out")"
+}
+
+# dec_cmp <a> <b> — -1, 0 or 1. Equal-length digit strings compare as bytes under C.
+dec_cmp() {
+  a=$(dec_norm "$1")
+  b=$(dec_norm "$2")
+  if [ "${#a}" -gt "${#b}" ]; then printf '%s' 1; return; fi
+  if [ "${#a}" -lt "${#b}" ]; then printf '%s' -1; return; fi
+  if [ "$a" = "$b" ]; then printf '%s' 0; return; fi
+  if [ "$a" \> "$b" ]; then printf '%s' 1; else printf '%s' -1; fi
+}
+
+# The canary: 10.04 ETH held against 8.44 ETH owed is the case the shell got
+# wrong, and 8.44 + 2.00 is the sum that used to wrap negative.
+if [ "$(dec_cmp 10040000000000000000 8440000000000000000)" != 1 ] ||
+  [ "$(dec_add 8440000000000000000 2000000000000000000)" != "10440000000000000000" ] ||
+  [ "$(dec_cmp "$(dec_add 9223372036854775807 1)" 9223372036854775808)" != 0 ]; then
+  bad "the decimal helpers disagree with known values — the money check below is not trustworthy"
+else
+  ok "the decimal helpers agree with the values that broke 64-bit arithmetic"
+fi
+
+escrowed=$(call_number "$TRIALS" 'escrowed()(uint256)')
+pending=$(call_number "$TRIALS" 'totalPending()(uint256)')
+stakes=$(call_number "$TRIALS" 'totalStakes()(uint256)')
+balance=$(cast balance "$TRIALS" --rpc-url "$RPC" 2>/dev/null | number || echo 0)
+# The same equality `test/Invariants.t.sol:170` asserts on every fuzzed transition:
+# balance == totalStakes + totalPending + escrowed. The previous check here was one-directional
+# and left out stakes, so ETH that had already left the escrow without a book entry — the actual
+# money-loss case — passed it. The escrow has no `receive()`, so there is no legitimate way for
+# the two sides to differ: over or under, a mismatch is an incident, and it is named as one.
+books=$(dec_add "$stakes" "$(dec_add "$pending" "$escrowed")")
+case "$(dec_cmp "$books" "$balance")" in
+  0)
+    ok "the escrow's ETH equals its books exactly: $balance wei = stakes $stakes + credits $pending + escrow $escrowed"
+    ;;
+  1)
+    bad "the escrow owes $books wei but holds only $balance — ETH has left a contract that cannot pay out except through withdraw()"
+    ;;
+  *)
+    bad "the escrow holds $balance wei against $books wei of liabilities — unaccounted ETH is on a contract with no receive()"
+    ;;
+esac
+
+# The public surface is NOT probed from here.
+#
+# This script runs inside the seed container, on the compose network, where it
+# can reach anvil and the contracts. The public URLs are the other side of
+# the proxy, and asking about them from inside the network was answering 0:
+# the container does not resolve or reach the public name the way a visitor
+# does, so the probe measured the container's network rather than the site's.
+#
+# The public probes run on the HOST, in the deploy job, where they measure
+# what a visitor measures.
+
+echo ""
+if [ "$fail" = "0" ]; then
+  echo "all $checks chain assertions passed — the deployment can be trusted"
+  exit 0
+fi
+echo "$fail of $checks chain assertions FAILED — do not treat this deployment as live" >&2
+exit 1
+
+}
+
+# In production mode, a nonzero on-chain address is not sufficient: the actual
+# immutable treasury and constructor owner must match the independently approved
+# Safe addresses. Each expected Safe must itself be a deployed contract.
+if [ "$REQUIRE_EXPECTED_CUSTODY" = "1" ]; then
+  if ! valid_address "$EXPECTED_TREASURY" || [ "$(printf '%s' "$EXPECTED_TREASURY" | address)" = "$zero" ]; then
+    bad "EXPECTED_TREASURY_ADDRESS must be a non-zero contract address in strict custody mode"
+  else
+    expect "immutable treasury address" "$(printf '%s' "$EXPECTED_TREASURY" | address)" "$treasury"
+    treasury_code=$(cast code "$EXPECTED_TREASURY" --rpc-url "$RPC" 2>/dev/null || echo "0x")
+    if [ "\${#treasury_code}" -gt 2 ]; then ok "expected Treasury Safe has contract code"; else bad "expected Treasury Safe has no contract code"; fi
+  fi
+  if ! valid_address "$EXPECTED_OWNER" || [ "$(printf '%s' "$EXPECTED_OWNER" | address)" = "$zero" ]; then
+    bad "EXPECTED_OWNER_ADDRESS must be a non-zero contract address in strict custody mode"
+  else
+    expect "constructor owner address" "$(printf '%s' "$EXPECTED_OWNER" | address)" "$owner"
+    owner_code=$(cast code "$EXPECTED_OWNER" --rpc-url "$RPC" 2>/dev/null || echo "0x")
+    if [ "\${#owner_code}" -gt 2 ]; then ok "expected Owner Safe has contract code"; else bad "expected Owner Safe has no contract code"; fi
+  fi
+elif [ "$REQUIRE_EXPECTED_CUSTODY" != "0" ]; then
+  bad "REQUIRE_EXPECTED_CUSTODY must be 0 or 1"
+fi
+if [ "$owner" != "$zero" ] && [ -n "$owner" ]; then ok "the owner is set ($owner)"; else bad "the owner is zero"; fi
+if [ "$treasury" != "$zero" ] && [ -n "$treasury" ]; then ok "the treasury is set ($treasury)"; else bad "the treasury is zero"; fi
+
+# The escrow must point at the registry it settles into, and the registry must
+# accept writes from the escrow and from nobody else. A registry that accepts
+# a second writer is a reputation system anybody can inflate.
+expect "the escrow's alloy registry" "$(printf '%s' "$ALLOY" | address)" "$(call_address "$TRIALS" 'alloy()(address)')"
+expect "the registry's forge" "$(printf '%s' "$TRIALS" | address)" "$(call_address "$ALLOY" 'forge()(address)')"
+
+# ── the money invariant, on the live chain ────────────────────────────────
+# The contract's own invariant: the ETH the contract holds covers everything
+# it owes. A test proves the code cannot break it; this proves the DEPLOYED
+# contract has not.
+#
+# Wei does not fit the shell's arithmetic. `$(( ))` and `[ -le ]` are 64-bit
+# signed, so a contract holding 10.04 ETH made the comparison error out and a
+# healthy surplus print as a FAIL, and a liability sum past 2^63 wraps negative
+# — which would have reported "owes -8 ETH" as a pass. The dangerous direction is
+# the silent one, so the sums below are decimal on digit strings, and the helpers
+# are checked against the numbers from that incident before anything relies on
+# them.
+LC_ALL=C
+export LC_ALL
+
+dec_norm() {
+  d=$1
+  while [ "${d#0}" != "$d" ] && [ -n "$d" ]; do d=${d#0}; done
+  printf '%s' "${d:-0}"
+}
+
+# dec_add <decimal> <decimal> — schoolbook addition, right to left. `${x%?}` and
+# `${x#"$y"}` are POSIX; the substring form `${x:1:1}` is not, and this runs
+# under dash inside the seed container.
+dec_add() {
+  a=$(dec_norm "$1")
+  b=$(dec_norm "$2")
+  carry=0
+  out=""
+  while [ -n "$a" ] || [ -n "$b" ] || [ "$carry" -ne 0 ]; do
+    da=${a#"${a%?}"}
+    a=${a%?}
+    db=${b#"${b%?}"}
+    b=${b%?}
+    [ -n "$da" ] || da=0
+    [ -n "$db" ] || db=0
+    sum=$((da + db + carry))
+    if [ "$sum" -ge 10 ]; then
+      carry=1
+      sum=$((sum - 10))
+    else
+      carry=0
+    fi
+    out="${sum}${out}"
+  done
+  printf '%s' "$(dec_norm "$out")"
+}
+
+# dec_cmp <a> <b> — -1, 0 or 1. Equal-length digit strings compare as bytes under C.
+dec_cmp() {
+  a=$(dec_norm "$1")
+  b=$(dec_norm "$2")
+  if [ "${#a}" -gt "${#b}" ]; then printf '%s' 1; return; fi
+  if [ "${#a}" -lt "${#b}" ]; then printf '%s' -1; return; fi
+  if [ "$a" = "$b" ]; then printf '%s' 0; return; fi
+  if [ "$a" \> "$b" ]; then printf '%s' 1; else printf '%s' -1; fi
+}
+
+# The canary: 10.04 ETH held against 8.44 ETH owed is the case the shell got
+# wrong, and 8.44 + 2.00 is the sum that used to wrap negative.
+if [ "$(dec_cmp 10040000000000000000 8440000000000000000)" != 1 ] ||
+  [ "$(dec_add 8440000000000000000 2000000000000000000)" != "10440000000000000000" ] ||
+  [ "$(dec_cmp "$(dec_add 9223372036854775807 1)" 9223372036854775808)" != 0 ]; then
+  bad "the decimal helpers disagree with known values — the money check below is not trustworthy"
+else
+  ok "the decimal helpers agree with the values that broke 64-bit arithmetic"
+fi
+
+escrowed=$(call_number "$TRIALS" 'escrowed()(uint256)')
+pending=$(call_number "$TRIALS" 'totalPending()(uint256)')
+stakes=$(call_number "$TRIALS" 'totalStakes()(uint256)')
+balance=$(cast balance "$TRIALS" --rpc-url "$RPC" 2>/dev/null | number || echo 0)
+# The same equality `test/Invariants.t.sol:170` asserts on every fuzzed transition:
+# balance == totalStakes + totalPending + escrowed. The previous check here was one-directional
+# and left out stakes, so ETH that had already left the escrow without a book entry — the actual
+# money-loss case — passed it. The escrow has no `receive()`, so there is no legitimate way for
+# the two sides to differ: over or under, a mismatch is an incident, and it is named as one.
+books=$(dec_add "$stakes" "$(dec_add "$pending" "$escrowed")")
+case "$(dec_cmp "$books" "$balance")" in
+  0)
+    ok "the escrow's ETH equals its books exactly: $balance wei = stakes $stakes + credits $pending + escrow $escrowed"
+    ;;
+  1)
+    bad "the escrow owes $books wei but holds only $balance — ETH has left a contract that cannot pay out except through withdraw()"
+    ;;
+  *)
+    bad "the escrow holds $balance wei against $books wei of liabilities — unaccounted ETH is on a contract with no receive()"
+    ;;
+esac
+
+# The public surface is NOT probed from here.
+#
+# This script runs inside the seed container, on the compose network, where it
+# can reach anvil and the contracts. The public URLs are the other side of
+# the proxy, and asking about them from inside the network was answering 0:
+# the container does not resolve or reach the public name the way a visitor
+# does, so the probe measured the container's network rather than the site's.
+#
+# The public probes run on the HOST, in the deploy job, where they measure
+# what a visitor measures.
+
+echo ""
+if [ "$fail" = "0" ]; then
+  echo "all $checks chain assertions passed — the deployment can be trusted"
+  exit 0
+fi
+echo "$fail of $checks chain assertions FAILED — do not treat this deployment as live" >&2
+exit 1
+
+}
+
+if [ "$owner" != "$zero" ] && [ -n "$owner" ]; then ok "the owner is set ($owner)"; else bad "the owner is zero"; fi
+if [ "$treasury" != "$zero" ] && [ -n "$treasury" ]; then ok "the treasury is set ($treasury)"; else bad "the treasury is zero"; fi
+
+# Strict production custody mode compares both immutable destinations to the
+# independently approved Safe addresses and rejects EOAs as either destination.
+if [ "$REQUIRE_EXPECTED_CUSTODY" = "1" ]; then
+  if ! valid_address "$EXPECTED_TREASURY" || [ "$(printf '%s' "$EXPECTED_TREASURY" | address)" = "$zero" ]; then
+    bad "EXPECTED_TREASURY_ADDRESS must be a non-zero contract address"
+  else
+    expect "immutable treasury address" "$(printf '%s' "$EXPECTED_TREASURY" | address)" "$treasury"
+    treasury_code=$(cast code "$EXPECTED_TREASURY" --rpc-url "$RPC" 2>/dev/null || echo "0x")
+    if [ "\${#treasury_code}" -gt 2 ]; then ok "expected Treasury Safe has contract code"; else bad "expected Treasury Safe has no contract code"; fi
+  fi
+  if ! valid_address "$EXPECTED_OWNER" || [ "$(printf '%s' "$EXPECTED_OWNER" | address)" = "$zero" ]; then
+    bad "EXPECTED_OWNER_ADDRESS must be a non-zero contract address"
+  else
+    expect "constructor owner address" "$(printf '%s' "$EXPECTED_OWNER" | address)" "$owner"
+    owner_code=$(cast code "$EXPECTED_OWNER" --rpc-url "$RPC" 2>/dev/null || echo "0x")
+    if [ "\${#owner_code}" -gt 2 ]; then ok "expected Owner Safe has contract code"; else bad "expected Owner Safe has no contract code"; fi
+  fi
+elif [ "$REQUIRE_EXPECTED_CUSTODY" != "0" ]; then
+  bad "REQUIRE_EXPECTED_CUSTODY must be 0 or 1"
+fi
+
+# The escrow must point at the registry it settles into, and the registry must
+# accept writes from the escrow and from nobody else. A registry that accepts
+# a second writer is a reputation system anybody can inflate.
+expect "the escrow's alloy registry" "$(printf '%s' "$ALLOY" | address)" "$(call_address "$TRIALS" 'alloy()(address)')"
+expect "the registry's forge" "$(printf '%s' "$TRIALS" | address)" "$(call_address "$ALLOY" 'forge()(address)')"
+
+# ── the money invariant, on the live chain ────────────────────────────────
+# The contract's own invariant: the ETH the contract holds covers everything
+# it owes. A test proves the code cannot break it; this proves the DEPLOYED
+# contract has not.
+#
+# Wei does not fit the shell's arithmetic. `$(( ))` and `[ -le ]` are 64-bit
+# signed, so a contract holding 10.04 ETH made the comparison error out and a
+# healthy surplus print as a FAIL, and a liability sum past 2^63 wraps negative
+# — which would have reported "owes -8 ETH" as a pass. The dangerous direction is
+# the silent one, so the sums below are decimal on digit strings, and the helpers
+# are checked against the numbers from that incident before anything relies on
+# them.
+LC_ALL=C
+export LC_ALL
+
+dec_norm() {
+  d=$1
+  while [ "${d#0}" != "$d" ] && [ -n "$d" ]; do d=${d#0}; done
+  printf '%s' "${d:-0}"
+}
+
+# dec_add <decimal> <decimal> — schoolbook addition, right to left. `${x%?}` and
+# `${x#"$y"}` are POSIX; the substring form `${x:1:1}` is not, and this runs
+# under dash inside the seed container.
+dec_add() {
+  a=$(dec_norm "$1")
+  b=$(dec_norm "$2")
+  carry=0
+  out=""
+  while [ -n "$a" ] || [ -n "$b" ] || [ "$carry" -ne 0 ]; do
+    da=${a#"${a%?}"}
+    a=${a%?}
+    db=${b#"${b%?}"}
+    b=${b%?}
+    [ -n "$da" ] || da=0
+    [ -n "$db" ] || db=0
+    sum=$((da + db + carry))
+    if [ "$sum" -ge 10 ]; then
+      carry=1
+      sum=$((sum - 10))
+    else
+      carry=0
+    fi
+    out="${sum}${out}"
+  done
+  printf '%s' "$(dec_norm "$out")"
+}
+
+# dec_cmp <a> <b> — -1, 0 or 1. Equal-length digit strings compare as bytes under C.
+dec_cmp() {
+  a=$(dec_norm "$1")
+  b=$(dec_norm "$2")
+  if [ "${#a}" -gt "${#b}" ]; then printf '%s' 1; return; fi
+  if [ "${#a}" -lt "${#b}" ]; then printf '%s' -1; return; fi
+  if [ "$a" = "$b" ]; then printf '%s' 0; return; fi
+  if [ "$a" \> "$b" ]; then printf '%s' 1; else printf '%s' -1; fi
+}
+
+# The canary: 10.04 ETH held against 8.44 ETH owed is the case the shell got
+# wrong, and 8.44 + 2.00 is the sum that used to wrap negative.
+if [ "$(dec_cmp 10040000000000000000 8440000000000000000)" != 1 ] ||
+  [ "$(dec_add 8440000000000000000 2000000000000000000)" != "10440000000000000000" ] ||
+  [ "$(dec_cmp "$(dec_add 9223372036854775807 1)" 9223372036854775808)" != 0 ]; then
+  bad "the decimal helpers disagree with known values — the money check below is not trustworthy"
+else
+  ok "the decimal helpers agree with the values that broke 64-bit arithmetic"
+fi
+
+escrowed=$(call_number "$TRIALS" 'escrowed()(uint256)')
+pending=$(call_number "$TRIALS" 'totalPending()(uint256)')
+stakes=$(call_number "$TRIALS" 'totalStakes()(uint256)')
+balance=$(cast balance "$TRIALS" --rpc-url "$RPC" 2>/dev/null | number || echo 0)
+# The same equality `test/Invariants.t.sol:170` asserts on every fuzzed transition:
+# balance == totalStakes + totalPending + escrowed. The previous check here was one-directional
+# and left out stakes, so ETH that had already left the escrow without a book entry — the actual
+# money-loss case — passed it. The escrow has no `receive()`, so there is no legitimate way for
+# the two sides to differ: over or under, a mismatch is an incident, and it is named as one.
+books=$(dec_add "$stakes" "$(dec_add "$pending" "$escrowed")")
+case "$(dec_cmp "$books" "$balance")" in
+  0)
+    ok "the escrow's ETH equals its books exactly: $balance wei = stakes $stakes + credits $pending + escrow $escrowed"
+    ;;
+  1)
+    bad "the escrow owes $books wei but holds only $balance — ETH has left a contract that cannot pay out except through withdraw()"
+    ;;
+  *)
+    bad "the escrow holds $balance wei against $books wei of liabilities — unaccounted ETH is on a contract with no receive()"
+    ;;
+esac
+
+# The public surface is NOT probed from here.
+#
+# This script runs inside the seed container, on the compose network, where it
+# can reach anvil and the contracts. The public URLs are the other side of
+# the proxy, and asking about them from inside the network was answering 0:
+# the container does not resolve or reach the public name the way a visitor
+# does, so the probe measured the container's network rather than the site's.
+#
+# The public probes run on the HOST, in the deploy job, where they measure
+# what a visitor measures.
+
+echo ""
+if [ "$fail" = "0" ]; then
+  echo "all $checks chain assertions passed — the deployment can be trusted"
+  exit 0
+fi
+echo "$fail of $checks chain assertions FAILED — do not treat this deployment as live" >&2
+exit 1
+
+}
+
+# In production mode, a nonzero on-chain address is not sufficient: the actual
+# immutable treasury and constructor owner must match the independently approved
+# Safe addresses. Each expected Safe must itself be a deployed contract.
+if [ "$REQUIRE_EXPECTED_CUSTODY" = "1" ]; then
+  if ! valid_address "$EXPECTED_TREASURY" || [ "$(printf '%s' "$EXPECTED_TREASURY" | address)" = "$zero" ]; then
+    bad "EXPECTED_TREASURY_ADDRESS must be a non-zero contract address in strict custody mode"
+  else
+    expect "immutable treasury address" "$(printf '%s' "$EXPECTED_TREASURY" | address)" "$treasury"
+    treasury_code=$(cast code "$EXPECTED_TREASURY" --rpc-url "$RPC" 2>/dev/null || echo "0x")
+    if [ "\${#treasury_code}" -gt 2 ]; then ok "expected Treasury Safe has contract code"; else bad "expected Treasury Safe has no contract code"; fi
+  fi
+  if ! valid_address "$EXPECTED_OWNER" || [ "$(printf '%s' "$EXPECTED_OWNER" | address)" = "$zero" ]; then
+    bad "EXPECTED_OWNER_ADDRESS must be a non-zero contract address in strict custody mode"
+  else
+    expect "constructor owner address" "$(printf '%s' "$EXPECTED_OWNER" | address)" "$owner"
+    owner_code=$(cast code "$EXPECTED_OWNER" --rpc-url "$RPC" 2>/dev/null || echo "0x")
+    if [ "\${#owner_code}" -gt 2 ]; then ok "expected Owner Safe has contract code"; else bad "expected Owner Safe has no contract code"; fi
+  fi
+elif [ "$REQUIRE_EXPECTED_CUSTODY" != "0" ]; then
+  bad "REQUIRE_EXPECTED_CUSTODY must be 0 or 1"
+fi
 if [ "$owner" != "$zero" ] && [ -n "$owner" ]; then ok "the owner is set ($owner)"; else bad "the owner is zero"; fi
 if [ "$treasury" != "$zero" ] && [ -n "$treasury" ]; then ok "the treasury is set ($treasury)"; else bad "the treasury is zero"; fi
 

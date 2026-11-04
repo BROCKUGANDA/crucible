@@ -57,6 +57,9 @@ jobs:
           export PATH="$FOUNDRY_DIR:$PATH"
           forge --version
 
+      - name: deployment assertion shell syntax
+        run: sh -n scripts/assert-deployment.sh
+
       - name: forge fmt --check
         run: forge fmt --check
 

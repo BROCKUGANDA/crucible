@@ -16,6 +16,7 @@ seed is a **broadcast**, not a mock.
 ```bash
 cd crucible-contracts
 forge build
+TREASURY_ADDRESS=0x... OWNER_SAFE_ADDRESS=0x... \
 forge script script/Deploy.s.sol:Deploy \
   --rpc-url "$RPC_URL" --private-key "$PRIVATE_KEY" --broadcast
 ```
@@ -28,16 +29,13 @@ deliberately: a chain-id check *inside* the script cannot be the guard, because 
 --rpc-url` evaluates the script in a local EVM that reports 31337 whatever node it points at —
 measured with forge 1.8.5 on 2026-10-29, and the reason the interrogation lives outside.
 
-The deploy order matters: `AlloyRegistry` first, `CrucibleTrials` second,
-then `setForge(address(trials))` once. `ReputationBridge` and the ERC-8004
-Identity Registry are optional; wire them with the owner setter and verify the
-addresses before relying on reputation.
+For the production script, `TREASURY_ADDRESS` must be the deployed company Treasury Safe and `OWNER_SAFE_ADDRESS` must be the deployed company Owner Safe. Both must have contract code; the script has no EOA/deployer fallback. The new `CrucibleTrials` constructor stores these exact addresses, and no later owner/treasury transfer exists. The deploy order remains `AlloyRegistry` first, `CrucibleTrials` second, then `setForge(address(trials))` once. `ReputationBridge` and the ERC-8004 Identity Registry are optional; wire them with the Owner Safe and verify the addresses before relying on reputation. The local `npm run demo` uses a separate Demo script and is not production evidence.
 
 ## Verify the live chain
 
 ```bash
 # From the repo root, with the deployment's .env loaded by compose:
-crucible-contracts/scripts/assert-deployment.sh
+EXPECTED_TREASURY_ADDRESS="$TREASURY_ADDRESS" EXPECTED_OWNER_ADDRESS="$OWNER_SAFE_ADDRESS" REQUIRE_EXPECTED_CUSTODY=1 crucible-contracts/scripts/assert-deployment.sh
 ```
 
 It reads the live contract and fails if the fee, bond rule, committee, roles or
@@ -46,8 +44,7 @@ and after any change to the deployment environment.
 
 Also check:
 
-- `trials.owner()` is the intended owner (a multisig on a real chain).
-- `trials.treasury()` is the intended treasury, not zero.
+- `trials.owner()` equals `OWNER_SAFE_ADDRESS` and `trials.treasury()` equals `TREASURY_ADDRESS` exactly. Strict custody mode also checks that both destination addresses have contract code.
 - Alloy's `forge` is the `CrucibleTrials` address.
 - The three Argus seats are the intended, distinct keys.
 - `FEE_BPS() == 500`, `BOND_NUM/BOND_DEN == 1/5`,
@@ -69,8 +66,8 @@ not quote a coverage number from a run without it.
 This demo is not an audited escrow. Before a chain with value:
 
 1. Professional audit and a response to every finding.
-2. Owner as a multisig; deployer key handed over or destroyed.
-3. Treasury as a multisig or a documented address.
+2. Owner and treasury as independently verified multisigs; the deployer EOA must not remain the owner.
+3. A complete Safe withdrawal rehearsal proving treasury credit reaches the approved Treasury Safe.
 4. Three independently held Argus seats, with an operational rotation plan.
 5. A decision on the asset (ADR-0002 is ETH-only), price/legal treatment and
    withdrawal operations.

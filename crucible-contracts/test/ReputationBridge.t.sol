@@ -64,7 +64,7 @@ contract ReputationBridgeTest is Test {
         seats[0] = a1;
         seats[1] = a2;
         seats[2] = a3;
-        trials = new CrucibleTrials(makeAddr("treasury"), address(alloy), seats);
+        trials = new CrucibleTrials(makeAddr("treasury"), address(this), address(alloy), seats);
         alloy.setForge(address(trials));
         bridge = new ReputationBridge(address(trials));
         registry = new MockReputationRegistry();

@@ -39,6 +39,7 @@ interface IVerificationReceipt {
 contract CrucibleTrials {
     // ───────────────────────── errors ─────────────────────────
     error ZeroTreasury();
+    error ZeroOwner();
     error ZeroIdentity();
     error IdentityNotOwned();
     error RewardTooSmall();
@@ -275,15 +276,16 @@ contract CrucibleTrials {
     /// 100% to slash, paid the agent. Ten seats was the mirror case: a 2-of-10 quorum is a
     /// fifth of the jury, and the eight silent seats let the timeout override it.
     /// Both are now undeployable.
-    constructor(address treasury_, address alloy_, address[] memory argus_) {
+    constructor(address treasury_, address owner_, address alloy_, address[] memory argus_) {
         // A zero treasury would route every protocol fee and every burned slash to an
         // address nobody controls — irrecoverably, since there is no setter.
         if (treasury_ == address(0)) revert ZeroTreasury();
+        if (owner_ == address(0)) revert ZeroOwner();
         if (argus_.length != ARGUS_THRESHOLD + 1) revert BadArgusSeatCount();
         treasury = treasury_;
         alloy = IAlloyRegistry(alloy_);
         _setArgusSeats(argus_);
-        owner = msg.sender;
+        owner = owner_;
         DOMAIN = _computeDomain();
         _guard = 1;
     }

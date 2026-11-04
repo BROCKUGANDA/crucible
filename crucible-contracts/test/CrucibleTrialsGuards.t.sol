@@ -39,7 +39,7 @@ contract CrucibleTrialsGuards is Test {
         seats[1] = makeAddr("g.argus2");
         seats[2] = makeAddr("g.argus3");
         alloy = new AlloyRegistry();
-        trials = new CrucibleTrials(owner, address(alloy), seats);
+        trials = new CrucibleTrials(treasury, owner, address(alloy), seats);
         alloy.setForge(address(trials));
 
         vm.deal(operator, 10 ether);
