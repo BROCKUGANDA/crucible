@@ -337,6 +337,13 @@ async function checkTreasury(url, auditSignoff) {
   }
   await checkSafe(url, record.treasurySafe, 'Treasury Safe');
   await checkSafe(url, record.ownerSafe, 'Owner Safe');
+  if (
+    isAddress(record.treasurySafe?.address) &&
+    isAddress(record.ownerSafe?.address) &&
+    normAddress(record.treasurySafe.address) === normAddress(record.ownerSafe.address)
+  ) {
+    problems.push(file + ' Treasury Safe and Owner Safe must be distinct addresses');
+  }
 
   const treasuryAddress = process.env.TREASURY_ADDRESS || '';
   if (!isAddress(treasuryAddress) || normAddress(treasuryAddress) !== normAddress(record.treasurySafe?.address)) {
