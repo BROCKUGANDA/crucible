@@ -206,7 +206,7 @@ describe("mainnet preflight", () => {
     const dir = signedDir();
     const server = await rpc("0x1");
     try {
-      const res = await run(["--signoffs", dir], { MAINNET_RPC_URL: server.url, TRIALS_ADDRESS: TRIALS_CONTRACT });
+      const res = await run(["--signoffs", dir], { MAINNET_RPC_URL: server.url, TRIALS_ADDRESS: TRIALS_CONTRACT, TREASURY_ADDRESS, OWNER_SAFE_ADDRESS: OWNER_ADDRESS });
       expect(res.status, res.stderr).toBe(0);
       expect(res.stdout).toContain("all checks pass");
       expect(res.stdout).toContain("Treasury Safe verified");
@@ -224,10 +224,51 @@ describe("mainnet preflight", () => {
       const res = await run(["--signoffs", dir], {
         MAINNET_RPC_URL: "http://127.0.0.1:1",
         TRIALS_ADDRESS: TRIALS_CONTRACT,
+        TREASURY_ADDRESS,
+        OWNER_SAFE_ADDRESS: OWNER_ADDRESS,
         MAINNET_RPC_FALLBACK_URL: server.url,
       });
       expect(res.status, res.stderr).toBe(0);
       expect(res.stdout).toContain("RPC reports chain id 1");
+    } finally {
+      await server.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("passes the pre-deployment gate when both approved Safe inputs exist but trials are not deployed yet", async () => {
+    const dir = signedDir();
+    const recordPath = join(dir, "treasury.json");
+    const record = JSON.parse(readFileSync(recordPath, "utf8"));
+    record.escrows.legacyTrials.address = "";
+    record.escrows.legacyTrials.runtimeCodeHash = "";
+    writeFileSync(recordPath, JSON.stringify(record));
+    const server = await rpc("0x1");
+    try {
+      const res = await run(["--signoffs", dir], {
+        MAINNET_RPC_URL: server.url,
+        TREASURY_ADDRESS,
+        OWNER_SAFE_ADDRESS: OWNER_ADDRESS,
+      });
+      expect(res.status, res.stderr).toBe(0);
+      expect(res.stdout).toContain("new CrucibleTrials deployment inputs pinned");
+    } finally {
+      await server.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses production preflight when the deployment treasury input is missing", async () => {
+    const dir = signedDir();
+    const server = await rpc("0x1");
+    try {
+      const res = await run(["--signoffs", dir], {
+        MAINNET_RPC_URL: server.url,
+        OWNER_SAFE_ADDRESS: OWNER_ADDRESS,
+        TRIALS_ADDRESS: TRIALS_CONTRACT,
+      });
+      expect(res.status).toBe(1);
+      expect(res.stderr).toContain("TREASURY_ADDRESS must equal treasury.json treasurySafe.address");
     } finally {
       await server.close();
       rmSync(dir, { recursive: true, force: true });
@@ -314,6 +355,8 @@ describe("mainnet preflight", () => {
       const res = await run(["--signoffs", dir], {
         MAINNET_RPC_URL: server.url,
         TRIALS_ADDRESS: TRIALS_CONTRACT,
+        TREASURY_ADDRESS: "0x" + "aa".repeat(20),
+        OWNER_SAFE_ADDRESS: OWNER_ADDRESS,
       });
       expect(res.status).toBe(1);
       expect(res.stderr).toContain("on-chain treasury() does not equal the approved Treasury Safe");
@@ -334,6 +377,8 @@ describe("mainnet preflight", () => {
       const res = await run(["--signoffs", dir], {
         MAINNET_RPC_URL: server.url,
         TRIALS_ADDRESS: TRIALS_CONTRACT,
+        TREASURY_ADDRESS,
+        OWNER_SAFE_ADDRESS: "0x" + "bb".repeat(20),
       });
       expect(res.status).toBe(1);
       expect(res.stderr).toContain("on-chain owner() does not equal the approved Owner Safe");
@@ -368,7 +413,7 @@ describe("mainnet preflight", () => {
     const params = paramsFile(1500);
     const server = await rpc("0x1");
     try {
-      const res = await run(["--signoffs", dir, "--params", params], { MAINNET_RPC_URL: server.url, TRIALS_ADDRESS: TRIALS_CONTRACT });
+      const res = await run(["--signoffs", dir, "--params", params], { MAINNET_RPC_URL: server.url, TRIALS_ADDRESS: TRIALS_CONTRACT, TREASURY_ADDRESS, OWNER_SAFE_ADDRESS: OWNER_ADDRESS });
       expect(res.status).toBe(1);
       expect(res.stderr).toContain("canonical 500");
     } finally {
@@ -386,7 +431,7 @@ describe("mainnet preflight", () => {
     );
     const server = await rpc("0x1");
     try {
-      const res = await run(["--signoffs", dir], { MAINNET_RPC_URL: server.url, TRIALS_ADDRESS: TRIALS_CONTRACT });
+      const res = await run(["--signoffs", dir], { MAINNET_RPC_URL: server.url, TRIALS_ADDRESS: TRIALS_CONTRACT, TREASURY_ADDRESS, OWNER_SAFE_ADDRESS: OWNER_ADDRESS });
       expect(res.status).toBe(1);
       expect(res.stderr).toContain("audit-signoff.json missing field commit");
     } finally {
