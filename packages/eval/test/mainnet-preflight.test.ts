@@ -20,6 +20,10 @@ const SENTINEL = "0x0000000000000000000000000000000000000001";
 const SINGLETON = "0x" + "77".repeat(20);
 const CODE_HASH = "0x" + "aa".repeat(32);
 const SAFE_OWNERS = ["0x" + "11".repeat(20), "0x" + "22".repeat(20), "0x" + "33".repeat(20)];
+const TRIALS_CONTRACT = "0x" + "44".repeat(20);
+const TREASURY_ADDRESS = "0x" + "55".repeat(20);
+const OWNER_ADDRESS = "0x" + "66".repeat(20);
+const RELEASE_COMMIT = "abcdef1234567";
 
 interface RunResult {
   status: number | null;
@@ -89,6 +93,8 @@ async function rpc(chainIdHex: string, options: RpcOptions = {}) {
           return ok(options.codeHash ?? CODE_HASH);
         case "eth_call": {
           const data = String(request.params[0]?.data ?? "").toLowerCase();
+          if (data.startsWith("0x61d027b3")) return ok("0x" + addressWord(TREASURY_ADDRESS));
+          if (data.startsWith("0x8da5cb5b")) return ok("0x" + addressWord(OWNER_ADDRESS));
           if (data.startsWith("0xe75235b8")) return ok("0x" + word(options.threshold ?? 2));
           if (data.startsWith("0xa0e67e2b")) return ok(addressArray(options.owners ?? SAFE_OWNERS));
           if (data.startsWith("0xcc2f8452")) {
@@ -133,7 +139,7 @@ function signedDir(): string {
   const dir = mkdtempSync(join(tmpdir(), "crucible-mainnet-"));
   writeFileSync(
     join(dir, "audit-signoff.json"),
-    JSON.stringify({ signed: true, auditor: "0x" + "11".repeat(20), reportHash: "0x" + "22".repeat(32), commit: "abc123" }),
+    JSON.stringify({ signed: true, auditor: "0x" + "11".repeat(20), reportHash: "0x" + "22".repeat(32), commit: RELEASE_COMMIT }),
   );
   writeFileSync(
     join(dir, "legal-signoff.json"),
@@ -157,11 +163,14 @@ function signedDir(): string {
       signed: true,
       chainId: 1,
       asset: "native-ETH",
-      treasurySafe: safeRecord("0x" + "55".repeat(20)),
-      ownerSafe: safeRecord("0x" + "66".repeat(20)),
+      treasurySafe: safeRecord(TREASURY_ADDRESS),
+      ownerSafe: safeRecord(OWNER_ADDRESS),
+      escrows: {
+        legacyTrials: { address: TRIALS_CONTRACT, runtimeCodeHash: CODE_HASH },
+      },
       canonicalDeploymentSource: "https://github.com/safe-fndn/safe-deployments/blob/main/src/assets/v1.4.1/safe.json",
       verifiedBy: "reviewer@example.test",
-      deploymentCommit: "abcdef1234567",
+      deploymentCommit: RELEASE_COMMIT,
       evidenceHash: "0x" + "88".repeat(32),
     }),
   );
@@ -198,7 +207,7 @@ describe("mainnet preflight", () => {
     const dir = signedDir();
     const server = await rpc("0x1");
     try {
-      const res = await run(["--signoffs", dir], { MAINNET_RPC_URL: server.url });
+      const res = await run(["--signoffs", dir], { MAINNET_RPC_URL: server.url, TRIALS_ADDRESS: TRIALS_CONTRACT });
       expect(res.status, res.stderr).toBe(0);
       expect(res.stdout).toContain("all checks pass");
       expect(res.stdout).toContain("Treasury Safe verified");
@@ -215,6 +224,7 @@ describe("mainnet preflight", () => {
     try {
       const res = await run(["--signoffs", dir], {
         MAINNET_RPC_URL: "http://127.0.0.1:1",
+        TRIALS_ADDRESS: TRIALS_CONTRACT,
         MAINNET_RPC_FALLBACK_URL: server.url,
       });
       expect(res.status, res.stderr).toBe(0);
@@ -277,12 +287,89 @@ describe("mainnet preflight", () => {
     }
   });
 
+  it("refuses a CrucibleTrials address that differs from the signed treasury record", async () => {
+    const dir = signedDir();
+    const server = await rpc("0x1");
+    try {
+      const res = await run(["--signoffs", dir], {
+        MAINNET_RPC_URL: server.url,
+        TRIALS_ADDRESS: "0x" + "99".repeat(20),
+      });
+      expect(res.status).toBe(1);
+      expect(res.stderr).toContain("legacyTrials address does not match TRIALS_ADDRESS");
+    } finally {
+      await server.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses when the on-chain escrow treasury differs from the approved Safe", async () => {
+    const dir = signedDir();
+    const server = await rpc("0x1");
+    // This server returns the approved treasury address only; mutate the signoff to a different Safe.
+    const recordPath = join(dir, "treasury.json");
+    const record = JSON.parse(await import("node:fs").then(({ readFileSync }) => readFileSync(recordPath, "utf8")));
+    record.treasurySafe.address = "0x" + "aa".repeat(20);
+    writeFileSync(recordPath, JSON.stringify(record));
+    try {
+      const res = await run(["--signoffs", dir], {
+        MAINNET_RPC_URL: server.url,
+        TRIALS_ADDRESS: TRIALS_CONTRACT,
+      });
+      expect(res.status).toBe(1);
+      expect(res.stderr).toContain("on-chain treasury() does not equal the approved Treasury Safe");
+    } finally {
+      await server.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses when the on-chain owner differs from the approved Owner Safe", async () => {
+    const dir = signedDir();
+    const server = await rpc("0x1");
+    const recordPath = join(dir, "treasury.json");
+    const record = JSON.parse(await import("node:fs").then(({ readFileSync }) => readFileSync(recordPath, "utf8")));
+    record.ownerSafe.address = "0x" + "bb".repeat(20);
+    writeFileSync(recordPath, JSON.stringify(record));
+    try {
+      const res = await run(["--signoffs", dir], {
+        MAINNET_RPC_URL: server.url,
+        TRIALS_ADDRESS: TRIALS_CONTRACT,
+      });
+      expect(res.status).toBe(1);
+      expect(res.stderr).toContain("on-chain owner() does not equal the approved Owner Safe");
+    } finally {
+      await server.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses when the deploy commit differs from the externally audited commit", async () => {
+    const dir = signedDir();
+    const server = await rpc("0x1");
+    const recordPath = join(dir, "treasury.json");
+    const record = JSON.parse(await import("node:fs").then(({ readFileSync }) => readFileSync(recordPath, "utf8")));
+    record.deploymentCommit = "123456789abcd";
+    writeFileSync(recordPath, JSON.stringify(record));
+    try {
+      const res = await run(["--signoffs", dir], {
+        MAINNET_RPC_URL: server.url,
+        TRIALS_ADDRESS: TRIALS_CONTRACT,
+      });
+      expect(res.status).toBe(1);
+      expect(res.stderr).toContain("deploymentCommit must match audit-signoff.json commit");
+    } finally {
+      await server.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("refuses the 15 percent legacy fee", async () => {
     const dir = signedDir();
     const params = paramsFile(1500);
     const server = await rpc("0x1");
     try {
-      const res = await run(["--signoffs", dir, "--params", params], { MAINNET_RPC_URL: server.url });
+      const res = await run(["--signoffs", dir, "--params", params], { MAINNET_RPC_URL: server.url, TRIALS_ADDRESS: TRIALS_CONTRACT });
       expect(res.status).toBe(1);
       expect(res.stderr).toContain("canonical 500");
     } finally {
@@ -300,7 +387,7 @@ describe("mainnet preflight", () => {
     );
     const server = await rpc("0x1");
     try {
-      const res = await run(["--signoffs", dir], { MAINNET_RPC_URL: server.url });
+      const res = await run(["--signoffs", dir], { MAINNET_RPC_URL: server.url, TRIALS_ADDRESS: TRIALS_CONTRACT });
       expect(res.status).toBe(1);
       expect(res.stderr).toContain("audit-signoff.json missing field commit");
     } finally {
