@@ -2,7 +2,7 @@
 
 - **Status:** proposed (2026-11-04; not implemented or accepted)
 - **Decides:** the custody and operational model for Crucible's treasury, how protocol credits reach the company wallet, and what evidence must exist before real-value deployment.
-- **Depends on:** ADR-0001 (native ETH work escrow), ADR-0003 (pull payments), ADR-0006 (wallet-signed API; no API chain key), ADR-0011 (separate v2 Arena economics), ADR-0019 (both fee schedules remain distinct).
+- **Depends on:** ADR-0001 (native ETH work escrow), ADR-0003 (pull payments), ADR-0006 (wallet-signed API; no API chain key), ADR-0011 (separate v2 Arena economics), ADR-0019 (both fee schedules remain distinct), ADR-0021 (explicit owner constructor input).
 - **Does not:** change a fee, alter settlement mathematics, add a token, add a bridge, add an arbitrary withdrawal recipient, add a contract pause, make wallet activity private, or authorize deployment.
 
 ## Context
@@ -14,7 +14,7 @@ The legacy `CrucibleTrials` contract has two decisive properties:
 1. `treasury` is an immutable constructor argument. The constructor rejects the zero address and there is no treasury setter. A wrong treasury address cannot be repaired by an owner transaction.
 2. Settlement uses a pull ledger. `withdraw()` reads `credit[msg.sender]`, clears that caller's credit, and sends ETH back to `msg.sender`. It has no `to` argument. A caller cannot withdraw another address's credit or redirect it to a different address.
 
-The contract also sets `owner = msg.sender` in its constructor. The current source has no ownership-transfer path. Therefore a normal deployment from a single deployer EOA leaves that EOA as owner; merely recording a Safe address in a JSON file does not make the Safe the on-chain owner.
+The original deployed contract sets `owner = msg.sender` in its constructor and has no ownership-transfer path. This branch introduces an explicit non-zero `owner_` constructor argument under ADR-0021, so the production deploy can assign the Owner Safe directly. That contract ABI change is not yet merged or independently audited; the older deployed bytecode remains unchanged.
 
 The treasury and the owner are different authorities:
 
@@ -76,10 +76,9 @@ A dashboard may prepare a Safe transaction and display the actual on-chain credi
 
 The production owner must also be a company-controlled Safe (or another independently reviewed multisig). This requires solving the constructor-caller issue before deployment:
 
-- Preferred without changing contract semantics: deploy from the Safe execution context using a reviewed and tested deployment mechanism that makes the Safe the actual `msg.sender` observed by the constructor.
-- Alternative: introduce an explicit owner constructor argument or reviewed ownership transfer in a new contract version. This is a contract change and must have its own implementation review, test coverage and independent audit.
+Adopt the explicit `owner_` constructor argument described by ADR-0021. The production deployment script requires `OWNER_SAFE_ADDRESS` to contain deployed contract code and passes it into the constructor. The mainnet preflight verifies the Safe configuration before deployment; post-deploy verification reads `owner()` and compares it with the approved Owner Safe.
 
-A conventional EOA deployment followed by an assumption that ownership can later be transferred is prohibited. The current source does not provide a transfer function. The deployment gate must read `owner()` from the deployed contract and compare it with the approved owner Safe.
+Do not use a conventional EOA deployment and assume ownership can be transferred later. The previous contract ABI has no transfer function; already deployed instances remain governed by their original owner address. The revised constructor must pass the full Foundry suite and receive an independent audit at the exact release commit before it can be used with real funds.
 
 Keep owner and treasury Safe roles separate where practical. The owner can rewire optional registries; it must not be a hot operational wallet. The deployer key must not remain a privileged owner after release.
 
