@@ -338,21 +338,38 @@ async function checkTreasury(url, auditSignoff) {
   await checkSafe(url, record.treasurySafe, 'Treasury Safe');
   await checkSafe(url, record.ownerSafe, 'Owner Safe');
 
+  const treasuryAddress = process.env.TREASURY_ADDRESS || '';
+  if (!isAddress(treasuryAddress) || normAddress(treasuryAddress) !== normAddress(record.treasurySafe?.address)) {
+    problems.push('TREASURY_ADDRESS must equal treasury.json treasurySafe.address');
+  }
+  const ownerSafeAddress = process.env.OWNER_SAFE_ADDRESS || '';
+  if (!isAddress(ownerSafeAddress) || normAddress(ownerSafeAddress) !== normAddress(record.ownerSafe?.address)) {
+    problems.push('OWNER_SAFE_ADDRESS must equal treasury.json ownerSafe.address');
+  }
+
+  if (!record.escrows || typeof record.escrows !== 'object' || !record.escrows.legacyTrials) {
+    problems.push(file + ' must contain escrows.legacyTrials');
+  }
   const trialsAddress = process.env.TRIALS_ADDRESS || '';
-  if (!isAddress(trialsAddress) || normAddress(trialsAddress) === ZERO) {
-    problems.push('TRIALS_ADDRESS must be set to the production CrucibleTrials address');
-  } else if (!record.escrows || !record.escrows.legacyTrials || !isAddress(record.escrows.legacyTrials.address)) {
-    problems.push(file + ' must pin escrows.legacyTrials.address');
-  } else {
-    if (normAddress(record.escrows.legacyTrials.address) !== normAddress(trialsAddress)) {
-      problems.push(file + ' legacyTrials address does not match TRIALS_ADDRESS');
+  const legacyRecord = record.escrows && record.escrows.legacyTrials;
+  if (trialsAddress) {
+    if (!isAddress(trialsAddress) || normAddress(trialsAddress) === ZERO || !legacyRecord || !isAddress(legacyRecord.address)) {
+      problems.push('TRIALS_ADDRESS requires a matching treasury.json escrows.legacyTrials record');
+    } else {
+      if (normAddress(legacyRecord.address) !== normAddress(trialsAddress)) {
+        problems.push(file + ' legacyTrials address does not match TRIALS_ADDRESS');
+      }
+      await checkEscrow(
+        url,
+        { ...legacyRecord, name: 'CrucibleTrials' },
+        record.treasurySafe.address,
+        record.ownerSafe.address,
+      );
     }
-    await checkEscrow(
-      url,
-      { ...record.escrows.legacyTrials, name: 'CrucibleTrials' },
-      record.treasurySafe.address,
-      record.ownerSafe.address,
-    );
+  } else if (legacyRecord && legacyRecord.address) {
+    problems.push(file + ' has a deployed legacyTrials address but TRIALS_ADDRESS is unset');
+  } else {
+    notes.push('new CrucibleTrials deployment inputs pinned; post-deploy escrow assertions are still required');
   }
 
   const arenaAddress = process.env.ARENA_ADDRESS || '';
