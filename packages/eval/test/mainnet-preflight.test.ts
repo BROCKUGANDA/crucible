@@ -34,6 +34,8 @@ interface RpcOptions {
   owners?: string[];
   modules?: string[];
   codeHash?: string;
+  hashMismatchAt?: number;
+  extensionStorage?: boolean;
 }
 
 function run(args: string[], env: Record<string, string> = {}): Promise<RunResult> {
@@ -61,6 +63,7 @@ function addressArray(values: string[]): string {
 }
 
 async function rpc(chainIdHex: string, options: RpcOptions = {}) {
+  let hashCalls = 0;
   const server = http.createServer((req, res) => {
     const chunks: Buffer[] = [];
     req.on("data", (chunk: Buffer) => chunks.push(chunk));
@@ -86,10 +89,11 @@ async function rpc(chainIdHex: string, options: RpcOptions = {}) {
           return ok("0x60006000");
         case "eth_getStorageAt": {
           const slot = String(request.params[1]).toLowerCase();
-          return ok(slot === "0x0" ? "0x" + addressWord(SINGLETON) : "0x" + "00".repeat(32));
+          return ok(slot === "0x0" ? "0x" + addressWord(SINGLETON) : options.extensionStorage ? "0x" + word(1) : "0x" + "00".repeat(32));
         }
         case "web3_sha3":
-          return ok(options.codeHash ?? CODE_HASH);
+          hashCalls += 1;
+          return ok(options.hashMismatchAt === hashCalls ? "0x" + "bb".repeat(32) : options.codeHash ?? CODE_HASH);
         case "eth_call": {
           const data = String(request.params[0]?.data ?? "").toLowerCase();
           if (data.startsWith("0x61d027b3")) return ok("0x" + addressWord(TREASURY_ADDRESS));
@@ -295,6 +299,45 @@ describe("mainnet preflight", () => {
       const res = await run(["--signoffs", dir], { MAINNET_RPC_URL: server.url });
       expect(res.status).toBe(1);
       expect(res.stderr).toContain("on-chain threshold is not 2");
+    } finally {
+      await server.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses a Safe owner set different from the approved three signers", async () => {
+    const dir = signedDir();
+    const server = await rpc("0x1", { owners: [SAFE_OWNERS[0], SAFE_OWNERS[1], "0x" + "99".repeat(20)] });
+    try {
+      const res = await run(["--signoffs", dir], { MAINNET_RPC_URL: server.url, TREASURY_ADDRESS, OWNER_SAFE_ADDRESS: OWNER_ADDRESS });
+      expect(res.status).toBe(1);
+      expect(res.stderr).toContain("on-chain owner set differs from treasury.json");
+    } finally {
+      await server.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses a non-zero Safe guard or fallback extension slot", async () => {
+    const dir = signedDir();
+    const server = await rpc("0x1", { extensionStorage: true });
+    try {
+      const res = await run(["--signoffs", dir], { MAINNET_RPC_URL: server.url, TREASURY_ADDRESS, OWNER_SAFE_ADDRESS: OWNER_ADDRESS });
+      expect(res.status).toBe(1);
+      expect(res.stderr).toContain("has a non-zero fallbackHandler configuration");
+    } finally {
+      await server.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses a Safe singleton runtime hash mismatch", async () => {
+    const dir = signedDir();
+    const server = await rpc("0x1", { hashMismatchAt: 2 });
+    try {
+      const res = await run(["--signoffs", dir], { MAINNET_RPC_URL: server.url, TREASURY_ADDRESS, OWNER_SAFE_ADDRESS: OWNER_ADDRESS });
+      expect(res.status).toBe(1);
+      expect(res.stderr).toContain("singleton runtime code hash mismatch");
     } finally {
       await server.close();
       rmSync(dir, { recursive: true, force: true });
