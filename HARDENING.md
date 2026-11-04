@@ -1516,6 +1516,53 @@ guards is the decoration it exists to detect.
   what is proven here is the *answer and the redirect*, not the audio. And the index is public: it
   is a map of the site, and a map is not a secret.
 
+- **The sandbox is fail-closed, its wreckage is reaped, and a same-tick run can no longer build
+  an artifact the validator refuses (2026-11-04, `b0bbc77`–`8ad92d3`).** Three findings, each
+  measured before it was fixed. **(1) The unisolated path was a flag away.** `allowLocalFallback`
+  still existed on `SandboxSpec`, so one deleted line in a caller would have produced artifacts
+  claiming container isolation the run never had; it is now deleted from the type, the builder and
+  every caller — Docker absent is `SandboxUnavailable`, and the only unisolated path left is
+  `forceLocal`, which exists for tests, runs no digest resolution, and is documented as never
+  legal in production. **(2) Host hygiene was a suggestion.** Every suite runs under
+  `docker run --rm` and `cleanup()` removes the workspace, so the residue is the residue `--rm`
+  cannot cover: containers left in `created`/`exited`/`dead` by a wedged daemon, and temp
+  workspaces whose process died before cleanup. `reapContainers` removes only those three states
+  — a `running` or `paused` container is never a target, because there is no lease registry to
+  prove nobody owns it — and `reapWorkspaces` ages a workspace by the newest mtime among the root
+  and its direct children with a 24h floor, because the root's mtime does not move while a tier-4
+  run (1h wall clock) writes into `repo/` and the first draft's 1h threshold could have reaped a
+  live workspace. The reapers are wired into `ForgeRunner.run()` pre-flight as an injectable
+  dependency (unit tests must not touch a real daemon, and parallel sandbox tests' containers must
+  never be targets) and say what they cleared on the operator console. **(3) The runner suite was
+  a coin flip on a fast machine.** `startedAt` and `finishedAt` are two `Date.now()` snapshots;
+  a run that fits inside one millisecond measured `durationMs 0` and died at `finishedAt must be
+  > startedAt` inside `validateArtifact` — `runner.test.ts` failed ~3 runs in 6 on this machine
+  and passed everywhere slower. `buildArtifact` now floors the recorded finish at `startedAt + 1`
+  (the clock's resolution; round up, never print short) and `durationMs` stays derived so the two
+  cannot disagree. **Mutation-proven and restored:** the trial filter in `fetchTrialEvents`
+  (1 red), its window arithmetic (2 red), the reaper's finished-state set — adding `running` back
+  (2 red), and the pre-flight emit (1 red). **Also closed:** the runner's Docker-absent test
+  injected a real probe (green on daemon-less machines, `ImageDigestUnresolved` on this one — it
+  now injects a refusing exec, so the asserted kind is a property of the test); `fetchTrialEvents`
+  gained a client seam and five real-decode tests (logs encoded from `TRIALS_ABI` in the test, only
+  the transport stood in); `apps/fork-host` gained a child `error` listener (a missing anvil is a
+  502, not an unhandled event) and a monotonic port cursor (two in-flight provisions no longer
+  race one bind) — and its app was split from its entry so the handler surface could be tested at
+  all, because **the gate had been green by omission**: the lockfile fix registered `apps/fork-host`
+  as a workspace and the next `verify:all` failed on it, its `test` script having failed with
+  "No test files found" since the day it was created while no gate ever saw it; it now carries five
+  handler tests (refusals that need no chain, plus the honest 502 for an unreachable fork source —
+  a successful provision is deliberately not faked, it needs a real anvil); the indexer declares
+  `@crucible/frame` it was importing by hoisting luck; the lockfile now registers `apps/fork-host`,
+  which last session created without linking. **One more instrument finding, fixed in place:**
+  `grader/test/sampler.test.ts`'s 42-draw anchor-floor loop was killed by vitest's 5s default
+  timeout inside the saturated fan-out (the only red in the first 2026-11-04 gate run; green alone,
+  the same mechanism HARDENING item 23 names for `apps/api`) — the loop got an explicit 30s
+  timeout that states its loaded cost, assertions untouched, no threshold retuned.
+  **Measured:** `npm run verify:all` green end to end — 2474 TS/JS + 329 Foundry + 18 edge =
+  2821 passed, 10 skipped, 0 failed (forge-runner 225/6 skipped, smith-sdk 237, indexer 159 (5 new),
+  fork-host 5 (new), grader 309); `runner.test.ts` 8/8 green runs where it was ~50% red before.
+
 ## Unresolved from the 2026-10-27 pass (continues the open list)
 
 23. **`apps/api` reported one failing test once, inside a saturated fan-out, and it has not been
