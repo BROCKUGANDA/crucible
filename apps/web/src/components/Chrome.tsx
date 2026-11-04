@@ -16,7 +16,13 @@ import { formatWei } from "@/lib/eth";
 import { buildWithdraw, useTx } from "@/lib/useTx";
 import { activeChain, deployment, environmentBadge, explorerTxUrl, ZERO_ADDRESS } from "@/lib/wagmi";
 
-const NAV_PRIMARY = [
+interface NavItem {
+  href: string;
+  label: string;
+  auth?: boolean;
+}
+
+const NAV_PRIMARY: NavItem[] = [
   { href: "/home", label: "Workspace" },
   { href: "/trials", label: "Trials" },
   { href: "/arena", label: "Arena" },
@@ -26,28 +32,29 @@ const NAV_PRIMARY = [
   { href: "/escrow", label: "Escrow" },
 ];
 
-const NAV_MORE = [
-  { href: "/forge", label: "Register" },
+const NAV_MORE: NavItem[] = [
+  { href: "/forge", label: "Register", auth: true },
   { href: "/bounties", label: "Challenges" },
   { href: "/clock", label: "How it settles" },
   { href: "/assay", label: "Status" },
-  { href: "/teams", label: "Teams" },
-  { href: "/faucet", label: "Sponsorship" },
+  { href: "/teams", label: "Teams", auth: true },
+  { href: "/faucet", label: "Sponsorship", auth: true },
   { href: "/voice", label: "Voice room" },
-  { href: "/airdrops", label: "Airdrops" },
-  { href: "/staking", label: "Staking" },
+  { href: "/airdrops", label: "Airdrops", auth: true },
+  { href: "/staking", label: "Staking", auth: true },
   { href: "/engrams", label: "Engrams" },
   { href: "/tour", label: "Tour" },
   { href: "/docs", label: "Docs" },
 ];
 
-const NAV = [...NAV_PRIMARY, ...NAV_MORE];
 
 export function Chrome({ children }: { children: ReactNode }) {
   const [sheet, setSheet] = useState(false);
   const moreRef = useRef<HTMLDetailsElement | null>(null);
   const pathname = usePathname();
   const env = environmentBadge();
+  const { address } = useAccount();
+  const isConnected = Boolean(address);
 
   // A route change is an answer to the question the menu was asked. Leaving it open would
   // strand the next page behind a scrim, or leave a dropdown hanging over the new page.
@@ -55,6 +62,11 @@ export function Chrome({ children }: { children: ReactNode }) {
     setSheet(false);
     if (moreRef.current) moreRef.current.open = false;
   }, [pathname]);
+
+  // Auth-gated nav items: only show when connected
+  const visiblePrimary = NAV_PRIMARY.filter((item) => !item.auth || isConnected);
+  const visibleMore = NAV_MORE.filter((item) => !item.auth || isConnected);
+  const visibleNav = [...visiblePrimary, ...visibleMore];
 
   return (
     <div className="shell">
@@ -81,7 +93,7 @@ export function Chrome({ children }: { children: ReactNode }) {
           {/* The current page is stated in the markup, not only by colour: a route you
               cannot tell apart from the routes you can is a route you have not visited. */}
           <nav aria-label="Primary" className="chrome__nav">
-            {NAV_PRIMARY.map((item) => (
+            {visiblePrimary.map((item) => (
               <Link
                 key={item.href}
                 href={item.href}
@@ -97,7 +109,7 @@ export function Chrome({ children }: { children: ReactNode }) {
                 More <span aria-hidden="true">▾</span>
               </summary>
               <div className="chrome__more-panel">
-                {NAV_MORE.map((item) => (
+                {visibleMore.map((item) => (
                   <Link
                     key={item.href}
                     href={item.href}
@@ -133,7 +145,7 @@ export function Chrome({ children }: { children: ReactNode }) {
 
       <Modal open={sheet} title="The forge" onRequestClose={() => setSheet(false)}>
         <nav id="forge-nav-sheet" aria-label="Primary" className="stack">
-          {NAV.map((item) => (
+          {visibleNav.map((item) => (
             <Link key={item.href} href={item.href} className="sheet-link" aria-current={pathname.startsWith(item.href) ? "page" : undefined}>
               <span className="kicker">{item.href.slice(1)}</span>
               <span>{item.label}</span>
