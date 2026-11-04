@@ -168,6 +168,9 @@ function checkSafeRecord(record, label) {
   if (!isBytes32(record.singletonRuntimeCodeHash)) {
     problems.push('treasury.json ' + label + '.singletonRuntimeCodeHash must be bytes32');
   }
+  if (!isBytes32(record.proxyRuntimeCodeHash)) {
+    problems.push('treasury.json ' + label + '.proxyRuntimeCodeHash must be bytes32');
+  }
   if (!Array.isArray(record.owners) || record.owners.length !== 3 || record.owners.some((x) => !isAddress(x))) {
     problems.push('treasury.json ' + label + '.owners must contain exactly three valid addresses');
   } else {
@@ -191,6 +194,7 @@ function checkSafeRecord(record, label) {
     isAddress(record.address) &&
     isAddress(record.singletonAddress) &&
     isBytes32(record.singletonRuntimeCodeHash) &&
+    isBytes32(record.proxyRuntimeCodeHash) &&
     Array.isArray(record.owners) &&
     record.owners.length === 3 &&
     record.threshold === 2 &&
@@ -207,6 +211,10 @@ async function checkSafe(url, record, label) {
   try {
     const safeCode = await rpcRequest(url, 'eth_getCode', [record.address, 'latest']);
     if (safeCode === '0x' || safeCode === '0x0') throw new Error(label + ' address has no contract code');
+    const proxyCodeHash = await rpcRequest(url, 'web3_sha3', [safeCode]);
+    if (normAddress(proxyCodeHash) !== normAddress(record.proxyRuntimeCodeHash)) {
+      throw new Error(label + ' proxy runtime code hash mismatch');
+    }
 
     // SafeProxy stores the singleton/master copy at storage slot zero. Verify the proxy
     // points to the exact chain-specific singleton recorded from Safe's canonical deployment
