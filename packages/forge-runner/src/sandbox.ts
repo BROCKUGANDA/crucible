@@ -11,10 +11,10 @@ import { join, basename } from "node:path";
  * the image), plus a memory and CPU ceiling so a runaway agent OOMs instead of
  * taking the host with it.
  *
- * When Docker is unavailable the runner degrades to a local scratch directory
- * and *says so* in the status stream, because a silent fallback would produce an
- * artifact that claims sandboxed execution it never had — and that artifact is
- * exactly what a skeptic is paid to break.
+ * When Docker is unavailable the run is refused. There is no fallback to local
+ * execution: an artifact that claims sandboxed execution it never had is exactly
+ * what a skeptic is paid to break, and a degraded run that says so is still a
+ * run whose isolation cannot be verified. Fail closed.
  */
 
 export interface SandboxSpec {
@@ -23,12 +23,12 @@ export interface SandboxSpec {
   cpus: string;
   /** hard wall-clock ceiling for the whole run */
   timeoutSec: number;
-  /** allow running without Docker; sets `degraded` on the result */
-  allowLocalFallback?: boolean;
   /**
    * Skip the Docker probe and execute directly. For tests, where the image does
    * not exist and a container would fail for reasons unrelated to the code under
-   * test. Production code must never set this.
+   * test. Production code must never set this. When set, the sandbox is created
+   * without Docker and without an image digest — the run is unisolated and the
+   * caller must surface that fact.
    */
   forceLocal?: boolean;
 }
@@ -80,19 +80,25 @@ export const DEFAULT_SANDBOX: SandboxSpec = {
   // be resolved is refused rather than attested. Publishing the image by digest is still what
   // makes a re-run on another machine reproducible — this only stops the receipt from claiming
   // more than the tag can give.
+  //
+  // IMPORTANT: The `:latest` tag is the default only for local development, where the image is
+  // rebuilt constantly. In production, set `CRUCIBLE_VERIFIER_IMAGE` to a digest-pinned reference
+  // (`crucible/verifier@sha256:...`). The sandbox will refuse to run if the image cannot be
+  // resolved to an immutable digest — there is no fallback to unisolated execution.
   image: "crucible/verifier:latest",
   memory: "1g",
   cpus: "1",
   timeoutSec: 900,
-  allowLocalFallback: false,
 };
 
 /**
  * The verifier image a run actually uses. `CRUCIBLE_VERIFIER_IMAGE` overrides
  * the `:latest` default so an operator can pin the published digest
- * (`crucible/verifier@sha256:…`) without a code change — the default stays
- * mutable because local development rebuilds the image constantly, and a
- * digest baked into source would be stale the day it landed.
+ * (`crucible/verifier@sha256:…`) without a code change.
+ *
+ * The default stays mutable because local development rebuilds the image constantly,
+ * and a digest baked into source would be stale the day it landed. In production,
+ * always set this environment variable to a digest-pinned reference.
  */
 export function resolveVerifierImage(env: NodeJS.ProcessEnv = process.env): string {
   return env.CRUCIBLE_VERIFIER_IMAGE?.trim() || DEFAULT_SANDBOX.image;
@@ -376,11 +382,23 @@ export class Sandbox {
     deps: SandboxDeps = {},
   ): Promise<Sandbox> {
     const exec = deps.exec ?? execIn;
-    const hasDocker = spec.forceLocal ? false : await dockerAvailable(exec);
-    if (!hasDocker && !spec.allowLocalFallback) {
+
+    // `forceLocal` is the only way to skip Docker, and it is for tests only.
+    // Production code must not set it: a run without a container has no isolation
+    // to verify, and an artifact that claims sandboxed execution it never had is
+    // exactly what a skeptic is paid to break.
+    if (spec.forceLocal) {
+      const root = await mkdtemp(join(tmpdir(), "crucible-run-"));
+      await mkdir(join(root, "repo"), { recursive: true });
+      return new Sandbox(root, false, spec, undefined, exec);
+    }
+
+    // Docker is required for production runs. No fallback.
+    const hasDocker = await dockerAvailable(exec);
+    if (!hasDocker) {
       throw new SandboxUnavailable(
         "Docker is not available, so the run cannot be sandboxed. " +
-          "Set allowLocalFallback to run unisolated — the artifact will be marked degraded.",
+          "Start the Docker daemon and try again. There is no fallback to unisolated execution.",
       );
     }
 
@@ -388,8 +406,8 @@ export class Sandbox {
     // nothing behind. The fail-closed choice over "record the tag and carry on" is the
     // point: a tag here is a digest-shaped field nobody can falsify, and this path has
     // Docker available, so not knowing the digest means not having the environment.
-    const imageDigest = hasDocker ? await resolveImageDigest(spec.image, exec) : undefined;
-    if (hasDocker && !imageDigest) {
+    const imageDigest = await resolveImageDigest(spec.image, exec);
+    if (!imageDigest) {
       throw new ImageDigestUnresolved(
         `Docker is up, but ${spec.image} cannot be resolved to an immutable digest, so this ` +
           "run cannot say which environment it executed in. Publish the verifier image by " +
@@ -480,8 +498,8 @@ export class Sandbox {
    * statement about a build the run did not use. Run by the resolved reference, the digest
    * in the manifest is the thing the daemon was told to start.
    *
-   * Locally (only via `allowLocalFallback`) it is a direct exec with no container at all,
-   * which the caller must surface as degraded; there is no image to name, because none ran.
+   * When `forceLocal` is set (tests only), it is a direct exec with no container at all.
+   * There is no image to name, because none ran. Production code must not use this path.
    */
   async runSuite(command: string, workDir: string = this.repoDir): Promise<CommandResult> {
     const argv = parseCommandLine(command);
@@ -566,3 +584,111 @@ export class Sandbox {
 }
 
 export { runCommand };
+
+/**
+ * Reap labelled containers that no run is coming back for.
+ *
+ * Every suite runs under `docker run --rm`, so the daemon removes the container when
+ * the workload ends, and the timeout hook force-removes it when the budget is spent.
+ * What survives those two paths is the residue the reaper exists for: a container
+ * left in `created` (the daemon wedged between create and start), `exited` (removal
+ * at exit failed — a locked daemon, a restart mid-teardown) or `dead` (the daemon
+ * failed to destroy it). All three are finished stories; `--force` on them reclaims
+ * the record without stopping anything that is doing work.
+ *
+ * A container that is still `running` is deliberately left alone. Removing it would
+ * need proof that no live Sandbox owns it, and this function has no lease registry
+ * to ask — killing a running container can kill someone else's live suite. A crashed
+ * client's container needs no reaper anyway: `--rm` is honoured by the daemon, so the
+ * workload ends on its own wall clock and the daemon reclaims it.
+ *
+ * Returns the number of containers removed.
+ */
+export async function reapContainers(exec: ExecFn = execIn): Promise<number> {
+  // State comes back with the ID so the removability decision is made here, in
+  // reviewed code, rather than delegated to `--filter status=…` repetitions whose
+  // OR/AND semantics have shifted across daemon versions.
+  const list = await exec(
+    "docker",
+    ["ps", "-a", "--filter", `label=${SANDBOX_LABEL}`, "--format", "{{.ID}} {{.State}}"],
+    undefined,
+    30,
+  ).catch(() => ({ code: 1, stdout: "", stderr: "", timedOut: false, durationMs: 0 }));
+  if (list.code !== 0) return 0;
+
+  const finished = new Set(["created", "exited", "dead"]);
+  const ids = list.stdout
+    .trim()
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .map((line) => line.split(/\s+/))
+    .filter((parts) => parts.length === 2 && finished.has(parts[1]!))
+    .map((parts) => parts[0]!);
+  if (ids.length === 0) return 0;
+
+  let removed = 0;
+  for (const id of ids) {
+    const rm = await exec("docker", ["rm", "--force", id], undefined, 15).catch(() => ({
+      code: 1,
+      stdout: "",
+      stderr: "",
+      timedOut: false,
+      durationMs: 0,
+    }));
+    if (rm.code === 0) removed++;
+  }
+  return removed;
+}
+
+/**
+ * Reap temporary workspaces that no run is coming back for.
+ *
+ * Sandbox.create makes a `crucible-run-*` directory under the system temp dir; if the
+ * process dies before cleanup, the directory survives — the common leftover, since
+ * containers carry `--rm` and directories carry nothing. The age of a workspace is
+ * the newest mtime among the root and its direct children, not the root's alone: the
+ * root's mtime only moves when a direct child appears, while a live run keeps creating
+ * files inside `repo/` — and a tier-4 suite is allowed a 1h wall clock, so a 1h
+ * threshold could reap a workspace a run was still using. The default 24h outlasts
+ * any legal run plus slack; a directory nothing has touched for that long is not
+ * mid-run.
+ *
+ * Writes deeper than one level under the root would not refresh the guard; nothing in
+ * the runner writes there without creating files inside `repo/`. If that changes, this
+ * is the line to revisit.
+ *
+ * Returns the number of directories removed. `baseDir` exists for tests; production
+ * scans the system temp dir.
+ */
+export async function reapWorkspaces(
+  maxAgeMs: number = 86_400_000,
+  baseDir: string = tmpdir(),
+): Promise<number> {
+  const { readdir, stat, rm } = await import("node:fs/promises");
+  const now = Date.now();
+  let removed = 0;
+
+  try {
+    const entries = await readdir(baseDir);
+    for (const entry of entries) {
+      if (!entry.startsWith("crucible-run-")) continue;
+      const path = join(baseDir, entry);
+      const st = await stat(path).catch(() => null);
+      if (!st || !st.isDirectory()) continue;
+      let newest = st.mtimeMs;
+      const children = await readdir(path).catch(() => [] as string[]);
+      for (const child of children) {
+        const cs = await stat(join(path, child)).catch(() => null);
+        if (cs && cs.mtimeMs > newest) newest = cs.mtimeMs;
+      }
+      if (now - newest > maxAgeMs) {
+        await rm(path, { recursive: true, force: true }).catch(() => {});
+        removed++;
+      }
+    }
+  } catch {
+    // If the base dir cannot be read, there is nothing to reap — not a crash.
+  }
+  return removed;
+}

@@ -206,7 +206,7 @@ describe("createForgedAgent", () => {
     const { ForgeRunner } = await import("../src/runner.js");
     await new ForgeRunner({
       agent,
-      sandbox: { image: "x", memory: "1g", cpus: "1", timeoutSec: 30, allowLocalFallback: true, forceLocal: true },
+      sandbox: { image: "x", memory: "1g", cpus: "1", timeoutSec: 30, forceLocal: true },
       runnerAddress: "0x1111111111111111111111111111111111111111" as const,
       chainId: 31337,
       verifyingContract: "0x2222222222222222222222222222222222222222" as const,
@@ -321,7 +321,7 @@ describe("runner + agent integration", () => {
     const { ForgeRunner } = await import("../src/runner.js");
     const deps = {
       agent,
-      sandbox: { image: "x", memory: "1g", cpus: "1", timeoutSec: 30, allowLocalFallback: true, forceLocal: true },
+      sandbox: { image: "x", memory: "1g", cpus: "1", timeoutSec: 30, forceLocal: true },
       runnerAddress: "0x1111111111111111111111111111111111111111" as const,
       chainId: 31337,
       verifyingContract: "0x2222222222222222222222222222222222222222" as const,

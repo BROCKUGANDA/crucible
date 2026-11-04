@@ -17,6 +17,8 @@ import {
   Sandbox,
   SandboxUnavailable,
   DEFAULT_SANDBOX,
+  reapContainers,
+  reapWorkspaces,
   resolveVerifierImage,
   type SandboxDeps,
   type SandboxSpec,
@@ -83,6 +85,15 @@ export interface RunnerDeps {
    * than the `docker` on PATH. Production leaves it undefined and gets the real CLI.
    */
   sandboxDeps?: SandboxDeps;
+  /**
+   * Pre-flight orphan hygiene, called once per run before the sandbox is opened.
+   *
+   * The default shells out to Docker and scans the system temp dir for wreckage
+   * earlier runs left behind. Tests replace it: unit suites run beside parallel
+   * sandbox tests whose containers must never be targets, and no unit test should
+   * touch a real daemon to prove a green. Returning zero counts is the no-op.
+   */
+  reap?: () => Promise<[containers: number, workspaces: number]>;
   /**
    * The evaluation's own inputs, for the manifest.
    *
@@ -189,6 +200,27 @@ export class ForgeRunner {
 
       emit("quenching-spec", `quenching spec ${short(req.specCID)}`);
       const specText = await this.fetchSpecOrFail(req.specCID);
+
+      // Orphan hygiene before a sandbox is opened, best-effort and never gating: a
+      // reaper that cannot run (no daemon yet, unreadable temp dir) says nothing
+      // about whether this run can execute, so its failures are swallowed here by
+      // design. What it clears is residue from earlier runs — containers whose
+      // exit-time removal failed, temp workspaces a dead process left behind — and
+      // it only touches containers that are no longer running and workspaces
+      // nothing has touched in over a day, so a concurrent live run is never a
+      // target.
+      const reap = this.deps.reap ?? (async () => [
+        await reapContainers().catch(() => 0),
+        await reapWorkspaces().catch(() => 0),
+      ] as [number, number]);
+      const [orphanContainers, orphanWorkspaces] = await reap();
+      if (orphanContainers + orphanWorkspaces > 0) {
+        emit(
+          "quenching-spec",
+          `pre-flight: reaped ${orphanContainers} orphaned container(s), ` +
+            `${orphanWorkspaces} stale workspace(s)`,
+        );
+      }
 
       sandbox = await this.openSandbox(req);
       state.degraded = sandbox.degraded;

@@ -12,6 +12,7 @@ import {
   type RunRequest,
   type CommandResult,
 } from "../src/index.js";
+import type { SandboxSpec } from "../src/sandbox.js";
 
 const CID_A = "bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi";
 const RUNNER = "0x1111111111111111111111111111111111111111" as const;
@@ -21,17 +22,14 @@ const SPEC_DIGEST = `0x${"33".repeat(32)}` as `0x${string}`;
 const SUITE_DIGEST = `0x${"44".repeat(32)}` as `0x${string}`;
 
 /**
- * Local, unisolated sandbox: these tests never need Docker. The runner still
- * probes for Docker once, which is why the suite has a generous timeout.
+ * Local, unisolated sandbox: these tests never need Docker. The `forceLocal` flag
+ * skips the Docker probe entirely — production code must not set it.
  */
-const LOCAL_SANDBOX = {
+const LOCAL_SANDBOX: SandboxSpec = {
   image: "crucible/verifier:test",
   memory: "1g",
   cpus: "1",
   timeoutSec: 60,
-  allowLocalFallback: true,
-  // Docker is installed on this machine but the pinned image does not exist, so a
-  // container would fail for reasons unrelated to the code under test.
   forceLocal: true,
 };
 
@@ -92,14 +90,32 @@ function harness(opts: HarnessOpts = {}): RunnerDeps {
           memory: LOCAL_SANDBOX.memory,
           cpus: LOCAL_SANDBOX.cpus,
           timeoutSec: LOCAL_SANDBOX.timeoutSec,
-          allowLocalFallback: false,
-          forceLocal: true, // still no probe: exercise the "Docker absent" branch
         }
       : LOCAL_SANDBOX,
+    // The Docker probe must not reach a real daemon. On a host where Docker is
+    // installed the probe would succeed and the run would die later as
+    // ImageDigestUnresolved instead of SandboxUnavailable — a green here and a red
+    // there, decided by the machine. An exec that refuses every docker call makes
+    // "Docker is absent" a property of the test, not of the host.
+    sandboxDeps: opts.requireDocker
+      ? {
+          exec: async () => ({
+            stdout: "",
+            stderr: "Cannot connect to the Docker daemon at unix:///var/run/docker.sock",
+            code: 1,
+            timedOut: false,
+            durationMs: 0,
+          }),
+        }
+      : undefined,
     runnerAddress: RUNNER,
     chainId: 31337,
     verifyingContract: TRIALS,
     model: "test-model",
+    // No unit test may touch a real daemon or the real temp dir: the default reaper
+    // shells out to both, and these suites run beside parallel sandbox tests whose
+    // containers must never be targets.
+    reap: async () => [0, 0],
     status: memorySink().sink,
     fetchSpec: async () => {
       if (opts.specThrows) throw new Error("gateway down");
@@ -395,6 +411,31 @@ describe("ForgeRunner invariants", () => {
   }, 30_000);
 
   /**
+   * The reaper is wired at pre-flight and says what it cleared. The counts are the
+   * injected dep's; what is under test here is the wiring and the operator-facing
+   * label — a reaper nobody can hear is hygiene that never happened.
+   */
+  it("reports orphan hygiene when the pre-flight reaper clears wreckage", async () => {
+    const sink = memorySink();
+    const deps = harness();
+    deps.status = sink.sink;
+    deps.reap = async () => [2, 1];
+    await new ForgeRunner(deps).run(request({ suiteCommand: GREEN_SUITE, iterBudget: 1 }));
+    const reaped = sink.events.find((e) => e.label.includes("reaped"));
+    expect(reaped).toBeDefined();
+    expect(reaped?.status).toBe("quenching-spec");
+    expect(reaped?.label).toContain("reaped 2 orphaned container(s), 1 stale workspace(s)");
+  });
+
+  it("says nothing when the pre-flight reaper finds nothing", async () => {
+    const sink = memorySink();
+    const deps = harness();
+    deps.status = sink.sink;
+    await new ForgeRunner(deps).run(request({ suiteCommand: GREEN_SUITE, iterBudget: 1 }));
+    expect(sink.events.some((e) => e.label.includes("reaped"))).toBe(false);
+  });
+
+  /**
    * `forceLocal` is the test-only escape hatch that executes without a container, and the
    * record it emits must say so. The failure this proves against is the one the field name
    * hides: a degraded run whose manifest environment still reads as a pinned, sealed
@@ -524,12 +565,11 @@ describe("ForgeRunner invariants", () => {
  */
 describe("the container path records the image it launched", () => {
   const RESOLVED = `crucible/verifier@sha256:${"a".repeat(64)}`;
-  const CONTAINER_SANDBOX = {
+  const CONTAINER_SANDBOX: SandboxSpec = {
     image: "crucible/verifier:latest",
     memory: "1g",
     cpus: "1",
     timeoutSec: 60,
-    allowLocalFallback: false,
   };
 
   const MANIFEST_INPUTS = {

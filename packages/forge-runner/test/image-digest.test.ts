@@ -40,7 +40,6 @@ const TAG_SPEC: SandboxSpec = {
   memory: "1g",
   cpus: "1",
   timeoutSec: 60,
-  allowLocalFallback: false,
 };
 
 function result(over: Partial<CommandResult> = {}): CommandResult {
@@ -233,7 +232,7 @@ describe("the sandbox resolves the digest before it runs anything", () => {
   it("has no digest at all when nothing was containerised", async () => {
     const { exec, calls } = fakeDocker();
     const sandbox = await Sandbox.create(
-      { ...TAG_SPEC, allowLocalFallback: true, forceLocal: true },
+      { ...TAG_SPEC, forceLocal: true },
       { exec },
     );
     // Not the tag, not a guess: there was no image, so there is no digest. This is the state
