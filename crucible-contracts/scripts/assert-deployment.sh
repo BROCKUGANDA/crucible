@@ -110,7 +110,33 @@ treasury=$(call_address "$TRIALS" 'treasury()(address)')
 zero="0x0000000000000000000000000000000000000000"
 
 valid_address() {
-  printf '%s\n' "$1" | grep -Eq '^0x[0-9a-fA-F]{40}
+  printf "%s\n" "$1" | grep -Eq "^0x[0-9a-fA-F]{40}$"
+}
+
+if [ "$owner" != "$zero" ] && [ -n "$owner" ]; then ok "the owner is set ($owner)"; else bad "the owner is zero"; fi
+if [ "$treasury" != "$zero" ] && [ -n "$treasury" ]; then ok "the treasury is set ($treasury)"; else bad "the treasury is zero"; fi
+
+# Strict production custody mode compares immutable destinations to the approved Safe addresses.
+if [ "$REQUIRE_EXPECTED_CUSTODY" = "1" ]; then
+  if ! valid_address "$EXPECTED_TREASURY" || [ "$(printf "%s" "$EXPECTED_TREASURY" | address)" = "$zero" ]; then
+    bad "EXPECTED_TREASURY_ADDRESS must be a non-zero contract address"
+  else
+    expect "immutable treasury address" "$(printf "%s" "$EXPECTED_TREASURY" | address)" "$treasury"
+    treasury_code=$(cast code "$EXPECTED_TREASURY" --rpc-url "$RPC" 2>/dev/null || echo "0x")
+    treasury_code_len=$(printf "%s" "$treasury_code" | wc -c | tr -d "[:space:]")
+    if [ "$treasury_code_len" -gt 2 ]; then ok "expected Treasury Safe has contract code"; else bad "expected Treasury Safe has no contract code"; fi
+  fi
+  if ! valid_address "$EXPECTED_OWNER" || [ "$(printf "%s" "$EXPECTED_OWNER" | address)" = "$zero" ]; then
+    bad "EXPECTED_OWNER_ADDRESS must be a non-zero contract address"
+  else
+    expect "constructor owner address" "$(printf "%s" "$EXPECTED_OWNER" | address)" "$owner"
+    owner_code=$(cast code "$EXPECTED_OWNER" --rpc-url "$RPC" 2>/dev/null || echo "0x")
+    owner_code_len=$(printf "%s" "$owner_code" | wc -c | tr -d "[:space:]")
+    if [ "$owner_code_len" -gt 2 ]; then ok "expected Owner Safe has contract code"; else bad "expected Owner Safe has no contract code"; fi
+  fi
+elif [ "$REQUIRE_EXPECTED_CUSTODY" != "0" ]; then
+  bad "REQUIRE_EXPECTED_CUSTODY must be 0 or 1"
+fi
 
 # The escrow must point at the registry it settles into, and the registry must
 # accept writes from the escrow and from nobody else. A registry that accepts
