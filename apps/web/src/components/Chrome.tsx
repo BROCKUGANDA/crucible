@@ -3,8 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { useAccount, useReadContract } from "wagmi";
-import { TRIALS_ABI } from "@crucible/smith";
+import { useAccount } from "wagmi";
 import { WalletButton, WalletNotConfiguredNotice } from "@/components/Wallet";
 import { VoiceControl } from "@/components/VoiceControl";
 import { PayoffSound } from "@/components/PayoffSound";
@@ -12,9 +11,7 @@ import { FrenchyAsk } from "@/components/FrenchyAsk";
 import { SeedPhrasePromise } from "@/components/SeedPhrasePromise";
 import { SponsorshipBadge } from "@/components/SponsorshipBadge";
 import { Modal } from "@/components/Modal";
-import { formatWei } from "@/lib/eth";
-import { buildWithdraw, useTx } from "@/lib/useTx";
-import { activeChain, deployment, environmentBadge, explorerTxUrl, ZERO_ADDRESS } from "@/lib/wagmi";
+import { environmentBadge, explorerTxUrl, activeChain } from "@/lib/wagmi";
 
 interface NavItem {
   href: string;
@@ -46,7 +43,6 @@ const NAV_MORE: NavItem[] = [
   { href: "/tour", label: "Tour" },
   { href: "/docs", label: "Docs" },
 ];
-
 
 export function Chrome({ children }: { children: ReactNode }) {
   const [sheet, setSheet] = useState(false);
@@ -89,56 +85,42 @@ export function Chrome({ children }: { children: ReactNode }) {
           </span>
         </div>
 
-        <div className="chrome__right">
-          {/* The current page is stated in the markup, not only by colour: a route you
-              cannot tell apart from the routes you can is a route you have not visited. */}
-          <nav aria-label="Primary" className="chrome__nav">
-            {visiblePrimary.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                aria-current={pathname.startsWith(item.href) ? "page" : undefined}
-              >
-                {item.label}
-              </Link>
-            ))}
-            {/* Secondary routes stay reachable without making every label fight for the
-                same row. A disclosure is one keyboard stop, and it closes on navigation. */}
-            <details className="chrome__more" ref={moreRef}>
-              <summary className="chrome__more-summary">
-                More <span aria-hidden="true">▾</span>
-              </summary>
-              <div className="chrome__more-panel">
-                {visibleMore.map((item) => (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    aria-current={pathname.startsWith(item.href) ? "page" : undefined}
-                  >
-                    {item.label}
-                  </Link>
-                ))}
-              </div>
-            </details>
-          </nav>
-          <button
-            type="button"
-            className="btn btn-ghost btn-sm chrome__menu"
-            onClick={() => setSheet(true)}
-            aria-label="Open navigation"
-            aria-expanded={sheet}
-            aria-controls="forge-nav-sheet"
-          >
-            <svg className="menu-glyph" viewBox="0 0 20 14" aria-hidden="true" focusable="false">
-              <path d="M1 1h18M1 7h18M1 13h18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-            </svg>
-            <span className="menu-label">Menu</span>
-          </button>
+        <nav aria-label="Primary" className="chrome__nav">
+          {visiblePrimary.map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              aria-current={pathname.startsWith(item.href) ? "page" : undefined}
+            >
+              {item.label}
+            </Link>
+          ))}
+        </nav>
+
+        <div className="chrome__actions">
+          {/* Secondary routes stay reachable without making every label fight for the
+              same row. A disclosure is one keyboard stop, and it closes on navigation. */}
+          <details className="chrome__more" ref={moreRef}>
+            <summary className="chrome__more-summary">
+              More <span aria-hidden="true">▾</span>
+            </summary>
+            <div className="chrome__more-panel">
+              {visibleMore.map((item) => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  aria-current={pathname.startsWith(item.href) ? "page" : undefined}
+                >
+                  {item.label}
+                </Link>
+              ))}
+            </div>
+          </details>
+
           <VoiceControl />
           <PayoffSound />
           <FrenchyAsk />
           <SponsorshipBadge />
-          <CreditButton />
           <WalletButton />
         </div>
       </header>
@@ -146,7 +128,12 @@ export function Chrome({ children }: { children: ReactNode }) {
       <Modal open={sheet} title="The forge" onRequestClose={() => setSheet(false)}>
         <nav id="forge-nav-sheet" aria-label="Primary" className="stack">
           {visibleNav.map((item) => (
-            <Link key={item.href} href={item.href} className="sheet-link" aria-current={pathname.startsWith(item.href) ? "page" : undefined}>
+            <Link
+              key={item.href}
+              href={item.href}
+              className="sheet-link"
+              aria-current={pathname.startsWith(item.href) ? "page" : undefined}
+            >
               <span className="kicker">{item.href.slice(1)}</span>
               <span>{item.label}</span>
             </Link>
@@ -181,53 +168,6 @@ export function Chrome({ children }: { children: ReactNode }) {
         <SeedPhrasePromise />
       </footer>
     </div>
-  );
-}
-
-/**
- * The contract pays through a pull ledger: settlement credits the operator, and the
- * only way the money leaves is `withdraw()`. Without this control the web app could
- * create, claim, and settle a trial but never hand the operator their ETH — a UI that
- * stops one call short of the payout.
- */
-function CreditButton() {
-  const { address } = useAccount();
-  const dep = deployment();
-  const { state, message, send, busy } = useTx();
-  // Destructured so the dependency array names a binding, not a member
-  // expression — `credit.refetch` in deps is stable in TanStack v5 but reads
-  // as a lint finding; the bare `refetch` is the same stable function.
-  const { data: creditData, refetch: refetchCredit } = useReadContract({
-    abi: TRIALS_ABI,
-    address: dep.trials,
-    functionName: "credit",
-    args: [address ?? ZERO_ADDRESS],
-    query: { enabled: Boolean(address) && dep.configured },
-  });
-
-  useEffect(() => {
-    if (state === "poured") void refetchCredit();
-  }, [state, refetchCredit]);
-
-  const amount = (creditData as bigint | undefined) ?? 0n;
-  if (!address || amount === 0n) return null;
-
-  return (
-    <span className="wallet-inline">
-      <button
-        className="btn btn-ghost btn-sm"
-        disabled={busy}
-        onClick={() => send(buildWithdraw())}
-        title="Withdraw everything credited to this wallet"
-      >
-        {busy ? "Withdrawing…" : `Withdraw ${formatWei(amount)} ETH`}
-      </button>
-      {state === "doused" ? (
-        <span className="mono" data-tone="sear" role="alert">
-          {message}
-        </span>
-      ) : null}
-    </span>
   );
 }
 
