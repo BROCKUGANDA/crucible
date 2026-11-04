@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { spawn } from "node:child_process";
 import http from "node:http";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AddressInfo } from "node:net";
@@ -16,7 +16,6 @@ import { fileURLToPath } from "node:url";
 const ROOT = fileURLToPath(new URL("../../../", import.meta.url));
 const SCRIPT = fileURLToPath(new URL("../../../scripts/mainnet-preflight.mjs", import.meta.url));
 const ZERO = "0x0000000000000000000000000000000000000000";
-const SENTINEL = "0x0000000000000000000000000000000000000001";
 const SINGLETON = "0x" + "77".repeat(20);
 const CODE_HASH = "0x" + "aa".repeat(32);
 const SAFE_OWNERS = ["0x" + "11".repeat(20), "0x" + "22".repeat(20), "0x" + "33".repeat(20)];
@@ -274,7 +273,7 @@ describe("mainnet preflight", () => {
     }
   });
 
-  it("refuses a Safe singleton runtime hash mismatch", async () => {
+  it("refuses a Safe proxy runtime hash mismatch", async () => {
     const dir = signedDir();
     const server = await rpc("0x1", { codeHash: "0x" + "bb".repeat(32) });
     try {
@@ -308,7 +307,7 @@ describe("mainnet preflight", () => {
     const server = await rpc("0x1");
     // This server returns the approved treasury address only; mutate the signoff to a different Safe.
     const recordPath = join(dir, "treasury.json");
-    const record = JSON.parse(await import("node:fs").then(({ readFileSync }) => readFileSync(recordPath, "utf8")));
+    const record = JSON.parse(readFileSync(recordPath, "utf8"));
     record.treasurySafe.address = "0x" + "aa".repeat(20);
     writeFileSync(recordPath, JSON.stringify(record));
     try {
@@ -328,7 +327,7 @@ describe("mainnet preflight", () => {
     const dir = signedDir();
     const server = await rpc("0x1");
     const recordPath = join(dir, "treasury.json");
-    const record = JSON.parse(await import("node:fs").then(({ readFileSync }) => readFileSync(recordPath, "utf8")));
+    const record = JSON.parse(readFileSync(recordPath, "utf8"));
     record.ownerSafe.address = "0x" + "bb".repeat(20);
     writeFileSync(recordPath, JSON.stringify(record));
     try {
@@ -348,7 +347,7 @@ describe("mainnet preflight", () => {
     const dir = signedDir();
     const server = await rpc("0x1");
     const recordPath = join(dir, "treasury.json");
-    const record = JSON.parse(await import("node:fs").then(({ readFileSync }) => readFileSync(recordPath, "utf8")));
+    const record = JSON.parse(readFileSync(recordPath, "utf8"));
     record.deploymentCommit = "123456789abcd";
     writeFileSync(recordPath, JSON.stringify(record));
     try {
