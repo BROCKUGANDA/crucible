@@ -243,7 +243,14 @@ describe("the anchor floor holds at every draw size", () => {
         expect(draw.safety).toHaveLength(safetyInDraw);
       }
     }
-  });
+    // 42 draws (14 sizes × 3 seeds) of pure CPU. The assertion is about floors,
+    // not speed, but vitest's 5s default made wall clock a hidden budget anyway:
+    // inside a saturated verify:all fan-out the same loop that takes ~1s alone
+    // was killed at 5s (2026-11-04, the only red in the run; green alone, and
+    // the mechanism is the same one HARDENING item 23 names for apps/api).
+    // The timeout states what the loop costs under load; the assertions inside
+    // are unchanged.
+  }, 30_000);
 
   /**
    * The floor has teeth: a proportional cut across `allSuites` would take no anchors at all at
