@@ -174,6 +174,14 @@ export interface BuildArtifactArgs {
  * checks, so the SDK does not leave it to the caller to get right.
  */
 export function buildArtifact(args: BuildArtifactArgs): RunArtifact {
+  // The schema requires finishedAt > startedAt, but a run whose whole life fits
+  // inside one clock tick — a faked suite in tests, and someday a fast real one —
+  // measures 0ms on a millisecond clock, and the validator refuses it. The clock's
+  // resolution is the floor: nothing can be faster than one tick, so one tick is
+  // what gets recorded. Same rule as every minimum in this repo — round up, never
+  // print short — and `durationMs` stays derived from the timestamps, so the two
+  // cannot disagree.
+  const finishedAt = Math.max(args.finishedAt, args.startedAt + 1);
   return {
     schemaVersion: RUN_ARTIFACT_SCHEMA_VERSION,
     trialId: args.trialId,
@@ -185,10 +193,10 @@ export function buildArtifact(args: BuildArtifactArgs): RunArtifact {
     suiteCommand: args.suiteCommand,
     testResults: args.testResults,
     logsCID: args.logsCID,
-    durationMs: args.finishedAt - args.startedAt,
+    durationMs: finishedAt - args.startedAt,
     model: args.model,
     startedAt: args.startedAt,
-    finishedAt: args.finishedAt,
+    finishedAt,
     runnerAddress: args.runnerAddress,
     chainId: args.chainId,
     verifyingContract: args.verifyingContract,
