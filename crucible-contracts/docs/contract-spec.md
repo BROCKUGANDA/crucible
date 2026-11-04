@@ -238,8 +238,8 @@ only function in `CrucibleTrials` that calls `{value:}`.
 
 `setReputationBridge(address)`, `setIdentityRegistry(address)`
 
-- Deployer only. Zero is allowed and unwires the optional integration.
-- The owner holds no funds and has no trial authority.
+- Owner address supplied explicitly as a non-zero constructor argument. In production this is the approved Owner Safe; the local demo passes its explicit Anvil deployer.
+- Zero is allowed and unwires the optional integration. The owner holds no funds and has no trial authority.
 
 ### Views
 
@@ -341,7 +341,7 @@ The full list is in `CrucibleTrials.sol`. The groups that matter operationally:
 - **Dispute:** `CommitMismatch`, `AlreadyCommitted`, `AlreadyRevealed`,
   `CommitClosed`.
 - **Inputs:** `ZeroSpec`, `ZeroTests`, `ZeroRunner`, `ZeroRunHash`, `ZeroProof`,
-  `ZeroTreasury`, `ZeroIdentity`, `BadWindow`, `BadDeadline`.
+  `ZeroTreasury`, `ZeroOwner`, `ZeroIdentity`, `BadWindow`, `BadDeadline`.
 
 ## 12. Test map
 
@@ -360,14 +360,12 @@ mainnet fork). `forge fmt --check`, `forge test`, slither triage and
 
 ## 13. Deployment and verification
 
-- `script/Deploy.s.sol` deploys `AlloyRegistry`, then `CrucibleTrials`, then
-  calls `setForge`. `script/Demo.s.sol` seeds four trials; `Extend.s.sol` adds
-  claimable/open trials.
-- `scripts/assert-deployment.sh` reads the live chain and fails the deploy if
-  the fee, bond rule, committee, roles or money invariant differ from the
-  documentation.
-- The demo is ETH on Anvil. A real deployment must decide the chain, asset,
-  treasury and owner (multisig) in a new ADR and a new contract review.
+- New instances use the constructor signature `CrucibleTrials(treasury_, owner_, alloy_, argus_)`. Both treasury and owner are explicit non-zero constructor values; there is no owner-transfer or treasury-setter path.
+- `script/Deploy.s.sol` requires `TREASURY_ADDRESS` and `OWNER_SAFE_ADDRESS`, and refuses either address unless it has deployed contract code. It deploys `AlloyRegistry`, then `CrucibleTrials`, then calls `setForge`.
+- `script/Demo.s.sol` explicitly passes its local Anvil deployer as owner and remains a local demonstration only; `Extend.s.sol` adds claimable/open trials.
+- `scripts/assert-deployment.sh` can enforce `EXPECTED_TREASURY_ADDRESS`, `EXPECTED_OWNER_ADDRESS` and `REQUIRE_EXPECTED_CUSTODY=1`, then reads the live chain and fails if either address, fee, bond rule, committee, roles or money invariant differs from the approved deployment.
+- The read-only mainnet preflight validates both Safe configurations before deployment and, when `TRIALS_ADDRESS` is provided, verifies the deployed escrow's treasury and owner getters. The post-deploy assertion is mandatory.
+- The demo is ETH on Anvil. The revised constructor ABI requires a fresh independent audit of the exact release commit before any real-value deployment.
 
 ## 14. Known limits
 
