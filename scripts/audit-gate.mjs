@@ -64,10 +64,10 @@ const EXACT = [
   { name: "viem", ceiling: "high" },
   { name: "wagmi", ceiling: "moderate" },
   { name: "decode-uri-component", ceiling: "high" },
-  // `follow-redirects` carries a documented moderate-severity advisory; no patched
-  // release is pinned here, so it is accepted at `moderate` and anything worse
+  // `follow-redirects` carries a documented high-severity advisory; no patched
+  // release is pinned here, so it is accepted at `high` and anything worse
   // blocks the build. See the README's "Known limits" entry.
-  { name: "follow-redirects", ceiling: "moderate" },
+  { name: "follow-redirects", ceiling: "high" },
   { name: "query-string", ceiling: "high" },
   { name: "uuid", ceiling: "moderate" },
   { name: "@vanilla-extract/css", ceiling: "low" },
