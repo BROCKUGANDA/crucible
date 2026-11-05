@@ -23,7 +23,7 @@ function config(over: Partial<VoiceConfig> = {}): VoiceConfig {
   return {
     apiKey: fixtureKey,
     voiceId: "voice-123",
-    modelId: "eleven_multilingual_v4",
+    modelId: "eleven_multilingual_v2",
     baseUrl: "https://voice.example",
     ...over,
   };
@@ -34,7 +34,7 @@ describe("voice host", () => {
     const app = appWith(null);
     const status = await app.request("/voice/status");
     expect(status.status).toBe(200);
-    expect(await status.json()).toEqual({ configured: false, model: null });
+    expect(await status.json()).toEqual({ configured: false, model: null, agent: false });
 
     const res = await app.request("/voice/speak", {
       method: "POST",
@@ -70,7 +70,7 @@ describe("voice host", () => {
     const headers = new Headers(seen!.init!.headers);
     expect(headers.get("xi-api-key")).toBe(fixtureKey);
     const body = JSON.parse(String(seen!.init!.body));
-    expect(body.model_id).toBe("eleven_multilingual_v4");
+    expect(body.model_id).toBe("eleven_multilingual_v2");
     expect(body.text).toContain("Payment is the verification.");
     expect(body.voice_settings).toEqual({ stability: 0.55, style: 0.35, speed: 0.95 });
   });
@@ -170,5 +170,109 @@ describe("voice host", () => {
     expect(text).toContain("Verticals");
     expect(text).toContain("Escrow");
     expect(text).toContain("MCP");
+  });
+});
+
+/**
+ * The live-conversation mint.
+ *
+ * The provider contract here is measured, not recalled: `GET
+ * /v1/convai/conversation/get_signed_url?agent_id=…` answers 200 with
+ * `{"signed_url":"wss://…&conversation_signature=…"}`, and `signed_ttl` was sent as 60, 0
+ * and 999999 and accepted by all three with no expiry in the answer. That last fact is why
+ * these tests assert a budget-free route with a `no-store` header rather than a claimed
+ * lifetime: the service cannot read a TTL it was never given, so it does not pretend to
+ * enforce one — the limiter in `app.ts` is where the limit actually lives.
+ */
+describe("agent conversation mint", () => {
+  const SIGNED = "wss://api.elevenlabs.io/v1/convai/conversation?agent_id=agent-9&conversation_signature=abc";
+
+  it("says there is no conversation when the deployment names no agent", async () => {
+    const app = appWith(config({ fetchImpl: (async () => {
+      throw new Error("must not be called");
+    }) as typeof fetch }));
+    const res = await app.request("/voice/agent-session");
+    expect(res.status).toBe(503);
+    expect((await res.json() as { error: string }).error).toContain("no agent conversation");
+
+    const status = await app.request("/voice/status");
+    expect((await status.json() as { agent: boolean }).agent).toBe(false);
+  });
+
+  it("mints for the configured agent, keeps the key at the table, and stores nothing", async () => {
+    let seen: { url: string; init?: RequestInit } | null = null;
+    const fetchImpl = (async (url: string | URL | Request, init?: RequestInit) => {
+      seen = { url: String(url), init };
+      return new Response(JSON.stringify({ signed_url: SIGNED }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }) as typeof fetch;
+
+    const app = appWith(config({ agentId: "agent-9", fetchImpl }));
+    const res = await app.request("/voice/agent-session");
+    const payload = (await res.json()) as { signedUrl: string };
+    expect(res.status).toBe(200);
+    expect(res.headers.get("cache-control")).toBe("no-store");
+    expect(payload).toEqual({ signedUrl: SIGNED });
+
+    expect(seen!.url).toBe(
+      "https://voice.example/v1/convai/conversation/get_signed_url?agent_id=agent-9",
+    );
+    expect(new Headers(seen!.init!.headers).get("xi-api-key")).toBe(fixtureKey);
+    expect(seen!.init!.method).toBe("GET");
+    // The key is a header on the provider call and appears nowhere in the answer.
+    expect(JSON.stringify(payload)).not.toContain(fixtureKey);
+  });
+
+  it("asks only about the agent this deployment configured, whatever the caller sends", async () => {
+    const urls: string[] = [];
+    const fetchImpl = (async (url: string | URL | Request) => {
+      urls.push(String(url));
+      return new Response(JSON.stringify({ signed_url: SIGNED }), { status: 200 });
+    }) as typeof fetch;
+
+    const app = appWith(config({ agentId: "agent-9", fetchImpl }));
+    await app.request("/voice/agent-session?agent_id=agent-SOMEONE-ELSE");
+    expect(urls).toEqual([
+      "https://voice.example/v1/convai/conversation/get_signed_url?agent_id=agent-9",
+    ]);
+  });
+
+  it("refuses an answer that is not a websocket conversation", async () => {
+    for (const body of [
+      JSON.stringify({ signed_url: "https://not-a-websocket.example/x" }),
+      JSON.stringify({ token: SIGNED }),
+      "not json at all",
+    ]) {
+      const fetchImpl = (async () => new Response(body, { status: 200 })) as typeof fetch;
+      const app = appWith(config({ agentId: "agent-9", fetchImpl }));
+      const res = await app.request("/voice/agent-session");
+      expect(res.status).toBe(502);
+    }
+  });
+
+  it("reports a provider refusal without repeating it", async () => {
+    const fetchImpl = (async () =>
+      new Response(JSON.stringify({ detail: { message: "quota exceeded for account 12345" } }), {
+        status: 429,
+        headers: { "content-type": "application/json" },
+      })) as typeof fetch;
+    const app = appWith(config({ agentId: "agent-9", fetchImpl }));
+    const res = await app.request("/voice/agent-session");
+    expect(res.status).toBe(502);
+    const text = await res.text();
+    expect(text).not.toContain("account 12345");
+    expect(text).toContain("refused");
+  });
+
+  it("reports an unreachable provider as 502 rather than hanging the room", async () => {
+    const fetchImpl = (async () => {
+      throw new Error("connect EHOSTUNREACH");
+    }) as unknown as typeof fetch;
+    const app = appWith(config({ agentId: "agent-9", fetchImpl }));
+    const res = await app.request("/voice/agent-session");
+    expect(res.status).toBe(502);
+    expect((await res.json() as { error: string }).error).toContain("unreachable");
   });
 });

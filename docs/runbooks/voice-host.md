@@ -51,11 +51,19 @@ On the host, in `/home/ubuntu/crucible/.env` (or the local `.env` for dev):
 ```bash
 ELEVENLABS_API_KEY=...
 ELEVENLABS_VOICE_ID=...          # the id from the ElevenLabs dashboard, not the name
-ELEVENLABS_MODEL_ID=eleven_multilingual_v4
+ELEVENLABS_MODEL_ID=eleven_multilingual_v2
 ELEVENLABS_STT_MODEL_ID=scribe_v1 # the transcription model the speech host posts to
+# ELEVENLABS_AGENT_ID=...         # the Conversational AI agent `GET /voice/agent-session` mints for; blank = 503
 # VOICE_DISABLED=1               # optional kill switch for the one-way host
 # STS_DISABLED=1                 # optional kill switch for the speech host
 ```
+
+The model id is the account's to check, not this runbook's to remember: `GET
+/v1/models` with the key is the authority on which ids that account may use. The
+default above is `eleven_multilingual_v2`; `eleven_v4` and `eleven_v4_turbo` are
+the current v4 ids. An id the account cannot use fails only when audio is
+requested, which is how `eleven_multilingual_v4` — not a model the vendor
+publishes — sat in this file, the README and a code fallback unnoticed.
 
 The API reads the key at boot. Recreate the API after changing it:
 
@@ -74,11 +82,33 @@ prints the key.
 
 ```bash
 curl -sS https://crucible.svalley.tech/api/voice/status
-# {"configured":true,"model":"eleven_multilingual_v4"}
+# {"configured":true,"model":"eleven_multilingual_v2","agent":false}
 
 curl -sS https://crucible.svalley.tech/api/sts/status
 # {"configured":true,"stt":true,"brain":true,"tts":true,"model":"scribe_v1"}
 ```
+
+`agent` says whether a live conversation can be minted here at all. With
+`ELEVENLABS_AGENT_ID` set, one more route answers:
+
+```bash
+curl -sS https://crucible.svalley.tech/api/voice/agent-session
+# {"signedUrl":"wss://api.elevenlabs.io/v1/convai/conversation?agent_id=…&conversation_signature=…"}
+```
+
+It takes no input, asks only for the configured agent, and returns
+`cache-control: no-store`. Treat the value it prints as a credential: it is the
+signature that opens a live channel on the account, so do not paste it into an
+issue, a log, or this runbook. The provider gives back no readable expiry
+(`signed_ttl` was measured accepting 60, 0 and 999999 with identical answers), so
+the bound on this route is the four-per-hour limiter in `apps/api/src/app.ts`, not
+a TTL the API claims to enforce.
+
+**What is not wired:** no browser control opens that conversation yet. The room at
+`/voice` runs the speech-to-speech host above (Scribe transcription, the brain,
+then the voice), which is the path the page and its tests exercise. Adding the
+hosted agent to the page needs a client for the provider's websocket protocol or
+their SDK — a dependency decision, not an endpoint.
 
 In the browser, the header should show `Frenchy off`. Click it and allow audio.
 The greeting is the consent/gate. A Tour button appears once enabled. The voice
