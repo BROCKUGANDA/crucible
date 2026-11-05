@@ -39,7 +39,7 @@ export default function TreasuryPage() {
     abi: TRIALS_ABI,
     address: dep.trials,
     functionName: "credit",
-    args: treasury ? [treasury] : undefined,
+    args: treasury ? ([treasury] as const) : undefined,
     query: {
       enabled: gate === "treasury",
       refetchInterval: 15_000,
