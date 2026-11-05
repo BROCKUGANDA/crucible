@@ -33,6 +33,7 @@ export function bitgetWallet() {
     iconUrl:
       "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' rx='10' fill='%230f172a'/%3E%3Cpath d='M11 10h18v6H17v3h8v5h-8v3h12v6H11z' fill='%23fff'/%3E%3C/svg%3E",
     iconBackground: "#0f172a",
+    installed: Boolean(bitgetProvider()),
     downloadUrls: {
       browserExtension: "https://web3.bitget.com/en/wallet-download?type=2",
     },
