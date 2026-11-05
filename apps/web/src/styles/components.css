@@ -355,6 +355,7 @@
   top: 0;
   z-index: 40;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
@@ -406,53 +407,116 @@
   min-width: 0;
 }
 
-/* ── primary navigation ─────────────────────────────────────── */
+/* ── primary navigation: the moving film reel ───────────────── */
 
-/* One row of links, evenly spaced, with an underline that grows on hover. Each link
-   carries its own state: dim when idle, hot when active, ember on hover. */
+/* The nav is a second, full-width deck beneath the brand/actions row. The repeating
+   perforations and bevels make it read like a physical 35mm strip, not a generic ticker. */
+.chrome__brand { order: 1; }
+.chrome__actions { order: 2; margin-left: auto; }
+
 .chrome__nav {
+  order: 3;
+  flex: 0 0 100%;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  position: relative;
+  isolation: isolate;
+  perspective: 900px;
+  padding: 7px 0;
+  border-block: 1px solid color-mix(in srgb, var(--gold) 22%, var(--bg2));
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.055), transparent 28%, rgba(0,0,0,.38)),
+    repeating-linear-gradient(90deg, transparent 0 22px, rgba(255,255,255,.045) 22px 24px),
+    var(--bg1);
+  box-shadow: inset 0 2px 5px rgba(255,255,255,.035), inset 0 -5px 10px rgba(0,0,0,.42);
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 2.5%, #000 97.5%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 2.5%, #000 97.5%, transparent);
+}
+
+.chrome__nav-window {
+  overflow: hidden;
+  transform: rotateX(5deg);
+  transform-origin: center top;
+  transform-style: preserve-3d;
+}
+
+.chrome__nav-track {
   display: flex;
+  width: max-content;
+  transform-style: preserve-3d;
+  animation: filmstripMarquee 38s linear infinite;
+  will-change: transform;
+}
+
+.chrome__nav-links {
+  display: flex;
+  flex: none;
   align-items: center;
-  gap: 20px;
-  font-size: 0.85rem;
-  font-weight: 500;
-  letter-spacing: 0.01em;
+  gap: 8px;
+  padding-inline: 18px;
   white-space: nowrap;
 }
 
-.chrome__nav a {
+.chrome__nav-links > a,
+.chrome__nav-links > span:not(.chrome__nav-seal) {
   position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 7px 15px;
+  border: 1px solid color-mix(in srgb, var(--gold) 16%, var(--bg2));
+  border-radius: 3px;
   color: var(--dim);
-  padding-block: 4px;
-  transition: color var(--t-state) var(--ease-ignite);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--bg2) 86%, white 4%), var(--bg0));
+  box-shadow: 0 3px 0 rgba(0,0,0,.72), inset 0 1px rgba(255,255,255,.08);
+  font-family: var(--font-mono);
+  font-size: .72rem;
+  font-weight: 600;
+  letter-spacing: .075em;
+  text-transform: uppercase;
+  text-decoration: none;
+  transform: translateZ(0);
+  transition: color var(--t-state) var(--ease-ignite), border-color var(--t-state) var(--ease-ignite), transform var(--t-state) var(--ease-ignite), box-shadow var(--t-state) var(--ease-ignite);
 }
 
-.chrome__nav a:hover {
-  color: var(--text);
-}
-
-.chrome__nav > a::after {
+.chrome__nav-links > a::before,
+.chrome__nav-links > span:not(.chrome__nav-seal)::before {
   content: "";
   position: absolute;
-  left: 0;
-  right: 0;
-  bottom: -2px;
+  top: 4px;
+  left: 7px;
+  right: 7px;
   height: 2px;
-  border-radius: 2px;
-  background: var(--ember);
-  transform: scaleX(0);
-  transform-origin: center;
-  transition: transform var(--t-state) var(--ease-ignite);
+  background: repeating-linear-gradient(90deg, color-mix(in srgb, var(--gold) 35%, transparent) 0 5px, transparent 5px 10px);
+  opacity: .7;
 }
 
-.chrome__nav > a:hover::after,
-.chrome__nav > a[aria-current="page"]::after {
-  transform: scaleX(1);
+.chrome__nav-links > a:hover,
+.chrome__nav-links > a:focus-visible,
+.chrome__nav-links > a[aria-current="page"] {
+  color: var(--text);
+  border-color: var(--ember);
+  transform: translateY(-2px) translateZ(15px) rotateX(-3deg);
+  box-shadow: 0 6px 0 rgba(0,0,0,.7), 0 0 18px color-mix(in srgb, var(--ember) 18%, transparent), inset 0 1px rgba(255,255,255,.12);
 }
 
-.chrome__nav > a[aria-current="page"] {
-  color: var(--hot);
+.chrome__nav-links > a[aria-current="page"] { color: var(--hot); }
+
+.chrome__nav-seal {
+  display: inline-flex;
+  align-items: center;
+  padding-inline: 20px;
+  color: color-mix(in srgb, var(--gold) 72%, var(--dim));
+  font-family: var(--font-mono);
+  font-size: .65rem;
+  letter-spacing: .19em;
+  white-space: nowrap;
+  text-shadow: 0 0 12px color-mix(in srgb, var(--ember) 22%, transparent);
 }
+
+.chrome__nav:hover .chrome__nav-track,
+.chrome__nav:focus-within .chrome__nav-track { animation-play-state: paused; }
 
 /* ── actions ────────────────────────────────────────────────── */
 
@@ -601,7 +665,8 @@
    controls without shrinking labels into two-line stubs. The sheet carries all of them. */
 @media (max-width: 1320px) {
   .chrome__nav {
-    display: none;
+    display: block;
+    flex-basis: 100%;
   }
   .chrome__menu {
     display: inline-flex;
@@ -609,6 +674,10 @@
 }
 
 @media (max-width: 520px) {
+  .chrome__nav { margin-inline: calc(var(--pad) * -1); width: calc(100% + var(--pad) * 2); }
+  .chrome__nav-links > a,
+  .chrome__nav-links > span:not(.chrome__nav-seal) { min-height: 40px; padding-inline: 13px; }
+
   /* Two buttons cannot share a phone header at full size; the wallet wins, the wordmark
      shrinks, and the menu becomes an icon-width target. The header is already two rows
      here, so the brand row is pinned to the top — a centred brand would drop the

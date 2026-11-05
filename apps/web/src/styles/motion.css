@@ -2,6 +2,11 @@
  * Named from base.css, components.css and console.css. Imported third.
  */
 
+@keyframes filmstripMarquee {
+  from { transform: translate3d(0, 0, 0); }
+  to { transform: translate3d(-50%, 0, 0); }
+}
+
 @keyframes emberPulse {
   0%,
   100% {
@@ -200,4 +205,9 @@
   body::after {
     opacity: 0.4;
   }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chrome__nav-track { animation: none; }
+  .chrome__nav-window { transform: none; }
 }

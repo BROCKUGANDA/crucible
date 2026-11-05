@@ -89,15 +89,28 @@ export function Chrome({ children }: { children: ReactNode }) {
         </div>
 
         <nav aria-label="Primary" className="chrome__nav">
-          {visiblePrimary.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              aria-current={pathname.startsWith(item.href) ? "page" : undefined}
-            >
-              {item.label}
-            </Link>
-          ))}
+          <div className="chrome__nav-window">
+            <div className="chrome__nav-track">
+              <div className="chrome__nav-links">
+                {visiblePrimary.map((item) => (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    aria-current={pathname.startsWith(item.href) ? "page" : undefined}
+                  >
+                    {item.label}
+                  </Link>
+                ))}
+                <span className="chrome__nav-seal" aria-hidden="true">TRUST IS EARNED UNDER HEAT</span>
+              </div>
+              <div className="chrome__nav-links" aria-hidden="true" inert>
+                {visiblePrimary.map((item) => (
+                  <span key={item.href}>{item.label}</span>
+                ))}
+                <span className="chrome__nav-seal">TRUST IS EARNED UNDER HEAT</span>
+              </div>
+            </div>
+          </div>
         </nav>
 
         <div className="chrome__actions">
