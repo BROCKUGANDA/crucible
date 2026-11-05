@@ -3,8 +3,10 @@
  *
  * Written by `scripts/site-index.ts` from the descriptor each route declares
  * (a `site.ts` beside the route's own page). Run `npm run site-index` after
- * adding a page or moving one; `npm run site-index:check` (which CI runs) fails
- * if this file is out of date.
+ * adding a page or moving one. What CI enforces is the suite in
+ * `packages/site-index/test/site-index.test.ts`: every page has an entry, no entry
+ * names a route that does not exist, and every point promised here is an id the
+ * page really carries.
  *
  * Two readers, one map: Frenchy is grounded in it and the Tour page renders
  * it, so the map a visitor reads and the map the assistant acts on cannot

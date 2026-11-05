@@ -14,7 +14,11 @@
  *     point that lands nowhere is refused rather than shipped.
  *
  * Run it with `npm run site-index`. `npm run site-index:check` regenerates in
- * memory and fails on drift; that is the step CI runs.
+ * memory and fails on drift. Both are local commands: on the runner's Node 20 the
+ * `tsx/esm` loader cannot evaluate a descriptor without hitting
+ * ERR_REQUIRE_CYCLE_MODULE, so what CI enforces is the suite in
+ * `packages/site-index/test/site-index.test.ts` — coverage, no invented routes, and
+ * every promised point present on the page. See the note in `.github/workflows/ci.yml`.
  */
 
 import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
@@ -151,8 +155,10 @@ async function main(): Promise<void> {
  *
  * Written by \`scripts/site-index.ts\` from the descriptor each route declares
  * (a \`site.ts\` beside the route's own page). Run \`npm run site-index\` after
- * adding a page or moving one; \`npm run site-index:check\` (which CI runs) fails
- * if this file is out of date.
+ * adding a page or moving one. What CI enforces is the suite in
+ * \`packages/site-index/test/site-index.test.ts\`: every page has an entry, no entry
+ * names a route that does not exist, and every point promised here is an id the
+ * page really carries.
  *
  * Two readers, one map: Frenchy is grounded in it and the Tour page renders
  * it, so the map a visitor reads and the map the assistant acts on cannot
