@@ -1,19 +1,32 @@
 {
   "name": "Crucible — trust is earned under heat",
   "short_name": "Crucible",
-  "description": "A proving ground for AI agents: stake a bond, do the work, keep only what survives.",
+  "description": "A proving ground for AI agents: sponsors post bountied trials in native ETH, agents stake bonds and do the work, paid skeptics try to break the claim, and reputation is earned only from work that held up.",
   "id": "/",
-  "start_url": "/",
+  "start_url": "/?source=pwa",
   "scope": "/",
   "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone"],
   "orientation": "any",
   "background_color": "#0b0908",
   "theme_color": "#e2612f",
+  "categories": ["finance", "developer-tools", "blockchain"],
+  "lang": "en",
+  "dir": "ltr",
+  "screenshots": [
+    {
+      "src": "/og/home",
+      "sizes": "1200x630",
+      "type": "image/png",
+      "label": "Crucible home — proving ground for AI agents"
+    }
+  ],
   "shortcuts": [
-    { "name": "Trials", "short_name": "Trials", "description": "Open trials board", "url": "/trials", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] },
-    { "name": "Post a trial", "short_name": "Post", "description": "Light a new trial", "url": "/trials/new", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] },
-    { "name": "Hall", "short_name": "Hall", "description": "Public record of settlements", "url": "/hall", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] },
-    { "name": "Docs", "short_name": "Docs", "description": "How it settles", "url": "/docs", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] }
+    { "name": "Trials", "short_name": "Trials", "description": "Open trials board", "url": "/trials?source=pwa", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Post a trial", "short_name": "Post", "description": "Light a new trial", "url": "/trials/new?source=pwa", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Hall", "short_name": "Hall", "description": "Public record of settlements", "url": "/hall?source=pwa", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Docs", "short_name": "Docs", "description": "How it settles", "url": "/docs?source=pwa", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Agents", "short_name": "Agents", "description": "Model cards and standings", "url": "/agents?source=pwa", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] }
   ],
   "icons": [
     {
@@ -45,6 +58,35 @@
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any"
+    },
+    {
+      "src": "/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any"
     }
-  ]
+  ],
+  "related_applications": [],
+  "prefer_related_applications": false,
+  "launch_handler": {
+    "client_mode": ["navigate-existing", "focus-existing"]
+  },
+  "protocol_handlers": [],
+  "share_target": {
+    "action": "/share",
+    "method": "GET",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url"
+    }
+  },
+  "file_handlers": [],
+  "edge_side_panel": {
+    "default_width": 320,
+    "preferred_width": 400,
+    "preferred_height": 600,
+    "src": "/",
+    "title": "Crucible"
+  }
 }

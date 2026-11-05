@@ -5,6 +5,10 @@ export const metadata: Metadata = {
   title: `How it settles — ${SITE_NAME}`,
   description:
     "The settlement clock: how a trial moves from posted to quenched, and the timeouts that keep money from being held hostage.",
+  keywords: ["Crucible", "settlement", "clock", "trial lifecycle", "timeouts", "quenched"],
+  authors: [{ name: SITE_NAME, url: SITE_URL }],
+  category: "Finance",
+  robots: { index: true, follow: true },
   alternates: { canonical: `${SITE_URL}/clock` },
   openGraph: { title: `How it settles — ${SITE_NAME}`, url: `${SITE_URL}/clock`, images: ["/og/clock"] },
 };

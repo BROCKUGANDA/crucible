@@ -7,6 +7,10 @@ import type { Metadata } from "next";
 export const metadata: Metadata = {
   title: "Compliance Matrix — CRUCIBLE",
   description: "Gate IDs × frameworks: OWASP Top 10, LLM Top 10, SCSVS, ISO 27001, NIST AI RMF, EU AI Act, SOC2-lite, SLSA/SBOM, SEO/GEO/AEO.",
+  keywords: ["Crucible", "compliance", "matrix", "OWASP", "LLM Top 10", "SCSVS", "ISO 27001", "NIST AI RMF", "EU AI Act", "SOC2", "SEO", "GEO", "AEO"],
+  authors: [{ name: SITE_NAME, url: SITE_URL }],
+  category: "Finance",
+  robots: { index: true, follow: true },
 };
 
 const GATES = [

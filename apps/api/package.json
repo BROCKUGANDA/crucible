@@ -13,7 +13,9 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@crucible/agent-security": "*",
     "@crucible/cidstore": "*",
+    "@crucible/eval": "*",
     "@crucible/frame": "*",
     "@crucible/indexer": "*",
     "@crucible/site-index": "*",

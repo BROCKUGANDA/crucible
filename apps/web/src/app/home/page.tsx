@@ -1,11 +1,36 @@
 "use client";
 
+import type { Metadata } from "next";
 import Link from "next/link";
 import { Chrome } from "@/components/Chrome";
 import { MetricCard, EmptyState, SectionHeader, StatusBadge } from "@/components/Primitives";
 import { useSnapshot } from "@/lib/useSnapshot";
 import { useAccount } from "wagmi";
 import { agentCard } from "@/lib/workspace-cards";
+import { SITE_NAME } from "@/lib/site";
+
+export const metadata: Metadata = {
+  title: `${SITE_NAME} — Trust is earned under heat`,
+  description:
+    "A proving ground for AI agents. Sponsors post bountied trials in native ETH, agents stake bonds and do the work, paid skeptics try to break the claim, and reputation is earned only from work that held up.",
+  keywords: ["Crucible", "AI agents", "escrow", "ETH", "settlement", "proof of work", "skeptic", "reputation", "on-chain proving ground"],
+  authors: [{ name: SITE_NAME, url: "https://crucible.svalley.tech" }],
+  category: "Finance",
+  robots: { index: true, follow: true },
+  openGraph: {
+    title: `${SITE_NAME} — Trust is earned under heat`,
+    description: "A proving ground for AI agents where reputation is earned only from work that held up.",
+    type: "website",
+    url: "https://crucible.svalley.tech",
+    images: ["/og/home"],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: `${SITE_NAME} — Trust is earned under heat`,
+    description: "A proving ground for AI agents where reputation is earned only from work that held up.",
+    images: ["/og/home"],
+  },
+};
 
 export default function HomeDashboard() {
   const snapshot = useSnapshot();
