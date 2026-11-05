@@ -246,6 +246,42 @@ export function sandboxLabel(root: string): string {
   return basename(root);
 }
 
+/**
+ * In-process lease registry for live sandboxes.
+ *
+ * A crashed client cannot tell the daemon it is gone, so  previously
+ * had no way to distinguish a container that belongs to a live Sandbox in THIS
+ * process from one left by a crashed peer. This registry is the missing answer:
+ *  registers its root on creation, Killing ollama...
+Killing any opencode background...
+SUCCESS: The process "opencode.exe" with PID 23248 has been terminated.
+Done.
+ deregisters it, and
+ *  refuses to touch any container whose label is still registered.
+ *
+ * The registry is process-local by design — a container left by a *different*
+ * process is exactly the orphan a reaper should reclaim. Cross-process leases
+ * would require a shared store (see BLOCKED_FOR_HUMAN.md item 10).
+ */
+const LIVE_LEASES = new Set<string>();
+
+export function registerLease(root: string): void {
+  LIVE_LEASES.add(sandboxLabel(root));
+}
+
+export function deregisterLease(root: string): void {
+  LIVE_LEASES.delete(sandboxLabel(root));
+}
+
+export function isLeased(rootOrLabel: string): boolean {
+  const label = rootOrLabel.includes("/") ? basename(rootOrLabel) : rootOrLabel;
+  return LIVE_LEASES.has(label);
+}
+
+export function liveLeases(): ReadonlySet<string> {
+  return LIVE_LEASES;
+}
+
 async function dockerAvailable(exec: ExecFn = execIn): Promise<boolean> {
   const r = await exec("docker", ["version", "--format", "{{.Server.Version}}"], undefined, 10);
   return r.code === 0;
@@ -390,6 +426,7 @@ export class Sandbox {
     if (spec.forceLocal) {
       const root = await mkdtemp(join(tmpdir(), "crucible-run-"));
       await mkdir(join(root, "repo"), { recursive: true });
+      registerLease(root);
       return new Sandbox(root, false, spec, undefined, exec);
     }
 
@@ -417,6 +454,7 @@ export class Sandbox {
 
     const root = await mkdtemp(join(tmpdir(), "crucible-run-"));
     await mkdir(join(root, "repo"), { recursive: true });
+    registerLease(root);
     return new Sandbox(root, hasDocker, spec, imageDigest, exec);
   }
 
@@ -579,6 +617,7 @@ export class Sandbox {
   }
 
   async cleanup(): Promise<void> {
+    deregisterLease(this.root);
     await rm(this.root, { recursive: true, force: true }).catch(() => {});
   }
 }
@@ -608,27 +647,39 @@ export async function reapContainers(exec: ExecFn = execIn): Promise<number> {
   // State comes back with the ID so the removability decision is made here, in
   // reviewed code, rather than delegated to `--filter status=…` repetitions whose
   // OR/AND semantics have shifted across daemon versions.
-  const list = await exec(
+  const finished = new Set(["created", "exited", "dead"]);
+  // Labels come back so the lease registry can be consulted.
+  const list2 = await exec(
     "docker",
-    ["ps", "-a", "--filter", `label=${SANDBOX_LABEL}`, "--format", "{{.ID}} {{.State}}"],
+    ["ps", "-a", "--filter", `label=${SANDBOX_LABEL}`, "--format", "{{.ID}}\t{{.State}}\t{{.Labels}}"],
     undefined,
     30,
   ).catch(() => ({ code: 1, stdout: "", stderr: "", timedOut: false, durationMs: 0 }));
-  if (list.code !== 0) return 0;
+  if (list2.code !== 0) return 0;
 
-  const finished = new Set(["created", "exited", "dead"]);
-  const ids = list.stdout
-    .trim()
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0)
-    .map((line) => line.split(/\s+/))
-    .filter((parts) => parts.length === 2 && finished.has(parts[1]!))
-    .map((parts) => parts[0]!);
-  if (ids.length === 0) return 0;
+  const candidates: { id: string; state: string; label: string }[] = [];
+  for (const line of list2.stdout.split("\n")) {
+    if (!line.trim()) continue;
+    // Support both tab-separated (new format) and space-separated (legacy/test format).
+    const parts = line.includes("\t") ? line.split("\t") : line.trim().split(/\s+/);
+    const id = parts[0];
+    const state = parts[1];
+    if (!id || !state) continue;
+    let label = "";
+    const labelsStr = parts[2] ?? "";
+    for (const pair of labelsStr.split(",")) {
+      const [key, value] = pair.trim().split("=");
+      if (key === SANDBOX_LABEL && value) label = value;
+    }
+    candidates.push({ id, state, label });
+  }
 
   let removed = 0;
-  for (const id of ids) {
+  for (const { id, state, label } of candidates) {
+    const isFinished = finished.has(state);
+    const isRunningOrphan = state === "running" && label !== "" && !liveLeases().has(label);
+    if (!isFinished && !isRunningOrphan) continue;
+
     const rm = await exec("docker", ["rm", "--force", id], undefined, 15).catch(() => ({
       code: 1,
       stdout: "",
@@ -711,12 +762,21 @@ export async function reapWorkspaces(
       const path = join(baseDir, entry);
       const st = await stat(path).catch(() => null);
       if (!st || !st.isDirectory()) continue;
-      let newest = st.mtimeMs;
-      const children = await readdir(path).catch(() => [] as string[]);
-      for (const child of children) {
-        const cs = await stat(join(path, child)).catch(() => null);
-        if (cs && cs.mtimeMs > newest) newest = cs.mtimeMs;
+      async function newestMtime(dir: string): Promise<number> {
+        let newest = (await stat(dir).catch(() => null))?.mtimeMs ?? 0;
+        const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
+        for (const entry of entries) {
+          const full = join(dir, entry.name);
+          if (entry.isDirectory()) {
+            newest = Math.max(newest, await newestMtime(full));
+          } else {
+            const cs = await stat(full).catch(() => null);
+            if (cs && cs.mtimeMs > newest) newest = cs.mtimeMs;
+          }
+        }
+        return newest;
       }
+      const newest = await newestMtime(path);
       if (now - newest > maxAgeMs) {
         await rm(path, { recursive: true, force: true }).catch(() => {});
         removed++;
