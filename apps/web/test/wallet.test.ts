@@ -33,6 +33,16 @@ describe("wallet configuration", () => {
     ).toBe(true);
   });
 
+  it("offers RainbowKit's maintained Bitget wallet when WalletConnect is configured", () => {
+    process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID = "test-walletconnect-project";
+    try {
+      const config = buildConfig();
+      expect(config.connectors.some((connector) => /bitget wallet/i.test(connector.name))).toBe(true);
+    } finally {
+      delete process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID;
+    }
+  });
+
   it("resolves Bitget's namespaced EIP-1193 provider", () => {
     const provider = { request: vi.fn() };
     vi.stubGlobal("window", { bitkeep: { ethereum: provider } });
