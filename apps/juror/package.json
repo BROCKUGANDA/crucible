@@ -18,7 +18,7 @@
     "@crucible/forge-runner": "*",
     "@crucible/indexer": "*",
     "@crucible/smith": "*",
-    "viem": "^2.21.55"
+    "viem": "^2.57.10"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",
