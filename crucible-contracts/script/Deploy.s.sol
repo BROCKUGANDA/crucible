@@ -78,19 +78,24 @@ contract Deploy is DevKeyScript {
         trials = new CrucibleTrials(treasury, ownerSafe, address(alloy), _argusSeats());
         alloy.setForge(address(trials));
 
-        // VerificationReceipt (gates 415-418): deploy, wire into CrucibleTrials, enable.
-        // CrucibleTrials is the minter (it calls mintReceipt inside settleBatch), so the
-        // receipt's minter is set to the trials address after both are deployed.
+        // VerificationReceipt (gates 415-418): deploy it and make the escrow its
+        // minter. WIRING IT INTO THE ESCROW IS THE OWNER SAFE'S FIRST TRANSACTION,
+        // NOT THE DEPLOYER'S LAST: ADR-0021 made the escrow owner an explicit
+        // constructor argument, so the deployer's key can no longer call the
+        // owner-only setters — and measured live (deploy/edge e2e, 2026-11-05),
+        // attempting it here reverts NotOwner on every chain. The owner Safe sends:
+        //   trials.setVerificationReceipt(<receipt>)
+        //   trials.setReceiptsEnabled(true)
+        // Until it does, settlements are unaffected; receipts simply stay off.
         receipt = new VerificationReceipt();
         receipt.setMinter(address(trials));
-        trials.setVerificationReceipt(address(receipt));
-        trials.setReceiptsEnabled(true);
         vm.stopBroadcast();
 
         _report(address(alloy), address(trials));
         console.log("TreasurySafe", treasury);
         console.log("OwnerSafe", ownerSafe);
         console.log("VerificationReceipt", address(receipt));
+        console.log("NOTE: setVerificationReceipt/setReceiptsEnabled are the owner Safe's first transactions");
     }
 
     /// v1 fixes exactly three Argus seats; 2-of-3 commit-reveal resolves a dispute.

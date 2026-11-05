@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { mkdir, mkdtemp, readdir, rm, utimes } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { reapContainers, reapWorkspaces, type ExecFn } from "../src/sandbox.js";
+import { reapContainers, reapWorkspaces, runningSandboxLabels, type ExecFn } from "../src/sandbox.js";
 
 /**
  * The reapers are host hygiene, and hygiene that cannot be turned red is
@@ -95,7 +95,7 @@ describe("reapWorkspaces", () => {
     }
   });
 
-  function hoursAgo(h: number): Date {
+  function hoursAgo2(h: number): Date {
     return new Date(Date.now() - h * 3_600_000);
   }
 
@@ -107,8 +107,8 @@ describe("reapWorkspaces", () => {
     await mkdir(fresh, { recursive: true });
     // Backdate after the children exist: creating `repo/` refreshed the root's
     // mtime, which is exactly what a real workspace looks like at creation.
-    await utimes(stale, hoursAgo(48), hoursAgo(48));
-    await utimes(join(stale, "repo"), hoursAgo(48), hoursAgo(48));
+    await utimes(stale, hoursAgo2(48), hoursAgo2(48));
+    await utimes(join(stale, "repo"), hoursAgo2(48), hoursAgo2(48));
 
     expect(await reapWorkspaces(24 * 3_600_000, base)).toBe(1);
     await expect(readdir(stale)).rejects.toThrow();
@@ -122,7 +122,7 @@ describe("reapWorkspaces", () => {
     // The root has not moved since the workspace was created (a tier-4 suite is
     // allowed a 1h wall clock, longer than the old 1h reaper threshold), but the
     // agent is writing into `repo/` right now.
-    await utimes(live, hoursAgo(48), hoursAgo(48));
+    await utimes(live, hoursAgo2(48), hoursAgo2(48));
 
     expect(await reapWorkspaces(24 * 3_600_000, base)).toBe(0);
     await expect(readdir(live)).resolves.toEqual(["repo"]);
@@ -132,7 +132,7 @@ describe("reapWorkspaces", () => {
     const base = await freshBase();
     const unrelated = join(base, "not-crucible-work");
     await mkdir(unrelated, { recursive: true });
-    await utimes(unrelated, hoursAgo(96), hoursAgo(96));
+    await utimes(unrelated, hoursAgo2(96), hoursAgo2(96));
 
     expect(await reapWorkspaces(24 * 3_600_000, base)).toBe(0);
     await expect(readdir(unrelated)).resolves.toEqual([]);
@@ -143,5 +143,69 @@ describe("reapWorkspaces", () => {
     await rm(base, { recursive: true, force: true });
     bases.pop();
     await expect(reapWorkspaces(24 * 3_600_000, base)).resolves.toBe(0);
+  });
+});
+
+function hoursAgo2(h) {
+  return new Date(Date.now() - h * 3_600_000);
+}
+
+describe("reapWorkspaces ownership guard", () => {
+  const bases2: string[] = [];
+
+  async function freshBase2(): Promise<string> {
+    const base = await mkdtemp(join(tmpdir(), "crucible-reap-own-"));
+    bases2.push(base);
+    return base;
+  }
+
+  afterEach(async () => {
+    while (bases2.length > 0) {
+      await rm(bases2.pop()!, { recursive: true, force: true });
+    }
+  });
+
+  it("never reaps a workspace a running container still occupies, however stale", async () => {
+    const base = await freshBase2();
+    const owned = join(base, "crucible-run-owned");
+    await mkdir(join(owned, "repo"), { recursive: true });
+    await utimes(owned, hoursAgo2(96), hoursAgo2(96));
+    await utimes(join(owned, "repo"), hoursAgo2(96), hoursAgo2(96));
+
+    expect(
+      await reapWorkspaces(24 * 3_600_000, base, new Set(["crucible-run-owned"])),
+    ).toBe(0);
+    await expect(readdir(owned)).resolves.toEqual(["repo"]);
+  });
+
+  it("reaps a stale neighbour the daemon does not claim", async () => {
+    const base = await freshBase2();
+    const stale = join(base, "crucible-run-abandoned");
+    await mkdir(stale, { recursive: true });
+    await utimes(stale, hoursAgo2(48), hoursAgo2(48));
+
+    expect(await reapWorkspaces(24 * 3_600_000, base, new Set(["crucible-run-someone-else"]))).toBe(1);
+    await expect(readdir(stale)).rejects.toThrow();
+  });
+});
+
+describe("runningSandboxLabels", () => {
+  function execReturning(stdout: string, code = 0): ExecFn {
+    return async () => ({ stdout, stderr: "", code, timedOut: false, durationMs: 0 });
+  }
+
+  it("parses the crucible label values out of docker's label list", async () => {
+    const exec = execReturning(
+      "crucible.sandbox=crucible-run-abc,other=x\ncrucible.sandbox=crucible-run-def\n",
+    );
+    const live = await runningSandboxLabels(exec);
+    expect(live.has("crucible-run-abc")).toBe(true);
+    expect(live.has("crucible-run-def")).toBe(true);
+    expect(live.size).toBe(2);
+  });
+
+  it("answers an empty set when the daemon refuses to list", async () => {
+    const live = await runningSandboxLabels(execReturning("", 1));
+    expect(live.size).toBe(0);
   });
 });

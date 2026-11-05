@@ -1969,7 +1969,12 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
                 stage: stageFor(log.eventName),
                 kind: log.eventName,
                 payload: log.args,
-                at: new Date().toISOString(),
+                // The chain's own block time when the chain answered; the observed
+                // time only when it did not — an event is never stamped with a
+                // moment it did not happen at.
+                at: log.blockTimestamp
+                  ? new Date(Number(log.blockTimestamp) * 1000).toISOString()
+                  : new Date().toISOString(),
                 chainRef: { caip2: "eip155:31337", tx: log.transactionHash, slotOrBlock: Number(log.blockNumber), commitment: "confirmed" },
               });
             }

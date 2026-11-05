@@ -642,6 +642,33 @@ export async function reapContainers(exec: ExecFn = execIn): Promise<number> {
 }
 
 /**
+ * The workspace directories a *running* container currently occupies.
+ *
+ * This is the ownership evidence the reapers otherwise lack: a container carrying
+ * `crucible.sandbox=<workspace>` in `running` state proves that workspace belongs
+ * to a live suite, however stale its mtimes look — a lease keyed by what the daemon
+ * itself reports rather than by wall-clock guesswork. One `docker ps` call; an
+ * unusable CLI answers an empty set and the mtime guard stands alone.
+ */
+export async function runningSandboxLabels(exec: ExecFn = execIn): Promise<Set<string>> {
+  const list = await exec(
+    "docker",
+    ["ps", "--filter", `label=${SANDBOX_LABEL}`, "--format", "{{.Labels}}"],
+    undefined,
+    30,
+  ).catch(() => ({ code: 1, stdout: "", stderr: "", timedOut: false, durationMs: 0 }));
+  const live = new Set<string>();
+  if (list.code !== 0) return live;
+  for (const line of list.stdout.split("\n")) {
+    for (const pair of line.split(",")) {
+      const [key, value] = pair.trim().split("=");
+      if (key === SANDBOX_LABEL && value) live.add(value);
+    }
+  }
+  return live;
+}
+
+/**
  * Reap temporary workspaces that no run is coming back for.
  *
  * Sandbox.create makes a `crucible-run-*` directory under the system temp dir; if the
@@ -654,9 +681,13 @@ export async function reapContainers(exec: ExecFn = execIn): Promise<number> {
  * any legal run plus slack; a directory nothing has touched for that long is not
  * mid-run.
  *
- * Writes deeper than one level under the root would not refresh the guard; nothing in
- * the runner writes there without creating files inside `repo/`. If that changes, this
- * is the line to revisit.
+ * `liveWorkspaces` is the ownership override: names reported live by
+ * `runningSandboxLabels` are never reaped whatever their mtimes say. Passing it is
+ * how the caller proves ownership from the daemon instead of assuming it.
+ *
+ * Writes deeper than one level under the root would not refresh the mtime guard;
+ * nothing in the runner writes there without creating files inside `repo/`. If that
+ * changes, this is the line to revisit.
  *
  * Returns the number of directories removed. `baseDir` exists for tests; production
  * scans the system temp dir.
@@ -664,6 +695,7 @@ export async function reapContainers(exec: ExecFn = execIn): Promise<number> {
 export async function reapWorkspaces(
   maxAgeMs: number = 86_400_000,
   baseDir: string = tmpdir(),
+  liveWorkspaces?: Set<string>,
 ): Promise<number> {
   const { readdir, stat, rm } = await import("node:fs/promises");
   const now = Date.now();
@@ -673,6 +705,9 @@ export async function reapWorkspaces(
     const entries = await readdir(baseDir);
     for (const entry of entries) {
       if (!entry.startsWith("crucible-run-")) continue;
+      // Ownership first, age second: a name the daemon reports as live is never a
+      // candidate, whatever its mtimes claim.
+      if (liveWorkspaces?.has(entry)) continue;
       const path = join(baseDir, entry);
       const st = await stat(path).catch(() => null);
       if (!st || !st.isDirectory()) continue;

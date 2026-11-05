@@ -169,6 +169,24 @@ export const TRIALS_ABI = [
     outputs: [{ type: "uint256" }],
   },
   {
+    // The public agents mapping getter. The financial ledger derives an agent's
+    // operator from it — the address the pull credit lands on at settlement.
+    // Solidity's auto-generated getter returns the struct's fields FLAT (a
+    // 5-value tuple on the wire), not wrapped in an outer tuple — wrapping them
+    // made viem decode the head offsets as data (measured live, edge e2e).
+    type: "function",
+    name: "agents",
+    stateMutability: "view",
+    inputs: [{ name: "", type: "uint256" }],
+    outputs: [
+      { name: "operator", type: "address" },
+      { name: "runner", type: "address" },
+      { name: "metadataURI", type: "string" },
+      { name: "stake", type: "uint128" },
+      { name: "active", type: "uint32" },
+    ],
+  },
+  {
     type: "function",
     name: "trialCount",
     stateMutability: "view",
@@ -197,8 +215,33 @@ export const TRIALS_ABI = [
     outputs: [{ type: "uint256" }],
   },
   {
+    // The other two public accounting totals. The financial reconciliation reads
+    // them beside escrowed() to assert the conservation identity on-chain.
+    type: "function",
+    name: "totalStakes",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "totalPending",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ type: "uint256" }],
+  },
+  {
     type: "function",
     name: "treasury",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ type: "address" }],
+  },
+  {
+    // The explicit contract owner (ADR-0021). The release gate reads it to prove
+    // the owner was configured, never silently left as the deployer.
+    type: "function",
+    name: "owner",
     stateMutability: "view",
     inputs: [],
     outputs: [{ type: "address" }],

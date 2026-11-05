@@ -84,7 +84,10 @@ function clientWith(logs: unknown[], head: bigint, seen: Seen = {}) {
       seen.toBlock = q.toBlock;
       return logs;
     },
-  } as unknown as Pick<PublicClient, "getBlockNumber" | "getLogs">;
+    getBlock: async ({ blockNumber }: { blockNumber: bigint }) => ({
+      timestamp: 1_700_000_000n + blockNumber,
+    }),
+  } as unknown as Pick<PublicClient, "getBlockNumber" | "getLogs" | "getBlock">;
 }
 
 describe("fetchTrialEvents", () => {
@@ -150,5 +153,35 @@ describe("fetchTrialEvents", () => {
     });
     expect(seen.fromBlock).toBe(0n);
     expect(seen.toBlock).toBe(5000n);
+  });
+});
+
+describe("fetchTrialEvents block timestamps", () => {
+  it("stamps each event with its own block's time — the chain's clock, not the reader's", async () => {
+    const events = await fetchTrialEvents({
+      rpcUrl: "http://127.0.0.1:8545",
+      address: ADDR,
+      trialId: 1,
+      client: clientWith([createdOne, submittedOne], 5100n),
+    });
+    // Blocks 5010 and 5020: two distinct blocks, two distinct chain-stated times.
+    expect(events[0]!.blockTimestamp).toBe((1_700_000_000n + 5010n).toString());
+    expect(events[1]!.blockTimestamp).toBe((1_700_000_000n + 5020n).toString());
+    expect(events[0]!.blockTimestamp).not.toBe(events[1]!.blockTimestamp);
+  });
+
+  it("leaves the timestamp absent when the chain does not answer for a block", async () => {
+    const base = clientWith([createdOne], 5100n) as Record<string, unknown>;
+    base.getBlock = async () => {
+      throw new Error("block pruned");
+    };
+    const events = await fetchTrialEvents({
+      rpcUrl: "http://127.0.0.1:8545",
+      address: ADDR,
+      trialId: 1,
+      client: base as never,
+    });
+    expect(events).toHaveLength(1);
+    expect(events[0]!.blockTimestamp).toBeUndefined();
   });
 });

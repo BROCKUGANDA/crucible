@@ -18,6 +18,7 @@ import {
   SandboxUnavailable,
   DEFAULT_SANDBOX,
   reapContainers,
+  runningSandboxLabels,
   reapWorkspaces,
   resolveVerifierImage,
   type SandboxDeps,
@@ -211,7 +212,11 @@ export class ForgeRunner {
       // target.
       const reap = this.deps.reap ?? (async () => [
         await reapContainers().catch(() => 0),
-        await reapWorkspaces().catch(() => 0),
+        // Workspace reaping consults the daemon first: a workspace a running
+        // container still occupies is live ownership, not stale mtime.
+        await runningSandboxLabels()
+          .then((live) => reapWorkspaces(86_400_000, tmpdir(), live))
+          .catch(() => 0),
       ] as [number, number]);
       const [orphanContainers, orphanWorkspaces] = await reap();
       if (orphanContainers + orphanWorkspaces > 0) {
