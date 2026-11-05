@@ -64,8 +64,8 @@ export { defaultRating, conservative, trueskillWin, decayRating, tierFor, nodeSt
 export type { Rating, Tier, SkillNode, SkillState, NodeStatus } from './ratings.js'; 
 export { compileDag, validateRoleContract, stepKey, appendMessage, verifyChain, validateSplits, shapley, collusionScore, claimOrder } from './orchestration.js';  
 export type { SwarmRole, DagStep, RoleContract, BusMessage } from './orchestration.js';  
-export { rankBoard, verifyRanking, coldStart, targetDifficulty, commissionInBand, applyCaps, circuitFrozen, gasInBand, lintRagDocs, retrieveAt, appendCheckpoint, verifyCheckpoints, abstentionScore, leafFor, merkleRoot, merkleProof, verifyMerkle, sybilAdjust, EventGateway, assertPiiFree, FEE_BPS_CANONICAL } from './gates.js';  
-export type { BoardEntry, RagDoc, HoldoutFingerprint, Checkpoint, GatewayEvent, RankingExclusion, RankingResult } from './gates.js'; 
+export { rankBoard, rankBoardFull, verifyRanking, coldStart, targetDifficulty, commissionInBand, applyCaps, circuitFrozen, gasInBand, lintRagDocs, retrieveAt, appendCheckpoint, verifyCheckpoints, abstentionScore, leafFor, merkleRoot, merkleProof, verifyMerkle, sybilAdjust, EventGateway, assertPiiFree, FEE_BPS_CANONICAL } from './gates.js';
+export type { BoardEntry, RagDoc, HoldoutFingerprint, Checkpoint, GatewayEvent, RankingResult, RankingCohort, RankingUnranked, RankedBoardEntry } from './gates.js';
 export type { ForgeBrief, ForgeBriefStatus, ForgeBriefObjective, ForgeBriefRequirement, ForgeBriefComplexity, ForgeBriefEnvironment, ForgeBriefVerification, ForgeBriefReliabilityAndRisk, ForgeBriefFinancialCommitment, ChallengeReadinessReport } from './forge-brief.js';
 export type { TrialDifficultyProfile, DifficultyDimensions, DifficultyDimensionScore, DifficultyDimension, AgentTrialFit, AgentFitBucket, HeatClassification, TrialHeat } from './difficulty-profile.js';
 export type { BountyRecommendation, BountyAdequacyReport } from './bounty-adequacy.js';
