@@ -208,8 +208,71 @@
 }
 
 /*
- * The owner's sponsorship queue.
+ * The Tour: the map of the site.
  *
+ * A list rather than a grid, because the thing each entry carries is a
+ * paragraph, and a grid of paragraphs is a wall. The path is the link, in
+ * the monospace face the rest of the site uses for anything that is an
+ * address.
+ */
+.tour {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--s-3);
+}
+
+/*
+ * Frenchy's panel.
+ *
+ * A dropdown below the header row, not a column inside it - the same shape
+ * as the "More" menu next to it. It used to sit in the header's flex row,
+ * which was survivable when a visitor opened it on purpose; now the panel
+ * opens by itself when Frenchy takes the visitor somewhere, and a panel that
+ * opened over the navigation would be the first thing they saw.
+ */
+#frenchy-ask-panel {
+  position: absolute;
+  top: calc(100% + 12px);
+  right: 0;
+  z-index: 60;
+  width: min(30rem, calc(100vw - 2rem));
+  padding: var(--s-4);
+  box-shadow: 0 18px 40px rgb(0 0 0 / 45%);
+}
+
+/*
+ * Frenchy's detail.
+ *
+ * The spoken line is three sentences the voice can carry; the depth lives on
+ * the screen. It is pre-wrapped because the detail is plain text with lists
+ * and one line per item, and a paragraph that reflows into a wall is harder
+ * to read than the same text with its lines intact.
+ */
+.frenchy-detail {
+  white-space: pre-wrap;
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  line-height: 1.55;
+}
+
+/*
+ * What she pointed at.
+ *
+ * An outline rather than a background: the element she pointed at is usually
+ * a panel of text, and painting over it would hide the thing the visitor was
+ * sent to look at. Two and a half seconds is long enough to find it and short
+ * enough that it does not become a permanent mark on the page.
+ */
+.frenchy-pointed {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: var(--radius);
+}
+
+/*
+ * The owner's sponsorship queue.
  * A list of people who asked for the treasury's test ETH, so it is read as a
  * ledger rather than as chat: one row per application, the wallet and the
  * amount on the left of the key column, the outcome stated in words rather

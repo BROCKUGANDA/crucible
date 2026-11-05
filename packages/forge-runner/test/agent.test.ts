@@ -206,11 +206,19 @@ describe("createForgedAgent", () => {
     const { ForgeRunner } = await import("../src/runner.js");
     await new ForgeRunner({
       agent,
-      sandbox: { image: "x", memory: "1g", cpus: "1", timeoutSec: 30, allowLocalFallback: true, forceLocal: true },
+      sandbox: { image: "x", memory: "1g", cpus: "1", timeoutSec: 30, forceLocal: true },
       runnerAddress: "0x1111111111111111111111111111111111111111" as const,
       chainId: 31337,
       verifyingContract: "0x2222222222222222222222222222222222222222" as const,
       model: "test-model",
+      // Same rule as `runner.test.ts`: no unit test may touch a real daemon or the real
+      // temp dir. The default pre-flight reaper lists containers through `docker ps`, removes
+      // the finished ones, and walks `tmpdir()` — and on the runner this file executes beside
+      // `sandbox-docker.test.ts`, whose containers are never a target but whose wreckage is
+      // exactly what a reaper is looking at. Measured on CI: this test timed out at the
+      // default 5s budget while the same `run()` further down the file took 121ms. The
+      // reaper's own behaviour is covered, with an injected `exec`, in `reaper.test.ts`.
+      reap: async () => [0, 0],
       status: () => {},
       fetchSpec: async () => "spec body",
       fetchSuite: async () => "c".repeat(40),
@@ -321,11 +329,13 @@ describe("runner + agent integration", () => {
     const { ForgeRunner } = await import("../src/runner.js");
     const deps = {
       agent,
-      sandbox: { image: "x", memory: "1g", cpus: "1", timeoutSec: 30, allowLocalFallback: true, forceLocal: true },
+      sandbox: { image: "x", memory: "1g", cpus: "1", timeoutSec: 30, forceLocal: true },
       runnerAddress: "0x1111111111111111111111111111111111111111" as const,
       chainId: 31337,
       verifyingContract: "0x2222222222222222222222222222222222222222" as const,
       model: "m",
+      // The seam above, for the same reason.
+      reap: async () => [0, 0],
       status: () => {},
       fetchSpec: async () => "# spec\n\nthe actual spec body\n",
       fetchSuite: async () => "c".repeat(40),

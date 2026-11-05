@@ -11,9 +11,11 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
+    "serve": "node dist/server.js",
     "test": "vitest run"
   },
   "dependencies": {
+    "@crucible/frame": "*",
     "@crucible/smith": "*",
     "viem": "^2.57.10"
   },

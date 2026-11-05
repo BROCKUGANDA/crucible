@@ -97,7 +97,7 @@ export default function EscrowPage({ params }: { params: Promise<{ wallet: strin
         a transfer the protocol makes for you.
       </p>
 
-      <section className="surface detail-panel" aria-label="The three books">
+      <section className="surface detail-panel" id="escrow-balances" aria-label="The three books">
         <ul className="clock-list">
           {columnsOf(escrow).map((c) => (
             <li className="clock-line" key={c.label}>

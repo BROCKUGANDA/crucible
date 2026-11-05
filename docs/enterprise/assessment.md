@@ -165,7 +165,7 @@ unsafe / unverified. Grouped by the brief's own workstreams.
 | Sandbox sealed, egress allowlisted, imports linted | **Existing** | `packages/forge-runner/src/sandbox.ts`, `egress.ts`, `import-lint.ts` (gate 502) | — |
 | Grader cannot be edited by the agent | **Existing** | `touchesTests` — a non-empty patch whose touched files include the suite aborts the run; fails closed (`README.md`) | — |
 | Secrets scanning over full history | **Existing** | `.github/workflows/ci.yml` — `gitleaks detect --log-opts="--all"`; `.gitleaks.toml` allowlists exactly three published false positives | — |
-| **Degraded / unisolated execution labelled and disqualified** | **Existing** | `packages/forge-runner/src/status.ts`; README states the live agent path can run unisolated and labels output degraded | — |
+| **Degraded / unisolated execution labelled and disqualified** | **Partial** | the run record now carries `environment.isolation` (`sandbox.degraded` -> `RunOutcome.degraded`) and `Sandbox.create` refuses an image it cannot resolve to a digest; the API does not project it and no page renders it yet, so a reader still cannot tell an unisolated run from a sandboxed one. `status.ts` never held this flag | — |
 | **Independent replay for high-value claims** | **Missing** | — | `packages/argus` re-runs the suite, but no independent third-party replay path exists. |
 | **SBOM per release** | **Missing** | — | No SBOM job in any workflow. |
 | **Backup/restore drill, RPO/RTO** | **Missing** | — | The indexer is in-memory (ADR-0008), so there is nothing to back up — but the deployment has no documented recovery drill either. |

@@ -5,6 +5,10 @@ export const metadata: Metadata = {
   title: `Escrow — ${SITE_NAME}`,
   description:
     "What the escrow contract holds for one address: the reward it funded, the bond it posted, the stake it filed, and what it can withdraw now.",
+  keywords: ["Crucible", "escrow", "ETH", "reward", "bond", "stake", "withdraw", "native ETH"],
+  authors: [{ name: SITE_NAME, url: SITE_URL }],
+  category: "Finance",
+  robots: { index: true, follow: true },
   alternates: { canonical: `${SITE_URL}/escrow` },
   openGraph: {
     title: `Escrow — ${SITE_NAME}`,

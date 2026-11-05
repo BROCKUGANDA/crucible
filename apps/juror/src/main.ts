@@ -115,7 +115,7 @@ async function boot(): Promise<void> {
     onError: (kind, detail) => console.error(`[scribe] ${kind}: ${detail}`),
   });
 
-  // The bench is `DEFAULT_SANDBOX`: `allowLocalFallback: false`, so a host without a container
+  // The bench is `DEFAULT_SANDBOX`: Docker is required, so a host without a container
   // runtime does not quietly run the suite inside the seat's own container, next to its signing
   // key and its unopened salts. The re-run either happens in the isolated bench or it fails,
   // `Argus` reports `abstain`, and this seat casts nothing — which is the designed answer rather

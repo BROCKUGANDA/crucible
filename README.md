@@ -40,18 +40,18 @@ Open ──claim──> Assigned ──submitRun──> Judging ──fileBreak�
    settlement transaction and the identity registration that earned it. The
    contracts are in `crucible-contracts/contracts` with 333 tests (329 passed; 4 of them ERC-8004
    fork tests, which skip without an RPC). The workspace suites
-   add 2212 more - web 437, grader 309, api 294, smith 224, forge-runner 188 (6 of them need a
-    Docker daemon and skip without one), indexer 154, agent-security 153, cidstore 106, juror 84,
-    keeper 48, datasets 50, argus 45, eval 36, warden 24, funder 24, crypto 12, frame 12, registry
-    12 — and `npm test` runs all of them plus the
+    add 2423 more - web 554, api 320, grader 309, smith 226, forge-runner 214 (6 of them need a
+     Docker daemon and skip without one), indexer 154, agent-security 153, cidstore 106, juror 84,
+     keeper 48, datasets 50, eval 53, argus 45, site-index 23, warden 24, funder 24, crypto 12, frame 12,
+     registry 12 — and `npm test` runs all of them plus the
    Foundry suite; the contracts half needs Foundry (`forge test`), which the seed image runs on a
    machine without a local forge. The edge suite (`npm run test:edge`, 15 tests over the RPC method
    gate, its live probe and the installer that deploys them) is not a workspace, so it rides
-   `npm run verify:all` and CI as its own step. Counted per workspace on 2026-10-29: **2212 passed,
+   `npm run verify:all` and CI as its own step. Counted per workspace on 2026-10-29: **2423 passed,
     6 skipped**
     across the eighteen TypeScript workspaces, **15 passed** at the edge and **329 passed, 4 skipped**
-    in Foundry — 2556
-    passing, 2566 counted. Run `npm run verify:all` to reproduce them.
+    in Foundry — 2767
+    passing, 2777 counted. Run `npm run verify:all` to reproduce them.
 4. Replay the whole loop against a running chain — register, post, claim,
    runner-signed runs, a break that Argus slashes, and the permissionless quench
    after the window really closes — with `crucible-contracts/script/GoldenPath.s.sol`:
@@ -382,8 +382,8 @@ npm run demo                # anvil + deploy + the whole loop, settles a real ve
 npm run agent:live          # the real agent against a real model in a real sandbox
 ```
 
-**2556 tests pass, 10 skipped** — 2212 TypeScript passed with 6 skipped, 15 at the edge, and 329
-Foundry passed with 4 skipped, so 2566 counted. Measured per workspace on 2026-10-29 on the working
+**2767 tests pass, 10 skipped** — 2423 TypeScript passed with 6 skipped, 15 at the edge, and 329
+Foundry passed with 4 skipped, so 2777 counted. Measured per workspace on 2026-10-29 on the working
 tree; the six skips are `forge-runner` tests that ask for a Docker daemon, the four are the fork
 tests below. **The same tree on a runner that has a Docker daemon reads 2217 TypeScript passed
 with 1 skipped** — the same five `forge-runner` tests, run rather than skipped — so the two
@@ -621,10 +621,10 @@ Two properties it checks that a stub could not:
   their identity with the ERC-8004 Identity registry themselves (`register(agentURI)`
   mints to the caller), and Crucible records the association via `linkIdentity`.
   Verified on mainnet in `ForkTests.test_Fork_OperatorLinksARealIdentityRegistration`.
-- **28 npm advisories remain** (15 moderate, 13 high, 0 critical — the gate reconciles its own walk
+- **30 npm advisories remain** (2 low, 12 moderate, 16 high, 0 critical — the gate reconciles its own walk
   against npm's summary and fails if the two disagree), and CI's audit passes them because each one
   is inside the documented set in `scripts/audit-gate.mjs` with a written ceiling. They reduce to
-  **five advisories in four leaf packages, every one of them reached through the wallet connector
+  **six advisories in four leaf packages, every one of them reached through the wallet connector
   tree** — not the "two" an earlier version of this list claimed, which missed the last two:
   - **`ws` — uninitialized memory disclosure (GHSA-58qx-3vcg-4xpx) and memory-exhaustion DoS
     (GHSA-96hv-2xvq-fx4p), high.** Reached through `@walletconnect/ethereum-provider` →
@@ -645,10 +645,13 @@ Two properties it checks that a stub could not:
     `@metamask/utils@11.12.1`, and again under `@metamask/sdk`. The vulnerable shape needs a caller
     that passes a `buf` to a namespaced UUID; whether the MetaMask SDK does that has **not** been
     checked here, and the ceiling admits it unexamined rather than pretending otherwise.
-  - **`decode-uri-component` — DoS by exponential decoding of malformed percent-encoded input,
-    moderate.** Reached through `@walletconnect/ethereum-provider` → `@reown/appkit` →
-    `@walletconnect/universal-provider` → `query-string`. npm reports the vulnerable range as
-    `<=0.4.2`. This one decodes URIs, and a wallet deep-link is exactly the attacker-visible string
+  - **`decode-uri-component` — two DoS advisories in a URI decoder, **high**.
+    Reached through `@walletconnect/ethereum-provider` → `@reown/appkit` →
+    `@walletconnect/universal-provider` → `query-string`. npm reports the exponential-decoding
+    advisory (GHSA-vcc3-ghjq-m6fr) for `<=0.4.2` and the quadratic-replacement one
+    (GHSA-qr28-fpjm-wq7f) for `<=0.5.0`; the installed copy is `0.2.2`, in range for both, so
+    the package is now scored **high** rather than moderate and the ceiling moved with it.
+    This one decodes URIs, and a wallet deep-link is exactly the attacker-visible string
     that reaches a decoder — the input is the connect URI, not a chain response.
   npm offers the same fix for all four: `wagmi` `3.7.9`, a semver-major. **That was measured, not
   assumed** — the upgrade was installed, built, typechecked, tested and `next build`ed green on

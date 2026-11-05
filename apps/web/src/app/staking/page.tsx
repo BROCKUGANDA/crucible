@@ -106,7 +106,7 @@ export default function StakingPage() {
           {error}
         </p>
       ) : escrow && escrow.stakes.length > 0 ? (
-        <div className="surface detail-panel">
+        <div className="surface detail-panel" id="stake-panel">
           <p className="hint">Total free stake: {escrow.stakedEth} ETH</p>
           <ul className="stack">
             {escrow.stakes.map((s) => (

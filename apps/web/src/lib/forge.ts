@@ -30,7 +30,7 @@ export const forge = {
   gold: "#E3B25C", // rewards, Alloy tiers, values — laurel bronze
   hot: "#FBEEDA", // focus states, the hottest highlight
   quench: "#4FBFAE", // success, verified, the reprieve
-  sear: "#CF4132", // errors, slashes, the blood-sand
+  sear: "#DE5243", // errors, slashes, the blood-sand — see tokens.css for the contrast history
   ash: "#8A8073", // disabled, muted
 } as const;
 

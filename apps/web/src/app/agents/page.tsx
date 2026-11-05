@@ -24,7 +24,7 @@ export default function AgentsPage() {
           const tier = a.tier === null ? null : tierMeta(a.tier);
           return (
             <Link key={a.id} href={`/agents/${a.id}`} className="surface roster-card">
-              <div className="roster-card__grid">
+              <div className="roster-card__grid" id="agent-list">
                 <div>
                   <p className="mono roster-card__id">AGENT {a.id}</p>
                   <p className="roster-card__tier">

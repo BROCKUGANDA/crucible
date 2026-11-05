@@ -143,7 +143,7 @@ contract ConservationInvariants is Test {
         seats[1] = makeAddr("h.argus2");
         seats[2] = makeAddr("h.argus3");
         alloy = new AlloyRegistry();
-        trials = new CrucibleTrials(makeAddr("treasury"), address(alloy), seats);
+        trials = new CrucibleTrials(makeAddr("treasury"), address(this), address(alloy), seats);
         alloy.setForge(address(trials));
         handler = new Handler(trials);
         handler.init();

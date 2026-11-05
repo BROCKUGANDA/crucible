@@ -42,8 +42,6 @@ describe("strictSandboxFor", () => {
     expect(spec.timeoutSec).toBe(TIER_STRICTNESS[4].minTimeoutSec);
     expect(spec.memory).toBe("8192m");
     expect(raised).toEqual(expect.arrayContaining(["timeoutSec", "memory"]));
-    // Isolation properties are the tier system's to keep, not to trade away.
-    expect(spec.allowLocalFallback).toBe(DEFAULT_SANDBOX.allowLocalFallback);
   });
 
   it("never lowers a spec that already runs stricter", () => {

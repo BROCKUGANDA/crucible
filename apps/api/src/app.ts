@@ -42,9 +42,11 @@ import { rateLimit } from "./rate-limit.js";
 import { dlq } from "./dlq.js";
 import { TickPump } from "./tick-pump.js";
 import { authRoutes } from "./auth.js";
+import { isBlocked, status as killSwitchStatus } from "@crucible/agent-security";
+import { createForgeRoutes } from "./forge.js";
 import { createVoiceRoutes, type VoiceConfig } from "./voice.js";
 import { createReplayRoutes, type ReplaySourceResult } from "./replay.js";
-import { createFrenchyRoutes, type FrenchyConfig } from "./frenchy.js";
+import { createFrenchyRoutes, DEFAULT_BRAIN_TIMEOUT_MS, type FrenchyConfig } from "./frenchy.js";
 import { createStsRoutes, STS_MAX_AUDIO_BYTES, STS_TURN_TIMEOUT_MS, type StsConfig } from "./sts.js";
 import {
   bodyLimit,
@@ -717,11 +719,38 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
    *
    * A turn is three provider round trips, so the blanket ten seconds would answer
    * 504 for work that was about to finish. The ceiling is still a ceiling.
+   *
+   * Frenchy's brain is the same shape of problem: a provider that takes twenty
+   * seconds to answer is slow, not broken, and the browser says "Thinking..."
+   * the whole time. The brain carries its own budget, so the route gets it
+   * plus a little, rather than the blanket ten seconds.
    */
   const pathTimeouts: Record<string, number> = {
     "/sts/": STS_TURN_TIMEOUT_MS,
+    "/frenchy": (opts.frenchy?.llm.timeoutMs ?? DEFAULT_BRAIN_TIMEOUT_MS) + 5_000,
   };
   app.use("*", requestTimeout(security, pathTimeouts));
+
+  /**
+   * Kill switch: blocks creation of new evaluations and other risky off-chain
+   * work when enabled. Settlement, withdrawals, and on-chain finalization are
+   * never blocked (ADR-0003). The switch is auditable and fails closed.
+   */
+  app.use("*", async (c, next) => {
+    const method = c.req.method;
+    if (method === "POST" || method === "PUT" || method === "PATCH" || method === "DELETE") {
+      if (isBlocked("new_evaluation")) {
+        const kstatus = killSwitchStatus();
+        return c.json({
+          error: "kill_switch_enabled",
+          reason: "New evaluations and risky off-chain work are blocked.",
+          enabledAt: kstatus.enabledAt,
+          reasonText: kstatus.reason ?? null,
+        }, 503);
+      }
+    }
+    await next();
+  });
 
   /**
    * Sign-In with Ethereum, mounted as a closed sub-app. Ported from the merged
@@ -1907,6 +1936,95 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
       throw err;
     }
   });
+
+  // Trial-scoped live room stream (bible §16.10): SSE fan-out of ArenaEvent envelopes
+  // for one trial. Transport scaffold: heartbeats + a snapshot event. The full room
+  // renderer subscribes via EventSource on the client.
+  app.get("/trials/:id/events", (c) => {
+    const trialId = c.req.param("id");
+    return streamSSE(c, async (stream) => {
+      let running = true;
+      const signal = c.req.raw.signal;
+      signal.addEventListener("abort", () => { running = false; }, { once: true });
+      stream.onAbort(() => { running = false; });
+
+      let lastWriteAt = 0;
+      const HEARTBEAT_MS = 15_000;
+      const maxMs = 10 * 60 * 1000;
+      const started = Date.now();
+
+      const buildEvents = async (): Promise<unknown[]> => {
+        const model = deps.getModel();
+        const trial = model.trials.get(Number(trialId));
+        const out: unknown[] = [];
+        if (trial) {
+          const stageMap: Record<string, string> = { open: "I", assigned: "II", judging: "III", challenged: "V", settled: "VII" };
+          const stage = stageMap[trial.status] ?? "I";
+          out.push({
+            v: 1,
+            id: `trial-${trial.id}-posted`,
+            mode: "showcase",
+            trial: String(trial.id),
+            stage,
+            kind: "trial.posted",
+            payload: { sponsor: trial.sponsor, rewardWei: trial.rewardWei.toString(), status: trial.status },
+            at: new Date((trial.createdAt || 0) * 1000).toISOString(),
+          });
+        }
+        try {
+          const mod = await import("@crucible/indexer");
+          const rpcUrl = process.env.RPC_URL ?? "http://127.0.0.1:8545";
+          const trialsAddress = process.env.TRIALS_ADDRESS;
+          if (trialsAddress) {
+            const logs = await mod.fetchTrialEvents({ rpcUrl, address: trialsAddress as `0x${string}`, trialId: Number(trialId) });
+            const stageFor = (name: string): string => {
+              if (name.includes("Settled") || name.includes("Verdict")) return "VII";
+              if (name.includes("Break") || name.includes("Window")) return "IV";
+              if (name.includes("Run") || name.includes("Claim")) return "III";
+              return "I";
+            };
+            for (const log of logs) {
+              out.push({
+                v: 1,
+                id: `${log.transactionHash}-${log.logIndex}`,
+                mode: "showcase",
+                trial: String(trialId),
+                stage: stageFor(log.eventName),
+                kind: log.eventName,
+                payload: log.args,
+                // The chain's own block time when the chain answered; the observed
+                // time only when it did not — an event is never stamped with a
+                // moment it did not happen at.
+                at: log.blockTimestamp
+                  ? new Date(Number(log.blockTimestamp) * 1000).toISOString()
+                  : new Date().toISOString(),
+                chainRef: { caip2: "eip155:31337", tx: log.transactionHash, slotOrBlock: Number(log.blockNumber), commitment: "confirmed" },
+              });
+            }
+          }
+        } catch { /* indexer optional */ }
+        return out;
+      };
+      const events = await buildEvents();
+      await stream.writeSSE({ event: "snapshot", data: JSON.stringify({ trial: trialId, events }) });
+
+      while (running && Date.now() - started < maxMs) {
+        if (Date.now() - lastWriteAt >= HEARTBEAT_MS) {
+          await stream.writeSSE({ event: "heartbeat", data: JSON.stringify({ trial: trialId }) });
+          lastWriteAt = Date.now();
+        }
+        await new Promise((r) => setTimeout(r, 1000));
+        if (signal.aborted) running = false;
+      }
+    });
+  });
+
+  /**
+   * Adaptive Forge product layer — off-chain Forge Briefs, difficulty
+   * profiles, bounty adequacy, and Forge Campaigns. Organisation-scoped;
+   * no chain keys held by the API.
+   */
+  app.route("/forge", createForgeRoutes());
 
   app.notFound((c) => c.json({ error: "Lost slag. This page never left the crucible." }, 404));
 

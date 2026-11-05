@@ -1,0 +1,42 @@
+{
+  "signed": false,
+  "gate": "TS-01 / G-871",
+  "chainId": 1,
+  "asset": "native-ETH",
+  "treasurySafe": {
+    "address": "",
+    "singletonAddress": "",
+    "singletonRuntimeCodeHash": "",
+    "proxyRuntimeCodeHash": "",
+    "owners": [],
+    "threshold": 0,
+    "modules": [],
+    "guard": "",
+    "moduleGuard": "",
+    "fallbackHandler": ""
+  },
+  "ownerSafe": {
+    "address": "",
+    "singletonAddress": "",
+    "singletonRuntimeCodeHash": "",
+    "proxyRuntimeCodeHash": "",
+    "owners": [],
+    "threshold": 0,
+    "modules": [],
+    "guard": "",
+    "moduleGuard": "",
+    "fallbackHandler": ""
+  },
+  "escrows": {
+    "legacyTrials": {
+      "address": "",
+      "runtimeCodeHash": ""
+    },
+    "arena": null
+  },
+  "canonicalDeploymentSource": "",
+  "verifiedBy": "",
+  "deploymentCommit": "",
+  "evidenceHash": "",
+  "note": "Unsigned template. Populate only with public on-chain addresses and independently verified bytecode/configuration evidence. Never place private keys, seed phrases, recovery phrases, signer exports or RPC credentials in this file. The first pilot profile is 2-of-3, no modules, no guard, no module guard and no fallback handler. signed remains false until the named approvers complete the external sign-off."
+}

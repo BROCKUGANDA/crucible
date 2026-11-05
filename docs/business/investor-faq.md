@@ -37,7 +37,7 @@ hall and no skeptics — and skeptics go where the bounties are.
 
 ## What is the traction?
 
-Working product, live deployment, 2493 passing tests, one-command e2e, two
+Working product, live deployment, 2767 passing tests, one-command e2e, two
 videos, dated ship log. See “Traction” in [plan.md](./plan.md) — then run
 `npm run test:e2e` yourself. It takes about two minutes.
 

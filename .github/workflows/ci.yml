@@ -57,6 +57,9 @@ jobs:
           export PATH="$FOUNDRY_DIR:$PATH"
           forge --version
 
+      - name: deployment assertion shell syntax
+        run: sh -n scripts/assert-deployment.sh
+
       - name: forge fmt --check
         run: forge fmt --check
 
@@ -331,6 +334,20 @@ jobs:
       - name: params — invariants + drift check (gate 732)
         run: node scripts/params-codegen.mjs --check
 
+      # The site index has the same shape of guarantee — a generated artifact that must
+      # match the source it is generated from — but its drift step is NOT run here, and
+      # the reason is recorded rather than forgotten: `scripts/site-index.ts` evaluates each
+      # route's `site.ts` through `--import tsx/esm`, and on the runner's Node 20 that dies
+      # with ERR_REQUIRE_CYCLE_MODULE before it reads a single descriptor (measured on run
+      # 42114384899 — the step was green on the Node 24/26 boxes it was written on, which is
+      # exactly the environment-premised gate this repository keeps finding). What CI *does*
+      # enforce is `packages/site-index/test/site-index.test.ts`: every page of the site has
+      # an entry, no entry names a route that does not exist, and every point an entry
+      # promises is an id the page really carries. That is the failure that actually ships a
+      # lying map. Wording drift inside a descriptor — a `purpose` reworded without
+      # regenerating — is not caught here; `npm run site-index:check` is written for it and
+      # runs on a machine whose loader can load the script.
+
       # Gate 752 (TS side): the committed golden vectors must be reproducible by the
       # live JCS implementation and pure per §2.7. Rust and Solidity answer the same
       # file in their own suites — this is the reference side of the parity triangle.
@@ -367,6 +384,7 @@ jobs:
             --workspace @crucible/cidstore \
             --workspace @crucible/crypto \
             --workspace @crucible/frame \
+            --workspace @crucible/arena-events \
             --workspace @crucible/forge-runner \
             --workspace @crucible/grader \
             --workspace @crucible/keeper \
@@ -376,7 +394,9 @@ jobs:
             --workspace @crucible/datasets \
             --workspace @crucible/eval \
             --workspace @crucible/registry \
-            --workspace @crucible/funder
+            --workspace @crucible/site-index \
+            --workspace @crucible/funder \
+            --workspace @crucible/fork-host
 
       - name: test (every workspace)
         run: |
@@ -390,6 +410,7 @@ jobs:
             --workspace @crucible/cidstore \
             --workspace @crucible/crypto \
             --workspace @crucible/frame \
+            --workspace @crucible/arena-events \
             --workspace @crucible/forge-runner \
             --workspace @crucible/grader \
             --workspace @crucible/keeper \
@@ -399,7 +420,9 @@ jobs:
             --workspace @crucible/datasets \
             --workspace @crucible/eval \
             --workspace @crucible/registry \
-            --workspace @crucible/funder
+            --workspace @crucible/site-index \
+            --workspace @crucible/funder \
+            --workspace @crucible/fork-host
 
       # The edge is not a workspace, so `npm test --workspaces` never reaches it — and a
       # gate whose tests nobody runs is a gate that is not tested. The rpc-gate suite was

@@ -3,48 +3,57 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { useAccount, useReadContract } from "wagmi";
-import { TRIALS_ABI } from "@crucible/smith";
+import { useAccount } from "wagmi";
 import { WalletButton, WalletNotConfiguredNotice } from "@/components/Wallet";
 import { VoiceControl } from "@/components/VoiceControl";
 import { PayoffSound } from "@/components/PayoffSound";
-import { FrenchyAsk } from "@/components/FrenchyAsk";
+import { FrenchyWidget } from "@/components/FrenchyWidget";
 import { SeedPhrasePromise } from "@/components/SeedPhrasePromise";
+import { SponsorshipBadge } from "@/components/SponsorshipBadge";
 import { Modal } from "@/components/Modal";
-import { formatWei } from "@/lib/eth";
-import { buildWithdraw, useTx } from "@/lib/useTx";
-import { activeChain, deployment, environmentBadge, explorerTxUrl, ZERO_ADDRESS } from "@/lib/wagmi";
+import { environmentBadge, explorerTxUrl, activeChain } from "@/lib/wagmi";
 
-const NAV_PRIMARY = [
+interface NavItem {
+  href: string;
+  label: string;
+  auth?: boolean;
+}
+
+const NAV_PRIMARY: NavItem[] = [
   { href: "/home", label: "Workspace" },
   { href: "/trials", label: "Trials" },
+  { href: "/arena", label: "Arena" },
   { href: "/verticals", label: "Verticals" },
   { href: "/agents", label: "Agents" },
   { href: "/hall", label: "Hall" },
   { href: "/escrow", label: "Escrow" },
 ];
 
-const NAV_MORE = [
-  { href: "/forge", label: "Register" },
+const NAV_MORE: NavItem[] = [
+  { href: "/forge", label: "Register", auth: true },
+  { href: "/forge/brief", label: "Forge Brief", auth: true },
+  { href: "/forge/bounty", label: "Bounty Calculator", auth: true },
   { href: "/bounties", label: "Challenges" },
   { href: "/clock", label: "How it settles" },
   { href: "/assay", label: "Status" },
-  { href: "/teams", label: "Teams" },
-  { href: "/faucet", label: "Sponsorship" },
+  { href: "/teams", label: "Teams", auth: true },
+  { href: "/faucet", label: "Sponsorship", auth: true },
   { href: "/voice", label: "Voice room" },
-  { href: "/airdrops", label: "Airdrops" },
-  { href: "/staking", label: "Staking" },
+  { href: "/airdrops", label: "Airdrops", auth: true },
+  { href: "/staking", label: "Staking", auth: true },
+  { href: "/treasury", label: "Treasury", auth: true },
   { href: "/engrams", label: "Engrams" },
+  { href: "/tour", label: "Tour" },
   { href: "/docs", label: "Docs" },
 ];
-
-const NAV = [...NAV_PRIMARY, ...NAV_MORE];
 
 export function Chrome({ children }: { children: ReactNode }) {
   const [sheet, setSheet] = useState(false);
   const moreRef = useRef<HTMLDetailsElement | null>(null);
   const pathname = usePathname();
   const env = environmentBadge();
+  const { address } = useAccount();
+  const isConnected = Boolean(address);
 
   // A route change is an answer to the question the menu was asked. Leaving it open would
   // strand the next page behind a scrim, or leave a dropdown hanging over the new page.
@@ -52,6 +61,11 @@ export function Chrome({ children }: { children: ReactNode }) {
     setSheet(false);
     if (moreRef.current) moreRef.current.open = false;
   }, [pathname]);
+
+  // Auth-gated nav items: only show when connected
+  const visiblePrimary = NAV_PRIMARY.filter((item) => !item.auth || isConnected);
+  const visibleMore = NAV_MORE.filter((item) => !item.auth || isConnected);
+  const visibleNav = [...visiblePrimary, ...visibleMore];
 
   return (
     <div className="shell">
@@ -74,63 +88,55 @@ export function Chrome({ children }: { children: ReactNode }) {
           </span>
         </div>
 
-        <div className="chrome__right">
-          {/* The current page is stated in the markup, not only by colour: a route you
-              cannot tell apart from the routes you can is a route you have not visited. */}
-          <nav aria-label="Primary" className="chrome__nav">
-            {NAV_PRIMARY.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                aria-current={pathname.startsWith(item.href) ? "page" : undefined}
-              >
-                {item.label}
-              </Link>
-            ))}
-            {/* Secondary routes stay reachable without making every label fight for the
-                same row. A disclosure is one keyboard stop, and it closes on navigation. */}
-            <details className="chrome__more" ref={moreRef}>
-              <summary className="chrome__more-summary">
-                More <span aria-hidden="true">▾</span>
-              </summary>
-              <div className="chrome__more-panel">
-                {NAV_MORE.map((item) => (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    aria-current={pathname.startsWith(item.href) ? "page" : undefined}
-                  >
-                    {item.label}
-                  </Link>
-                ))}
-              </div>
-            </details>
-          </nav>
-          <button
-            type="button"
-            className="btn btn-ghost btn-sm chrome__menu"
-            onClick={() => setSheet(true)}
-            aria-label="Open navigation"
-            aria-expanded={sheet}
-            aria-controls="forge-nav-sheet"
-          >
-            <svg className="menu-glyph" viewBox="0 0 20 14" aria-hidden="true" focusable="false">
-              <path d="M1 1h18M1 7h18M1 13h18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-            </svg>
-            <span className="menu-label">Menu</span>
-          </button>
+        <nav aria-label="Primary" className="chrome__nav">
+          {visiblePrimary.map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              aria-current={pathname.startsWith(item.href) ? "page" : undefined}
+            >
+              {item.label}
+            </Link>
+          ))}
+        </nav>
+
+        <div className="chrome__actions">
+          {/* Secondary routes stay reachable without making every label fight for the
+              same row. A disclosure is one keyboard stop, and it closes on navigation. */}
+          <details className="chrome__more" ref={moreRef}>
+            <summary className="chrome__more-summary">
+              More <span aria-hidden="true">▾</span>
+            </summary>
+            <div className="chrome__more-panel">
+              {visibleMore.map((item) => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  aria-current={pathname.startsWith(item.href) ? "page" : undefined}
+                >
+                  {item.label}
+                </Link>
+              ))}
+            </div>
+          </details>
+
           <VoiceControl />
           <PayoffSound />
-          <FrenchyAsk />
-          <CreditButton />
+          <FrenchyWidget />
+          <SponsorshipBadge />
           <WalletButton />
         </div>
       </header>
 
       <Modal open={sheet} title="The forge" onRequestClose={() => setSheet(false)}>
         <nav id="forge-nav-sheet" aria-label="Primary" className="stack">
-          {NAV.map((item) => (
-            <Link key={item.href} href={item.href} className="sheet-link" aria-current={pathname.startsWith(item.href) ? "page" : undefined}>
+          {visibleNav.map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              className="sheet-link"
+              aria-current={pathname.startsWith(item.href) ? "page" : undefined}
+            >
               <span className="kicker">{item.href.slice(1)}</span>
               <span>{item.label}</span>
             </Link>
@@ -150,56 +156,21 @@ export function Chrome({ children }: { children: ReactNode }) {
         {/* Kept here, not in the hero: /claims is where a reader checks a promise against what
             enforces it, and it must stay reachable now that the hero speaks in plain words. */}
         <Link href="/claims">What is enforced, promise by promise</Link>
+        {/* The receipt checker had no door: it existed, the sitemap listed it, and no page
+            linked to it — so the one artifact an integrator is told to check could only be
+            reached by guessing the URL. It belongs beside the promise list, in the same
+            plain words, because both answer "can I check this myself?". */}
+        <Link href="/verify">Check a receipt yourself</Link>
+        {/* Orphan routes — pages exist but had no inbound link, so a visitor could only reach
+            them by guessing the URL. Each door below is the page's own job title in plain
+            words, matching how /claims and /verify are linked. /trials stays as an alias
+            beside the nav so a reader scanning the footer still finds the board. */}
+        <Link href="/ghost">Start a ghost run on a fork</Link>
+        <Link href="/showcase">House bouts on screen</Link>
+        <Link href="/trials">Trials board</Link>
         <SeedPhrasePromise />
       </footer>
     </div>
-  );
-}
-
-/**
- * The contract pays through a pull ledger: settlement credits the operator, and the
- * only way the money leaves is `withdraw()`. Without this control the web app could
- * create, claim, and settle a trial but never hand the operator their ETH — a UI that
- * stops one call short of the payout.
- */
-function CreditButton() {
-  const { address } = useAccount();
-  const dep = deployment();
-  const { state, message, send, busy } = useTx();
-  // Destructured so the dependency array names a binding, not a member
-  // expression — `credit.refetch` in deps is stable in TanStack v5 but reads
-  // as a lint finding; the bare `refetch` is the same stable function.
-  const { data: creditData, refetch: refetchCredit } = useReadContract({
-    abi: TRIALS_ABI,
-    address: dep.trials,
-    functionName: "credit",
-    args: [address ?? ZERO_ADDRESS],
-    query: { enabled: Boolean(address) && dep.configured },
-  });
-
-  useEffect(() => {
-    if (state === "poured") void refetchCredit();
-  }, [state, refetchCredit]);
-
-  const amount = (creditData as bigint | undefined) ?? 0n;
-  if (!address || amount === 0n) return null;
-
-  return (
-    <span className="wallet-inline">
-      <button
-        className="btn btn-ghost btn-sm"
-        disabled={busy}
-        onClick={() => send(buildWithdraw())}
-        title="Withdraw everything credited to this wallet"
-      >
-        {busy ? "Withdrawing…" : `Withdraw ${formatWei(amount)} ETH`}
-      </button>
-      {state === "doused" ? (
-        <span className="mono" data-tone="sear" role="alert">
-          {message}
-        </span>
-      ) : null}
-    </span>
   );
 }
 

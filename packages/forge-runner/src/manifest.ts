@@ -71,14 +71,30 @@ export interface ManifestInputs {
 /**
  * The facts only the run knows.
  *
- * The environment is recorded as it was **resolved**, and the image string
- * is recorded whether or not it names a digest. A tag is a name that can
- * point at different bytes tomorrow; a manifest that recorded only a digest
- * could not say what actually ran.
+ * The environment is recorded as it was **resolved**, in two separate fields,
+ * because the two facts are not the same fact and collapsing them is how a tag
+ * ended up inside a field named `imageDigest`:
+ *
+ * - `imageRequested` is the reference the operator *asked for*. It is mutable by
+ *   nature (`crucible/verifier:latest`), and it is worth recording — it says which
+ *   build the environment came from by construction.
+ * - `imageDigest` is the immutable reference the container was actually *launched
+ *   from*, resolved by `Sandbox.create` before the run executed. A run in a
+ *   container cannot exist without it: the sandbox refuses the run rather than
+ *   launching something it cannot later identify.
+ *
+ * Degraded (no container) runs have no digest, because no image ran. They omit the
+ * field and set `isolation: "unisolated"` — absence plus a plain word, rather than a
+ * value that would be read as a pin.
  */
 export interface RunEnvironment {
   /** The sandbox specification the run used. */
   sandbox?: SandboxSpec;
+  /**
+   * The immutable image reference the container launched from, from `Sandbox.imageDigest`.
+   * Absent when no container ran. Never a tag — `buildEvalManifest` refuses one.
+   */
+  imageDigest?: string;
   /** The trial tier, which raises the sandbox floor (gate 901). */
   tier?: TrialTier;
   /** The run's wall-clock budget, in milliseconds. */
@@ -103,15 +119,31 @@ function networkPolicyOf(sandbox: SandboxSpec | undefined): string | undefined {
 
 /**
  * The environment the run executed in.
+ *
+ * `imageDigest` comes from the sandbox's resolved reference and nowhere else. The
+ * previous version of this function wrote `run.sandbox.image` here — a tag — under a
+ * field named for a digest, which is the exact defect this closes. The tag is still
+ * recorded, in `imageRequested`, where its name does not overstate it.
  */
 export function environmentOf(run: RunEnvironment): EvalManifest["environment"] {
-  const image = run.sandbox?.image ?? resolveVerifierImage();
+  const imageRequested = run.sandbox?.image ?? resolveVerifierImage();
+  // A digest belongs to a container. When nothing was containerised there was no image to
+  // resolve, so a reference supplied by a caller describes an environment this run did not
+  // use — and recording it would be the same class of lie as recording the tag.
+  const imageDigest = run.degraded ? undefined : run.imageDigest;
   const limits: Record<string, string> = {};
   if (run.sandbox?.memory !== undefined) limits.memory = String(run.sandbox.memory);
   if (run.sandbox?.cpus !== undefined) limits.cpus = String(run.sandbox.cpus);
   if (run.sandbox?.timeoutSec !== undefined) limits.wallClockSec = String(run.sandbox.timeoutSec);
   return {
-    imageDigest: image as Hex,
+    // Absent when unresolved, and never the requested tag standing in for it: a reader
+    // must be able to tell "this run's image is pinned" from "nobody could pin it".
+    ...(imageDigest !== undefined ? { imageDigest } : {}),
+    imageRequested,
+    // The degraded flag, made durable. Until now `run.degraded` was accepted by this
+    // function and dropped on the floor, so the one fact a skeptic most needs about a run
+    // — whether anything isolated it — reached no reader at all.
+    isolation: run.degraded ? "unisolated" : "container",
     networkPolicy: networkPolicyOf(run.sandbox),
     ...(run.timeoutMs !== undefined ? { timeoutMs: run.timeoutMs } : {}),
     ...(Object.keys(limits).length > 0 ? { limits } : {}),

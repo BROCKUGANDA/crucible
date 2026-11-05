@@ -23,7 +23,7 @@ export default function VerticalsPage() {
         no bridge. The escrow still settles in native ETH, and the fee is 5% (500 bps).
       </p>
 
-      <div className="surface detail-panel">
+      <div className="surface detail-panel" id="vertical-suites">
         {VERTICALS.map((vertical) => (
           <div key={vertical.id} className="vertical-row">
             <p className="mono">{vertical.id}</p>

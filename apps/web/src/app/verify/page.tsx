@@ -13,6 +13,7 @@ import { receiptView } from "@/lib/verify-view";
 export default function VerifyPage() {
   const [input, setInput] = useState("");
   const tokenId = /^\d+$/.test(input.trim()) ? BigInt(input.trim()) : undefined;
+  const invalid = input.trim() !== "" && tokenId === undefined;
 
   const receipt = verificationReceiptAddress();
 
@@ -51,18 +52,32 @@ export default function VerifyPage() {
         Paste a token id from a Crucible VerificationReceipt. The chain answers; no
         Crucible API is consulted.
       </p>
-      <label className="field">
-        <span>Token id</span>
-        <input
-          type="text"
-          inputMode="numeric"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder="1"
-        />
-      </label>
+      <form onSubmit={(e) => e.preventDefault()}>
+        <label className="field" htmlFor="token-id">
+          <span>Token id</span>
+          <input
+            id="token-id"
+            type="text"
+            inputMode="numeric"
+            aria-label="Token id (numbers only)"
+            aria-describedby="token-id-hint"
+            aria-invalid={invalid}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder="1"
+          />
+          <p id="token-id-hint" className="hint hint--block">
+            Numbers only — a token id is the whole number minted on the receipt.
+          </p>
+          {invalid && (
+            <p role="alert" className="hint hint--block" data-tone="sear">
+              That token id is not numeric. Enter a whole number.
+            </p>
+          )}
+        </label>
+      </form>
       {view.kind === "found" ? (
-        <div className="surface detail-panel">
+        <div aria-live="polite" className="surface detail-panel">
           <p className="kv">
             <span className="kv__key">Owner</span>
             <span className="mono">{view.owner}</span>
@@ -73,7 +88,7 @@ export default function VerifyPage() {
           </p>
         </div>
       ) : view.kind === "idle" ? null : (
-        <div className="surface detail-panel">
+        <div aria-live="polite" className="surface detail-panel">
           <p className="kv">
             <span className="kv__key">Chain</span>
             <span className="mono">{view.kind}</span>

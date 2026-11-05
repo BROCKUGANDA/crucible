@@ -79,9 +79,26 @@ const INDEXER_API_MODULE = path.join(
  *     `style={{}}` props across 13 files and an inline style attribute is exactly what CSP's
  *     `style-src` governs. A hash or nonce cannot help: an attribute-level allowance has to be
  *     `unsafe-inline`, or the styles move into a stylesheet, which is a component change.
+ *     The app's own inline `style={{}}` props are gone now — `test/no-inline-styles.test.ts` is
+ *     the gate — but the allowance stays, because RainbowKit's modal writes style attributes by
+ *     itself and that surface has never been re-measured here. Dropping it is a measured change,
+ *     not a one-line edit; see `docs/security-headers.md`.
  *   * `script-src 'unsafe-inline'` is also not optional: Next's App Router ships the flight
  *     payload as inline `<script>self.__next_f.push(...)</script>` (15 blocked on `/hall`),
- *     and Next 15 has no built-in nonce for those.
+ *     and those tags come from the framework's renderer, not from this app's markup.
+ *   * **Nonces exist in this version of Next and they are still not free.** The guide
+ *     (`node_modules/next/dist/docs/01-app/02-guides/content-security-policy.md`) is explicit:
+ *     the renderer reads a `nonce-` value out of the policy on the *request*, so a nonce needs a
+ *     `proxy.ts` minting one per response — which forces **dynamic rendering** for every page,
+ *     disables static generation and CDN caching, and is incompatible with PPR. This site
+ *     currently prerenders (`X-Nextjs-Prerender: 1` on `/`) and has no database to render from
+ *     (ADR-0008: the indexer is in-memory and the browser streams it). A static `headers()`
+ *     entry cannot carry a nonce either: `headers()` is evaluated at build time, so the "nonce"
+ *     would be one fixed string on every response — the appearance of the control without the
+ *     property. So the enforcing policy keeps `'unsafe-inline'`, and what this file can honestly
+ *     do instead is (a) refuse to name origins that only exist on a laptop, and (b) emit a
+ *     **report-only** strict policy when a collector is configured, so the cost of dropping
+ *     `'unsafe-inline'` is measured on the real deployment rather than argued about.
  *   * In **dev**, `script-src` additionally needs `'unsafe-eval'` — React Refresh evaluates the
  *     patch, and without the allowance the page hydrates to zero rows. Since that is a
  *     dev-server-only mechanism and a policy that breaks hot reload gets disabled within the
@@ -89,7 +106,11 @@ const INDEXER_API_MODULE = path.join(
  *     headers below.
  *   * `connect-src` has to name the API origin: the browser talks to the API directly
  *     (`src/lib/useSnapshot.ts` opens an `EventSource`), and a policy that blocks it does not
- *     error visibly — it silently degrades the live view to the polling fallback.
+ *     error visibly — it silently degrades the live view to the polling fallback. That failure
+ *     mode is why the loopback origins below are *conditional* rather than deleted: `compose.yaml`
+ *     builds this same image against `http://127.0.0.1:8787` and the host-published Anvil port,
+ *     and un-naming them there would break the demo invisibly on a laptop while looking like a
+ *     tightening.
  *
  * Not here: `Strict-Transport-Security`. `headers()` is static, so it cannot know whether the
  * request arrived over TLS, and emitting HSTS over plaintext is how a local demo gets its
@@ -100,42 +121,86 @@ const INDEXER_API_MODULE = path.join(
  * worth saying plainly: it does not stop an injected inline script. What it does stop is a
  * script loaded from a host that is not this origin, a `<base>` tag hijack, a form repointing
  * somewhere else, this app being framed, and `connect-src`-level exfiltration to an arbitrary
- * server. Tightening past that needs the inline styles and flight scripts restructured, which
- * is a component change and outside this file.
+ * server — which is exactly why the loopback entries mattered so much on the public origin: an
+ * injected script needs a *reachable* host to talk to, and naming a visitor's own ports handed it
+ * one. Tightening past `'unsafe-inline'` needs the flight scripts restructured plus a
+ * per-request nonce, i.e. the dynamic-rendering change described above.
  */
 
-// The API origins a production bundle may be pointed at, plus the loopback defaults the README
-// documents. Set NEXT_PUBLIC_API_URL at build time; the value is inlined into the client
-// bundle, so it has to be in the policy too or the CSP will disagree with the app.
-const API_ORIGINS = new Set(
-  [
-    process.env.NEXT_PUBLIC_API_URL,
-    "http://127.0.0.1:8787",
-    "http://127.0.0.1:8788",
-    "http://localhost:8787",
-    "http://localhost:8788",
-  ]
-    .map((v) => {
-      try {
-        return v ? new URL(v).origin : null;
-      } catch {
-        return null;
-      }
-    })
-    .filter(Boolean),
-);
+// The API origins a build may be pointed at. `NEXT_PUBLIC_API_URL` is inlined into the client
+// bundle at build time, so whatever the bundle talks to must appear here too or the CSP
+// disagrees with the app. The four loopback values are the README's local-demo endpoints;
+// hardcoding them unconditionally is what the browser audit of 2026-10-29 found on the public
+// HTTPS origin (`http://127.0.0.1:8787`, `:8788`, `http://localhost:8787`, `:8788`, and the
+// Anvil port from `NEXT_PUBLIC_ANVIL_RPC`). They are now admitted only to a local-target
+// policy — see `localTargetOnly`, and `test/csp-origins.test.ts` for both halves of that rule.
+const LOOPBACK_API_DEFAULTS = [
+  "http://127.0.0.1:8787",
+  "http://127.0.0.1:8788",
+  "http://localhost:8787",
+  "http://localhost:8788",
+];
 
-// The RPC is called from the browser by wagmi; WalletConnect's relay, bridge and telemetry are
-// called by its provider when a project id is configured. Naming these hosts is the difference
-// between a CSP and a broken connect button.
+function originOf(value) {
+  try {
+    return value ? new URL(value).origin : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Anything reachable over plaintext http: a laptop's port today, a bare-IP host tomorrow. */
+function isInsecure(origin) {
+  try {
+    return new URL(origin).protocol === "http:";
+  } catch {
+    return true;
+  }
+}
+
+const isProductionBuild = process.env.NODE_ENV === "production";
+
+// The origins this build was *configured* to reach — including the RPC, whose value belongs to
+// the chain/provider configuration another agent owns. Reading them is what separates a public
+// deployment from the local stack: `compose.yaml` passes loopback defaults, the VPS passes
+// `https://crucible.svalley.tech`. Nothing here rewrites an RPC URL; it only decides whether a
+// given one may enter a public policy.
+const CONFIGURED_ORIGINS = [
+  originOf(process.env.NEXT_PUBLIC_API_URL),
+  originOf(process.env.NEXT_PUBLIC_ANVIL_RPC),
+].filter(Boolean);
+
+const localTargetOnly =
+  !isProductionBuild ||
+  // Nothing configured: this is the documented local default, not a public host.
+  CONFIGURED_ORIGINS.length === 0 ||
+  // Every configured target is plaintext, so the deployment is the local stack.
+  CONFIGURED_ORIGINS.every(isInsecure);
+
+// WalletConnect's relay, bridge and telemetry are called by its provider when a project id is
+// configured. Naming these hosts is the difference between a CSP and a broken connect button.
 const THIRD_PARTY = [
   "https://ethereum-sepolia-rpc.publicnode.com",
-  ...(process.env.NEXT_PUBLIC_ANVIL_RPC ? [new URL(process.env.NEXT_PUBLIC_ANVIL_RPC).origin] : []),
+  ...(process.env.NEXT_PUBLIC_ANVIL_RPC ? [originOf(process.env.NEXT_PUBLIC_ANVIL_RPC)] : []),
   "wss://relay.walletconnect.com",
   "https://relay.walletconnect.com",
   "https://bridge.walletconnect.org",
   "https://pulse.walletconnect.com",
 ];
+
+const connectOrigins = new Set(
+  [
+    ...(localTargetOnly ? LOOPBACK_API_DEFAULTS : []),
+    process.env.NEXT_PUBLIC_API_URL,
+    ...THIRD_PARTY,
+  ]
+    .map(originOf)
+    .filter(Boolean)
+    // A public production build cannot name a plaintext origin. When the build *is*
+    // local-target the entries stay, because dropping them degrades the live feed silently
+    // rather than loudly (see the `connect-src` bullet above).
+    .filter((origin) => localTargetOnly || !isInsecure(origin)),
+);
 
 const CSP = [
   "default-src 'self'",
@@ -149,7 +214,7 @@ const CSP = [
   // 'self'` does not cover blob: for media — the element reports "no supported source was
   // found", which is indistinguishable from a dead provider unless the CSP is stated here.
   "media-src 'self' blob:",
-  `connect-src 'self' ${[...API_ORIGINS, ...THIRD_PARTY].join(" ")}`,
+  `connect-src 'self' ${[...connectOrigins].join(" ")}`,
   "worker-src 'self' blob:",
   "manifest-src 'self'",
   "form-action 'self'",
@@ -160,7 +225,35 @@ const CSP = [
   "frame-src 'self' https:",
 ].join("; ");
 
-const isProductionBuild = process.env.NODE_ENV === "production";
+/**
+ * The report-only probe: the shipped policy minus exactly the two inline allowances.
+ *
+ * A `Content-Security-Policy-Report-Only` header observes and reports; it enforces nothing, so
+ * emitting it cannot empty a page. What it buys is the measurement the constraint above needs:
+ * with a collector configured, the deployment learns which inline blocks a strict policy would
+ * break (the flight payload, the wallet modal's style attributes) and how many per page load,
+ * instead of the repo re-deriving it from a laptop.
+ *
+ * It is emitted **only** when `CSP_REPORT_URL` names a collector. A report header pointing at
+ * nothing is decoration, and this project has no endpoint that accepts CSP reports — `apps/api`
+ * is a read-only chain projection and is outside this file. Nothing was added to serve one, so
+ * the hook ships dark. The volume is not trivial (every page load reports every blocked inline
+ * block), which is the second reason this stays opt-in: whatever receives it must rate-limit.
+ * `report-to` is the current mechanism and needs the companion `Reporting-Endpoints` header;
+ * `report-uri` is the legacy fallback. Both name the same collector.
+ */
+const reportEndpoint = isProductionBuild ? (process.env.CSP_REPORT_URL ?? "").trim() : "";
+
+const reportOnlyCsp = reportEndpoint
+  ? [
+      CSP.replace("script-src 'self' 'unsafe-inline'", "script-src 'self'").replace(
+        "style-src 'self' 'unsafe-inline'",
+        "style-src 'self'",
+      ),
+      "report-to csp",
+      `report-uri ${reportEndpoint}`,
+    ].join("; ")
+  : "";
 
 const securityHeaders = [
   { key: "X-Content-Type-Options", value: "nosniff" },
@@ -183,11 +276,24 @@ const securityHeaders = [
     value: "camera=(), microphone=(self), geolocation=(), payment=(), usb=(), display-capture=()",
   },
   ...(isProductionBuild ? [{ key: "Content-Security-Policy", value: CSP }] : []),
+  ...(reportEndpoint
+    ? [
+        { key: "Reporting-Endpoints", value: `csp="${reportEndpoint}"` },
+        { key: "Content-Security-Policy-Report-Only", value: reportOnlyCsp },
+      ]
+    : []),
 ];
 
 const nextConfig = {
   reactStrictMode: true,
   transpilePackages: ["@crucible/smith", "@crucible/indexer"],
+
+  // The 2026-10-29 browser audit found `X-Powered-By: Next.js` on the public origin. Nothing
+  // here reads it, the edge does not route on it, and the standalone image does not use it; all
+  // it does is tell a scanner which stack to attack. `Via` is Caddy's own addition, so it is
+  // deleted there (`deploy/edge/Caddyfile`), and the `X-Nextjs-*` cache markers are left alone —
+  // see the report on what that means for stack disclosure.
+  poweredByHeader: false,
 
   // TypeScript 7 ships no compiler API, so Next's in-process tsconfig reader cannot load
   // the `paths` aliases; CLI mode reads them back through `tsc --showConfig`.

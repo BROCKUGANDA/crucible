@@ -130,6 +130,43 @@ describe("the manifest", () => {
     expect(() => baseManifest({ seed: "   " })).toThrow(/seed/);
   });
 
+  /**
+   * A field named `imageDigest` is read as a pin by everyone who sees it, including the
+   * skeptic paid to re-run the work. A mutable tag inside it is therefore worse than an
+   * absent one: absence is legible, a tag is a claim that cannot be honoured. The forge
+   * runner produced exactly this for as long as the field existed, which is why the check
+   * sits in the shared builder rather than only in the producer — any producer, including
+   * one written tomorrow, has to pass through here.
+   */
+  it("refuses a mutable tag where it asks for an image digest", () => {
+    expect(() =>
+      baseManifest({ environment: { imageDigest: "crucible/verifier:latest" } }),
+    ).toThrow(/not an immutable digest/);
+    expect(() =>
+      baseManifest({ environment: { imageDigest: "python:3.12-alpine" } }),
+    ).toThrow(/not an immutable digest/);
+    // A truncated digest is not a digest either.
+    expect(() => baseManifest({ environment: { imageDigest: "sha256:abc" } })).toThrow(
+      /not an immutable digest/,
+    );
+  });
+
+  it("accepts every immutable digest shape a real producer has", () => {
+    const pinned = `crucible/verifier@sha256:${"a".repeat(64)}`;
+    const localId = `sha256:${"b".repeat(64)}`;
+    const bareHex = "c".repeat(64); // the grader's corpus epoch: a content digest, no prefix
+    for (const value of [HASH_A, pinned, localId, bareHex]) {
+      expect(baseManifest({ environment: { imageDigest: value } }).environment.imageDigest).toBe(
+        value,
+      );
+    }
+    // And absence is honest, not an error: a run with no container has no image digest.
+    expect(
+      "imageDigest" in
+        baseManifest({ environment: { imageRequested: "crucible/verifier:latest" } }).environment,
+    ).toBe(false);
+  });
+
   it("refuses timestamps that are not dates", () => {
     expect(() => baseManifest({ startedAt: "yesterday" })).toThrow(/ISO-8601/);
   });
@@ -304,5 +341,65 @@ describe("the claims are falsifiable", () => {
     const omitted: EvalManifest = { ...baseManifest() };
     delete (omitted as Partial<EvalManifest>).datasetDigest;
     expect(compareManifests(present, omitted).map((d) => d.path)).toEqual(["datasetDigest"]);
+  });
+
+  it("a builder that accepted a non-canonical resource measurement is caught", () => {
+    expect(() =>
+      baseManifest({ resources: { wallClockMs: "60000.00" } }),
+    ).toThrow(/shortest round-trip/);
+  });
+
+  it("a builder that accepted a non-canonical statistical value is caught", () => {
+    expect(() =>
+      baseManifest({ statistics: { meanScore: "0.90" } }),
+    ).toThrow(/shortest round-trip/);
+  });
+
+  it("a builder that accepted an empty grader id is caught", () => {
+    expect(() =>
+      baseManifest({ grader: { id: "", version: "1.0.0" } }),
+    ).toThrow(/grader/);
+  });
+
+  it("a builder that accepted an empty runner version is caught", () => {
+    expect(() =>
+      baseManifest({ runner: { version: "" } }),
+    ).toThrow(/runner/);
+  });
+
+  it("a digest that ignores the harness version is caught", () => {
+    const base = baseManifest();
+    const withHarness = baseManifest({ harnessVersion: "1.0.0" });
+    expect(manifestDigest(base)).not.toBe(manifestDigest(withHarness));
+  });
+
+  it("a digest that ignores the tool versions is caught", () => {
+    const base = baseManifest();
+    const withTools = baseManifest({ toolVersions: { bash: "5.2", read: "1.0" } });
+    expect(manifestDigest(base)).not.toBe(manifestDigest(withTools));
+  });
+
+  it("a digest that ignores the grader identity is caught", () => {
+    const base = baseManifest();
+    const withGrader = baseManifest({ grader: { id: "crucible-grader", version: "2.0.0" } });
+    expect(manifestDigest(base)).not.toBe(manifestDigest(withGrader));
+  });
+
+  it("a digest that ignores the chain references is caught", () => {
+    const base = baseManifest();
+    const withChain = baseManifest({ chain: { chainId: "1", trialId: "42" } });
+    expect(manifestDigest(base)).not.toBe(manifestDigest(withChain));
+  });
+
+  it("a comparison that ignored the harness version is caught", () => {
+    const base = baseManifest();
+    const withHarness = baseManifest({ harnessVersion: "1.0.0" });
+    expect(manifestsComparable(base, withHarness)).toBe(false);
+  });
+
+  it("a comparison that ignored the tool versions is caught", () => {
+    const base = baseManifest();
+    const withTools = baseManifest({ toolVersions: { bash: "5.2" } });
+    expect(manifestsComparable(base, withTools)).toBe(false);
   });
 });

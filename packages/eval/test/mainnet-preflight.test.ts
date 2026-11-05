@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { spawn } from "node:child_process";
 import http from "node:http";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AddressInfo } from "node:net";
@@ -9,19 +9,33 @@ import { fileURLToPath } from "node:url";
 
 /**
  * The mainnet preflight is a gate only if it can be shown to refuse and to pass.
- *
- * The real tree is the refusal case: five unsigned sign-offs and no `MAINNET_RPC_URL`, which
- * is the intended state until humans sign. The pass case is a fully signed temp directory and
- * a local RPC that answers chain id 1 — no mainnet endpoint and no real signature needed to
- * prove the checks run. The fee test is the ADR-0001 trap: 1500 bps must be refused.
+ * The RPC fixture exercises the actual read-only Safe checks: proxy bytecode hash,
+ * singleton slot and bytecode hash, threshold, owners, modules and extension slots.
+ * It is a deterministic contract fixture, not evidence of a deployed production Safe.
  */
 const ROOT = fileURLToPath(new URL("../../../", import.meta.url));
 const SCRIPT = fileURLToPath(new URL("../../../scripts/mainnet-preflight.mjs", import.meta.url));
+const ZERO = "0x0000000000000000000000000000000000000000";
+const SINGLETON = "0x" + "77".repeat(20);
+const CODE_HASH = "0x" + "aa".repeat(32);
+const SAFE_OWNERS = ["0x" + "11".repeat(20), "0x" + "22".repeat(20), "0x" + "33".repeat(20)];
+const TRIALS_CONTRACT = "0x" + "44".repeat(20);
+const TREASURY_ADDRESS = "0x" + "55".repeat(20);
+const OWNER_ADDRESS = "0x" + "66".repeat(20);
+const RELEASE_COMMIT = "abcdef1234567";
 
 interface RunResult {
   status: number | null;
   stdout: string;
   stderr: string;
+}
+interface RpcOptions {
+  threshold?: number;
+  owners?: string[];
+  modules?: string[];
+  codeHash?: string;
+  hashMismatchAt?: number;
+  extensionStorage?: boolean;
 }
 
 function run(args: string[], env: Record<string, string> = {}): Promise<RunResult> {
@@ -38,12 +52,63 @@ function run(args: string[], env: Record<string, string> = {}): Promise<RunResul
   });
 }
 
-async function rpc(chainIdHex: string) {
+function word(value: number | bigint): string {
+  return BigInt(value).toString(16).padStart(64, "0");
+}
+function addressWord(address: string): string {
+  return address.slice(2).toLowerCase().padStart(64, "0");
+}
+function addressArray(values: string[]): string {
+  return "0x" + word(32) + word(values.length) + values.map(addressWord).join("");
+}
+
+async function rpc(chainIdHex: string, options: RpcOptions = {}) {
+  let hashCalls = 0;
   const server = http.createServer((req, res) => {
-    req.resume();
+    const chunks: Buffer[] = [];
+    req.on("data", (chunk: Buffer) => chunks.push(chunk));
     req.on("end", () => {
-      res.setHeader("content-type", "application/json");
-      res.end(JSON.stringify({ jsonrpc: "2.0", id: 1, result: chainIdHex }));
+      const request = JSON.parse(Buffer.concat(chunks).toString("utf8")) as {
+        id: number;
+        method: string;
+        params: any[];
+      };
+      const ok = (result: unknown) => {
+        res.setHeader("content-type", "application/json");
+        res.end(JSON.stringify({ jsonrpc: "2.0", id: request.id, result }));
+      };
+      const fail = (message: string) => {
+        res.setHeader("content-type", "application/json");
+        res.end(JSON.stringify({ jsonrpc: "2.0", id: request.id, error: { code: -32601, message } }));
+      };
+
+      switch (request.method) {
+        case "eth_chainId":
+          return ok(chainIdHex);
+        case "eth_getCode":
+          return ok("0x60006000");
+        case "eth_getStorageAt": {
+          const slot = String(request.params[1]).toLowerCase();
+          return ok(slot === "0x0" ? "0x" + addressWord(SINGLETON) : options.extensionStorage ? "0x" + word(1) : "0x" + "00".repeat(32));
+        }
+        case "web3_sha3":
+          hashCalls += 1;
+          return ok(options.hashMismatchAt === hashCalls ? "0x" + "bb".repeat(32) : options.codeHash ?? CODE_HASH);
+        case "eth_call": {
+          const data = String(request.params[0]?.data ?? "").toLowerCase();
+          if (data.startsWith("0x61d027b3")) return ok("0x" + addressWord(TREASURY_ADDRESS));
+          if (data.startsWith("0x8da5cb5b")) return ok("0x" + addressWord(OWNER_ADDRESS));
+          if (data.startsWith("0xe75235b8")) return ok("0x" + word(options.threshold ?? 2));
+          if (data.startsWith("0xa0e67e2b")) return ok(addressArray(options.owners ?? SAFE_OWNERS));
+          if (data.startsWith("0xcc2f8452")) {
+            const modules = options.modules ?? [];
+            return ok("0x" + word(64) + word(1) + word(modules.length) + modules.map(addressWord).join(""));
+          }
+          return fail("unexpected eth_call selector");
+        }
+        default:
+          return fail("unexpected method " + request.method);
+      }
     });
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -58,11 +123,26 @@ async function rpc(chainIdHex: string) {
   };
 }
 
+function safeRecord(address: string) {
+  return {
+    address,
+    singletonAddress: SINGLETON,
+    singletonRuntimeCodeHash: CODE_HASH,
+    proxyRuntimeCodeHash: CODE_HASH,
+    owners: SAFE_OWNERS,
+    threshold: 2,
+    modules: [],
+    guard: ZERO,
+    moduleGuard: ZERO,
+    fallbackHandler: ZERO,
+  };
+}
+
 function signedDir(): string {
   const dir = mkdtempSync(join(tmpdir(), "crucible-mainnet-"));
   writeFileSync(
     join(dir, "audit-signoff.json"),
-    JSON.stringify({ signed: true, auditor: "0x" + "11".repeat(20), reportHash: "0x" + "22".repeat(32), commit: "abc123" }),
+    JSON.stringify({ signed: true, auditor: "0x" + "11".repeat(20), reportHash: "0x" + "22".repeat(32), commit: RELEASE_COMMIT }),
   );
   writeFileSync(
     join(dir, "legal-signoff.json"),
@@ -80,6 +160,23 @@ function signedDir(): string {
     join(dir, "monitoring.json"),
     JSON.stringify({ signed: true, oncall: "oncall@example.test", alertChannel: "#crucible-alerts", dashboards: ["hall"] }),
   );
+  writeFileSync(
+    join(dir, "treasury.json"),
+    JSON.stringify({
+      signed: true,
+      chainId: 1,
+      asset: "native-ETH",
+      treasurySafe: safeRecord(TREASURY_ADDRESS),
+      ownerSafe: safeRecord(OWNER_ADDRESS),
+      escrows: {
+        legacyTrials: { address: TRIALS_CONTRACT, runtimeCodeHash: CODE_HASH },
+      },
+      canonicalDeploymentSource: "https://github.com/safe-fndn/safe-deployments/blob/main/src/assets/v1.4.1/safe.json",
+      verifiedBy: "reviewer@example.test",
+      deploymentCommit: RELEASE_COMMIT,
+      evidenceHash: "0x" + "88".repeat(32),
+    }),
+  );
   return dir;
 }
 
@@ -93,7 +190,7 @@ function paramsFile(feeBps: number): string {
 }
 
 describe("mainnet preflight", () => {
-  it("refuses the five real unsigned templates and the missing RPC", async () => {
+  it("refuses the unsigned production templates and the missing RPC", async () => {
     const res = await run([]);
     expect(res.status).toBe(1);
     for (const file of [
@@ -102,20 +199,22 @@ describe("mainnet preflight", () => {
       "genesis-cohort.json",
       "timelock.json",
       "monitoring.json",
+      "treasury.json",
     ]) {
       expect(res.stderr).toContain(`${file} is not signed`);
     }
     expect(res.stderr).toContain("MAINNET_RPC_URL not set");
   });
 
-  it("passes a fully signed set against a chain-id-1 RPC", async () => {
+  it("passes a fully signed set against a chain-id-1 RPC with a verified Safe fixture", async () => {
     const dir = signedDir();
     const server = await rpc("0x1");
     try {
-      const res = await run(["--signoffs", dir], { MAINNET_RPC_URL: server.url });
+      const res = await run(["--signoffs", dir], { MAINNET_RPC_URL: server.url, TRIALS_ADDRESS: TRIALS_CONTRACT, TREASURY_ADDRESS, OWNER_SAFE_ADDRESS: OWNER_ADDRESS });
       expect(res.status, res.stderr).toBe(0);
       expect(res.stdout).toContain("all checks pass");
-      expect(res.stdout).toContain("RPC reports chain id 1");
+      expect(res.stdout).toContain("Treasury Safe verified");
+      expect(res.stdout).toContain("Owner Safe verified");
     } finally {
       await server.close();
       rmSync(dir, { recursive: true, force: true });
@@ -128,10 +227,73 @@ describe("mainnet preflight", () => {
     try {
       const res = await run(["--signoffs", dir], {
         MAINNET_RPC_URL: "http://127.0.0.1:1",
+        TRIALS_ADDRESS: TRIALS_CONTRACT,
+        TREASURY_ADDRESS,
+        OWNER_SAFE_ADDRESS: OWNER_ADDRESS,
         MAINNET_RPC_FALLBACK_URL: server.url,
       });
       expect(res.status, res.stderr).toBe(0);
       expect(res.stdout).toContain("RPC reports chain id 1");
+    } finally {
+      await server.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("passes the pre-deployment gate when both approved Safe inputs exist but trials are not deployed yet", async () => {
+    const dir = signedDir();
+    const recordPath = join(dir, "treasury.json");
+    const record = JSON.parse(readFileSync(recordPath, "utf8"));
+    record.escrows.legacyTrials.address = "";
+    record.escrows.legacyTrials.runtimeCodeHash = "";
+    writeFileSync(recordPath, JSON.stringify(record));
+    const server = await rpc("0x1");
+    try {
+      const res = await run(["--signoffs", dir], {
+        MAINNET_RPC_URL: server.url,
+        TREASURY_ADDRESS,
+        OWNER_SAFE_ADDRESS: OWNER_ADDRESS,
+      });
+      expect(res.status, res.stderr).toBe(0);
+      expect(res.stdout).toContain("new CrucibleTrials deployment inputs pinned");
+    } finally {
+      await server.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses production preflight when the deployment treasury input is missing", async () => {
+    const dir = signedDir();
+    const server = await rpc("0x1");
+    try {
+      const res = await run(["--signoffs", dir], {
+        MAINNET_RPC_URL: server.url,
+        OWNER_SAFE_ADDRESS: OWNER_ADDRESS,
+        TRIALS_ADDRESS: TRIALS_CONTRACT,
+      });
+      expect(res.status).toBe(1);
+      expect(res.stderr).toContain("TREASURY_ADDRESS must equal treasury.json treasurySafe.address");
+    } finally {
+      await server.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses using the same Safe for treasury and owner roles", async () => {
+    const dir = signedDir();
+    const recordPath = join(dir, "treasury.json");
+    const record = JSON.parse(readFileSync(recordPath, "utf8"));
+    record.ownerSafe.address = record.treasurySafe.address;
+    writeFileSync(recordPath, JSON.stringify(record));
+    const server = await rpc("0x1");
+    try {
+      const res = await run(["--signoffs", dir], {
+        MAINNET_RPC_URL: server.url,
+        TREASURY_ADDRESS,
+        OWNER_SAFE_ADDRESS: TREASURY_ADDRESS,
+      });
+      expect(res.status).toBe(1);
+      expect(res.stderr).toContain("Treasury Safe and Owner Safe must be distinct addresses");
     } finally {
       await server.close();
       rmSync(dir, { recursive: true, force: true });
@@ -151,12 +313,171 @@ describe("mainnet preflight", () => {
     }
   });
 
-  it("refuses the 15 percent fee", async () => {
+  it("refuses a Safe threshold different from the signed 2-of-3 policy", async () => {
+    const dir = signedDir();
+    const server = await rpc("0x1", { threshold: 1 });
+    try {
+      const res = await run(["--signoffs", dir], { MAINNET_RPC_URL: server.url });
+      expect(res.status).toBe(1);
+      expect(res.stderr).toContain("on-chain threshold is not 2");
+    } finally {
+      await server.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses a Safe owner set different from the approved three signers", async () => {
+    const dir = signedDir();
+    const server = await rpc("0x1", { owners: [SAFE_OWNERS[0], SAFE_OWNERS[1], "0x" + "99".repeat(20)] });
+    try {
+      const res = await run(["--signoffs", dir], { MAINNET_RPC_URL: server.url, TREASURY_ADDRESS, OWNER_SAFE_ADDRESS: OWNER_ADDRESS });
+      expect(res.status).toBe(1);
+      expect(res.stderr).toContain("on-chain owner set differs from treasury.json");
+    } finally {
+      await server.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses a non-zero Safe guard or fallback extension slot", async () => {
+    const dir = signedDir();
+    const server = await rpc("0x1", { extensionStorage: true });
+    try {
+      const res = await run(["--signoffs", dir], { MAINNET_RPC_URL: server.url, TREASURY_ADDRESS, OWNER_SAFE_ADDRESS: OWNER_ADDRESS });
+      expect(res.status).toBe(1);
+      expect(res.stderr).toContain("has a non-zero fallbackHandler configuration");
+    } finally {
+      await server.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses a Safe singleton runtime hash mismatch", async () => {
+    const dir = signedDir();
+    const server = await rpc("0x1", { hashMismatchAt: 2 });
+    try {
+      const res = await run(["--signoffs", dir], { MAINNET_RPC_URL: server.url, TREASURY_ADDRESS, OWNER_SAFE_ADDRESS: OWNER_ADDRESS });
+      expect(res.status).toBe(1);
+      expect(res.stderr).toContain("singleton runtime code hash mismatch");
+    } finally {
+      await server.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses an enabled Safe module", async () => {
+    const dir = signedDir();
+    const server = await rpc("0x1", { modules: ["0x" + "99".repeat(20)] });
+    try {
+      const res = await run(["--signoffs", dir], { MAINNET_RPC_URL: server.url });
+      expect(res.status).toBe(1);
+      expect(res.stderr).toContain("has one or more enabled modules");
+    } finally {
+      await server.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses a Safe proxy runtime hash mismatch", async () => {
+    const dir = signedDir();
+    const server = await rpc("0x1", { codeHash: "0x" + "bb".repeat(32) });
+    try {
+      const res = await run(["--signoffs", dir], { MAINNET_RPC_URL: server.url });
+      expect(res.status).toBe(1);
+      expect(res.stderr).toContain("proxy runtime code hash mismatch");
+    } finally {
+      await server.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses a CrucibleTrials address that differs from the signed treasury record", async () => {
+    const dir = signedDir();
+    const server = await rpc("0x1");
+    try {
+      const res = await run(["--signoffs", dir], {
+        MAINNET_RPC_URL: server.url,
+        TRIALS_ADDRESS: "0x" + "99".repeat(20),
+      });
+      expect(res.status).toBe(1);
+      expect(res.stderr).toContain("legacyTrials address does not match TRIALS_ADDRESS");
+    } finally {
+      await server.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses when the on-chain escrow treasury differs from the approved Safe", async () => {
+    const dir = signedDir();
+    const server = await rpc("0x1");
+    // This server returns the approved treasury address only; mutate the signoff to a different Safe.
+    const recordPath = join(dir, "treasury.json");
+    const record = JSON.parse(readFileSync(recordPath, "utf8"));
+    record.treasurySafe.address = "0x" + "aa".repeat(20);
+    writeFileSync(recordPath, JSON.stringify(record));
+    try {
+      const res = await run(["--signoffs", dir], {
+        MAINNET_RPC_URL: server.url,
+        TRIALS_ADDRESS: TRIALS_CONTRACT,
+        TREASURY_ADDRESS: "0x" + "aa".repeat(20),
+        OWNER_SAFE_ADDRESS: OWNER_ADDRESS,
+      });
+      expect(res.status).toBe(1);
+      expect(res.stderr).toContain("on-chain treasury() does not equal the approved Treasury Safe");
+    } finally {
+      await server.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses when the on-chain owner differs from the approved Owner Safe", async () => {
+    const dir = signedDir();
+    const server = await rpc("0x1");
+    const recordPath = join(dir, "treasury.json");
+    const record = JSON.parse(readFileSync(recordPath, "utf8"));
+    record.ownerSafe.address = "0x" + "bb".repeat(20);
+    writeFileSync(recordPath, JSON.stringify(record));
+    try {
+      const res = await run(["--signoffs", dir], {
+        MAINNET_RPC_URL: server.url,
+        TRIALS_ADDRESS: TRIALS_CONTRACT,
+        TREASURY_ADDRESS,
+        OWNER_SAFE_ADDRESS: "0x" + "bb".repeat(20),
+      });
+      expect(res.status).toBe(1);
+      expect(res.stderr).toContain("on-chain owner() does not equal the approved Owner Safe");
+    } finally {
+      await server.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses when the deploy commit differs from the externally audited commit", async () => {
+    const dir = signedDir();
+    const server = await rpc("0x1");
+    const recordPath = join(dir, "treasury.json");
+    const record = JSON.parse(readFileSync(recordPath, "utf8"));
+    record.deploymentCommit = "123456789abcd";
+    writeFileSync(recordPath, JSON.stringify(record));
+    try {
+      const res = await run(["--signoffs", dir], {
+        MAINNET_RPC_URL: server.url,
+        TRIALS_ADDRESS: TRIALS_CONTRACT,
+      });
+      expect(res.status).toBe(1);
+      expect(res.stderr).toContain("deploymentCommit must match audit-signoff.json commit");
+    } finally {
+      await server.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses the 15 percent legacy fee", async () => {
     const dir = signedDir();
     const params = paramsFile(1500);
     const server = await rpc("0x1");
     try {
-      const res = await run(["--signoffs", dir, "--params", params], { MAINNET_RPC_URL: server.url });
+      const res = await run(["--signoffs", dir, "--params", params], { MAINNET_RPC_URL: server.url, TRIALS_ADDRESS: TRIALS_CONTRACT, TREASURY_ADDRESS, OWNER_SAFE_ADDRESS: OWNER_ADDRESS });
       expect(res.status).toBe(1);
       expect(res.stderr).toContain("canonical 500");
     } finally {
@@ -174,7 +495,7 @@ describe("mainnet preflight", () => {
     );
     const server = await rpc("0x1");
     try {
-      const res = await run(["--signoffs", dir], { MAINNET_RPC_URL: server.url });
+      const res = await run(["--signoffs", dir], { MAINNET_RPC_URL: server.url, TRIALS_ADDRESS: TRIALS_CONTRACT, TREASURY_ADDRESS, OWNER_SAFE_ADDRESS: OWNER_ADDRESS });
       expect(res.status).toBe(1);
       expect(res.stderr).toContain("audit-signoff.json missing field commit");
     } finally {

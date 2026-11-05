@@ -18,6 +18,7 @@ const ROUTES = [
   "/forge",
   "/compliance",
   "/verify",
+  "/ai",
   "/sign-in",
   "/sign-up",
 ];

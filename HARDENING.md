@@ -1448,6 +1448,121 @@ guards is the decoration it exists to detect.
   restores the vocabulary and layers the new semantic names additively, each bound
   to the arena colour it already means rather than to a new hue.
 
+- **Three gates were red on this slice's push, and each was closed with the remedy the gate itself
+  names.** (1) The **workspace-coverage gate** refused the new `@crucible/site-index` package: the CI
+  job enumerates its workspaces by hand, and a package with a `test` script that the job does not
+  run is a package whose tests nobody runs. The package is now in both enumerations, and the five
+  node images copy its manifest — an image that omits one resolves a workspace that is not there
+  and asks the registry for a package that does not exist, which is a failure that lands at deploy
+  time on the machine serving the demo. (2) The **dependency audit** was red on
+  `decode-uri-component` and `query-string`: npm re-scored the package (a second DoS advisory,
+  GHSA-qr28-fpjm-wq7f, sits beside the first) so it is now **high** rather than moderate, and the
+  fix npm offers is the same semver-major `wagmi` bump the README already records as measured,
+  built and reverted. The ceiling moved with the score and the README's Known-limits paragraph says
+  why, in the same place as every other accepted advisory. (3) The **secret scanner** stopped the
+  build on an invented key-shaped literal in a *test fixture* — the same shape of fixture this
+  repository has already named three times. The fixture now uses Anvil's published dev key #1 (a
+  real key that is not the dev key #0 the runbook publishes, so the test measures what it meant
+  to), and the invented literal is named in `.gitleaks.toml` by exact match because the commit is
+  published and the job scans `--log-opts=--all`. **Verified locally with the same commands CI
+  runs**: `gitleaks detect --log-opts=--all` reports *no leaks found* over 487 commits, the audit
+  gate reports every advisory inside the documented set and below its ceiling, and the workspace
+  coverage gate reports 20 workspaces, 19 in `ci.yml`, 1 excluded by name.
+- **Frenchy answers in depth, and she can act — and the action is checked against the site itself.**
+  She had two limits that were not the model's fault. The prompt said *"you answer in 3 spoken
+  sentences MAXIMUM"* and the voice route refused anything over 600 characters, so "she never goes
+  into detail" was the design working as written. And she could only talk: the brain returned
+  `{reply}`, a string, so there was no channel for an action at all.
+  **She now answers in three parts** — `spoken` (three sentences the voice can carry), `detail`
+  (the depth: the numbers, the lists, one line per item, which lands in the panel where it can be
+  *read*), and `action` (one of two verbs). The mouth and the screen are separate, which is the
+  usual division for a voice interface and the one that answers "she doesn't go into much detail"
+  without making the audio a paragraph. **She can now move the visitor**: `navigate` to a page, or
+  `point` at an element on it, and it happens *at the same time as the speech*. The rule that makes
+  this safe is one rule, in one place — `@crucible/site-index` — because the server and the browser
+  both have to refuse exactly what the other would refuse, and two copies of one rule are two
+  chances to disagree. A path that is not a page of this site, a point the page does not declare, a
+  verb that is not navigate or point, and a path without its leading slash are all **refused and
+  recorded**, never repaired into the nearest match: a navigation to the wrong page is worse than
+  no navigation, because the visitor is moved somewhere and told they were somewhere else.
+  **Two things this needed that the first design did not have.** The map the assistant acts on is
+  now **generated from the pages themselves** — every route declares a descriptor beside its own
+  page, and `scripts/site-index.ts` refuses to write a map that lies (a route with no descriptor, a
+  descriptor whose path disagrees with its route, or a point the page does not carry is an error) —
+  so Frenchy cannot send anyone to a page that does not exist, and the **Tour page** shows the same
+  map to a person. And **a signature outranks a redirect**: while a wallet signature is open she
+  speaks and *offers* the destination instead of taking it, because the wallet's dialog belongs to
+  the page that opened it and navigating underneath it would leave a confirmed transaction with no
+  receipt on screen.
+  **Measured, in a real browser against a real provider** (`meta/llama-3.2-11b-vision-instruct`,
+  the local API, the production build): asked "where is my money? take me there" on the Tour page,
+  she answered *"Your escrow is on the escrow page, split three ways: locked in trials, free stake,
+  and claimable. Let me take you there."*, the panel showed the three books under **IN DETAIL** with
+  a **Read it to me** button, the browser moved from `/tour` to `/escrow` **while she was still
+  speaking**, and the answer was still on the page she sent the visitor to. Asked "which trials are
+  open, and what is the fee?" she answered with both the fee laws (five percent for the v1 escrow,
+  fifteen for the v2 arena — two products, not one) and **did not move the visitor**, because a
+  question answerable where they stand gets no action.
+  **Four mutations were proven and restored**: dropping the page check (4 tests red), dropping the
+  point check (1 red), dropping the leading-slash check (1 red), and dropping the newline
+  normalisation (1 red). 31 API tests over the envelope and the brain, 23 over the index, 15 over
+  the browser's half.
+  **What this does not close:** the brain is still a model, and a model that ignores the envelope
+  falls back to plain text — the fallback is the old behaviour (the raw answer, cut to what the
+  voice can carry, with the whole of it in the panel), so a bad answer is a worse answer and not a
+  broken one. The **signature rule only covers `useTx`**, so a signature requested by anything else
+  would not hold the page still. The **voice path was not exercised end to end**: the ElevenLabs
+  call failed in the local stack, and the browser's own speech synthesis spoke the line instead, so
+  what is proven here is the *answer and the redirect*, not the audio. And the index is public: it
+  is a map of the site, and a map is not a secret.
+
+- **The sandbox is fail-closed, its wreckage is reaped, and a same-tick run can no longer build
+  an artifact the validator refuses (2026-11-04, `b0bbc77`–`8ad92d3`).** Three findings, each
+  measured before it was fixed. **(1) The unisolated path was a flag away.** `allowLocalFallback`
+  still existed on `SandboxSpec`, so one deleted line in a caller would have produced artifacts
+  claiming container isolation the run never had; it is now deleted from the type, the builder and
+  every caller — Docker absent is `SandboxUnavailable`, and the only unisolated path left is
+  `forceLocal`, which exists for tests, runs no digest resolution, and is documented as never
+  legal in production. **(2) Host hygiene was a suggestion.** Every suite runs under
+  `docker run --rm` and `cleanup()` removes the workspace, so the residue is the residue `--rm`
+  cannot cover: containers left in `created`/`exited`/`dead` by a wedged daemon, and temp
+  workspaces whose process died before cleanup. `reapContainers` removes only those three states
+  — a `running` or `paused` container is never a target, because there is no lease registry to
+  prove nobody owns it — and `reapWorkspaces` ages a workspace by the newest mtime among the root
+  and its direct children with a 24h floor, because the root's mtime does not move while a tier-4
+  run (1h wall clock) writes into `repo/` and the first draft's 1h threshold could have reaped a
+  live workspace. The reapers are wired into `ForgeRunner.run()` pre-flight as an injectable
+  dependency (unit tests must not touch a real daemon, and parallel sandbox tests' containers must
+  never be targets) and say what they cleared on the operator console. **(3) The runner suite was
+  a coin flip on a fast machine.** `startedAt` and `finishedAt` are two `Date.now()` snapshots;
+  a run that fits inside one millisecond measured `durationMs 0` and died at `finishedAt must be
+  > startedAt` inside `validateArtifact` — `runner.test.ts` failed ~3 runs in 6 on this machine
+  and passed everywhere slower. `buildArtifact` now floors the recorded finish at `startedAt + 1`
+  (the clock's resolution; round up, never print short) and `durationMs` stays derived so the two
+  cannot disagree. **Mutation-proven and restored:** the trial filter in `fetchTrialEvents`
+  (1 red), its window arithmetic (2 red), the reaper's finished-state set — adding `running` back
+  (2 red), and the pre-flight emit (1 red). **Also closed:** the runner's Docker-absent test
+  injected a real probe (green on daemon-less machines, `ImageDigestUnresolved` on this one — it
+  now injects a refusing exec, so the asserted kind is a property of the test); `fetchTrialEvents`
+  gained a client seam and five real-decode tests (logs encoded from `TRIALS_ABI` in the test, only
+  the transport stood in); `apps/fork-host` gained a child `error` listener (a missing anvil is a
+  502, not an unhandled event) and a monotonic port cursor (two in-flight provisions no longer
+  race one bind) — and its app was split from its entry so the handler surface could be tested at
+  all, because **the gate had been green by omission**: the lockfile fix registered `apps/fork-host`
+  as a workspace and the next `verify:all` failed on it, its `test` script having failed with
+  "No test files found" since the day it was created while no gate ever saw it; it now carries five
+  handler tests (refusals that need no chain, plus the honest 502 for an unreachable fork source —
+  a successful provision is deliberately not faked, it needs a real anvil); the indexer declares
+  `@crucible/frame` it was importing by hoisting luck; the lockfile now registers `apps/fork-host`,
+  which last session created without linking. **One more instrument finding, fixed in place:**
+  `grader/test/sampler.test.ts`'s 42-draw anchor-floor loop was killed by vitest's 5s default
+  timeout inside the saturated fan-out (the only red in the first 2026-11-04 gate run; green alone,
+  the same mechanism HARDENING item 23 names for `apps/api`) — the loop got an explicit 30s
+  timeout that states its loaded cost, assertions untouched, no threshold retuned.
+  **Measured:** `npm run verify:all` green end to end — 2474 TS/JS + 329 Foundry + 18 edge =
+  2821 passed, 10 skipped, 0 failed (forge-runner 225/6 skipped, smith-sdk 237, indexer 159 (5 new),
+  fork-host 5 (new), grader 309); `runner.test.ts` 8/8 green runs where it was ~50% red before.
+
 ## Unresolved from the 2026-10-27 pass (continues the open list)
 
 23. **`apps/api` reported one failing test once, inside a saturated fan-out, and it has not been
@@ -1969,3 +2084,15 @@ Report a vulnerability as described in [`SECURITY.md`](SECURITY.md), not in a pu
 - **The landing page was showing a trial that does not exist, and the display rule had no gate over it (2026-10-29).** A browser audit of the deployed site found the hero card reading `#42 · Summarise a receipt · 0.5 ETH · open · bond 0.05 ETH to play` under the heading "Live on the board", while `/api/snapshot` returned ids 1-8 at 1 ETH each, no trial carries a title at all, and the bond was a rounded guess at `bondFor()`. It was baked into the prerendered HTML, so nothing in the tree could see it: the rule "a figure is read or it is not shown" has gates on `/clock` and `/assay` and none on the landing markup. Three slices closed the class rather than the instance — the card reads the snapshot once and separates *unread* from *empty* from *a real trial* (`apps/web/src/lib/hero-board.ts`, `aeb8461`); the demonstration notice and the gas truth moved to the two surfaces that actually request a signature (`apps/web/src/components/SigningNotice.tsx`, `ed9cb81`); and the receipt verifier split into five states instead of one em dash, classifying a declined signature as "nobody looked" rather than "no such receipt" (`apps/web/src/lib/verify-view.ts`, `9a5c98c`). **Four mutations proven and restored:** reinstate the `#42` literal (red), let an empty board invent a trial (red), delete the unconfigured branch (1 test red), disable the revert classifier (2 tests red). **Found by the same audit and NOT fixed here:** `script-src 'unsafe-inline'` with nonces plumbed and unused; `connect-src` listing `http://127.0.0.1:8787` and `:8788` on a public HTTPS origin; `/trials/999`, `/trials/0` and `/trials/abc` answering **HTTP 200** with the not-found body, because the detail page resolves client-side and cannot set a status; `GET /api/health` publishing indexer position, dead-letter contents and breaker state unauthenticated (which is what `/assay` renders); verdict red `#cf4132` computing **3.96:1** on the card surface at 13.94px; every app page overflowing 34px at 768 from the wallet button row and `/docs` 252px at 390 from the header brand block; and `packages/forge-runner/src/manifest.ts:114` writing the mutable tag `crucible/verifier:latest` into the field named `imageDigest`, whose own comment at `packages/smith-sdk/src/manifest.ts:78` says the field is the image actually run "not the tag it was given" — while `sandbox.ts:313-314` still asserts digest pinning above `sandbox.ts:38-47` retracting it.
 
 - **The 300-item register carried a row whose evidence was false (2026-10-29).** Row 180 — "never use colour alone for status; never hide skipped or degraded results" — was marked **Existing** on the evidence that "the degraded label is a text label". No degraded label reaches a reader: `packages/forge-runner/src/runner.ts:171-175` writes it into the run manifest, `grep -r degraded apps/web/src` finds no run-quality surface, and the API never projects it — so an unisolated local run is displayed exactly as a sandboxed one. The row is now **Partial** and names the gap; the recount also corrected a summary block that no longer reconciled with its own rows. Read as a class this is the failure the register exists to prevent: a status set from a plausible sentence rather than from a file that proves it. The same pass confirmed the register's own generator (`scripts/compliance-matrix.mjs`) is invoked by nothing, so a published matrix can drift from `docs/gates.yml` silently.
+
+- **The verification path now abstains on an image it cannot resolve — intended, and new (2026-10-29).** `Sandbox.create` refuses a container run whose image cannot be resolved to an immutable reference (pinned `@sha256`, then `RepoDigests`, then the local image id), so `Argus`'s `LiveVerifier` and the juror seat abstain on such a run instead of returning a verdict about it. That is the right direction — an unattestable environment cannot support a finding — but it is a behaviour change on the path that decides money, and it means a host with a broken image pipeline now produces abstentions rather than verdicts. It is covered by the runner's own tests; it is not yet exercised end to end on a host with a Docker daemon, which this machine does not have (six real-container tests SKIPPED, not passed).
+
+- **One run reported a failed test file with no assertion and no FAIL line; not reproduced (2026-10-29).** It appeared once immediately after a mutation was restored and did not recur across four consecutive clean runs. Recorded as open rather than relabelled flaky: per this file's own rule, a non-reproducing red is open until the quantity it depends on is named. The run is the same one in which six `sandbox-docker` tests skip for lack of a daemon, so an ordering or cleanup interaction there is the first hypothesis to test on a host that has one.
+
+
+- **Four CI gates that could not fail, and one real defect they were hiding (2026-11-06).** `ci(develop)` was red in four places at once, and each one turned out to be an instrument measuring the environment rather than the code — plus one that was measuring nothing at all.
+  **(1) `packages/agent-security` — the shutdown cascade.** Fourteen failures across `cache.test.ts`, `database.test.ts` and `queue.test.ts` all began with no Redis and no PostgreSQL on the runner, but the *shape* of the failure was a lie: after the first teardown, six assertions reported `Called end on pool more than once` and `Cannot use a pool after calling end on the pool`. `closePool()` ended a module-level singleton and recorded nothing, so shutdown was not idempotent and the module could not be used again — in production that is a SIGTERM handler racing an orderly shutdown. `activePool()` now refuses with the reason, `closePool()` is idempotent, and `healthCheck()` still answers a boolean. `test/database-lifecycle.test.ts` pins all five behaviours **without a server** (a `pg` pool that never connected ends cleanly, which is what makes the lifecycle testable at all): deleting the guard turns four of them red, measured.
+  **(2) `cache.ts` has never had a working happy path.** `new Redis(url)` connects eagerly, so the `await client.connect()` two lines below it rejects with `Redis is already connecting/connected` against any reachable server. Nothing noticed because nothing ever reached one. It is now built with `lazyConnect: true`. The module's own rules — what is serialized, what `EX` receives, how Redis's integer becomes a JavaScript boolean, what a non-JSON payload does to `get` — are asserted hermetically through a `getCacheClient(factory)` seam, the same door `forge-runner`'s `SandboxDeps.exec` uses, and a mutation (`set` always JSON-stringifies) turns one red. The server-backed cases remain, now gated on an explicit `REDIS_URL` and announced as SKIPPED without one: the suite will not dial the module's `localhost:6379` default unasked, because on this project's runner — the box that serves the site — an unasked localhost dial means writing `test:*` keys into whatever owns that port. **Still open, unverified:** CI provides no Redis or PostgreSQL, so those thirteen cases skip rather than run. To make them real, add a step to the `TypeScript (all workspaces)` job that starts both on ephemeral loopback ports (`docker run -d --rm -p 127.0.0.1:0:6379 redis:7-alpine`, same for `postgres:16-alpine` with `POSTGRES_*` set), publishes the mapped ports into `REDIS_URL`/`DATABASE_URL` via `$GITHUB_ENV`, waits for `PING`/`pg_isready` before the test step, and removes the containers `if: always()`. That wiring is written here rather than run blind on the shared box; nobody has measured it.
+  **(3) `agent.test.ts` paid for a daemon the rule forbids.** `fires hooks in order when driven by the runner` timed out at the default 5 s on the runner while the *same* `run()` further down the file took 121 ms — the difference is what the default pre-flight reaper does (`docker ps`, then a walk of the real temp dir) while `sandbox-docker.test.ts` is spawning containers beside it. `runner.test.ts` already states the rule verbatim — *"No unit test may touch a real daemon or the real temp dir"* — and injects `reap: async () => [0, 0]`; `agent.test.ts` had two `new ForgeRunner` calls that did not. Both now do. The reaper's behaviour stays covered by `reaper.test.ts` with an injected `exec`, so nothing stopped being asserted.
+  **(4) A wallet test that could not go either way.** `offers RainbowKit's maintained Bitget wallet when WalletConnect is configured` asserted a connector named *Bitget Wallet* in `config.connectors`. Measured: under Node, `getDefaultConfig` resolves Bitget, MetaMask, Rainbow **and** WalletConnect all to `Mock Connector`, because there is no `window` for RainbowKit to probe, and materialises the real connectors only in the browser. The assertion tested the vendor's SSR placeholder, so it failed on a correct tree and could not have failed on a wrong one. It now asserts the decision that is ours — the exported `rainbowWalletGroups()` carries the vendor's own `bitgetWallet` object, and the `projectId` branch of `buildConfig` passes that list — and **two** mutations were proven: dropping Bitget from the list (1 red) and severing the list from `buildConfig` (1 red).
+  **(5) Five pages were not in the map, and the map's own header claimed a gate that did not exist.** `/ai`, `/forge/bounty`, `/forge/brief`, `/forge/brief/[id]` and `/treasury` had no descriptors, so Frenchy could not name pages that exist; `scripts/site-index.ts` refuses to emit such a map, and said so in a comment — but no CI step ran it. `packages/site-index/test/site-index.test.ts` caught it instead, which is why the count is four gates and one finding. `/ai` is now listed with the other machine routes (it answers `ai.txt` for crawlers, like `llms.txt`), the two `forge`/`treasury` pages without descriptors have them, and `npm run site-index:check` (line-endings folded, per the `.gitattributes` lesson) enforces the artifact. **The CI step for it was written, shipped, and taken back out the same day**: it arrived as `ERR_REQUIRE_CYCLE_MODULE` on the runner Node 20 (run 42114384899), where `node --import tsx/esm scripts/site-index.ts` cannot evaluate a single descriptor — each `site.ts` imports `@crucible/site-index`, and the tsx require(esm) interop closes a cycle over the entry script. Green on the two Node versions it was written on, red on the one that runs. What CI enforces instead is `site-index.test.ts`, which is the gate that actually caught the five missing pages; wording drift inside a descriptor is the residual gap, and `--check` covers it on a developer machine. **Still open:** port the script off the tsx loader (or run it under the Node version CI installs) so the drift check can come back. No contract, constant, fee or deployed address moved: `FEE_BPS` is still 500 = 5% on the v1 escrow, 1500 is the Arena's sponsor-paid fee.

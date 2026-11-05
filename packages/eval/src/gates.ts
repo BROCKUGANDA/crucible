@@ -1,10 +1,65 @@
 import { sha256 } from '@crucible/crypto';  
 import { conservative, defaultRating, type Rating } from './ratings.js';  
-export interface BoardEntry { agent: string; rating: Rating; funder: string }  
+import type { EvalManifest } from '@crucible/smith';  
+import { scoresComparable, compareManifests as compareManifestsImport } from '@crucible/smith';  
+export interface BoardEntry { agent: string; rating: Rating; funder: string; manifest?: EvalManifest }  
+export interface RankingExclusion { agent: string; reason: string; incompatibleWith: string[] }  
+
+export interface RankingResult {  
+  ranked: { agent: string; score: number; weight: number }[];  
+  excluded: RankingExclusion[];  
+}  
+
 export function rankBoard(entries: BoardEntry[]): { agent: string; score: number; weight: number }[] {  
+  return rankBoardFull(entries).ranked;  
+}  
+
+export function rankBoardFull(entries: BoardEntry[]): RankingResult {  
   const clusters = new Map();  
-  for (const e of entries) clusters.set(e.funder, (clusters.get(e.funder) ?? 0) + 1);  
-  return entries.map((e) => ({ agent: e.agent, score: conservative(e.rating), weight: 1 / (clusters.get(e.funder) ?? 1) })).sort((a, b) => b.score - a.score || a.agent.localeCompare(b.agent));  
+  for (const e of entries) clusters.set(e.funder, (clusters.get(e.funder) ?? 1) + 0);  
+  // Build funder clusters  
+  const funderCounts = new Map<string, number>();  
+  for (const e of entries) funderCounts.set(e.funder, (funderCounts.get(e.funder) ?? 0) + 1);  
+
+  const excluded: RankingExclusion[] = [];  
+  const compatible: BoardEntry[] = [];  
+
+  for (let i = 0; i < entries.length; i++) {  
+    const entry = entries[i]!;  
+    if (!entry.manifest) {  
+      // No manifest: backward-compatible — rank without comparability check.  
+      compatible.push(entry);  
+      continue;  
+    }  
+    // Check comparability against all other entries that have manifests  
+    const incompatibleWith: string[] = [];  
+    let hasIncompatible = false;  
+    for (let j = 0; j < entries.length; j++) {  
+      if (i === j) continue;  
+      const other = entries[j]!;  
+      if (!other.manifest) continue;  
+      if (!scoresComparable(entry.manifest, other.manifest)) {  
+        hasIncompatible = true;  
+        incompatibleWith.push(other.agent);  
+      }  
+    }  
+    // An entry is excluded only if it is incompatible with ALL other entries  
+    // (i.e., it forms its own group). Otherwise it stays in the main ranking.  
+    if (hasIncompatible && incompatibleWith.length === entries.filter((e, idx) => idx !== i && e.manifest).length) {  
+      excluded.push({ agent: entry.agent, reason: 'incompatible evaluation conditions: ' + compareManifestPaths(entry.manifest, entries.filter((e, idx) => idx !== i && e.manifest)[0]?.manifest), incompatibleWith });  
+      continue;  
+    }  
+    compatible.push(entry);  
+  }  
+
+  const ranked = compatible.map((e) => ({ agent: e.agent, score: conservative(e.rating), weight: 1 / (funderCounts.get(e.funder) ?? 1) })).sort((a, b) => b.score - a.score || a.agent.localeCompare(b.agent));  
+  return { ranked, excluded };  
+}  
+
+function compareManifestPaths(left: EvalManifest | undefined, right: EvalManifest | undefined): string {  
+  if (!left || !right) return 'unknown';  
+  const diffs = compareManifestsImport(left, right);  
+  return diffs.map((d) => d.path).join(', ');  
 } 
 export function verifyRanking(entries: BoardEntry[], claimed: string[]): boolean {  
   const actual = rankBoard(entries).map((r) => r.agent);  

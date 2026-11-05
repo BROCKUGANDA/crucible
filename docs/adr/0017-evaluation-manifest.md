@@ -71,9 +71,47 @@ break.
   timestamps alone, because two runs of the same manifest are a repeat
   measurement, not two games.
 
-The manifest is **not yet** wired into the runner, the grader or the
-contract. This ADR decides the schema and its semantics; the wiring is a
-separate slice.
+The manifest is wired into the builder (`buildEvalManifest`) with full
+validation. The runner and grader can now produce manifests by calling the
+builder with the appropriate arguments. The contract is untouched: the
+manifest is hashed, not signed, and does not affect `RunArtifact` or
+`submitRun`.
+
+## Schema update (2026-11-04)
+
+The manifest was expanded to include all fields required by the master
+engineering directive. New optional fields:
+
+- **`harnessVersion`**: Version of the harness that orchestrated the evaluation.
+- **`runner`**: Version and config digest of the runner that executed the evaluation.
+- **`toolVersions`**: Map from tool name to version string.
+- **`resources`**: Resource measurements (wall clock, CPU time, memory, tokens, cost, tool calls, retries).
+- **`errors`**: Error classifications (model, infrastructure, provider, submission, judge disagreement).
+- **`statistics`**: Statistical analysis (repetitions, confidence intervals, standard deviation, mean, sample size, significance, p-value).
+- **`grader`**: Identity of the grader that produced the evaluation.
+- **`chain`**: Chain and contract references (chain ID, verifying contract, submission block, transaction hash, trial ID, run hash).
+
+All new fields are optional to maintain backward compatibility. Resource
+measurements and statistical analysis values use canonical decimal strings,
+validated by `assertCanonicalNumber`. The grader and runner must have a
+non-empty ID and version.
+
+New interfaces added to `packages/smith-sdk/src/manifest.ts`:
+
+- `ResourceMeasurements`
+- `ErrorClassifications`
+- `StatisticalAnalysis`
+- `GraderIdentity`
+- `ChainReferences`
+- `RunnerVersion`
+- `ToolVersions`
+
+The `ScoringPin` interface was extended with `scorerVersion`.
+
+`COMPARABLE_MANIFEST_FIELDS` and `SCORE_COMPARISON_FIELDS` were updated to
+include `harnessVersion`, `runner`, and `toolVersions` — these are conditions
+of the evaluation, not outcomes, so a difference means the two runs are not
+the same measurement.
 
 ## Consequences
 

@@ -1,0 +1,43 @@
+{
+  "$comment": "Canonical data contract for CRUCIBLE arena events (gate 753, §19.4). Single source of truth: both Solana (crucible-arena) and EVM (Arena.sol) must emit exactly these events with matching field names and types. The drift gate (scripts/drift-gate.mjs) checks this file against the contracts and the indexer's ARENA_EVENT_NAMES.",
+  "version": "1",
+  "events": [
+    { "name": "TrialPosted", "fields": ["id", "sponsor", "reward", "fee", "specDigest", "skepticWindow"] },
+    { "name": "TrialClaimed", "fields": ["id", "agent", "bond", "claimDeadline"] },
+    { "name": "RunnerSet", "fields": ["id", "runner"] },
+    { "name": "Yielded", "fields": ["id", "agent"] },
+    { "name": "ClaimTimedOut", "fields": ["id", "agent", "forfeit", "reopened"] },
+    { "name": "Cancelled", "fields": ["id", "sponsor"] },
+    { "name": "Expired", "fields": ["id", "sponsor"] },
+    { "name": "HoldoutRevealed", "fields": ["id", "holdoutDigest"] },
+    { "name": "HoldoutMissed", "fields": ["id"] },
+    { "name": "RunSubmitted", "fields": ["id", "agent", "artifactDigest", "verdictHash", "replayHash"] },
+    { "name": "BreakCommitted", "fields": ["id", "index", "skeptic", "stake", "seatFee"] },
+    { "name": "BreakRevealed", "fields": ["id", "index", "kind", "evidence"] },
+    { "name": "DocketFrozen", "fields": ["id", "docketSize"] },
+    { "name": "PanelDrawn", "fields": ["id", "round", "seat0", "seat1", "seat2", "vrf"] },
+    { "name": "VoteCommitted", "fields": ["id", "round", "seat"] },
+    { "name": "VoteRevealed", "fields": ["id", "round", "seat", "votesHash"] },
+    { "name": "SeatSlashed", "fields": ["id", "round", "seat"] },
+    { "name": "BreakTallied", "fields": ["id", "breakIndex", "landed", "upheld", "rejected"] },
+    { "name": "ExitRecorded", "fields": ["id", "outcome"] },
+    { "name": "Settled", "fields": ["id", "outcome", "agentAmount", "sponsorAmount", "fee"] },
+    { "name": "Credited", "fields": ["to", "amount"] },
+    { "name": "Withdrawn", "fields": ["to", "amount"] },
+    { "name": "AttestorSet", "fields": ["attestor", "allowed"] }
+  ],
+  "errorCodes": [
+    "UnsupportedMint", "TrialNotOpen", "IllegalTransition", "NotEnoughSeats",
+    "RandomnessNotConfigured", "BondShortfall", "DisputeOpen", "NotDisputed",
+    "PayoutAccountMismatch", "ClaimTimeout", "UnrevealedCommit", "Overflow",
+    "TooSmall", "BadWindow", "BadOpenSpan", "RewardTooSmall", "RewardMismatch",
+    "AlreadyClaimed", "ClaimWindowClosed", "SelfClaim", "TooManyActiveClaims",
+    "YieldCooldown", "StakeTooSmall", "ZeroDigest", "BadSigner", "WindowStillOpen",
+    "ClaimTimeout", "SelfBreak", "TooManyBreaks", "SeatFeeWrong", "CommitMismatch",
+    "AlreadyRevealed", "RevealWindowClosed", "DocketAlreadyFrozen", "RoundTooLate",
+    "PanelAlreadyDrawn", "BadDraw", "PanelNotDrawn", "NotSeat", "AlreadyCommitted",
+    "AlreadyRevealedVote", "CommitClosed", "TallyOpen", "VoteLen", "VoteVoided"
+  ],
+  "states": ["Open", "Claimed", "Submitted", "Docketed", "Panel", "Settled", "Cancelled", "Expired"],
+  "outcomes": ["O1", "O2", "O3", "O4", "O5", "O6", "O7", "O8", "O9"]
+}

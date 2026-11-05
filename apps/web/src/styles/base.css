@@ -6,6 +6,10 @@
   box-sizing: border-box;
 }
 
+.indent-sm {
+  margin-left: 1rem;
+}
+
 html,
 body {
   margin: 0;

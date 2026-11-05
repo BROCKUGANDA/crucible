@@ -6,3 +6,5 @@ export * from "./api.js";
 export * from "./hall.js";
 export * from "./replica.js";
 export * from "./team.js";
+export * from "./trial-events.js";
+export * from "./finance.js";
