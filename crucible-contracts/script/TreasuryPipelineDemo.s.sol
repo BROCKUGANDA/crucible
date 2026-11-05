@@ -79,7 +79,9 @@ contract TreasuryPipelineDemo is Script {
             abi.encodePacked(
                 "\x19\x01",
                 trials.DOMAIN(),
-                keccak256(abi.encode(trials.RUN_TYPEHASH(), id, agentId, keccak256("treasury-pipeline-run"), sigDeadline))
+                keccak256(
+                    abi.encode(trials.RUN_TYPEHASH(), id, agentId, keccak256("treasury-pipeline-run"), sigDeadline)
+                )
             )
         );
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(RUNNER_KEY, digest);
@@ -104,7 +106,7 @@ contract TreasuryPipelineDemo is Script {
         vm.broadcast(pkRelayer);
         trials.finalize(id);
 
-        (address agentOperator, , , , ) = trials.agents(agentId);
+        (address agentOperator,,,,) = trials.agents(agentId);
         uint256 agentCredit = trials.credit(agentOperator);
         uint256 treasuryCredit = trials.credit(trials.treasury());
         require(agentCredit == uint256(t.reward) - fee, "demo: agent credit is not reward minus fee");
@@ -126,7 +128,7 @@ contract TreasuryPipelineDemo is Script {
         console.log("treasuryWithdrawn", fee);
 
         // The agent pulls their payout from the same ledger.
-        (address operator, , , , ) = trials.agents(agentId);
+        (address operator,,,,) = trials.agents(agentId);
         vm.broadcast(pkOperator);
         trials.withdraw();
         require(trials.credit(operator) == 0, "demo: agent credit was not zeroed by the pull");
