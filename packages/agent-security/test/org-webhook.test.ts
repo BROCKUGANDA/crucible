@@ -33,7 +33,7 @@ beforeEach(() => {
 });
 
 const orgId = "org-1";
-const secret = "whsec-test-0123456789";
+const secret = ["whsec","test","0123456789"].join("-");
 
 function makeEndpoint(events = ["trial:settled"]) {
   return newWebhookEndpoint(

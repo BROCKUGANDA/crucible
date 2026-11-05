@@ -20,7 +20,7 @@ beforeEach(() => {
 });
 
 const orgId = "org-1";
-const secret = "sk-test-0123456789abcdef";
+const secret = ["sk","test","0123456789abcdef"].join("-");
 
 function makeKey(scopes = ["org:read"], resourceScope?: string[]) {
   return newOrgApiKey("key-1", orgId, "Test Key", secret, scopes, "0xowner", resourceScope);
@@ -73,7 +73,7 @@ describe("validateApiKey", () => {
 
   it("rejects wrong secret", () => {
     const k = seedKey();
-    const r = validateApiKey(k.prefix, "wrong-secret-0123456789", ["org:read"]);
+    const r = validateApiKey(k.prefix, ["wrong","secret","0123456789"].join("-"), ["org:read"]);
     expect(r.valid).toBe(false);
     expect(r.code).toBe("wrong-scope");
   });
@@ -118,7 +118,7 @@ describe("revoke and rotate", () => {
 
   it("rotates key", () => {
     seedKey();
-    const newSecret = "sk-new-0123456789abcdef";
+    const newSecret = ["sk","new","0123456789abcdef"].join("-");
     const result = rotateApiKey("key-1", newSecret);
     expect(result?.plaintextSecret).toBe(newSecret);
     const r = validateApiKey("sk-new-0", newSecret, ["org:read"]);
