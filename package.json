@@ -32,6 +32,7 @@
     "test:e2e": "node --env-file-if-exists=.env scripts/demo.mjs --exit",
     "mainnet:preflight": "node --env-file-if-exists=.env scripts/mainnet-preflight.mjs",
     "site-index": "node --import tsx/esm scripts/site-index.ts",
+    "site-index:check": "node --import tsx/esm scripts/site-index.ts --check",
     "deploy:network": "node --env-file-if-exists=.env scripts/deploy-network.mjs",
     "fork:test": "node --env-file-if-exists=.env scripts/run-fork-tests.mjs",
     "agent:live": "node --env-file-if-exists=.env scripts/live-agent.mjs",

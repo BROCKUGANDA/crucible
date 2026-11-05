@@ -16,9 +16,31 @@ const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
 
 let client: Redis | null = null;
 
-export async function getCacheClient(): Promise<Redis> {
+/**
+ * The client the cache talks through, and the door a test walks in through.
+ *
+ * `lazyConnect` is load-bearing, not decoration: `new Redis(url)` starts connecting on its
+ * own, so the explicit `connect()` below used to reject with "Redis is already
+ * connecting/connected" on any host where a server was actually reachable. Nothing noticed
+ * because the module has never had a server to reach — every caller so far died on
+ * ECONNREFUSED first. A cache whose happy path has never executed is not a verified cache.
+ */
+function createCacheClient(): Redis {
+  return new Redis(REDIS_URL, { lazyConnect: true });
+}
+
+/**
+ * The cache client, connected once.
+ *
+ * `factory` is the seam: `cache.test.ts` passes a stand-in that speaks the same commands so
+ * the serialization and return-shape rules in this file are asserted without a daemon, the
+ * same way `forge-runner`'s `SandboxDeps.exec` asserts the container path without one. The
+ * stand-in proves *our* logic; it cannot prove Redis behaves like Redis, which is what the
+ * server-backed cases in that file exist for.
+ */
+export async function getCacheClient(factory: () => Redis = createCacheClient): Promise<Redis> {
   if (!client) {
-    client = new Redis(REDIS_URL);
+    client = factory();
     client.on('error', (err: Error) => {
       console.error('Redis cache client error:', err);
     });

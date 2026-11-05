@@ -28,11 +28,30 @@ const pool = new Pool({
 
 export { pool };
 
+let closed = false;
+
+/**
+ * The pool, unless this process has shut its database down.
+ *
+ * `pg` answers a use after `end()` with "Cannot use a pool after calling end on the pool"
+ * and a second `end()` with "Called end on pool more than once". Both were observed in CI,
+ * where a test suite closed the pool in `afterEach` and every later case inherited the
+ * corpse — one teardown turned fourteen assertions into noise, and the first failure was the
+ * only one that had a cause. Refusing with the real reason is the fix: shutdown is
+ * idempotent, and use after shutdown says so.
+ */
+function activePool(): Pool {
+  if (closed) {
+    throw new Error('database pool is closed; this process has shut its database down');
+  }
+  return pool;
+}
+
 /**
  * Get a client from the pool. Caller must release the client when done.
  */
 export async function getClient(): Promise<PoolClient> {
-  return pool.connect();
+  return activePool().connect();
 }
 
 /**
@@ -42,7 +61,7 @@ export async function query<T = unknown>(
   text: string,
   params?: unknown[]
 ): Promise<QueryResult<any>> {
-  return pool.query(text, params);
+  return activePool().query(text, params);
 }
 
 /**
@@ -52,7 +71,7 @@ export async function query<T = unknown>(
 export async function withTransaction<T>(
   callback: (client: PoolClient) => Promise<T>
 ): Promise<T> {
-  const client = await pool.connect();
+  const client = await activePool().connect();
   try {
     await client.query('BEGIN');
     const result = await callback(client);
@@ -73,7 +92,7 @@ export async function withTransaction<T>(
  */
 export async function runMigrations(migrationsDir?: string): Promise<void> {
   const dir = migrationsDir || join(__dirname, '..', '..', '..', 'migrations');
-  const client = await pool.connect();
+  const client = await activePool().connect();
   try {
     await runMigrationsImpl(client, dir);
   } finally {
@@ -181,16 +200,20 @@ function splitSqlStatements(sql: string): string[] {
 }
 
 /**
- * Close the pool. Call on process shutdown.
+ * Close the pool. Call on process shutdown. Idempotent: a second call — or a call from a
+ * signal handler that races an orderly shutdown — does nothing rather than throwing.
  */
 export async function closePool(): Promise<void> {
+  if (closed) return;
+  closed = true;
   await pool.end();
 }
 
-// Health check: verify database connectivity
+// Health check: verify database connectivity. A closed pool is not healthy, and the
+// answer stays a boolean rather than becoming a throw at a caller that cannot handle one.
 export async function healthCheck(): Promise<boolean> {
   try {
-    await pool.query('SELECT 1');
+    await activePool().query('SELECT 1');
     return true;
   } catch {
     return false;

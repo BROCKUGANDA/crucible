@@ -13,7 +13,8 @@ import {
   buildWithdraw,
   decodeRevert,
 } from "../src/lib/useTx";
-import { buildConfig, explorerTxUrl, shortAddress } from "../src/lib/wagmi";
+import { buildConfig, explorerTxUrl, rainbowWalletGroups, shortAddress } from "../src/lib/wagmi";
+import { bitgetWallet as rainbowBitgetWallet } from "@rainbow-me/rainbowkit/wallets";
 import { bitgetProvider } from "../src/lib/bitget";
 import { validateWizard, EMPTY_WIZARD } from "../src/lib/wizard";
 
@@ -34,14 +35,30 @@ describe("wallet configuration", () => {
     expect(hasDedicatedBitget).toBe(true);
   });
 
+  /**
+   * What the app *offers* RainbowKit, not what RainbowKit *builds* here.
+   *
+   * Measured on this machine: in a Node environment `getDefaultConfig` resolves every
+   * provider-shaped wallet — Bitget, MetaMask, Rainbow, WalletConnect — to wagmi's Mock
+   * Connector, because there is no `window` for RainbowKit to probe, and materialises the
+   * real connector only in the browser. So an assertion over `config.connectors` here tests
+   * RainbowKit's SSR placeholder rather than this decision: it could not have gone red for
+   * dropping Bitget, and it could not have gone green for keeping it. Asserting the identity
+   * of the vendor's own wallet object, and that `buildConfig` hands that list to
+   * `getDefaultConfig`, is the part that is ours to prove.
+   */
   it("offers RainbowKit's maintained Bitget wallet when WalletConnect is configured", () => {
-    process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID = "test-walletconnect-project";
-    try {
-      const config = buildConfig();
-      expect(config.connectors.some((connector) => /bitget wallet/i.test(connector.name))).toBe(true);
-    } finally {
-      delete process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID;
-    }
+    const wallets = rainbowWalletGroups().flatMap((group) => group.wallets);
+    expect(wallets).toContain(rainbowBitgetWallet);
+
+    const source = readFileSync(new URL("../src/lib/wagmi.ts", import.meta.url), "utf8")
+      .split("\n")
+      .map((l) => l.replace(/\/\/.*$/, "").trim())
+      .filter((l) => l.length > 0 && !l.startsWith("*") && !l.startsWith("/*"))
+      .join("\n");
+    // The list must reach the RainbowKit path of `buildConfig` — the branch that runs when
+    // a project id exists — rather than sitting beside it as an unused export.
+    expect(source).toMatch(/if \(projectId\) \{[\s\S]*?wallets: rainbowWalletGroups\(\),/);
   });
 
   it("resolves Bitget's namespaced EIP-1193 provider", () => {

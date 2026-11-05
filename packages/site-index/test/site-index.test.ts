@@ -25,8 +25,14 @@ import {
 const ROOT = resolve(__dirname, "..", "..", "..");
 const APP_DIR = join(ROOT, "apps", "web", "src", "app");
 
-/** The routes that are not pages, and so have nothing to describe. */
-const NOT_PAGES = new Set(["llms.txt", "llms-full.txt", "llms", "og", ".well-known", "robots.txt", "sitemap.xml"]);
+/**
+ * The routes that are not pages, and so have nothing to describe.
+ *
+ * The same list the generator carries (`scripts/site-index.ts`): `/ai` answers with
+ * `ai.txt` for crawlers, exactly as `llms.txt` does. A crawler brief is not a page a
+ * visitor is sent to, so it has no purpose and no points.
+ */
+const NOT_PAGES = new Set(["ai", "llms.txt", "llms-full.txt", "llms", "og", ".well-known", "robots.txt", "sitemap.xml"]);
 
 function routeDirectories(dir: string, out: string[] = []): string[] {
   const names = readdirSync(dir);

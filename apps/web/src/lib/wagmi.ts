@@ -184,6 +184,33 @@ export function transportFor(): Transport {
   return http(rpcUrl());
 }
 
+/**
+ * The wallet list handed to RainbowKit when a WalletConnect project id exists.
+ *
+ * Its own export because what the app decides — which wallets are offered — is not
+ * observable in the connectors a Node environment builds. RainbowKit resolves every
+ * provider-shaped wallet to a placeholder connector when there is no `window` to probe
+ * (`getDefaultConfig` on a server or in a test answers "Mock Connector" for Bitget, MetaMask,
+ * Rainbow and WalletConnect alike) and only materialises the real connector in the browser.
+ * So a test over `config.connectors` measures RainbowKit's SSR behaviour, not this decision.
+ */
+export function rainbowWalletGroups() {
+  return [
+    {
+      groupName: "Popular",
+      wallets: [
+        safeWallet,
+        rainbowWallet,
+        base,
+        metaMaskWallet,
+        rainbowBitgetWallet,
+        walletConnectWallet,
+        injectedWallet,
+      ],
+    },
+  ];
+}
+
 export function buildConfig() {
   const chain = activeChainDef();
   const projectId = rainbowKitProjectId();
@@ -195,20 +222,7 @@ export function buildConfig() {
       projectId,
       chains: [chain],
       transports: { [chain.id]: transportFor() },
-      wallets: [
-        {
-          groupName: "Popular",
-          wallets: [
-            safeWallet,
-            rainbowWallet,
-            base,
-            metaMaskWallet,
-            rainbowBitgetWallet,
-            walletConnectWallet,
-            injectedWallet,
-          ],
-        },
-      ],
+      wallets: rainbowWalletGroups(),
       ssr: true,
     });
   }

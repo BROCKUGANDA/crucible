@@ -1,11 +1,14 @@
 /**
  * @file queue.test.ts — BullMQ queue module tests.
  *
- * Tests queue creation, job addition, and worker creation. Tests that
- * require a real Redis instance will be skipped if Redis is unavailable.
+ * Queue construction, naming and the registry are asserted here always; the one case that
+ * actually enqueues needs a server and runs only when `REDIS_URL` names one (announced
+ * SKIPPED otherwise). Queue names carry the `crucible-test-` prefix because a BullMQ queue
+ * name is a global key inside the Redis it lives in — a generic name would collide with
+ * whatever else that server is carrying.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import {
   getQueue,
   createWorker,
@@ -14,6 +17,18 @@ import {
   closeQueues,
   QUEUE_NAMES,
 } from '../src/queue.js';
+import { probeRedis, skipBanner } from './support/live.js';
+
+/**
+ * Constructing a BullMQ queue needs no server — a `Queue` is an object and a lazy
+ * connection. Enqueueing is a different claim, and on a runner with no Redis it waited on a
+ * retry loop until the test timeout killed it. That case now asks for `REDIS_URL` out loud
+ * and reports SKIPPED without one, for the reason in `support/live.ts`.
+ */
+const live = await probeRedis();
+skipBanner('queue', live, 'the enqueue case');
+
+const testLive = it.skipIf(!live.ok);
 
 describe('queue module', () => {
   it('exports all expected functions', () => {
@@ -35,24 +50,26 @@ describe('queue module', () => {
   });
 
   it('getQueue returns a Queue instance', async () => {
-    const queue = getQueue('test-queue');
+    const queue = getQueue('crucible-test-queue');
     expect(queue).toHaveProperty('add');
     expect(queue).toHaveProperty('close');
-    expect(queue.name).toBe('test-queue');
+    expect(queue.name).toBe('crucible-test-queue');
   });
 
-  it('addJob creates a job', async () => {
-    const queue = getQueue('test-job-queue');
-    const job = await queue.add('test-job', { foo: 'bar' }, { attempts: 1 });
+  testLive('addJob creates a job', async () => {
+    // Through the exported `addJob`, which is the thing this case is named after. The
+    // first version called `queue.add` directly, so it asserted BullMQ's own API and left
+    // this module's retry/backoff defaults unexercised.
+    const job = await addJob('crucible-test-job-queue', 'test-job', { foo: 'bar' }, { attempts: 1 });
     expect(job).toHaveProperty('id');
     expect(job).toHaveProperty('name', 'test-job');
     expect(job.data).toEqual({ foo: 'bar' });
-    await queue.close();
+    await job.remove().catch(() => undefined);
   });
 
   it('getAllQueues returns all created queues', async () => {
-    const q1 = getQueue('test-queue-1');
-    const q2 = getQueue('test-queue-2');
+    const q1 = getQueue('crucible-test-queue-1');
+    const q2 = getQueue('crucible-test-queue-2');
     const all = getAllQueues();
     expect(all.length).toBeGreaterThanOrEqual(2);
     await q1.close();

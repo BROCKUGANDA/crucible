@@ -13,13 +13,16 @@
  *   * a declared point must exist as an `id` in that route's own source, so a
  *     point that lands nowhere is refused rather than shipped.
  *
- * Run it with `npm run site-index`. CI checks the generated file is current,
- * the same way it checks the compliance matrix.
+ * Run it with `npm run site-index`. `npm run site-index:check` regenerates in
+ * memory and fails on drift; that is the step CI runs.
  */
 
-import { readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+
+/** `--check` regenerates in memory and refuses when the committed map differs. */
+const CHECK = process.argv.includes("--check");
 
 const ROOT = resolve(process.cwd());
 const APP_DIR = join(ROOT, "apps", "web", "src", "app");
@@ -34,6 +37,7 @@ const OUT_FILE = join(ROOT, "packages", "site-index", "src", "generated.ts");
  * page someone forgot.
  */
 const NOT_PAGES = new Set([
+  "ai",
   "llms.txt",
   "llms-full.txt",
   "llms",
@@ -147,7 +151,8 @@ async function main(): Promise<void> {
  *
  * Written by \`scripts/site-index.ts\` from the descriptor each route declares
  * (a \`site.ts\` beside the route's own page). Run \`npm run site-index\` after
- * adding a page or moving one; CI fails if this file is out of date.
+ * adding a page or moving one; \`npm run site-index:check\` (which CI runs) fails
+ * if this file is out of date.
  *
  * Two readers, one map: Frenchy is grounded in it and the Tour page renders
  * it, so the map a visitor reads and the map the assistant acts on cannot
@@ -158,6 +163,25 @@ import type { SiteEntry } from "./types.js";
 
 export const SITE_INDEX: SiteEntry[] = ${JSON.stringify(entries, null, 2)};
 `;
+
+  if (CHECK) {
+    // Line endings folded, for the reason spelled out in `.gitattributes` and in
+    // `scripts/params-codegen.mjs`: this body is a template literal, so its newlines are this
+    // file's, and a Windows checkout smudges the committed artifact to CRLF. Comparing raw
+    // bytes would guard the line ending and miss the map.
+    const fold = (s: string) => s.replace(/\r\n/g, "\n");
+    const onDisk = existsSync(OUT_FILE) ? readFileSync(OUT_FILE, "utf8") : "";
+    if (fold(onDisk) !== fold(body)) {
+      console.error(
+        `site index drift: ${relative(ROOT, OUT_FILE)} does not match the route descriptors.\n` +
+          "  A page was added, moved, or reworded without regenerating the map Frenchy is grounded in.\n" +
+          "  Regenerate with: npm run site-index",
+      );
+      process.exit(1);
+    }
+    console.log(`site-index:check green — ${entries.length} entries match the pages that carry them`);
+    return;
+  }
 
   writeFileSync(OUT_FILE, body, "utf8");
   console.log(`Wrote ${entries.length} entries to ${relative(ROOT, OUT_FILE)}`);

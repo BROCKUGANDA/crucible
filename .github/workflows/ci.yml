@@ -334,6 +334,16 @@ jobs:
       - name: params — invariants + drift check (gate 732)
         run: node scripts/params-codegen.mjs --check
 
+      # Same shape as the gate above, for the other generated artifact in the tree. The site
+      # index is what Frenchy is grounded in and what the Tour page renders, so a page added
+      # without its descriptor means the assistant cannot name a page that exists. The
+      # generator already refuses to emit a map with a missing or lying descriptor, and the
+      # site-index suite fails on coverage — but neither of those runs in CI, so until this
+      # step the claim in the generated file's own header ("CI fails if this file is out of
+      # date") was a description of a gate that did not exist.
+      - name: site index — descriptors match the pages (drift check)
+        run: npm run site-index:check
+
       # Gate 752 (TS side): the committed golden vectors must be reproducible by the
       # live JCS implementation and pure per §2.7. Rust and Solidity answer the same
       # file in their own suites — this is the reference side of the parity triangle.

@@ -3,7 +3,8 @@
  *
  * Written by `scripts/site-index.ts` from the descriptor each route declares
  * (a `site.ts` beside the route's own page). Run `npm run site-index` after
- * adding a page or moving one; CI fails if this file is out of date.
+ * adding a page or moving one; `npm run site-index:check` (which CI runs) fails
+ * if this file is out of date.
  *
  * Two readers, one map: Frenchy is grounded in it and the Tour page renders
  * it, so the map a visitor reads and the map the assistant acts on cannot
@@ -199,6 +200,37 @@ export const SITE_INDEX: SiteEntry[] = [
     "needs": "a connected wallet, because a bond is money"
   },
   {
+    "path": "/forge/bounty",
+    "label": "Bounty Calculator",
+    "purpose": "Recommends a native ETH reward for a Forge Brief from execution cost, specialist effort, complexity, risk and scarcity.",
+    "can": [
+      "calculate an economically appropriate reward",
+      "see the recommendation in wei"
+    ],
+    "needs": "an organisation id"
+  },
+  {
+    "path": "/forge/brief",
+    "label": "Forge Brief",
+    "purpose": "The sponsor describes the problem before difficulty or reward is calculated.",
+    "can": [
+      "describe a trial brief",
+      "open a brief detail page"
+    ],
+    "needs": "a connected wallet and an organisation id"
+  },
+  {
+    "path": "/forge/brief/[id]",
+    "label": "Forge Brief",
+    "purpose": "One Forge Brief in full: the challenge, its requirements, its readiness and heat, and the bounty the calculator recommends for it.",
+    "can": [
+      "read one brief's objective and requirements",
+      "see how ready and how contested a brief is",
+      "work out a reward for this brief"
+    ],
+    "needs": "a brief id in the address bar"
+  },
+  {
     "path": "/ghost",
     "label": "Ghost run",
     "purpose": "Run a whole trial on a private fork with play money and no wallet.",
@@ -313,6 +345,17 @@ export const SITE_INDEX: SiteEntry[] = [
       "read the whole map of the site",
       "see what each page is for"
     ]
+  },
+  {
+    "path": "/treasury",
+    "label": "Treasury Safe",
+    "purpose": "The company Treasury Safe: which address the escrow names for commission, and the calldata that moves it.",
+    "can": [
+      "read the treasury address the deployed escrow holds",
+      "copy the escrow address and the withdraw() calldata",
+      "see the treasury's own pending credit when that Safe is connected"
+    ],
+    "needs": "the deployed escrow address; the Safe itself to show its credit"
   },
   {
     "path": "/trials",
