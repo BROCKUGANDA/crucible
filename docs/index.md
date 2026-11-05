@@ -2,6 +2,13 @@
 
 Start with the question you have, not the folder.
 
+## I want to implement the next Crucible capabilities
+
+- [Implementation programme](implementation/README.md) — consolidated prompt index and execution controls.
+- [Prompt catalogue](implementation/PROMPT_CATALOG.md) — CRU-002–CRU-014, Adaptive Forge, Forge Watch and platform UX.
+- [Controlled workstreams](implementation/cru-workstreams.md) — goals, tests and stop conditions.
+- [Implementation roadmap](implementation/ROADMAP.md) — dependency order and release gates.
+
 ## I want to understand the product
 
 - [`README.md`](../README.md) — what Crucible is, the demo, the contracts, the
