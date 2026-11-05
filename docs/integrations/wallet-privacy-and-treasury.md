@@ -53,6 +53,9 @@ Human.tech's Gas Tank is also a separate feature:
 - It is funded by the application/project.
 - The user still approves the transaction they are signing.
 - It does not fund a trial reward, change the sponsor's `msg.value`, receive Crucible commissions, or give Crucible custody of the user's wallet.
+- Human.tech's current guide says testnet transactions are never sponsored. Crucible's current Anvil/Sepolia development configuration therefore cannot use the project Gas Tank.
+- On supported ETH-native EVM mainnets, eligibility requires both the exact requesting origin and the transaction's outer `to` target to be allowlisted for that chain. A project tank is funded separately.
+- The current guide says only 90% of a gross ETH tank balance is spendable on gas (10% fee). Budget this separately from trial rewards and the Crucible settlement fee.
 
 A production WaaP integration should be a separate PR after the SDK version, licence, data-processing terms, allowed login methods, supported chains, origin restrictions, recovery model, rate limits and software supply-chain posture have been reviewed. Use the vendor-supported SDK and a reviewed connector pattern; do not copy an example connector with debug logging or broad personal-data methods into production. The app should request only the wallet address and transaction capability needed; it should not request email or identity credentials for ordinary trial sponsorship.
 
