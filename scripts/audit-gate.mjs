@@ -49,7 +49,7 @@ const FAMILIES = [
   { prefix: "@metamask/", ceiling: "moderate" },
   { prefix: "@reown/", ceiling: "high" },
   { prefix: "@rainbow-me/", ceiling: "moderate" },
-  { prefix: "@wagmi/", ceiling: "moderate" },
+  { prefix: "@wagmi/", ceiling: "high" },
   { prefix: "@base-org/", ceiling: "moderate" },
   { prefix: "@gemini-wallet/", ceiling: "moderate" },
 ];
@@ -62,7 +62,7 @@ const EXACT = [
   { name: "next", ceiling: "moderate" },
   // `viem` scores at `high` because of the `ws` advisory it inherits, not one of its own.
   { name: "viem", ceiling: "high" },
-  { name: "wagmi", ceiling: "moderate" },
+  { name: "wagmi", ceiling: "high" },
   { name: "decode-uri-component", ceiling: "high" },
   // `follow-redirects` carries a documented high-severity advisory; no patched
   // release is pinned here, so it is accepted at `high` and anything worse
