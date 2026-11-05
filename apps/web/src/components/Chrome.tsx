@@ -41,6 +41,7 @@ const NAV_MORE: NavItem[] = [
   { href: "/voice", label: "Voice room" },
   { href: "/airdrops", label: "Airdrops", auth: true },
   { href: "/staking", label: "Staking", auth: true },
+  { href: "/treasury", label: "Treasury", auth: true },
   { href: "/engrams", label: "Engrams" },
   { href: "/tour", label: "Tour" },
   { href: "/docs", label: "Docs" },
