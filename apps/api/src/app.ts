@@ -42,6 +42,8 @@ import { rateLimit } from "./rate-limit.js";
 import { dlq } from "./dlq.js";
 import { TickPump } from "./tick-pump.js";
 import { authRoutes } from "./auth.js";
+import { isBlocked, status as killSwitchStatus } from "@crucible/agent-security";
+import { createForgeRoutes } from "./forge.js";
 import { createVoiceRoutes, type VoiceConfig } from "./voice.js";
 import { createReplayRoutes, type ReplaySourceResult } from "./replay.js";
 import { createFrenchyRoutes, DEFAULT_BRAIN_TIMEOUT_MS, type FrenchyConfig } from "./frenchy.js";
@@ -728,6 +730,27 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
     "/frenchy": (opts.frenchy?.llm.timeoutMs ?? DEFAULT_BRAIN_TIMEOUT_MS) + 5_000,
   };
   app.use("*", requestTimeout(security, pathTimeouts));
+
+  /**
+   * Kill switch: blocks creation of new evaluations and other risky off-chain
+   * work when enabled. Settlement, withdrawals, and on-chain finalization are
+   * never blocked (ADR-0003). The switch is auditable and fails closed.
+   */
+  app.use("*", async (c, next) => {
+    const method = c.req.method;
+    if (method === "POST" || method === "PUT" || method === "PATCH" || method === "DELETE") {
+      if (isBlocked("new_evaluation")) {
+        const kstatus = killSwitchStatus();
+        return c.json({
+          error: "kill_switch_enabled",
+          reason: "New evaluations and risky off-chain work are blocked.",
+          enabledAt: kstatus.enabledAt,
+          reasonText: kstatus.reason ?? null,
+        }, 503);
+      }
+    }
+    await next();
+  });
 
   /**
    * Sign-In with Ethereum, mounted as a closed sub-app. Ported from the merged
@@ -1995,6 +2018,13 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
       }
     });
   });
+
+  /**
+   * Adaptive Forge product layer — off-chain Forge Briefs, difficulty
+   * profiles, bounty adequacy, and Forge Campaigns. Organisation-scoped;
+   * no chain keys held by the API.
+   */
+  app.route("/forge", createForgeRoutes());
 
   app.notFound((c) => c.json({ error: "Lost slag. This page never left the crucible." }, 404));
 

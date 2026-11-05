@@ -7,7 +7,7 @@ import { useAccount } from "wagmi";
 import { WalletButton, WalletNotConfiguredNotice } from "@/components/Wallet";
 import { VoiceControl } from "@/components/VoiceControl";
 import { PayoffSound } from "@/components/PayoffSound";
-import { FrenchyAsk } from "@/components/FrenchyAsk";
+import { FrenchyWidget } from "@/components/FrenchyWidget";
 import { SeedPhrasePromise } from "@/components/SeedPhrasePromise";
 import { SponsorshipBadge } from "@/components/SponsorshipBadge";
 import { Modal } from "@/components/Modal";
@@ -31,6 +31,8 @@ const NAV_PRIMARY: NavItem[] = [
 
 const NAV_MORE: NavItem[] = [
   { href: "/forge", label: "Register", auth: true },
+  { href: "/forge/brief", label: "Forge Brief", auth: true },
+  { href: "/forge/bounty", label: "Bounty Calculator", auth: true },
   { href: "/bounties", label: "Challenges" },
   { href: "/clock", label: "How it settles" },
   { href: "/assay", label: "Status" },
@@ -119,7 +121,7 @@ export function Chrome({ children }: { children: ReactNode }) {
 
           <VoiceControl />
           <PayoffSound />
-          <FrenchyAsk />
+          <FrenchyWidget />
           <SponsorshipBadge />
           <WalletButton />
         </div>

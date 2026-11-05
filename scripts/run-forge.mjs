@@ -30,10 +30,14 @@ function probe(command) {
 }
 
 let forge = null;
-if (probe("forge")) {
+// FOUNDRY_BIN takes precedence: PATH can carry Atlassian's Forge CLI (an unrelated tool
+// sharing the `forge` name), which would otherwise win and fail every Foundry command
+// with `'script' is not a Forge command`.
+const found = candidates().find((candidate) => existsSync(candidate) && probe(candidate));
+if (found) {
+  forge = found;
+} else if (probe("forge")) {
   forge = "forge";
-} else {
-  forge = candidates().find((candidate) => existsSync(candidate) && probe(candidate)) ?? null;
 }
 
 if (!forge) {

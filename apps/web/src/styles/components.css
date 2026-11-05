@@ -824,3 +824,281 @@
 .arena__preview__title { flex:1; }
 .arena__preview__reward { font-family:var(--font-mono); color:var(--gold); }
 .arena__preview__hint { font-size:var(--fs-small); color:var(--dim); }
+
+/* ── Frenchy side-chat widget ───────────────────────────────── */
+
+/* The widget owns its own corner: fixed, bottom-right, above the chrome but below
+   any modal. It never moves with the page scroll. */
+.frenchy-widget {
+  position: fixed;
+  z-index: var(--z-modal);
+  bottom: var(--s-5);
+  right: var(--s-5);
+  font-family: var(--font-display);
+  font-size: var(--fs-body);
+  line-height: 1.55;
+  color: var(--text);
+}
+
+/* The closed state is a single floating button. */
+.frenchy-widget__trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 12px 16px;
+  border-radius: 999px;
+  border: 1px solid var(--bg2);
+  background: var(--bg1);
+  color: var(--text);
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.45), 0 0 0 1px color-mix(in srgb, var(--ember) 14%, transparent);
+  transition:
+    transform var(--t-tap) var(--ease-ignite),
+    border-color var(--t-state) var(--ease-ignite),
+    box-shadow var(--t-state) var(--ease-ignite);
+}
+
+.frenchy-widget__trigger:hover:not(:disabled) {
+  border-color: var(--ember);
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.5), 0 0 0 1px var(--ember);
+}
+
+.frenchy-widget__trigger:active:not(:disabled) {
+  transform: translateY(1px) scale(0.98);
+}
+
+.frenchy-widget__icon {
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+.frenchy-widget__label {
+  white-space: nowrap;
+}
+
+/* Backdrop dims everything but the panel and stops interaction behind it. */
+.frenchy-widget__backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  background: color-mix(in srgb, var(--bg0) 60%, transparent);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  animation: scrimIn var(--t-state) var(--ease-cool) both;
+}
+
+/* Panel slides in from the right edge, covering part of the page. */
+.frenchy-widget__panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  z-index: var(--z-modal);
+  width: min(420px, 92vw);
+  height: 100vh;
+  max-height: 100vh;
+  background: var(--bg0);
+  border-left: 1px solid var(--bg2);
+  box-shadow: -20px 0 60px rgba(0, 0, 0, 0.35);
+  display: flex;
+  flex-direction: column;
+  animation: pourIn var(--t-pour) var(--ease-ignite) both;
+  overflow: hidden;
+}
+
+.frenchy-widget__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px var(--pad);
+  border-bottom: 1px solid var(--bg1);
+  flex-shrink: 0;
+}
+
+.frenchy-widget__head .kicker {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--gold);
+}
+
+.frenchy-widget__close {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  border: 1px solid var(--bg2);
+  background: transparent;
+  color: var(--dim);
+  font: inherit;
+  cursor: pointer;
+  transition: color var(--t-tap), border-color var(--t-tap), transform var(--t-tap) var(--ease-ignite);
+}
+
+.frenchy-widget__close:hover {
+  color: var(--text);
+  border-color: var(--ember);
+}
+
+.frenchy-widget__close:active {
+  transform: scale(0.92);
+}
+
+/* The status line says what is happening, in words. */
+.frenchy-widget__status {
+  font-family: var(--font-mono);
+  font-size: var(--fs-small);
+  color: var(--dim);
+  padding: 0 var(--pad);
+  flex-shrink: 0;
+}
+
+/* Listen / mute controls sit side by side above the input. */
+.frenchy-widget__controls {
+  display: flex;
+  gap: 8px;
+  padding: 12px var(--pad);
+  flex-shrink: 0;
+}
+
+/* The input reads as a slot cut into the plate, like every other input on the site. */
+.frenchy-widget .field {
+  display: grid;
+  gap: 6px;
+  padding: 0 var(--pad) 8px;
+  flex-shrink: 0;
+}
+
+.frenchy-widget .field > label {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--faint);
+}
+
+.frenchy-widget .input {
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  padding: 11px 13px;
+  min-height: 44px;
+  background: var(--bg2);
+  border: 1px solid var(--bg1);
+  border-radius: 8px;
+  color: var(--text);
+  width: 100%;
+}
+
+.frenchy-widget .input::placeholder {
+  color: var(--ash);
+}
+
+/* Refusals and errors are named in words, not colours alone. */
+.frenchy-widget [data-tone="sear"] {
+  color: var(--sear);
+}
+
+.frenchy-widget .hint {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--dim);
+}
+
+/* Messages: the conversation itself, scrollable. */
+.frenchy-widget__messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--s-3) var(--pad);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.frenchy-widget__message {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 88%;
+}
+
+.frenchy-widget__message--user {
+  align-self: flex-end;
+}
+
+.frenchy-widget__message--assistant {
+  align-self: flex-start;
+}
+
+.frenchy-widget__message-content {
+  font-size: var(--fs-body);
+  color: var(--text);
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
+.frenchy-widget__message--user .frenchy-widget__message-content {
+  color: var(--gold);
+}
+
+/* The depth: numbers, lists, one line per item — written where it can be read. */
+.frenchy-widget__detail {
+  margin-top: 8px;
+  padding: 10px 14px;
+  background: var(--bg1);
+  border: 1px solid var(--bg2);
+  border-radius: 8px;
+}
+
+.frenchy-widget__detail .kicker {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--faint);
+  margin-bottom: 6px;
+}
+
+.frenchy-widget__detail-body {
+  font-size: var(--fs-small);
+  color: var(--dim);
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
+.frenchy-widget__empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--faint);
+  font-size: var(--fs-small);
+}
+
+.frenchy-widget .faint {
+  color: var(--faint);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .frenchy-widget__panel,
+  .frenchy-widget__backdrop {
+    animation: none;
+  }
+}
+
+@media (max-width: 520px) {
+  .frenchy-widget {
+    bottom: var(--s-3);
+    right: var(--s-3);
+  }
+  .frenchy-widget__panel {
+    width: 100vw;
+    right: 0;
+  }
+}

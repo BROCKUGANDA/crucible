@@ -24,11 +24,16 @@ const ROOT = new URL("..", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "
  * Resolve the binary once, then use the resolved path for anvil and forge alike.
  */
 function resolveFoundry(name) {
-  if (spawnSync(name, ["--version"], { stdio: "ignore" }).status === 0) return name;
   const dir = process.env.FOUNDRY_BIN || join(homedir(), ".foundry", "bin");
   const candidates =
     process.platform === "win32" ? [join(dir, `${name}.exe`), join(dir, name)] : [join(dir, name)];
-  return candidates.find((candidate) => existsSync(candidate)) ?? name;
+  // FOUNDRY_BIN takes precedence: PATH can carry Atlassian's Forge CLI (an unrelated tool
+  // sharing the `forge` name), which would otherwise win and break every Foundry command
+  // with `'script' is not a Forge command`.
+  const found = candidates.find((candidate) => existsSync(candidate));
+  if (found) return found;
+  if (spawnSync(name, ["--version"], { stdio: "ignore" }).status === 0) return name;
+  return name;
 }
 
 const FORGE = resolveFoundry("forge");

@@ -10,6 +10,39 @@ export {
 } from "./trajectories.js";
 export { bestOfN, writeResults, trainSplit } from "./train.js";
 export { promptOptimize, exportWinner } from "./promote.js";
+export {
+  newForgeBrief,
+  validateForgeBrief,
+  newReadinessReport,
+  computeBriefDigest,
+  sealBrief,
+} from "./forge-brief.js";
+export {
+  newTrialDifficultyProfile,
+  emptyDifficultyDimensions,
+  newAgentTrialFit,
+  irtPassProbability,
+  estimateDifficultyFromOutcomes,
+  classifyHeat,
+  computeAgentFit,
+} from "./difficulty-profile.js";
+export {
+  newBountyRecommendation,
+  newBountyAdequacyReport,
+  calculateBondWei,
+  calculateProtocolFeeWei,
+  calculateNetAgentPayoutWei,
+  computeBountyRecommendation,
+  assessBountyAdequacy,
+} from "./bounty-adequacy.js";
+export {
+  newForgeCampaign,
+  addStage,
+  fundStage,
+  settleStage,
+  isStageEligible,
+  validateCampaign,
+} from "./forge-campaign.js";
 
 // Type exports
 export type { ProbeRecord, SplitResult } from "./splits.js";
@@ -33,3 +66,7 @@ export { compileDag, validateRoleContract, stepKey, appendMessage, verifyChain, 
 export type { SwarmRole, DagStep, RoleContract, BusMessage } from './orchestration.js';  
 export { rankBoard, verifyRanking, coldStart, targetDifficulty, commissionInBand, applyCaps, circuitFrozen, gasInBand, lintRagDocs, retrieveAt, appendCheckpoint, verifyCheckpoints, abstentionScore, leafFor, merkleRoot, merkleProof, verifyMerkle, sybilAdjust, EventGateway, assertPiiFree, FEE_BPS_CANONICAL } from './gates.js';  
 export type { BoardEntry, RagDoc, HoldoutFingerprint, Checkpoint, GatewayEvent, RankingExclusion, RankingResult } from './gates.js'; 
+export type { ForgeBrief, ForgeBriefStatus, ForgeBriefObjective, ForgeBriefRequirement, ForgeBriefComplexity, ForgeBriefEnvironment, ForgeBriefVerification, ForgeBriefReliabilityAndRisk, ForgeBriefFinancialCommitment, ChallengeReadinessReport } from './forge-brief.js';
+export type { TrialDifficultyProfile, DifficultyDimensions, DifficultyDimensionScore, DifficultyDimension, AgentTrialFit, AgentFitBucket, HeatClassification, TrialHeat } from './difficulty-profile.js';
+export type { BountyRecommendation, BountyAdequacyReport } from './bounty-adequacy.js';
+export type { ForgeCampaign, CampaignStage, CampaignStatus, StageStatus } from './forge-campaign.js';

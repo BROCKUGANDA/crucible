@@ -33,7 +33,7 @@ function code(path: string): string {
 
 const PROVIDER = "../src/lib/frenchy/provider.tsx";
 const PROVIDERS = "../src/components/Providers.tsx";
-const CONTROL = "../src/components/FrenchyAsk.tsx";
+const CONTROL = "../src/components/FrenchyWidget.tsx";
 const CHROME = "../src/components/Chrome.tsx";
 const GATE = "../src/components/ForgeAuth.tsx";
 const FORGE = "../src/app/forge/page.tsx";
@@ -79,7 +79,7 @@ describe("the provider is mounted, not merely present", () => {
 
   it("is consumed by a control that Chrome renders", () => {
     expect(code(CONTROL)).toContain("useFrenchy()");
-    expect(code(CHROME)).toContain("<FrenchyAsk />");
+    expect(code(CHROME)).toContain("<FrenchyWidget />");
   });
 });
 
