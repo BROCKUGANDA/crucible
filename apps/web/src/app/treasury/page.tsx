@@ -138,7 +138,7 @@ export default function TreasuryPage() {
                     No protocol credit is currently withdrawable. Credit accrues only after
                     contract settlement; sponsor deposits are not commission payments.
                   </p>
-                ) : (
+                ) : canPrepare ? (
                   <div className="stack">
                     <p className="hint hint--block">
                       This contract pays `credit[msg.sender]` to `msg.sender`. Execute the
@@ -167,6 +167,11 @@ export default function TreasuryPage() {
                       required by your Safe threshold before execution.
                     </p>
                   </div>
+                ) : (
+                  <p className="hint hint--block">
+                    Switch the connected Safe to Crucible's configured chain before preparing the
+                    withdrawal details.
+                  </p>
                 )}
               </>
             )}
