@@ -166,6 +166,10 @@ services:
       FRENCHY_LLM_API_KEY: ${FRENCHY_LLM_API_KEY:-}
       FRENCHY_LLM_BASE_URL: ${FRENCHY_LLM_BASE_URL:-}
       FRENCHY_LLM_MODEL: ${FRENCHY_LLM_MODEL:-}
+      # How long the brain may take. Empty means the API's own default; a
+      # provider that is slow is slow, not broken, and the browser says
+      # "Thinking..." the whole time.
+      FRENCHY_LLM_TIMEOUT_MS: ${FRENCHY_LLM_TIMEOUT_MS:-}
       FRENCHY_SCRIBE_DISABLED: ${FRENCHY_SCRIBE_DISABLED:-}
       FRENCHY_TTS_DISABLED: ${FRENCHY_TTS_DISABLED:-}
       IDENTITY_ATTESTORS: ${IDENTITY_ATTESTORS:-}

@@ -114,9 +114,7 @@ async function dockerSandbox(over: Partial<SandboxSpec> = {}): Promise<Sandbox> 
     memory: "1g",
     cpus: "1",
     timeoutSec: 30,
-    // No fallback, no probe-skip: these tests only make sense as a real container.
-    allowLocalFallback: false,
-    forceLocal: false,
+    // No probe-skip: these tests only make sense as a real container.
     ...over,
   });
   tracked.push(sandbox);
@@ -292,8 +290,6 @@ describe(`cap-drop keeps the forge workload working${forgeReady ? "" : " — SKI
         memory: "1g",
         cpus: "1",
         timeoutSec: 180,
-        allowLocalFallback: false,
-        forceLocal: false,
       });
       tracked.push(sandbox);
       await sandbox.writeFile("foundry.toml", '[profile.default]\nsrc = "src"\n');

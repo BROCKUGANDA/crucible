@@ -32,7 +32,7 @@ abstract contract Base is Test {
         seats[1] = a2;
         seats[2] = a3;
         alloy = new AlloyRegistry();
-        trials = new CrucibleTrials(makeAddr("treasury"), address(alloy), seats);
+        trials = new CrucibleTrials(makeAddr("treasury"), address(this), address(alloy), seats);
         alloy.setForge(address(trials));
     }
 

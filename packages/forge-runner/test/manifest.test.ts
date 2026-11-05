@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { manifestDigest, manifestsComparable } from "@crucible/smith";
+import { buildEvalManifest, manifestDigest, manifestsComparable } from "@crucible/smith";
 import {
   buildRunManifest,
   emitManifest,
@@ -47,17 +47,81 @@ const LOCAL_SANDBOX = {
   timeoutSec: 900,
 };
 
+/** What the sandbox resolves `crucible/verifier:test` to before it launches the container. */
+const RESOLVED = `crucible/verifier@sha256:${"a".repeat(64)}`;
+
 describe("the environment the run records", () => {
-  it("records the image that actually ran, not a placeholder", () => {
-    const env = environmentOf({ sandbox: LOCAL_SANDBOX, degraded: false });
-    expect(env.imageDigest).toBe(LOCAL_SANDBOX.image);
+  it("records the resolved digest as the digest and the tag only as the request", () => {
+    const env = environmentOf({
+      sandbox: LOCAL_SANDBOX,
+      imageDigest: RESOLVED,
+      degraded: false,
+    });
+    // The field named for a digest carries a digest. The tag is still recorded — it is a
+    // true fact about what the operator asked for — but where its own name says "requested".
+    expect(env.imageDigest).toBe(RESOLVED);
+    expect(env.imageRequested).toBe(LOCAL_SANDBOX.image);
     expect(env.limits?.memory).toBe("1g");
     expect(env.limits?.cpus).toBe("2");
     expect(env.limits?.wallClockSec).toBe("900");
   });
 
+  it("never writes the requested tag into imageDigest", () => {
+    const env = environmentOf({ sandbox: LOCAL_SANDBOX, degraded: false });
+    // Unresolved is recorded as *absent*, not as the tag: a reader must be able to tell
+    // "this environment is pinned" from "nobody could pin it", and a tag in a field named
+    // imageDigest reads as the former either way.
+    expect(env.imageDigest).toBeUndefined();
+    expect("imageDigest" in env).toBe(false);
+    expect(env.imageRequested).toBe(LOCAL_SANDBOX.image);
+    // And the shared builder refuses the tag outright, so no producer can launder one in.
+    expect(() =>
+      buildEvalManifest(
+        {
+          taskDigest: SPEC,
+          suiteDigest: SUITE,
+          evaluator: { id: "argus", version: "1.4.0" },
+          model: { provider: "hetzner", name: "qwen", version: "Qwen/Qwen3.6-35B-A3B" },
+          environment: { imageDigest: LOCAL_SANDBOX.image },
+          seed: "s",
+          scoring: {
+            feeSchedule: "legacy-v1",
+            feeScheduleVersion: "1",
+            decision: "deterministic-suite",
+          },
+          startedAt: "2026-10-27T12:00:00.000Z",
+          finishedAt: "2026-10-27T12:00:41.000Z",
+        },
+      ),
+    ).toThrow(/not an immutable digest/);
+  });
+
+  it("drops a digest for a run that had no container to run it in", () => {
+    const env = environmentOf({
+      sandbox: LOCAL_SANDBOX,
+      imageDigest: RESOLVED,
+      degraded: true,
+    });
+    // Nothing was containerised, so no image ran; whatever the caller had resolved describes
+    // an environment this run did not use, and recording it would be a fresh lie.
+    expect(env.imageDigest).toBeUndefined();
+    expect(env.isolation).toBe("unisolated");
+  });
+
+  it("says in the record which way the run was isolated", () => {
+    expect(
+      environmentOf({ sandbox: LOCAL_SANDBOX, imageDigest: RESOLVED, degraded: false }).isolation,
+    ).toBe("container");
+    expect(environmentOf({ sandbox: LOCAL_SANDBOX, degraded: true }).isolation).toBe("unisolated");
+  });
+
   it("records the budget as a number, because a string would be read as a different unit", () => {
-    const env = environmentOf({ sandbox: LOCAL_SANDBOX, degraded: false, timeoutMs: 900_000 });
+    const env = environmentOf({
+      sandbox: LOCAL_SANDBOX,
+      imageDigest: RESOLVED,
+      degraded: false,
+      timeoutMs: 900_000,
+    });
     expect(env.timeoutMs).toBe(900_000);
     expect(typeof env.timeoutMs).toBe("number");
   });

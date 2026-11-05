@@ -179,7 +179,7 @@ contract Demo is Script {
         seats[1] = vm.addr(pkArgus2);
         seats[2] = vm.addr(pkArgus3);
         alloyRegistry = new AlloyRegistry();
-        trials = new CrucibleTrials(treasury, address(alloyRegistry), seats);
+        trials = new CrucibleTrials(treasury, vm.addr(pkDeployer), address(alloyRegistry), seats);
         alloyRegistry.setForge(address(trials));
 
         // VerificationReceipt (gates 415-418): deploy, wire into CrucibleTrials, enable.

@@ -31,8 +31,8 @@ mechanisms.
 | Status | Count |
 |---|---|
 | Verified | 20 |
-| Existing | 99 |
-| Partial | 100 |
+| Existing | 98 |
+| Partial | 101 |
 | Missing | 76 |
 | Unverified | 0 |
 | Blocked | 5 |
@@ -148,7 +148,7 @@ dependency column names the slice that closes it.
 | 073 | Reject artifacts whose hashes or signatures do not verify | **Existing** | Principal engineer | packages/argus re-derives; the contract recomputes the EIP-712 digest and requires the agent's current runner | — | P0 |
 | 074 | Prevent agents from modifying grader code or hidden tests | **Existing** | Principal engineer | touchesTests fails closed | — | P0 |
 | 075 | Fail closed when changed-file detection is ambiguous | **Existing** | Principal engineer | touchesTests fails closed on a non-empty patch that touches the suite | — | P0 |
-| 076 | Label local or unisolated execution as degraded | **Existing** | Principal engineer | packages/forge-runner/src/status.ts; README states the live path can run unisolated | — | P0 |
+| 076 | Label local or unisolated execution as degraded | **Partial** | Principal engineer | the run record carries environment.isolation (sandbox.degraded -> RunOutcome.degraded) and an unresolvable image refuses the run; NOT projected by the API or rendered in the UI, so the label still reaches no reader | — | P0 |
 | 077 | Disqualify degraded execution from high-trust rewarded trials | **Partial** | Principal engineer | mayEarnAtTier refuses frontier payouts below tier (gate 901); the rule is not enforced on every reward path | S2, S3 | P1 |
 | 078 | Record runner version, host class and isolation mode | **Partial** | Principal engineer | the manifest records the image digest and limits; the runner version and host class are not recorded | S1b | P1 |
 | 079 | Independent replay for high-value claims | **Missing** | Principal engineer | — | S3 | P2 |
@@ -365,7 +365,7 @@ dependency column names the slice that closes it.
 | 226 | Immutable release artifacts and provenance metadata | **Partial** | Principal engineer | digest-pinned tools; no per-release provenance attestation | S5 | P1 |
 | 227 | Require green gates before promotion between develop, staging and main | **Existing** | Principal engineer | the promote workflow refuses at 'refuse a red gate' — observed refusing three promotions | — | P0 |
 | 228 | Rollback restores the previous working service without resetting funded chain state | **Existing** | Principal engineer | the deploy reconciles the edge before the container swap; the chain is untouched | — | P0 |
-| 229 | Verify chain ID, bytecode hash and contract addresses after deployment | **Existing** | Principal engineer | scripts/mainnet-preflight.mjs; the deploy refuses a stale address | — | P0 |
+| 229 | Verify chain ID, bytecode hash and contract addresses after deployment | **Existing** | Principal engineer | scripts/deploy-network.mjs asks the node eth_chainId BEFORE forge starts and refuses a mismatch (ADR-0020); hasCode re-reads each deployed address; scripts/mainnet-preflight.mjs gates production; proven by packages/eval/test/deploy-network.test.ts (13 tests, 2 mutations) | — | P0 |
 | 230 | Require a release checklist and named approver for production changes | **Partial** | Principal engineer | docs/crucible-deploy-day-gates.pdf is the checklist; no named approver field | S5 | P1 |
 ## Testing and quality engineering
 

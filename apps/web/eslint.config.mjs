@@ -33,7 +33,39 @@ export default [
     },
     plugins: { "react-hooks": hooks },
     rules: {
-      ...hooks.configs.recommended.rules,
+      // The two rules this file was written for. They are named rather than inherited
+      // because `configs.recommended` is not a stable set: `eslint-plugin-react-hooks`
+      // 5 → 7 (dependabot, 2026-10-30) widened it from these two into a fifteen-rule React
+      // Compiler eligibility suite, which landed 37 errors on a tree that had been lint
+      // green for a week and stopped `ci` from reaching anything after it. An inherited
+      // rule set is a gate somebody else sets.
+      "react-hooks/rules-of-hooks": "error",
+      "react-hooks/exhaustive-deps": "warn",
+      // The compiler family, downgraded to warnings rather than switched off.
+      //
+      // This app is not built with the React Compiler (`next build --webpack`, no
+      // babel-plugin-react-compiler), so these rules describe a property the build does not
+      // depend on — memoisation eligibility — not a correctness trap. Two of them also
+      // contradict deliberate, tested behaviour: `set-state-in-effect` fires on the account
+      // change reset in `src/lib/useTx.ts`, whose whole point is a synchronous wipe of five
+      // surfaces when the connected wallet changes, and that reset is pinned by a mutation
+      // proof. Rewriting tested money-path effects to satisfy an advisory rule is the
+      // opposite of what this config is for.
+      //
+      // They still print, and CI shows the count, because this repository's own rule is that
+      // a degraded result is never hidden as a pass.
+      "react-hooks/set-state-in-effect": "warn",
+      "react-hooks/refs": "warn",
+      "react-hooks/immutability": "warn",
+      "react-hooks/purity": "warn",
+      "react-hooks/static-components": "warn",
+      "react-hooks/use-memo": "warn",
+      "react-hooks/preserve-manual-memoization": "warn",
+      "react-hooks/globals": "warn",
+      "react-hooks/error-boundaries": "warn",
+      "react-hooks/set-state-in-render": "warn",
+      "react-hooks/gating": "warn",
+      "react-hooks/config": "warn",
       // `no-undef` cannot see TypeScript scopes and false-positives on every
       // ambient name; undefined identifiers are tsc's to catch, precisely.
       "no-undef": "off",

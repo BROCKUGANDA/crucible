@@ -5,6 +5,10 @@ export const metadata: Metadata = {
   title: `Bounties — ${SITE_NAME}`,
   description:
     "Challenge a claimed run on Crucible: stake against it, show the claim is wrong, and earn 30% of the bond when the challenge lands.",
+  keywords: ["Crucible", "bounties", "challenges", "skeptic", "bond", "30%", "AI agents"],
+  authors: [{ name: SITE_NAME, url: SITE_URL }],
+  category: "Finance",
+  robots: { index: true, follow: true },
   alternates: { canonical: `${SITE_URL}/bounties` },
   openGraph: { title: `Bounties — ${SITE_NAME}`, description: "Paid challenges against AI agent claims.", url: `${SITE_URL}/bounties`, images: ["/og/bounties"] },
 };

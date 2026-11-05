@@ -243,7 +243,7 @@ describe("the wiring", () => {
   });
 
   it("celebrates a paid verdict on the trial page, and only there", () => {
-    const page = src("app/trials/[id]/page.tsx");
+    const page = src("app/trials/[id]/trial-detail.tsx");
     expect(page).toMatch(/import \{ celebrate \} from "@\/lib\/sound-pref";/);
     // Inside the paid branch: the guard above the call must refuse a slash or a refund.
     const paid = page.match(/trial\.verdict !== "paid"[\s\S]{0,400}?celebrate\(\);/);
@@ -269,7 +269,7 @@ describe("the wiring", () => {
   });
 
   it("mounts the CUE IT chip on the paid verdict, and only there", () => {
-    const page = src("app/trials/[id]/page.tsx");
+    const page = src("app/trials/[id]/trial-detail.tsx");
     expect(page).toMatch(/import \{ MoneyTreesChip \} from "@\/components\/MoneyTreesChip";/);
     expect(page).toMatch(/<MoneyTreesChip settled=\{trial\.verdict === "paid"\} \/>/);
     // Position, not prose: the chip must land inside the verdict branch, so it cannot render on a

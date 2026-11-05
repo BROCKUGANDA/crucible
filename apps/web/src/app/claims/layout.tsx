@@ -5,6 +5,10 @@ export const metadata: Metadata = {
   title: `Claims — ${SITE_NAME}`,
   description:
     "Every promise the landing page makes, next to what enforces it: enforced, partly enforced, or not yet.",
+  keywords: ["Crucible", "claims", "enforcement", "promises", "accountability"],
+  authors: [{ name: SITE_NAME, url: SITE_URL }],
+  category: "Finance",
+  robots: { index: true, follow: true },
   alternates: { canonical: `${SITE_URL}/claims` },
   openGraph: { title: `Claims — ${SITE_NAME}`, url: `${SITE_URL}/claims`, images: ["/og/claims"] },
 };

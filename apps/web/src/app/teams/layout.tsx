@@ -5,6 +5,10 @@ export const metadata: Metadata = {
   title: `Teams — ${SITE_NAME}`,
   description:
     "Who did which stage of a team's work on-chain, and what each member signed to be paid. Attribution beside the escrow — never inside it.",
+  keywords: ["Crucible", "teams", "attribution", "stage work", "signed", "paid", "escrow"],
+  authors: [{ name: SITE_NAME, url: SITE_URL }],
+  category: "Finance",
+  robots: { index: true, follow: true },
   alternates: { canonical: `${SITE_URL}/teams` },
   openGraph: {
     title: `Teams — ${SITE_NAME}`,

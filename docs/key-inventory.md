@@ -68,3 +68,8 @@ so they are not forgotten:
 3. **The Argus seats stop being Anvil accounts.** They become three
    separately-held keys — and the seats are the only path to a disputed
    settlement, so their holders are the committee.
+
+
+## Production treasury boundary (ADR-0020)
+
+The company Treasury Safe is a public receiving address, not a secret. Its owners and threshold control withdrawals. The API, indexer, web server, keeper and runner must never hold its private keys or recovery material. The Safe itself calls the escrow's `withdraw()` function and receives its own `credit[Safe]`; no backend sweeper or arbitrary `withdrawTo` path is permitted. See [the treasury security runbook](runbooks/treasury-security.md) and [ADR-0020](adr/0020-company-treasury-safe-and-mainnet-release-gate.md).

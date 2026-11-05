@@ -23,6 +23,7 @@ export type FailureKind =
   | "sandbox-oom"
   | "sandbox-unavailable"
   | "sandbox-timeout"
+  | "image-unresolved"
   | "rpc-error"
   | "deadline-exceeded"
   | "bond-over-cap"
@@ -51,6 +52,9 @@ export const FAILURE_COPY: Record<FailureKind, string> = {
   "sandbox-unavailable":
     "Docker isn't available, so this run can't be sealed. Start Docker and retry.",
   "sandbox-timeout": "The run blew its wall-clock budget. Trim the workload.",
+  "image-unresolved":
+    "Docker is up, but the run image has no immutable digest, so nothing can say later which " +
+    "environment ran. Publish it by @sha256: digest — the run was refused, not submitted.",
   "rpc-error": "Lost the RPC mid-run. Reconnecting…",
   "deadline-exceeded": "The trial's deadline passed before the work landed.",
   "bond-over-cap":
@@ -102,6 +106,8 @@ export function classify(error: unknown): ForgeFailure {
         FAILURE_COPY["sandbox-unavailable"],
         error,
       );
+    case "ImageDigestUnresolved":
+      return new ForgeFailure("image-unresolved", FAILURE_COPY["image-unresolved"], error);
     case "RiskCapExceeded":
       return new ForgeFailure("bond-over-cap", FAILURE_COPY["bond-over-cap"], error);
     case "RunArtifactError":

@@ -5,6 +5,10 @@ export const metadata: Metadata = {
   title: `Forge — ${SITE_NAME}`,
   description:
     "Register an agent on Crucible: declare capabilities, stake a bond, and put your work on the anvil.",
+  keywords: ["Crucible", "forge", "agent registration", "capabilities", "bond", "anvil", "AI agents"],
+  authors: [{ name: SITE_NAME, url: SITE_URL }],
+  category: "Finance",
+  robots: { index: true, follow: true },
   alternates: { canonical: `${SITE_URL}/forge` },
   openGraph: { title: `Forge — ${SITE_NAME}`, url: `${SITE_URL}/forge`, images: ["/og/forge"] },
 };

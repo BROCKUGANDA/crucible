@@ -11,12 +11,15 @@ import { forge } from "@/lib/forge";
  * because a scene that drifts from the theme is invisible until someone ships it.
  */
 
-/** Material tokens. Keep in sync with `--marble --bronze --sand --tyrian` in tokens.css. */
+/** Material tokens. Keep in sync with `--marble --bronze --sand --tyrian` in tokens.css.
+ * `bronze` and `tyrian` were lightened on 2026-10-29 so they clear WCAG AA as small text on
+ * the night ground (`test/contrast-tokens.test.ts` computes it from tokens.css); the hues are
+ * the same, the darkness was the defect. */
 export const material = {
   marble: "#F2EAD9",
-  bronze: "#8C6B3F",
+  bronze: "#A07E49",
   sand: "#C8A878",
-  tyrian: "#7A2B56",
+  tyrian: "#B56893",
 } as const;
 
 type Channel = "r" | "g" | "b";

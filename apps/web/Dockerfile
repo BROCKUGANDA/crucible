@@ -20,15 +20,18 @@ COPY packages/eval/package.json packages/eval/
 COPY packages/registry/package.json packages/registry/
 COPY packages/forge-runner/package.json packages/forge-runner/
 COPY packages/frame/package.json packages/frame/
+COPY packages/arena-events/package.json packages/arena-events/
 COPY packages/forge-runner/package.json packages/forge-runner/
 COPY packages/indexer/package.json packages/indexer/
 COPY packages/smith-sdk/package.json packages/smith-sdk/
 COPY packages/warden/package.json packages/warden/
 COPY grader/package.json grader/
+COPY packages/site-index/package.json packages/site-index/
 COPY apps/api/package.json apps/api/
 COPY apps/keeper/package.json apps/keeper/
 COPY apps/juror/package.json apps/juror/
 COPY apps/funder/package.json apps/funder/
+COPY apps/fork-host/package.json apps/fork-host/
 COPY apps/web/package.json apps/web/
 RUN npm ci --ignore-scripts
 

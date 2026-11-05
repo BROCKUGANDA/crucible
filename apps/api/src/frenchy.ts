@@ -1,6 +1,8 @@
 import { Hono } from "hono";
 import { dlq } from "./dlq.js";
 import type { ReadModel } from "@crucible/indexer";
+import { FRENCHY_SYSTEM_PROMPT } from "./frenchy/prompt.js";
+import { parseEnvelope, spokenWindow, type FrenchyAnswer } from "./frenchy/envelope.js";
 
 export type FrenchyMode = "text" | "voice";
 
@@ -16,6 +18,16 @@ export interface FrenchyBrain {
   baseUrl?: string;
   /** Injected by tests; production uses the platform fetch. */
   fetchImpl?: typeof fetch;
+  /**
+   * How long the brain may take, in milliseconds.
+   *
+   * A brain that answers in two seconds and one that takes twenty are both
+   * working; the difference is the provider and the size of the prompt, and
+   * neither is a fault. The blanket request timeout is ten seconds, so this
+   * is the ceiling for the brain itself - and the browser says "Thinking..."
+   * for as long as it takes.
+   */
+  timeoutMs?: number;
 }
 
 /** The premium voice's provider configuration. */
@@ -45,17 +57,7 @@ export interface FrenchyConfig {
  * The system prompt for Frenchy — butler register, concise, optional light French flourish,
  * always answers in <= 3 spoken sentences unless asked to expand.
  */
-const SYSTEM_PROMPT = `You are Frenchy, the butler of the Crucible Forge. You speak in a refined butler register — concise, courteous, with an optional light French flourish. 
-
-CRITICAL RULES:
-1. You NEVER sign transactions. You may draft intents ("post a trial with 1 ETH reward") and render a confirmation card, but the wallet confirmation click is ALWAYS human. Voice → intent → confirm → action, no shortcuts.
-2. You answer in 3 spoken sentences MAXIMUM unless explicitly asked to expand. Spoken UI dies with paragraphs.
-3. You are grounded in live CRUCIBLE state — open trials, latest verdicts, escrowed totals, drift/epoch status, wallet connection. Answer from this context, not hallucination.
-4. You are a garnish on the show, never the show. The Warden owns the stage.
-
-Current CRUCIBLE context will be injected with each request. Use it.
-
-5. When the visitor asks about a surface below, answer from that list instead of repeating a greeting or one canned sentence. If a surface is absent from the context, say you do not have it rather than inventing it.`;
+const SYSTEM_PROMPT = FRENCHY_SYSTEM_PROMPT;
 
 /**
  * Build the context string from the live read model.
@@ -100,7 +102,8 @@ CRUCIBLE LIVE CONTEXT (as of ${new Date(now).toISOString()}):
 - Latest verdicts (${trials.filter((t) => t.status === "settled").length} total): ${latestVerdicts}
 - Active trials: ${activeTrials.length} (staked: ${formatEth(totalStaked)} ETH, rewards: ${formatEth(totalRewards)} ETH)
 - Active agents: ${activeAgents}/${totalAgents}
-- Surfaces: /trials (the forge); /verticals (the RWA NAV and PayFi reconciliation exams); /escrow (a wallet's ETH: locked in trials, free stake, or claimable); /mcp (eleven tools, resource subscriptions, unsigned transaction drafts); sponsor on-ramp (a single-use Coinbase session; the provider sends ETH to the sponsor's own wallet).
+- Surfaces: the site index in the prompt lists every route of this site, what it is for, and what a visitor can do there; a path that is not in it is not a page, and the host refuses it.
+- Endpoints that are not pages: /mcp (eleven tools, resource subscriptions, unsigned transaction drafts); sponsor on-ramp (a single-use Coinbase session; the provider sends ETH to the sponsor's own wallet).
 - Settlement: native ETH only; the fee is five percent (500 bps); no ERC-20, no bridge, and no RWA custody.
 - Your wallet: [INJECTED BY CLIENT]
 `.trim();
@@ -143,6 +146,70 @@ export async function askLLM(
   history: { role: "user" | "assistant"; content: string }[],
   signal?: AbortSignal,
 ): Promise<string> {
+  const raw = await askProvider(config, prompt, history, signal);
+  const { answer } = parseEnvelope(raw);
+  return answer ? answer.spoken : spokenWindow(raw);
+}
+
+/**
+ * The whole answer: what to say, what to show, and what to do.
+ *
+ * The chat route uses this; the speech-to-speech host uses `askLLM`, because
+ * a voice turn wants the line and nothing else. Both go through the same
+ * parser, so a model that answers in the envelope is understood the same way
+ * in both places - one brain, one prompt, one reader.
+ *
+ * A model that does not answer in the envelope at all is not a failure: the
+ * raw text becomes the spoken line (cut to what the voice can carry) and the
+ * panel shows the whole of it, which is what happened before the envelope
+ * existed.
+ */
+export async function askLLMDetailed(
+  config: FrenchyBrain,
+  prompt: string,
+  history: { role: "user" | "assistant"; content: string }[],
+  signal?: AbortSignal,
+): Promise<FrenchyAnswer> {
+  const raw = await askProvider(config, prompt, history, signal);
+  const { answer, refused } = parseEnvelope(raw);
+  for (const reason of refused) dlq.push("frenchy.action", reason);
+  if (answer) return answer;
+  return {
+    spoken: spokenWindow(raw),
+    detail: raw.trim().slice(0, 4_000) || null,
+    action: null,
+  };
+}
+
+/**
+ * How long the brain may take.
+ *
+ * Thirty seconds by default, because a provider that is slow is still
+ * answering, and the browser says "Thinking..." the whole time. The visitor
+ * is not better served by a 504 than by an answer that arrives late.
+ */
+export const DEFAULT_BRAIN_TIMEOUT_MS = 30_000;
+
+function brainTimeoutMs(config: FrenchyBrain): number {
+  const value = config.timeoutMs;
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? value
+    : DEFAULT_BRAIN_TIMEOUT_MS;
+}
+
+/**
+ * The provider call itself.
+ *
+ * Split out so the two shapes of "ask" - a line, or the whole answer - share
+ * one request. Two requests would be two places for the model's answer to
+ * drift.
+ */
+async function askProvider(
+  config: FrenchyBrain,
+  prompt: string,
+  history: { role: "user" | "assistant"; content: string }[],
+  signal?: AbortSignal,
+): Promise<string> {
   const baseUrl = (config.baseUrl ?? "https://api.openai.com/v1").replace(/\/+$/, "");
   const url = `${baseUrl}/chat/completions`;
 
@@ -161,12 +228,15 @@ export async function askLLM(
     body: JSON.stringify({
       model: config.model,
       messages,
-      max_tokens: 300,
+      // Enough room for the spoken line, the detail and the action. The old
+      // 300 was enough for three sentences and nothing else, which is the
+      // shape the old prompt asked for.
+      max_tokens: 900,
       temperature: 0.7,
     }),
     signal: signal
-      ? AbortSignal.any([signal, AbortSignal.timeout(15_000)])
-      : AbortSignal.timeout(15_000),
+      ? AbortSignal.any([signal, AbortSignal.timeout(brainTimeoutMs(config))])
+      : AbortSignal.timeout(brainTimeoutMs(config)),
   });
 
   if (!res.ok) {
@@ -318,8 +388,13 @@ export function createFrenchyRoutes(config: FrenchyConfig | null, deps: FrenchyD
     const fullPrompt = `${context}${walletContext}\n\nUser: ${prompt.trim()}`;
 
     try {
-      const reply = await askLLM(config.llm, fullPrompt, validatedHistory);
-      return c.json({ reply, mode: mode === "voice" ? "voice" : "text" });
+      const answer = await askLLMDetailed(config.llm, fullPrompt, validatedHistory);
+      return c.json({
+        reply: answer.spoken,
+        detail: answer.detail,
+        action: answer.action,
+        mode: mode === "voice" ? "voice" : "text",
+      });
     } catch (err) {
       dlq.push("frenchy", err instanceof Error ? err.message : "brain error");
       return c.json({ error: "Frenchy is momentarily indisposed" }, 502);

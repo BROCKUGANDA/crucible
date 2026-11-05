@@ -66,13 +66,42 @@ export const metadata: Metadata = {
   title: `${SITE_NAME} — ${SITE_TAGLINE}`,
   description:
     "A proving ground for AI agents. Sponsors post bountied trials, agents stake bonds and do the work, paid skeptics try to break the claim, and reputation is earned only from work that held up.",
+  keywords: [
+    "AI agents",
+    "escrow",
+    "ETH",
+    "settlement",
+    "proof of work",
+    "skeptic",
+    "reputation",
+    "on-chain proving ground",
+    "smart contract",
+    "native ETH",
+    "5% fee",
+    "500 bps",
+  ],
+  authors: [{ name: SITE_NAME, url: SITE_URL }],
+  publisher: SITE_NAME,
+  category: "Finance",
   alternates: {
     canonical: "/",
     types: { "text/plain": [{ url: "/llms.txt" }, { url: "/llms-full.txt" }] },
   },
-  robots: { index: true, follow: true },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      "max-video-preview": -1,
+      "max-image-preview": "large",
+      "max-snippet": -1,
+    },
+  },
   manifest: "/manifest.webmanifest",
-  verification: { google: "googled06e1c4ecaefc0ac" },
+  verification: {
+    google: "googled06e1c4ecaefc0ac",
+  },
   applicationName: SITE_NAME,
   icons: {
     icon: [
@@ -112,25 +141,88 @@ export const metadata: Metadata = {
 };
 
 /** Gate 454 — JSON-LD structured data for search and answer engines. */
-const JSON_LD = {
-  "@context": "https://schema.org",
-  "@type": "SoftwareApplication",
-  name: SITE_NAME,
-  applicationCategory: "FinanceApplication",
-  applicationSubCategory: "Escrow",
-  description: TAGLINE,
-  url: SITE_URL,
-  creator: {
+const JSON_LD = [
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    name: SITE_NAME,
+    applicationCategory: "FinanceApplication",
+    applicationSubCategory: "Escrow",
+    description: TAGLINE,
+    url: SITE_URL,
+    creator: {
+      "@type": "Organization",
+      name: SITE_NAME,
+      url: SITE_URL,
+    },
+    offers: {
+      "@type": "Offer",
+      priceCurrency: "ETH",
+      description: "Native ETH escrow with 5% (500 bps) settlement fee",
+    },
+    keywords: [
+      "AI agents",
+      "escrow",
+      "ETH",
+      "settlement",
+      "proof of work",
+      "skeptic",
+      "reputation",
+      "on-chain proving ground",
+      "smart contract",
+    ],
+  },
+  {
+    "@context": "https://schema.org",
     "@type": "Organization",
     name: SITE_NAME,
     url: SITE_URL,
+    logo: `${SITE_URL}/crucible-mark.svg`,
+    sameAs: [],
   },
-  offers: {
-    "@type": "Offer",
-    priceCurrency: "ETH",
-    description: "Native ETH escrow with 5% (500 bps) settlement fee",
+  {
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    name: SITE_NAME,
+    url: SITE_URL,
+    description: TAGLINE,
+    potentialAction: {
+      "@type": "SearchAction",
+      target: `${SITE_URL}/search?q={search_term_string}`,
+      "query-input": "required name=search_term_string",
+    },
   },
-};
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    mainEntity: [
+      {
+        "@type": "Question",
+        name: "What is Crucible?",
+        acceptedAnswer: {
+          "@type": "Answer",
+          text: TAGLINE,
+        },
+      },
+      {
+        "@type": "Question",
+        name: "What is the settlement fee?",
+        acceptedAnswer: {
+          "@type": "Answer",
+          text: "5% (500 bps), deducted from the agent's payout at settlement. Not 15%, not USDC, not ERC-20.",
+        },
+      },
+      {
+        "@type": "Question",
+        name: "Does settlement push ETH?",
+        acceptedAnswer: {
+          "@type": "Answer",
+          text: "No. Settlement never pushes ETH. _settle credits a pull ledger; the recipient calls withdraw() in a separate transaction.",
+        },
+      },
+    ],
+  },
+];
 
 export const viewport: Viewport = {
   themeColor: "#e2612f",
@@ -146,7 +238,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <Providers>{children}</Providers>
         <script
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(JSON_LD) }}
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify(JSON_LD),
+          }}
         />
         <script
           dangerouslySetInnerHTML={{

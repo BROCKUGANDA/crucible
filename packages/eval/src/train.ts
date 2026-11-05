@@ -24,6 +24,8 @@ export interface Sample {
   score: number;
   verdict: "PASS" | "VOID" | "FAIL";
   detail: string;
+  /** Per-weight breakdown from the scorer — carried to the trajectory record. */
+  weights: Record<string, number>;
   seed: string;
   temperature: number;
 }
@@ -80,6 +82,7 @@ export async function bestOfN(
         score,
         verdict,
         detail,
+        weights,
         seed: config.seed,
         temperature: config.temperature,
       });
@@ -113,7 +116,7 @@ export async function bestOfN(
       config.modelId,
       config.manifest,
       config.promptVersion,
-      weightsFromScore(best.score),
+      best.weights,
       "not-run",
       true,
       best.seed,
@@ -136,7 +139,7 @@ export async function bestOfN(
           config.modelId,
           config.manifest,
           config.promptVersion,
-          weightsFromScore(worstFail.score),
+          worstFail.weights,
           "not-run",
           true,
           worstFail.seed,
@@ -146,11 +149,6 @@ export async function bestOfN(
   }
 
   return { sft, dpo, skipped };
-}
-
-/** Derive a flat per-weight breakdown from a scalar score (placeholder — real impl splits by weight). */
-function weightsFromScore(score: number): Record<string, number> {
-  return { overall: score };
 }
 
 /** Write best-of-n results to disk as JSONL files. */

@@ -1,3 +1,4 @@
+import { tmpdir } from "node:os";
 import {
   buildArtifact,
   computeRunHash,
@@ -13,7 +14,17 @@ import {
 } from "@crucible/smith";
 import { touchesTests } from "./agent.js";
 import { emitManifest, type EmittedManifest, type ManifestInputs } from "./manifest.js";
-import { Sandbox, SandboxUnavailable, DEFAULT_SANDBOX, resolveVerifierImage, type SandboxSpec } from "./sandbox.js";
+import {
+  Sandbox,
+  SandboxUnavailable,
+  DEFAULT_SANDBOX,
+  reapContainers,
+  runningSandboxLabels,
+  reapWorkspaces,
+  resolveVerifierImage,
+  type SandboxDeps,
+  type SandboxSpec,
+} from "./sandbox.js";
 import { strictSandboxFor, type TrialTier } from "./tiers.js";
 import {
   FAILURE_COPY,
@@ -68,6 +79,23 @@ export interface RunnerDeps {
   chainId: number;
   verifyingContract: `0x${string}`;
   model: string;
+  /**
+   * The Docker-CLI seam passed to `Sandbox.create`.
+   *
+   * For tests, which have no daemon and no verifier image on every machine, and for an
+   * operator who wants the probe and the digest inspection to run through something other
+   * than the `docker` on PATH. Production leaves it undefined and gets the real CLI.
+   */
+  sandboxDeps?: SandboxDeps;
+  /**
+   * Pre-flight orphan hygiene, called once per run before the sandbox is opened.
+   *
+   * The default shells out to Docker and scans the system temp dir for wreckage
+   * earlier runs left behind. Tests replace it: unit suites run beside parallel
+   * sandbox tests whose containers must never be targets, and no unit test should
+   * touch a real daemon to prove a green. Returning zero counts is the no-op.
+   */
+  reap?: () => Promise<[containers: number, workspaces: number]>;
   /**
    * The evaluation's own inputs, for the manifest.
    *
@@ -143,6 +171,14 @@ interface RunState {
   parsed: TestResult[];
   lastOutput?: string;
   degraded: boolean;
+  /**
+   * The immutable image reference the container launched from, read off the sandbox that
+   * ran the work. `undefined` whenever `degraded` is true — there is no container, so there
+   * is no image to name, and the manifest says so instead of quoting the tag.
+   */
+  imageDigest?: string;
+  /** The spec the sandbox was created from, after any tier raising. */
+  sandboxSpec?: SandboxSpec;
 }
 
 export class ForgeRunner {
@@ -167,11 +203,41 @@ export class ForgeRunner {
       emit("quenching-spec", `quenching spec ${short(req.specCID)}`);
       const specText = await this.fetchSpecOrFail(req.specCID);
 
+      // Orphan hygiene before a sandbox is opened, best-effort and never gating: a
+      // reaper that cannot run (no daemon yet, unreadable temp dir) says nothing
+      // about whether this run can execute, so its failures are swallowed here by
+      // design. What it clears is residue from earlier runs — containers whose
+      // exit-time removal failed, temp workspaces a dead process left behind — and
+      // it only touches containers that are no longer running and workspaces
+      // nothing has touched in over a day, so a concurrent live run is never a
+      // target.
+      const reap = this.deps.reap ?? (async () => [
+        await reapContainers().catch(() => 0),
+        // Workspace reaping consults the daemon first: a workspace a running
+        // container still occupies is live ownership, not stale mtime.
+        await runningSandboxLabels()
+          .then((live) => reapWorkspaces(86_400_000, tmpdir(), live))
+          .catch(() => 0),
+      ] as [number, number]);
+      const [orphanContainers, orphanWorkspaces] = await reap();
+      if (orphanContainers + orphanWorkspaces > 0) {
+        emit(
+          "quenching-spec",
+          `pre-flight: reaped ${orphanContainers} orphaned container(s), ` +
+            `${orphanWorkspaces} stale workspace(s)`,
+        );
+      }
+
       sandbox = await this.openSandbox(req);
       state.degraded = sandbox.degraded;
+      state.imageDigest = sandbox.imageDigest;
+      state.sandboxSpec = sandbox.spec;
       if (sandbox.degraded) {
         // Say it out loud. A silent fallback would produce an artifact claiming
         // sandboxed execution it never had — exactly what a skeptic is paid to break.
+        // Saying it out loud is not enough on its own, which is why the same fact is
+        // written into the manifest the run emits (`environment.isolation`); a status
+        // line is gone by the time a skeptic reads the record.
         emit("forging", "⚠ no Docker: running unisolated (artifact marked degraded)");
       }
       await sandbox.writeSpec(specText);
@@ -311,7 +377,7 @@ export class ForgeRunner {
       // A run that throws produces no manifest, exactly as it produces no
       // artifact: there is no score to attribute, so there is nothing for a
       // manifest to describe.
-      const manifest = this.emitManifestFor(req, startedAt, Date.now(), state.degraded);
+      const manifest = this.emitManifestFor(req, startedAt, Date.now(), state);
 
       return {
         ok: true,
@@ -358,7 +424,7 @@ export class ForgeRunner {
     req: RunRequest,
     startedAt: number,
     finishedAt: number,
-    degraded: boolean,
+    state: Pick<RunState, "degraded" | "imageDigest" | "sandboxSpec">,
   ): EmittedManifest | undefined {
     const inputs = this.deps.manifest;
     if (!inputs || !req.specDigest || !req.suiteDigest) return undefined;
@@ -370,10 +436,16 @@ export class ForgeRunner {
         model: this.deps.model,
       },
       {
-        sandbox: this.deps.sandbox ?? { ...DEFAULT_SANDBOX, image: resolveVerifierImage() },
+        // The spec the sandbox was *built* from, not the one the caller passed in: a tier
+        // raises the floor (`strictSandboxFor`), and a manifest that recorded the un-raised
+        // limits would understate what the run actually ran under.
+        sandbox:
+          state.sandboxSpec ??
+          this.deps.sandbox ?? { ...DEFAULT_SANDBOX, image: resolveVerifierImage() },
+        imageDigest: state.imageDigest,
         tier: req.tier,
         timeoutMs: req.timeBudgetSec * 1000,
-        degraded,
+        degraded: state.degraded,
       },
       new Date(startedAt).toISOString(),
       new Date(finishedAt).toISOString(),
@@ -423,16 +495,18 @@ export class ForgeRunner {
   }
 
   private async openSandbox(req: RunRequest): Promise<Sandbox> {
+    const base = this.deps.sandbox ?? { ...DEFAULT_SANDBOX, image: resolveVerifierImage() };
+    const spec = req.tier === undefined ? base : strictSandboxFor(base, req.tier).spec;
     try {
-      return await Sandbox.create(
-        req.tier === undefined
-          ? (this.deps.sandbox ?? { ...DEFAULT_SANDBOX, image: resolveVerifierImage() })
-          : strictSandboxFor(this.deps.sandbox ?? { ...DEFAULT_SANDBOX, image: resolveVerifierImage() }, req.tier).spec,
-      );
+      return await Sandbox.create(spec, this.deps.sandboxDeps);
     } catch (err) {
       if (err instanceof SandboxUnavailable) {
         throw new ForgeFailure("sandbox-unavailable", err.message, err);
       }
+      // An image whose digest cannot be resolved is not "Docker is missing" — Docker is up,
+      // and the refusal is that the run would be unidentifiable afterwards. It gets its own
+      // kind rather than being filed under the outage copy, which would tell the operator to
+      // start Docker when the thing to do is publish the image by digest.
       throw classify(err);
     }
   }

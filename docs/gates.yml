@@ -1497,6 +1497,17 @@
 - id: 909
   title: The sponsorship queue and the treasury ledger are the owner's view (GET /faucet/applications and GET /faucet/ledger answer the owner wallet only, and say which of the two it is when they say no: no queue on this host, no owner configured, or a wallet that is not the owner; the ledger is read from the funder, the only party that knows what left the wallet holding the test ETH)
   frameworks: [soc2]
+- id: 916
+  title: One map of the site, and Frenchy is grounded in it (each route declares a descriptor beside its own page - what it is for, what a visitor can do there, the ids Frenchy may point at - and scripts/site-index.ts generates packages/site-index/src/generated.ts from them, refusing to write a map that lies: a route with no descriptor, a descriptor whose path disagrees with its route, or a point the page does not carry is an error; the API and the web app read the same generated map, so the map a visitor reads and the map the assistant acts on cannot disagree)
+  frameworks: [soc2]
+- id: 917
+  title: Frenchy answers in three parts - what to say, what to show, and what to do (the spoken line stays three sentences the voice can carry, the detail lands in the panel where it can be read properly, and the action is one of two verbs - navigate or point - checked against the site index before it leaves the server; a path that is not a page of this site, a point the page does not declare, a verb that is not navigate or point, or a path without its leading slash is refused and recorded, never repaired into the nearest one)
+  frameworks: [soc2]
+- id: 918
+  title: A signature outranks a redirect (while a wallet signature is open, Frenchy speaks and offers the destination instead of taking it - the wallet's dialog belongs to the page that opened it, and navigating underneath it would leave a confirmed transaction with no receipt on screen; the count of open signatures is global and never goes below zero, because the thing that must not move is the page)
+  frameworks: [soc2]
+  title: The sponsorship queue and the treasury ledger are the owner's view (GET /faucet/applications and GET /faucet/ledger answer the owner wallet only, and say which of the two it is when they say no: no queue on this host, no owner configured, or a wallet that is not the owner; the ledger is read from the funder, the only party that knows what left the wallet holding the test ETH)
+  frameworks: [soc2]
 frameworks:
   owasp-top10: "OWASP Web Top 10 (2021)"
   llm-top10: "OWASP LLM Top 10 (2025)"

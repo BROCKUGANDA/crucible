@@ -18,6 +18,7 @@ import {
   hybridDecrypt,
   LONGEVITY_MODE,
 } from "./hybrid.js";
+import { keccak256Bytes } from "./keccak.js";
 
 /** Banned primitive imports — any direct use of node:crypto outside this module fails CI. */
 export const BANNED_CRYPTO_CALLS = ["createHash", "createHmac", "createCipher", "createCipheriv", "createDecipher", "createDecipheriv", "randomBytes"];
@@ -32,13 +33,12 @@ export function sha256(data: string | Uint8Array): string {
 }
 
 /**
- * Hash a message with keccak256.
- * In v1 this delegates to SHA-256 with a domain separator; production swaps
- * in a vetted keccak256 implementation here (one file, gate 625).
+ * Hash a message with Keccak-256 (original Keccak padding — what the chain
+ * computes; NOT SHA-3's 0x06 domain). Real implementation in keccak.ts.
  */
 export function keccak256(data: string | Uint8Array): string {
   const input = typeof data === "string" ? new TextEncoder().encode(data) : data;
-  return createHash("sha256").update(new TextEncoder().encode("keccak256-v1:")).update(input).digest("hex");
+  return Buffer.from(keccak256Bytes(input)).toString("hex");
 }
 
 /**

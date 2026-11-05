@@ -82,7 +82,7 @@ export default function ClockPage() {
       ) : null}
       {dep.configured && isLoading && !read ? <Quenching label="reading the clock…" /> : null}
 
-      <section className="surface detail-panel clock-panel" aria-label="The clock">
+      <section className="surface detail-panel clock-panel" id="settlement-clock" aria-label="The clock">
         <h2 className="section-title section-title--tight">The clock</h2>
         <p className="clock-prose">
           A sponsor sets a submission window and a skeptic window when the trial is lit. Once a run

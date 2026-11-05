@@ -14,10 +14,11 @@ Start with the question you have, not the folder.
 ## I want to know why it is built this way
 
 - [`docs/adr/`](adr/) — the architecture decisions, including the product
-  boundary between this agent proving ground and the external USDC PRD, and
-  [`ADR-0018`](adr/0018-speech-to-speech-and-turn-monitor.md) — the
-  speech-to-speech host and the turn monitor, and why the caller's words never
-  reach the synthesiser.
+  boundary between this agent proving ground and the external USDC PRD,
+  [`ADR-0018`](adr/0018-speech-to-speech-and-turn-monitor.md) on the speech-to-speech
+  host and turn monitor, and [`ADR-0020`](adr/0020-company-treasury-safe-and-mainnet-release-gate.md)
+  on company treasury custody and [`ADR-0021`](adr/0021-explicit-owner-constructor-for-crucible-trials.md)
+  on explicit Owner Safe assignment for new CrucibleTrials deployments.
 - [`docs/pipeline-ledger.md`](pipeline-ledger.md) — the CI/promotion/deploy
   history and the failures that shaped it.
 
@@ -38,7 +39,8 @@ Start with the question you have, not the folder.
   [`collaboration-and-governance.md`](enterprise/collaboration-and-governance.md),
   and [`production-checklist-300.md`](enterprise/production-checklist-300.md)
   (all 300 requirements with a status, an owner, the evidence that decides
-  it, a dependency and a release phase).
+  it, a dependency and a release phase), plus the
+  [`treasury security workstream`](enterprise/treasury-security-workstream.md).
 
 ## I want the business case
 
@@ -65,6 +67,7 @@ Start with the question you have, not the folder.
   the one-way host and the speech-to-speech host), contracts, incident response.
 - [`docs/setup.md`](setup.md) — local development and the shared edge.
 - [`docs/runbooks/credentials-and-deploy.md`](runbooks/credentials-and-deploy.md) — where every credential comes from, box steps, and the mainnet checklist.
+- [`docs/runbooks/treasury-security.md`](runbooks/treasury-security.md) — Safe custody, treasury withdrawals, revenue reconciliation and incident response.
 - [`docs/key-inventory.md`](key-inventory.md) — every key, what it can reach,
   and what a leak costs.
 - [`docs/crucible-deploy-day-gates.pdf`](crucible-deploy-day-gates.pdf) — the

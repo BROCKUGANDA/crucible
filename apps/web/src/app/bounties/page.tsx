@@ -43,7 +43,7 @@ export default function BountiesPage() {
         <ColdForge line="No runs are open to challenge right now." cta="See open trials" href="/trials" />
       ) : null}
 
-      <div className="board">
+      <div className="board" id="challenge-list">
         {breakable.map((t) => (
           <BreakRow key={t.id} trial={t} chainNowMs={chainNowMs} />
         ))}

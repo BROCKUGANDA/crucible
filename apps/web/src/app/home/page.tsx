@@ -1,9 +1,13 @@
 "use client";
 
+import Link from "next/link";
 import { Chrome } from "@/components/Chrome";
 import { MetricCard, EmptyState, SectionHeader, StatusBadge } from "@/components/Primitives";
 import { useSnapshot } from "@/lib/useSnapshot";
 import { useAccount } from "wagmi";
+import { agentCard } from "@/lib/workspace-cards";
+
+
 
 export default function HomeDashboard() {
   const snapshot = useSnapshot();
@@ -13,6 +17,13 @@ export default function HomeDashboard() {
   const open = trials.filter((t: any) => t.status !== "settled");
   const settled = trials.filter((t: any) => t.status === "settled");
   const myAgent = agents.find((a: any) => a.owner?.toLowerCase() === address?.toLowerCase());
+  // The card asks a question about a wallet, so it must know whether one was read: an address
+  // left in wagmi's storage while the connection is gone is not a read wallet.
+  const myAgentCard = agentCard({
+    walletRead: isConnected && Boolean(address),
+    tier: myAgent?.tier,
+    hasAgent: Boolean(myAgent),
+  });
 
   return (
     <Chrome>
@@ -26,9 +37,9 @@ export default function HomeDashboard() {
         <MetricCard label="Settled trials" value={String(settled.length)} hint="verdicts recorded" />
         <MetricCard
           label="Your agent"
-          value={myAgent ? `Tier ${myAgent.tier ?? "—"}` : "—"}
-          hint={myAgent ? "registered" : "not registered yet"}
-          tone={myAgent ? "success" : "pending"}
+          value={myAgentCard.value}
+          hint={myAgentCard.hint}
+          tone={myAgentCard.tone}
         />
         <MetricCard
           label="Wallet"
@@ -44,18 +55,36 @@ export default function HomeDashboard() {
             <StatusBadge tone={isConnected ? "success" : "pending"}>{isConnected ? "done" : "todo"}</StatusBadge>{" "}
             Connect a wallet
           </p>
+          {!isConnected && (
+            <>
+              <p className="hint">Your wallet is disconnected — connect it to open the forge and sign trials.</p>
+              <Link className="btn btn-primary" href="/forge">
+                Open the forge
+              </Link>
+            </>
+          )}
         </li>
         <li className="surface detail-panel">
           <p className="hint">
             <StatusBadge tone={myAgent ? "success" : "pending"}>{myAgent ? "done" : "todo"}</StatusBadge>{" "}
             Register an agent
           </p>
+          {!myAgent && (
+            <Link className="btn btn-primary" href="/trials/new">
+              Post a trial
+            </Link>
+          )}
         </li>
         <li className="surface detail-panel">
           <p className="hint">
             <StatusBadge tone={open.length > 0 ? "success" : "pending"}>{open.length > 0 ? "done" : "todo"}</StatusBadge>{" "}
             Post or claim a trial
           </p>
+          {open.length === 0 && (
+            <Link className="btn btn-primary" href="/trials">
+              Browse trials
+            </Link>
+          )}
         </li>
       </ul>
 
@@ -66,7 +95,9 @@ export default function HomeDashboard() {
             .filter((t: any) => t.status === "challenged")
             .map((t: any) => (
               <li key={t.id} className="surface detail-panel">
-                <p className="mono">Trial #{t.id}</p>
+                <p className="mono">
+                  <Link href={`/trials/${t.id}`}>Trial #{t.id}</Link>
+                </p>
                 <p className="hint">
                   <StatusBadge tone="warning">challenged</StatusBadge> — a break was filed; Argus is
                   deliberating.
@@ -83,9 +114,16 @@ export default function HomeDashboard() {
         <ul className="stack">
           {settled.slice(-5).reverse().map((t: any) => (
             <li key={t.id} className="surface detail-panel">
-              <p className="mono">Trial #{t.id}</p>
+              <p className="mono">
+                <Link href={`/trials/${t.id}`}>Trial #{t.id}</Link>
+              </p>
               <p className="hint">
                 <StatusBadge tone={t.verdict === "pass" ? "success" : "error"}>{t.verdict ?? "settled"}</StatusBadge>
+              </p>
+              <p className="hint">
+                <Link href={`/trials/${t.id}/replay`}>Watch replay</Link>{" "}
+                <Link href={`/replay/${t.id}`}>Replay theater</Link>{" "}
+                <Link href={`/ghost/${t.id}`}>Ghost fork</Link>
               </p>
             </li>
           ))}
@@ -96,18 +134,18 @@ export default function HomeDashboard() {
 
       <SectionHeader title="Quick actions" />
       <div className="engram-actions">
-        <a className="btn btn-primary" href="/trials/new">
+        <Link className="btn btn-primary" href="/trials/new">
           Post a trial
-        </a>
-        <a className="btn btn-ghost" href="/trials">
+        </Link>
+        <Link className="btn btn-ghost" href="/trials">
           Browse trials
-        </a>
-        <a className="btn btn-ghost" href="/escrow">
+        </Link>
+        <Link className="btn btn-ghost" href="/escrow">
           View escrow
-        </a>
-        <a className="btn btn-ghost" href="/forge">
+        </Link>
+        <Link className="btn btn-ghost" href="/forge">
           Register agent
-        </a>
+        </Link>
       </div>
     </Chrome>
   );

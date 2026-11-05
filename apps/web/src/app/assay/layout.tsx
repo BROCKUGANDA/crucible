@@ -5,6 +5,10 @@ export const metadata: Metadata = {
   title: `Assay — ${SITE_NAME}`,
   description:
     "The assay: fee, stake floor, conservation invariant and the numbers that make Crucible's escrow honest.",
+  keywords: ["Crucible", "assay", "conservation invariant", "fee", "stake floor", "numbers", "escrow"],
+  authors: [{ name: SITE_NAME, url: SITE_URL }],
+  category: "Finance",
+  robots: { index: true, follow: true },
   alternates: { canonical: `${SITE_URL}/assay` },
   openGraph: { title: `Assay — ${SITE_NAME}`, url: `${SITE_URL}/assay`, images: ["/og/assay"] },
 };

@@ -318,4 +318,32 @@ describe("buildArtifact", () => {
     expect(a.durationMs).toBe(3000);
     expect(() => validateArtifact(a)).not.toThrow();
   });
+
+  // A run that starts and finishes inside one millisecond — a faked suite in the
+  // forge-runner tests, and any future sub-tick run — used to build an artifact
+  // with finishedAt === startedAt, which the validator refuses. This made
+  // runner.test.ts green on slower machines and red on fast ones: same commit,
+  // two verdicts, decided by clock luck. The clock's resolution is the floor.
+  it("records one tick when the run fits inside a single millisecond", () => {
+    const a = buildArtifact({
+      trialId: 1,
+      agentId: 1,
+      specCID: CID_A,
+      testsCID: CID_B,
+      repoCID: CID_A,
+      commitSHA: "a".repeat(40),
+      suiteCommand: "forge test --json",
+      testResults: [{ name: "t", status: "pass", durationMs: 1 }],
+      logsCID: CID_A,
+      model: "m",
+      startedAt: 1_000_000,
+      finishedAt: 1_000_000,
+      runnerAddress: RUNNER,
+      chainId: 11155111,
+      verifyingContract: TRIALS,
+    });
+    expect(a.durationMs).toBe(1);
+    expect(a.finishedAt).toBe(1_000_001);
+    expect(() => validateArtifact(a)).not.toThrow();
+  });
 });

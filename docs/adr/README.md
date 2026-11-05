@@ -29,6 +29,8 @@ way it does and what would have to change to revisit it.
 | [0016](0016-faucet-sizes-by-risk-not-denial.md) | The faucet sizes by risk; absence of evidence is not denial | Accepted |
 | [0017](0017-evaluation-manifest.md) | The evaluation manifest is hashed separately from the signed run artifact | Accepted |
 | [0018](0018-speech-to-speech-and-turn-monitor.md) | A speech-to-speech host and a turn monitor; the caller's words never reach the synthesiser | Accepted |
+| [0022](0022-organisation-tenancy-foundation.md) | Organisation and tenancy foundation | Accepted |
+| [0023](0023-production-infrastructure-postgres-redis-bullmq-r2.md) | Production infrastructure: PostgreSQL + Redis + BullMQ + R2 | Accepted |
 
 ## Writing a new ADR
 
