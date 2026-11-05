@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';  
+import { describe, expect, it } from 'vitest';
+import { rankBoardFull } from '../src/gates.js';
 import { compileDag, validateRoleContract, stepKey, appendMessage, verifyChain, validateSplits, shapley, collusionScore, claimOrder } from '../src/orchestration.js';  
 import { rankBoard, verifyRanking, applyCaps, commissionInBand, circuitFrozen, lintRagDocs, retrieveAt, appendCheckpoint, verifyCheckpoints, leafFor, merkleRoot, merkleProof, verifyMerkle, sybilAdjust, abstentionScore, EventGateway, assertPiiFree } from '../src/gates.js';
 describe('orchestration gates 820, 848-854', () => {  
@@ -46,10 +47,10 @@ describe('orchestration gates 820, 848-854', () => {
 describe('board, caps, rag, checkpoints, airdrop, gateway', () => {  
   it('ranking is conservative and verifiable, sybil weight splits by funder', () => {  
     const entries = [{ agent: 'a', rating: { mu: 30, sigma: 2 }, funder: 'f1' }, { agent: 'b', rating: { mu: 30, sigma: 2 }, funder: 'f1' }, { agent: 'c', rating: { mu: 35, sigma: 2 }, funder: 'f2' }];  
-    const ranked = rankBoard(entries);  
-    expect(ranked[0].agent).toBe('c');  
-    expect(ranked.find((r) => r.agent === 'a')?.weight).toBeCloseTo(0.5, 6);  
-    expect(verifyRanking(entries, ranked.map((r) => r.agent))).toBe(true);  
+    const result = rankBoardFull(entries);
+    expect(result.cohorts).toEqual([]);
+    expect(result.unranked.map((entry) => entry.agent)).toEqual(['a', 'b', 'c']);
+    expect(() => rankBoard(entries)).toThrow(/missing or incompatible evaluation manifests/);
     expect(verifyRanking(entries, ['a', 'b', 'c'])).toBe(false);  
   }); 
   it('caps clamp or reject, fee band holds 500, breaker freezes on move', () => {  
