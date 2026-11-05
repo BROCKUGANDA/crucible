@@ -4,13 +4,14 @@ import { coinbaseWallet, walletConnect, injected as injectedConnector } from "wa
 import { getDefaultConfig } from "@rainbow-me/rainbowkit";
 import {
   base,
+  bitgetWallet as rainbowBitgetWallet,
   injectedWallet,
   metaMaskWallet,
   rainbowWallet,
   safeWallet,
   walletConnectWallet,
 } from "@rainbow-me/rainbowkit/wallets";
-import { bitgetConnector, bitgetWallet } from "./bitget";
+import { bitgetConnector } from "./bitget";
 import type { Address, Transport } from "viem";
 import type { Chain } from "viem/chains";
 import type { ChainDescription } from "./chainSwitch";
@@ -202,7 +203,7 @@ export function buildConfig() {
             rainbowWallet,
             base,
             metaMaskWallet,
-            bitgetWallet,
+            rainbowBitgetWallet,
             walletConnectWallet,
             injectedWallet,
           ],
