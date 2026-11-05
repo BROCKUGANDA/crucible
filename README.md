@@ -544,8 +544,8 @@ through) and restart the API:
 ```bash
 ELEVENLABS_API_KEY=...
 ELEVENLABS_VOICE_ID=...            # the id from the ElevenLabs dashboard, not its name
-ELEVENLABS_MODEL_ID=eleven_multilingual_v4
-# ELEVENLABS_AGENT_ID=...          # unused: the conversation runs on /frenchy, not an ElevenLabs agent
+ELEVENLABS_MODEL_ID=eleven_multilingual_v2
+# ELEVENLABS_AGENT_ID=...          # a live conversation can be minted for this agent at GET /voice/agent-session; blank means the route answers 503
 # VOICE_DISABLED=1                 # kill switch when the credentials are present
 
 # The conversation. Without the key the brain is off and the control is not drawn.

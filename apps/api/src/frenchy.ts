@@ -282,7 +282,7 @@ export async function speakAudio(
     },
     body: JSON.stringify({
       text,
-      model_id: config.modelId ?? "eleven_multilingual_v4",
+      model_id: config.modelId ?? "eleven_multilingual_v2",
       voice_settings: { stability: 0.55, style: 0.35, speed: 0.95 },
     }),
     signal: signal

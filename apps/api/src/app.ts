@@ -774,6 +774,21 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
       ...opts.voiceRateLimit,
     });
     app.use("/voice/*", voiceLimiter);
+    /**
+     * A conversation mint is the one voice route that hands out a credential rather than
+     * bytes, and every mint spends account minutes on a live channel. Its own, much smaller
+     * bucket sits in front of the general one: the signed URL the provider returns carries
+     * no readable expiry (`signed_ttl` was measured accepting 60, 0 and 999999 with an
+     * identical response), so the budget cannot be enforced by a TTL this service would only
+     * be pretending to set. The limiter is where the honest limit lives.
+     */
+    const mintLimiter = rateLimit({
+      limit: 4,
+      windowMs: 60 * 60_000,
+      burst: 1,
+      trustProxy: opts.trustProxy ?? false,
+    });
+    app.use("/voice/agent-session", mintLimiter);
   }
   app.route("/voice", createVoiceRoutes(opts.voice ?? null));
 

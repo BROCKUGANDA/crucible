@@ -186,11 +186,15 @@ const voice = (() => {
   const voiceId = process.env.ELEVENLABS_VOICE_ID?.trim();
   const baseUrl = process.env.ELEVENLABS_BASE_URL?.trim() || undefined;
   const modelId = process.env.ELEVENLABS_MODEL_ID?.trim() || "eleven_multilingual_v2";
+  // The agent is optional and separate from the voice: a deployment can have Frenchy
+  // speaking fixed lines without offering a live conversation. It is read here and never
+  // from a request — see `convaiSignedUrlRequest` in voice.ts.
+  const agentId = process.env.ELEVENLABS_AGENT_ID?.trim() || undefined;
   if (!apiKey || !voiceId) return null;
   if (baseUrl && !/^https?:\/\//.test(baseUrl)) {
     throw new Error(`ELEVENLABS_BASE_URL must be an http(s) URL; got "${baseUrl}"`);
   }
-  return { apiKey, voiceId, modelId, baseUrl };
+  return { apiKey, voiceId, modelId, agentId, baseUrl };
 })();
 
 /**
