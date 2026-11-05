@@ -1,0 +1,198 @@
+/**
+ * @file database.ts — PostgreSQL connection pool and migration runner.
+ *
+ * Provides a pooled PostgreSQL connection for durable application data.
+ * Consistent with ADR-0023: PostgreSQL is the durable source of truth for
+ * application data, while the blockchain remains the authoritative financial
+ * state. Two distinct sources of authority.
+ *
+ * All timestamps are Unix milliseconds. All monetary amounts are stored as
+ * strings (wei/lamports) to avoid floating-point precision loss.
+ */
+
+import { Pool, type PoolClient, type QueryResult } from 'pg';
+import { readFileSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+
+const DATABASE_URL = process.env.DATABASE_URL ?? 'postgresql://crucible:crucible@localhost:5432/crucible';
+
+const pool = new Pool({
+  connectionString: DATABASE_URL,
+  max: 20,
+  idleTimeoutMillis: 30_000,
+  connectionTimeoutMillis: 10_000,
+});
+
+export { pool };
+
+/**
+ * Get a client from the pool. Caller must release the client when done.
+ */
+export async function getClient(): Promise<PoolClient> {
+  return pool.connect();
+}
+
+/**
+ * Run a query with parameterized values.
+ */
+export async function query<T = unknown>(
+  text: string,
+  params?: unknown[]
+): Promise<QueryResult<any>> {
+  return pool.query(text, params);
+}
+
+/**
+ * Run a query in a transaction. The callback receives a client and should
+ * commit or rollback. Returns the callback's return value.
+ */
+export async function withTransaction<T>(
+  callback: (client: PoolClient) => Promise<T>
+): Promise<T> {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const result = await callback(client);
+    await client.query('COMMIT');
+    return result;
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Run all pending migration files in order. Migration files are SQL files
+ * in the migrations directory, named with a numeric prefix (e.g.,
+ * 0001_identity.sql). Each migration is run inside a transaction.
+ */
+export async function runMigrations(migrationsDir?: string): Promise<void> {
+  const dir = migrationsDir || join(__dirname, '..', '..', '..', 'migrations');
+  const client = await pool.connect();
+  try {
+    await runMigrationsImpl(client, dir);
+  } finally {
+    client.release();
+  }
+}
+
+async function runMigrationsImpl(
+  client: PoolClient,
+  migrationsDir: string
+): Promise<void> {
+  const fs = await import('node:fs');
+  const path = await import('node:path');
+
+  const files = fs.readdirSync(migrationsDir).filter(f => f.endsWith('.sql')).sort();
+
+  for (const file of files) {
+    const filePath = path.join(migrationsDir, file);
+    const sql = fs.readFileSync(filePath, 'utf-8');
+
+    // Split by semicolons outside of string literals for basic statement splitting
+    const statements = splitSqlStatements(sql);
+
+    for (const statement of statements) {
+      const trimmed = statement.trim();
+      if (trimmed.length === 0) continue;
+      await client.query(trimmed);
+    }
+  }
+}
+
+/**
+ * Split SQL statements by semicolons, respecting string literals.
+ * Simple implementation: handles single-quoted strings and dollar-quoted strings.
+ */
+function splitSqlStatements(sql: string): string[] {
+  const statements: string[] = [];
+  let current = '';
+  let inSingleQuote = false;
+  let inDollarQuote = false;
+  let dollarTag = '';
+
+  for (let i = 0; i < sql.length; i++) {
+    const ch = sql[i];
+    const next = sql[i + 1];
+
+    if (inDollarQuote) {
+      current += ch;
+      if (dollarTag && sql.startsWith('$' + dollarTag + '$', i)) {
+        current += '$' + dollarTag + '$';
+        i += dollarTag.length + 1;
+        inDollarQuote = false;
+        dollarTag = '';
+      }
+      continue;
+    }
+
+    if (inSingleQuote) {
+      current += ch;
+      if (ch === "'" && sql[i + 1] !== "'") {
+        inSingleQuote = false;
+      }
+      continue;
+    }
+
+    if (ch === "'") {
+      inSingleQuote = true;
+      current += ch;
+      continue;
+    }
+
+    if (ch === '$' && next && /[a-zA-Z_]/.test(next)) {
+      // Potential dollar-quoted string
+      let tag = '';
+      let j = i + 1;
+      while (j < sql.length) {
+        const chj = sql[j];
+        if (!chj || !/[a-zA-Z_0-9]/.test(chj)) break;
+        tag += chj;
+        j++;
+      }
+      if (j < sql.length && sql[j] === '$') {
+        dollarTag = tag;
+        inDollarQuote = true;
+        current += ch + tag + '$';
+        i = j;
+        continue;
+      }
+    }
+
+    if (ch === ';' && !inSingleQuote && !inDollarQuote) {
+      statements.push(current);
+      current = '';
+      continue;
+    }
+
+    current += ch;
+  }
+
+  if (current.trim().length > 0) {
+    statements.push(current);
+  }
+
+  return statements;
+}
+
+/**
+ * Close the pool. Call on process shutdown.
+ */
+export async function closePool(): Promise<void> {
+  await pool.end();
+}
+
+// Health check: verify database connectivity
+export async function healthCheck(): Promise<boolean> {
+  try {
+    await pool.query('SELECT 1');
+    return true;
+  } catch {
+    return false;
+  }
+}
