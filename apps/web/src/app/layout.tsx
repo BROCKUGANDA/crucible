@@ -81,11 +81,7 @@ export const metadata: Metadata = {
     "500 bps",
   ],
   authors: [{ name: SITE_NAME, url: SITE_URL }],
-  publisher: {
-    name: SITE_NAME,
-    url: SITE_URL,
-    logo: { url: `${SITE_URL}/crucible-mark.svg`, width: 512, height: 512 },
-  },
+  publisher: SITE_NAME,
   category: "Finance",
   alternates: {
     canonical: "/",
@@ -105,11 +101,6 @@ export const metadata: Metadata = {
   manifest: "/manifest.webmanifest",
   verification: {
     google: "googled06e1c4ecaefc0ac",
-    other: [
-      { name: "bing", content: "BC6C2E4A4E4E4E4E4E4E4E4E4E4E4E4E" },
-      { name: "yandex", content: "YANDEX_VERIFICATION_TOKEN" },
-      { name: "baidu", content: "BAIDU_VERIFICATION_TOKEN" },
-    ],
   },
   applicationName: SITE_NAME,
   icons: {

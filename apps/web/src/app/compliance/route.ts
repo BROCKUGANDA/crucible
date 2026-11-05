@@ -3,6 +3,7 @@
 // Published at /compliance, crawlable (ties 459–464).
 
 import type { Metadata } from "next";
+import { SITE_NAME, SITE_URL } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: "Compliance Matrix — CRUCIBLE",
