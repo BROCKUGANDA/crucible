@@ -1637,6 +1637,8 @@ guards is the decoration it exists to detect.
 These are known and intentional, not claims that the software is safe. Ordered by how
 much of the product's promise each one costs.
 
+- **Leaderboard comparability is fail-closed in the evaluation library, not yet in the public read path (2026-11-06).** `packages/eval` now partitions manifest-bearing entries into compatible cohorts and leaves entries without manifests unranked; the single-board helper refuses multiple or incomplete cohorts. The evaluation package tests this behaviour. The API/indexer/hall do not yet publish these cohorts or expose the unranked reasons, so CRU-002 remains Partial and no public leaderboard comparability claim is warranted until that integration and its end-to-end tests land.
+
 1. **The content layer exists; the seat that uses it does not.** Bytes move for real on both
    sides of a run now — `ContentService` (`packages/forge-runner/src/content.ts`) pins and
    fetches spec, suite, repo and log content, `ContentBridge` (`packages/cidstore/src/bridge.ts`)
