@@ -14,6 +14,7 @@ import {
   decodeRevert,
 } from "../src/lib/useTx";
 import { buildConfig, explorerTxUrl, shortAddress } from "../src/lib/wagmi";
+import { bitgetProvider } from "../src/lib/bitget";
 import { validateWizard, EMPTY_WIZARD } from "../src/lib/wizard";
 
 const RUNNER = "0x1111111111111111111111111111111111111111";
@@ -23,6 +24,23 @@ describe("wallet configuration", () => {
   it("offers Coinbase Wallet alongside the injected fallback", () => {
     const config = buildConfig();
     expect(config.connectors.some((c) => /coinbase/i.test(c.name))).toBe(true);
+  });
+
+  it("offers Bitget as a dedicated connector instead of using the global injected provider", () => {
+    const config = buildConfig();
+    expect(
+      config.connectors.some((connector) => connector.id === "wallet.bitget.com" && /bitget/i.test(connector.name)),
+    ).toBe(true);
+  });
+
+  it("resolves Bitget's namespaced EIP-1193 provider", () => {
+    const provider = { request: vi.fn() };
+    vi.stubGlobal("window", { bitkeep: { ethereum: provider } });
+    try {
+      expect(bitgetProvider()).toBe(provider);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });
 
