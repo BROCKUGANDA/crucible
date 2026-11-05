@@ -62,11 +62,7 @@ contract TreasuryPipelineTest is Test {
     }
 
     function _assertBooks(string memory phase) internal view {
-        assertEq(
-            address(trials).balance,
-            trials.totalStakes() + trials.totalPending() + trials.escrowed(),
-            phase
-        );
+        assertEq(address(trials).balance, trials.totalStakes() + trials.totalPending() + trials.escrowed(), phase);
     }
 
     function _register(uint256 stake) internal returns (uint256 aid) {
@@ -133,7 +129,7 @@ contract TreasuryPipelineTest is Test {
         uint256 agentCredit = trials.credit(operator);
         assertEq(agentCredit, REWARD - fee, "agent earns reward minus the 5% fee");
         assertEq(trials.credit(companyTreasury), fee, "treasury credit is exactly the 5% fee");
-        (, , , uint256 freedBond, ) = trials.agents(trials.getTrial(id).agentId);
+        (,,, uint256 freedBond,) = trials.agents(trials.getTrial(id).agentId);
         assertEq(freedBond, 1 ether, "full stake restored: 0.8 free + 0.2 bond returned");
         _assertBooks("after win settlement");
 
@@ -269,7 +265,7 @@ contract TreasuryPipelineTest is Test {
         trials.reclaimExpired(id);
 
         assertEq(trials.credit(sponsor), REWARD, "sponsor refunded the reward");
-        (, , , uint256 returnedBond, ) = trials.agents(trials.getTrial(id).agentId);
+        (,,, uint256 returnedBond,) = trials.agents(trials.getTrial(id).agentId);
         assertEq(returnedBond, 1 ether, "full stake restored: 0.8 free + 0.2 bond returned");
         assertEq(trials.credit(companyTreasury), 0, "no fee: no work was delivered");
         _assertBooks("after claimed-refund");
