@@ -66,4 +66,12 @@ regexes = [
   # The fixture now uses Anvil's published dev key #1 instead, so nothing new looks like
   # this. Exception is the exact literal, so any other key-shaped string still fails.
   '''0x59c6995e998f97a5a0044966f094533579aee81dd4dbbe82c73bec743c0b44a7''',
+  # Test fixture secrets in `packages/agent-security/test/org-api-key.test.ts` and
+  # `org-webhook.test.ts`, introduced in commit a6a2ae0. These are deterministic test
+  # values, not credentials: they seed in-memory stores that control nothing and sign
+  # nothing. Fixed in commit b26e872 to use runtime-assembled sentinels via .join("-"),
+  # but gitleaks scans --log-opts="--all", so the old commit reddens every branch until
+  # named here. Exception is the exact literal; any other key-shaped string still fails.
+  '''sk-test-0123456789abcdef''',
+  '''whsec-test-0123456789''',
 ]
