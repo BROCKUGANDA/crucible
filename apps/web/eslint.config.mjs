@@ -1,5 +1,18 @@
 // ESLint for apps/web — correctness rules only; style is prettier's job.
 //
+// The toolchain this file imports (`eslint`, `@babel/eslint-parser`,
+// `@babel/plugin-syntax-*`, `eslint-plugin-react-hooks`, `globals`) is declared in the
+// ROOT package.json, not here, and that is load-bearing rather than tidiness. Declared in
+// this workspace, npm resolved a second eslint inside `apps/web` to satisfy the parser's
+// `^9 || ^10` peer — eslint@10.13.0 beside the root's 9.39.5 — and the second copy carried
+// `minimatch@10.2.6` (CVE-2026-118764, patched only at 11.0.1). The audit gate named three
+// packages it had never seen and `ci(main)` has been red since the day that bump merged
+// (dependabot PR #50, 2026-10-30), which is six days of nothing deploying. One declaration,
+// one eslint: `npm ls eslint` answers once, and the vulnerable chain is gone instead of
+// documented. Measured on the runner's own Node 20 / npm 10.8.2: 30 lockfile entries
+// removed, 0 versions changed. `npm run lint --workspace @crucible/web` still works because
+// npm puts the root's `node_modules/.bin` on a workspace script's PATH.
+//
 // Division of labor, on purpose: type-level linting belongs to `tsc --noEmit`
 // (strict, green repo-wide — and the workspace runs TypeScript 7, beyond
 // typescript-eslint's supported range, so a TS-aware config would be fighting
