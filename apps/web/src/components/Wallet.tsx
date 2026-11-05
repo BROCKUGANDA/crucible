@@ -14,6 +14,7 @@ import {
 } from "@/lib/wagmi";
 import { ensureChain, type Eip1193Provider } from "@/lib/chainSwitch";
 import { haptics, vibrate } from "@/lib/forge";
+import { BitgetWalletConnectButton } from "@/components/BitgetWalletConnectButton";
 
 /**
  * The connect button.
@@ -31,7 +32,12 @@ import { haptics, vibrate } from "@/lib/forge";
  */
 export function WalletButton() {
   if (rainbowKitProjectId()) return <RainbowConnect />;
-  return <InjectedConnect />;
+  return (
+    <>
+      <InjectedConnect />
+      <BitgetWalletConnectButton />
+    </>
+  );
 }
 
 /** RainbowKit's own button, including the account/chain dropdown once connected. */
