@@ -1,69 +1,76 @@
 import { sha256 } from '@crucible/crypto';  
 import { conservative, defaultRating, type Rating } from './ratings.js';  
 import type { EvalManifest } from '@crucible/smith';  
-import { scoresComparable, compareManifests as compareManifestsImport } from '@crucible/smith';  
+import { scoresComparable, SCORE_COMPARISON_FIELDS, manifestDigest } from '@crucible/smith';
 export interface BoardEntry { agent: string; rating: Rating; funder: string; manifest?: EvalManifest }  
-export interface RankingExclusion { agent: string; reason: string; incompatibleWith: string[] }  
 
-export interface RankingResult {  
-  ranked: { agent: string; score: number; weight: number }[];  
-  excluded: RankingExclusion[];  
-}  
+export interface RankedBoardEntry { agent: string; score: number; weight: number; manifestDigest: string }
+export interface RankingCohort { id: string; entries: RankedBoardEntry[] }
+export interface RankingUnranked { agent: string; reason: string }
+export interface RankingResult { cohorts: RankingCohort[]; unranked: RankingUnranked[] }
 
-export function rankBoard(entries: BoardEntry[]): { agent: string; score: number; weight: number }[] {  
-  return rankBoardFull(entries).ranked;  
-}  
+/**
+ * Legacy single-board helper. It refuses to flatten multiple or incomplete
+ * cohorts: callers that need a mixed population must render rankBoardFull's
+ * separate cohorts and unranked entries explicitly.
+ */
+export function rankBoard(entries: BoardEntry[]): { agent: string; score: number; weight: number }[] {
+  const result = rankBoardFull(entries);
+  if (result.unranked.length > 0 || result.cohorts.length !== 1) {
+    throw new Error('leaderboard contains missing or incompatible evaluation manifests; use rankBoardFull and render cohorts separately');
+  }
+  return result.cohorts[0]!.entries.map(({ agent, score, weight }) => ({ agent, score, weight }));
+}
 
-export function rankBoardFull(entries: BoardEntry[]): RankingResult {  
-  const clusters = new Map();  
-  for (const e of entries) clusters.set(e.funder, (clusters.get(e.funder) ?? 1) + 0);  
-  // Build funder clusters  
-  const funderCounts = new Map<string, number>();  
-  for (const e of entries) funderCounts.set(e.funder, (funderCounts.get(e.funder) ?? 0) + 1);  
+export function rankBoardFull(entries: BoardEntry[]): RankingResult {
+  const groups = new Map<string, BoardEntry[]>();
+  const unranked: RankingUnranked[] = [];
+  for (const entry of entries) {
+    if (!entry.manifest) {
+      unranked.push({ agent: entry.agent, reason: 'evaluation manifest missing; score is not eligible for a comparable ranking' });
+      continue;
+    }
+    // This key uses exactly the canonical score-comparison fields. Model and
+    // timestamps are intentionally excluded because models are the subjects
+    // being compared and run times do not define a different benchmark.
+    const key = sha256(JSON.stringify(SCORE_COMPARISON_FIELDS.map((field) => entry.manifest![field])));
+    const group = groups.get(key) ?? [];
+    group.push(entry);
+    groups.set(key, group);
+  }
 
-  const excluded: RankingExclusion[] = [];  
-  const compatible: BoardEntry[] = [];  
+  const cohorts: RankingCohort[] = [];
+  for (const [id, group] of [...groups.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+    // Defensive pairwise assertion: the cohort key and canonical comparator
+    // must never disagree. Fail closed if the manifest schema evolves.
+    for (let i = 0; i < group.length; i++) {
+      for (let j = i + 1; j < group.length; j++) {
+        if (!scoresComparable(group[i]!.manifest!, group[j]!.manifest!)) {
+          throw new Error('score cohort key collision across incomparable manifests');
+        }
+      }
+    }
+    const funderCounts = new Map<string, number>();
+    for (const entry of group) funderCounts.set(entry.funder, (funderCounts.get(entry.funder) ?? 0) + 1);
+    const ranked = group.map((entry) => ({
+      agent: entry.agent,
+      score: conservative(entry.rating),
+      weight: 1 / (funderCounts.get(entry.funder) ?? 1),
+      manifestDigest: manifestDigest(entry.manifest!),
+    })).sort((a, b) => b.score - a.score || a.agent.localeCompare(b.agent));
+    cohorts.push({ id, entries: ranked });
+  }
+  unranked.sort((a, b) => a.agent.localeCompare(b.agent));
+  return { cohorts, unranked };
+}
 
-  for (let i = 0; i < entries.length; i++) {  
-    const entry = entries[i]!;  
-    if (!entry.manifest) {  
-      // No manifest: backward-compatible — rank without comparability check.  
-      compatible.push(entry);  
-      continue;  
-    }  
-    // Check comparability against all other entries that have manifests  
-    const incompatibleWith: string[] = [];  
-    let hasIncompatible = false;  
-    for (let j = 0; j < entries.length; j++) {  
-      if (i === j) continue;  
-      const other = entries[j]!;  
-      if (!other.manifest) continue;  
-      if (!scoresComparable(entry.manifest, other.manifest)) {  
-        hasIncompatible = true;  
-        incompatibleWith.push(other.agent);  
-      }  
-    }  
-    // An entry is excluded only if it is incompatible with ALL other entries  
-    // (i.e., it forms its own group). Otherwise it stays in the main ranking.  
-    if (hasIncompatible && incompatibleWith.length === entries.filter((e, idx) => idx !== i && e.manifest).length) {  
-      excluded.push({ agent: entry.agent, reason: 'incompatible evaluation conditions: ' + compareManifestPaths(entry.manifest, entries.filter((e, idx) => idx !== i && e.manifest)[0]?.manifest), incompatibleWith });  
-      continue;  
-    }  
-    compatible.push(entry);  
-  }  
-
-  const ranked = compatible.map((e) => ({ agent: e.agent, score: conservative(e.rating), weight: 1 / (funderCounts.get(e.funder) ?? 1) })).sort((a, b) => b.score - a.score || a.agent.localeCompare(b.agent));  
-  return { ranked, excluded };  
-}  
-
-function compareManifestPaths(left: EvalManifest | undefined, right: EvalManifest | undefined): string {  
-  if (!left || !right) return 'unknown';  
-  const diffs = compareManifestsImport(left, right);  
-  return diffs.map((d) => d.path).join(', ');  
-} 
-export function verifyRanking(entries: BoardEntry[], claimed: string[]): boolean {  
-  const actual = rankBoard(entries).map((r) => r.agent);  
-  return actual.length === claimed.length && actual.every((a, i) => a === claimed[i]);  
+export function verifyRanking(entries: BoardEntry[], claimed: string[]): boolean {
+  try {
+    const actual = rankBoard(entries).map((r) => r.agent);
+    return actual.length === claimed.length && actual.every((a, i) => a === claimed[i]);
+  } catch {
+    return false;
+  }
 }  
 export function coldStart(): Rating { return defaultRating(); }  
 export function targetDifficulty(r: Rating, accuracy = 0.7): number {  
