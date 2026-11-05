@@ -2,13 +2,22 @@ import { createConfig, http, cookieStorage, createStorage } from "wagmi";
 import { foundry, sepolia } from "wagmi/chains";
 import { coinbaseWallet, walletConnect, injected as injectedConnector } from "wagmi/connectors";
 import { getDefaultConfig } from "@rainbow-me/rainbowkit";
+import {
+  base,
+  injectedWallet,
+  metaMaskWallet,
+  rainbowWallet,
+  safeWallet,
+  walletConnectWallet,
+} from "@rainbow-me/rainbowkit/wallets";
+import { bitgetConnector, bitgetWallet } from "./bitget";
 import type { Address, Transport } from "viem";
 import type { Chain } from "viem/chains";
 import type { ChainDescription } from "./chainSwitch";
 
 /**
  * Wallet configuration: injected wallets (MetaMask, Rabby, Brave, and anything
- * EIP-1193 / EIP-6963), Coinbase Wallet, and WalletConnect for mobile.
+ * EIP-1193 / EIP-6963), Coinbase Wallet, Bitget Wallet, and WalletConnect for mobile.
  *
  * Phantom is deliberately absent. Phantom Portal — the route for Phantom Connect, which
  * offers embedded wallets via Google/Apple sign-in — is not accepting new applications,
@@ -179,12 +188,26 @@ export function buildConfig() {
   const projectId = rainbowKitProjectId();
 
   if (projectId) {
-    // RainbowKit's helper wires up injected + WalletConnect + the rest of its modal
+    // Add Bitget explicitly while retaining Safe, popular wallets and injected fallback.
     return getDefaultConfig({
       appName: "Crucible",
       projectId,
       chains: [chain],
       transports: { [chain.id]: transportFor() },
+      wallets: [
+        {
+          groupName: "Popular",
+          wallets: [
+            safeWallet,
+            rainbowWallet,
+            base,
+            metaMaskWallet,
+            bitgetWallet,
+            walletConnectWallet,
+            injectedWallet,
+          ],
+        },
+      ],
       ssr: true,
     });
   }
@@ -205,6 +228,9 @@ export function buildConfig() {
           provider: () => binanceProvider() as never,
         },
       }),
+      // Bitget has its own global provider namespace and must not be hidden behind
+      // the generic window.ethereum fallback.
+      bitgetConnector(),
       // Coinbase Wallet is explicit, not left to the injected fallback: its extension
       // and mobile app are a real path for the Base audience, and the classic SDK
       // connector does not need a WalletConnect project id.
