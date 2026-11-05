@@ -28,9 +28,10 @@ describe("wallet configuration", () => {
 
   it("offers Bitget as a dedicated connector instead of using the global injected provider", () => {
     const config = buildConfig();
-    expect(
-      config.connectors.some((connector) => connector.id === "wallet.bitget.com" && /bitget/i.test(connector.name)),
-    ).toBe(true);
+    const hasDedicatedBitget = config.connectors.some(
+      (connector) => connector.id === "wallet.bitget.com" && /bitget/i.test(connector.name),
+    );
+    expect(hasDedicatedBitget).toBe(true);
   });
 
   it("offers RainbowKit's maintained Bitget wallet when WalletConnect is configured", () => {
