@@ -404,6 +404,15 @@ export const SITE_INDEX: SiteEntry[] = [
     ]
   },
   {
+    "path": "/trials/[id]/reproduce",
+    "label": "Reproduce",
+    "purpose": "The run's bytes, signature and report, checked again from the chain and the store rather than from our index.",
+    "can": [
+      "see each binding hold or fail",
+      "read the digests and addresses to check yourself"
+    ]
+  },
+  {
     "path": "/trials/new",
     "label": "Light a trial",
     "purpose": "Post a trial: pin a spec and a suite, and put a reward and a bond behind them.",

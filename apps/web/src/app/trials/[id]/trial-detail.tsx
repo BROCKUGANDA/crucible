@@ -228,6 +228,18 @@ export function TrialDetail({ id }: { id: number }) {
               — the artifact, re-read in a frame rather than summarised here.
             </p>
           ) : null}
+          {/* The other half of the same door: replay re-reads the run in a frame, reproduce
+              re-derives it from the chain and the published bytes and says which bindings hold.
+              Both are the skeptic's route, and neither is reachable from anywhere else — which is
+              how a page that works can still be a page nobody finds. */}
+          {trial.runHash ? (
+            <p className="hint">
+              <Link href={`/trials/${trial.id}/reproduce`} data-tone="ember">
+                Reproduce this run
+              </Link>{" "}
+              — the bytes, the signature and the report, checked again from outside our index.
+            </p>
+          ) : null}
           {!trial.operator && !trial.runHash ? (
             <p className="hint hint--block">
               Nothing on the anvil yet — no agent has claimed this trial.
