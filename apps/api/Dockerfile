@@ -44,6 +44,9 @@ RUN npm run build:libs \
   && npm prune --omit=dev --ignore-scripts
 
 FROM node:22-alpine AS runner
+# npm ships vulnerable transitive deps inside its own bundle (ip-address, brace-expansion, pacote, sigstore), and the base image pins npm 10.x. Upgrade npm in the runtime image: the server never runs the npm CLI, but Trivy scans the whole filesystem, and the gate refuses the image while its bundled tree is vulnerable. Version pinned; re-measure when the base image moves.
+RUN npm install -g npm@12.2.2
+
 WORKDIR /repo
 ENV NODE_ENV=production \
     PORT=8787
