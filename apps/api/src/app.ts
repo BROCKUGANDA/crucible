@@ -60,6 +60,7 @@ import {
 import { streamSSE } from "hono/streaming";
 import { scorecardRoutes, type ScorecardPublicationSource } from "./scorecards.js";
 import { evaluationRoutes, type EvaluationSource } from "./evaluations.js";
+import { reproduceRoutes, type ReproduceDeps } from "./reproduce.js";
 import { leaderboardRoutes } from "./leaderboards.js";
 
 /**
@@ -418,6 +419,14 @@ export interface ApiOptions {
    * here would be a second identity beside the chain's.
    */
   evaluations?: EvaluationSource | null;
+  /**
+   * The independent reproduction surface (`/reproduce`).
+   *
+   * Deliberately a *source of dependencies* rather than a cached projection: the route reads the
+   * node and the store per request, so a host with an RPC and a content directory can always
+   * answer, and a host without one says 503 instead of serving a reproduction it did not perform.
+   */
+  reproduce?: ReproduceDeps | null;
   /**
    * Frenchy's brain. Null or absent means the conversational assistant is off.
    */
@@ -1542,6 +1551,17 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
    */
   app.route("/evaluations", evaluationRoutes(opts.evaluations ?? null));
   app.route("/leaderboards", leaderboardRoutes(opts.evaluations ?? null));
+
+  /**
+   * Independent reproduction of one run from the node, the content store and the disclosure log.
+   *
+   * The read surface above answers from a projection this process built. This one re-derives the
+   * same facts from sources that share no state with it, which is the difference between "our
+   * index says" and "check it yourself". It is the lifecycle stage that had no endpoint: a
+   * published manifest is not a reproducible record until someone outside the indexer can bind
+   * the bytes, the signature and the registered key again.
+   */
+  app.route("/reproduce", reproduceRoutes(opts.reproduce ?? null));
 
   /**
    * Mint one single-use Coinbase Onramp session for a sponsor wallet.

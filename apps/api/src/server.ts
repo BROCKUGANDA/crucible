@@ -2,7 +2,7 @@ import { serve } from "@hono/node-server";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { foundry } from "viem/chains";
-import { createPublicClient, http, keccak256, toHex, type Address } from "viem";
+import { createPublicClient, http, keccak256, toHex, type Address, type Hex } from "viem";
 import {
   ARENA_EVENT_NAMES,
   TEAM_LEDGER_EVENTS,
@@ -18,7 +18,7 @@ import {
   type ArenaModel,
   type TeamLedgerModel,
 } from "@crucible/indexer";
-import { ALLOY_ABI, ARENA_ABI, TEAM_LEDGER_ABI, selfSchedulingLoop } from "@crucible/smith";
+import { ALLOY_ABI, ARENA_ABI, TEAM_LEDGER_ABI, TRIALS_ABI, selfSchedulingLoop } from "@crucible/smith";
 import { CidStore, DisclosureLog, VerificationReportStore } from "@crucible/cidstore";
 import { webhookNotifier } from "@crucible/warden";
 import { createApp } from "./app.js";
@@ -881,19 +881,62 @@ const evaluationStoreDir = join(contentDir, "store");
 const evaluationStore = existsSync(evaluationStoreDir)
   ? new CidStore({ dir: evaluationStoreDir, readonly: true })
   : null;
-const evaluations = evaluationStore
-  ? createEvaluationSource({
-      model: () => scribe.state,
-      chainId: foundry.id,
-      // `open` is the only public entry, and it `mkdir`s its directory on the way in. That is a
-      // write by a reader, and the trade is stated rather than hidden: refusing to start over an
-      // absent disclosure log would be worse (a seat that has never disputed anything has no log
-      // either), and the log is empty until a producer announces into it.
-      disclosure: await DisclosureLog.open(join(contentDir, "disclosure")),
-      reports: new VerificationReportStore(evaluationStore),
-      store: evaluationStore,
-    })
-  : null;
+// `open` is the only public entry, and it `mkdir`s its directory on the way in. That is a write
+// by a reader, and the trade is stated rather than hidden: refusing to start over an absent
+// disclosure log would be worse (a seat that has never disputed anything has no log either), and
+// the log is empty until a producer announces into it.
+const evaluationDisclosure = evaluationStore ? await DisclosureLog.open(join(contentDir, "disclosure")) : null;
+const evaluationReports = evaluationStore ? new VerificationReportStore(evaluationStore) : null;
+
+const evaluations =
+  evaluationStore && evaluationDisclosure && evaluationReports
+    ? createEvaluationSource({
+        model: () => scribe.state,
+        chainId: foundry.id,
+        disclosure: evaluationDisclosure,
+        reports: evaluationReports,
+        store: evaluationStore,
+      })
+    : null;
+
+/**
+ * The independent reproduction surface, built on the same store but on a different authority.
+ *
+ * Where `evaluations` reads the indexer's in-memory model, this reads the node: `getTrial` for
+ * the run hash the escrow actually recorded and `agents(id).runner` for the key the registry
+ * actually holds. Those two views disagreeing is the finding the route is designed to expose, so
+ * they are not reconciled here — the route reports both.
+ */
+const reproduce =
+  evaluationStore && evaluationDisclosure && evaluationReports
+    ? {
+        chain: {
+          trial: async (trialId: bigint) =>
+            (await publicClient.readContract({
+              address: trialsAddress,
+              abi: TRIALS_ABI,
+              functionName: "getTrial",
+              args: [trialId],
+            })) as { agentId: bigint; runHash: Hex; sponsor: Address; status: number },
+          agent: async (agentId: bigint) => {
+            // The auto-generated getter returns the struct's fields flat, so `runner` is taken by
+            // position from a documented tuple rather than by name from a guess.
+            const [, runner] = (await publicClient.readContract({
+              address: trialsAddress,
+              abi: TRIALS_ABI,
+              functionName: "agents",
+              args: [agentId],
+            })) as [Address, Address, string, bigint, number];
+            return { runner };
+          },
+        },
+        disclosure: evaluationDisclosure,
+        store: evaluationStore,
+        reports: evaluationReports,
+        chainId: foundry.id,
+        verifyingContract: trialsAddress,
+      }
+    : null;
 if (evaluations === null) {
   console.log(
     `[api] /evaluations and /leaderboards are off: no content store at ${evaluationStoreDir}. ` +
@@ -960,6 +1003,8 @@ const app = createApp({
   replay: makeReplaySource({ reader: publicClient, address: trialsAddress, windowBlocks: replayWindowBlocks }),
   // The evidence behind `/evaluations` and `/leaderboards`, or null and they answer 503.
   evaluations,
+  // `/reproduce` re-derives one run from the node and the store, independent of the index.
+  reproduce,
   // Off by default: forwarded headers are caller-writable, so trusting them lets a loop
   // mint a new bucket per request. Set TRUST_PROXY=1 only behind something that overwrites
   // them (Cloudflare, an ALB) — which is what `cf-connecting-ip` is, and also what makes
