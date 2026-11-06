@@ -237,3 +237,4 @@ which side wins instead of a hope that they agree. An explicit request for
 the next gate. A cron entry on the box that runs whether or not this
 repository is touched.
 | 2026-11-06 | Fix CI workspace-list backslash, merge open PRs (#65/#66/#68), redesign navbar pill track, add ADR-0025 Forge Watch architecture | .github/workflows/ci.yml, apps/web/src/components/Chrome.tsx, docs/adr/0025-... |
+| 2026-11-06 | Forge Watch WFW-002: canonical telemetry event envelope (versioned schema, per-run monotonic sequencing, durable collector with duplicate detection), wired into ForgeRunner at sandbox/turn/tool/grader boundaries via an optional emitEvent hook that never fails a run | packages/forge-watch/, packages/forge-runner/src/runner.ts, .github/workflows/ci.yml |
