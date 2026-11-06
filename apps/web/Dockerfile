@@ -73,5 +73,9 @@ COPY --from=build /repo/apps/web/.next/standalone ./
 COPY --from=build /repo/apps/web/.next/static ./apps/web/.next/static
 COPY --from=build /repo/apps/web/public ./apps/web/public
 
+# The runtime only executes `node server.js`; the npm bundled in the node base image (and its
+# vulnerable dependencies such as pacote and sigstore) is not needed, so remove it.
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
+
 EXPOSE 3000
 CMD ["node", "apps/web/server.js"]
