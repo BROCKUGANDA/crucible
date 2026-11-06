@@ -678,3 +678,94 @@ describe("the container path records the image it launched", () => {
     expect(env.limits?.wallClockSec).toBe("3600");
   }, 30_000);
 });
+
+/**
+ * The manifest publish seam on the run path (CRU-002B).
+ *
+ * The runner already computed the manifest; what it did not do was hand it to anyone, which
+ * left every downstream reader with a score and no record of the conditions that produced it.
+ * These two cases are the whole contract of that seam, and the second one is the reason it
+ * exists as its own test: a run whose manifest failed to publish is a **submitted run**, and
+ * the failure has to be visible without being allowed to rewrite the outcome the caller acted
+ * on. A `catch {}` here would make an unpublished evaluation indistinguishable from one that
+ * never needed a manifest.
+ */
+describe("publishing the manifest beside the run", () => {
+  function manifestDeps(): RunnerDeps {
+    const deps = harness();
+    deps.manifest = {
+      provider: "hetzner",
+      modelVersion: "Qwen/Qwen3.6-35B-A3B",
+      seed: "panel-2026-10-27",
+      evaluator: { id: "argus", version: "1.4.0", rubricVersion: "3" },
+      feeSchedule: "legacy-v1",
+      feeScheduleVersion: "1",
+    };
+    return deps;
+  }
+
+  const runArgs = {
+    suiteCommand: GREEN_SUITE,
+    iterBudget: 3,
+    specDigest: SPEC_DIGEST,
+    suiteDigest: SUITE_DIGEST,
+  };
+
+  it("publishes with the run's own hash and the manifest it emitted", async () => {
+    const seen: { runHash?: string; taskDigest?: string }[] = [];
+    const deps = manifestDeps();
+    deps.publishManifest = async ({ runHash, manifest }) => {
+      seen.push({ runHash, taskDigest: manifest.taskDigest });
+      return { cid: "bafy-manifest", digest: runHash };
+    };
+    const { sink, events } = memorySink();
+    deps.status = sink;
+
+    const out = await new ForgeRunner(deps).run(request(runArgs));
+
+    expect(out.ok).toBe(true);
+    expect(seen).toHaveLength(1);
+    expect(seen[0]!.runHash).toBe(out.runHash);
+    expect(seen[0]!.taskDigest).toBe(SPEC_DIGEST);
+    expect(out.manifestPublished).toEqual({ cid: "bafy-manifest", digest: out.runHash });
+    expect(events.some((e) => e.status === "manifest-published")).toBe(true);
+    // The publisher is told the same digest the run reported, not one it computed for itself.
+    expect(out.manifest!.digest).toMatch(/^0x[0-9a-f]{64}$/);
+  }, 30_000);
+
+  it("keeps a submitted run submitted when the publish fails, and says so", async () => {
+    const deps = manifestDeps();
+    deps.publishManifest = async () => {
+      throw new Error("content volume is read-only");
+    };
+    const { sink, events } = memorySink();
+    deps.status = sink;
+
+    const out = await new ForgeRunner(deps).run(request(runArgs));
+
+    // Money and evidence are separate facts. The run is on chain and paid for; only the
+    // manifest is missing, and that is reported rather than folded into a failure the caller
+    // would react to by re-running a run that already settled nothing.
+    expect(out.ok).toBe(true);
+    expect(out.status).toBe("submitted");
+    expect(out.txHash).toBeDefined();
+    expect(out.manifestPublished).toBeNull();
+    const unpublish = events.find((e) => e.status === "manifest-unpublished");
+    expect(unpublish, "the refused publish is announced on the status stream").toBeDefined();
+    expect(unpublish!.label).toContain("content volume is read-only");
+    expect(events.some((e) => e.status === "failed")).toBe(false);
+  }, 30_000);
+
+  it("does not pretend to publish when the host gave no publisher", async () => {
+    const deps = manifestDeps();
+    const { sink, events } = memorySink();
+    deps.status = sink;
+
+    const out = await new ForgeRunner(deps).run(request(runArgs));
+
+    // `undefined` (nothing was configured) and `null` (it was tried and refused) are different
+    // operational statements, and a reader must never have to guess which one it is looking at.
+    expect(out.manifestPublished).toBeUndefined();
+    expect(events.some((e) => e.status === "manifest-unpublished")).toBe(false);
+  }, 30_000);
+});

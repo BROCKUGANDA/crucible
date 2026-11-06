@@ -121,3 +121,71 @@ describe("DisclosureLog", () => {
     expect(log.size).toEqual({ artifacts: 2, specs: 1 });
   });
 });
+
+/**
+ * The manifest pointer, and the two ways it can be lost.
+ *
+ * `announceArtifact` replaces a record wholesale and `sameRecord` short-circuits an announce
+ * that looks equal. Both are correct for the fields they were written with, and both are a
+ * silent data-loss path the moment a new field appears: a merge that forgot the signature
+ * would erase it, and an equality test that ignored the manifest would report "already
+ * announced" and drop the pointer forever. These two cases are here to make that expensive.
+ */
+describe("announceManifest", () => {
+  const RUN = `0x${"9c".repeat(32)}`;
+
+  it("refuses a manifest for a run nothing announced", async () => {
+    const d = await dir();
+    const log = await DisclosureLog.open(d);
+    await expect(log.announceManifest(RUN, { cid: "bafy-m", digest: "0xdead" })).rejects.toThrow(
+      DisclosureError,
+    );
+    await expect(log.announceManifest(RUN, { cid: "bafy-m", digest: "0xdead" })).rejects.toThrow(
+      /announce the run before its manifest/,
+    );
+  });
+
+  it("attaches to the existing record without disturbing the signature it already carried", async () => {
+    const d = await dir();
+    const log = await DisclosureLog.open(d);
+    await log.announceArtifact(RUN, { cid: "bafy-artifact", signature: "0xsig", sigDeadline: "1800" });
+    await log.announceManifest(RUN, { cid: "bafy-m", digest: "0xdead" });
+
+    const record = log.artifactRecordFor(RUN);
+    expect(record).toEqual({
+      cid: "bafy-artifact",
+      signature: "0xsig",
+      sigDeadline: "1800",
+      manifestCid: "bafy-m",
+      manifestDigest: "0xdead",
+    });
+  });
+
+  it("survives a reopen — the loader has to keep the fields the writer added", async () => {
+    const d = await dir();
+    const writer = await DisclosureLog.open(d);
+    await writer.announceArtifact(RUN, "bafy-artifact");
+    await writer.announceManifest(RUN, { cid: "bafy-m", digest: "0xdead" });
+
+    const reader = await DisclosureLog.open(d);
+    expect(reader.artifactRecordFor(RUN)).toEqual({
+      cid: "bafy-artifact",
+      manifestCid: "bafy-m",
+      manifestDigest: "0xdead",
+    });
+  });
+
+  it("is idempotent, and re-announcing a different manifest is a change, not a no-op", async () => {
+    const d = await dir();
+    const log = await DisclosureLog.open(d);
+    await log.announceArtifact(RUN, "bafy-artifact");
+    await log.announceManifest(RUN, { cid: "bafy-m", digest: "0xdead" });
+    const written = await readFile(path.join(d, "disclosure.json"), "utf8");
+
+    await log.announceManifest(RUN, { cid: "bafy-m", digest: "0xdead" });
+    expect(await readFile(path.join(d, "disclosure.json"), "utf8")).toBe(written);
+
+    await log.announceManifest(RUN, { cid: "bafy-other", digest: "0xbeef" });
+    expect((await log.artifactRecordFor(RUN))?.manifestCid).toBe("bafy-other");
+  });
+});

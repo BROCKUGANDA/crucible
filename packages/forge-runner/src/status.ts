@@ -15,6 +15,16 @@ export type ForgeStatus =
   | "exhausted"
   | "signed"
   | "submitted"
+  /**
+   * The evaluation manifest, published after the run is on chain.
+   *
+   * Two statuses rather than one flag because the operator has to be able to tell "the evidence
+   * is where a verifier will look for it" from "the run settled and its manifest never landed"
+   * — the second is a run whose score cannot be re-derived from pinned conditions, and it is
+   * not a failure of the run.
+   */
+  | "manifest-published"
+  | "manifest-unpublished"
   | "failed";
 
 export type FailureKind =
