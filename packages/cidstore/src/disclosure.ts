@@ -30,6 +30,18 @@ export interface RunRecord {
   cid: string;
   signature?: string;
   sigDeadline?: string;
+  /**
+   * The evaluation manifest published beside the artifact, and the digest the runner computed
+   * for it (ADR-0017: a separate hashed document, deliberately *not* inside the artifact,
+   * because embedding it would change `computeRunHash` and every signature).
+   *
+   * Optional and additive: a disclosure written before this field exists still loads, and a
+   * reader that does not know about it ignores it. What must not happen is a loader that
+   * rebuilds the record key by key and quietly loses these two on the next restart —
+   * `asRecords` below is where that is guarded.
+   */
+  manifestCid?: string;
+  manifestDigest?: string;
 }
 
 /** runHash (0x-prefixed keccak hex) -> what the runner published behind it */
@@ -104,6 +116,36 @@ export class DisclosureLog {
     await this.flush();
   }
 
+  /**
+   * Attach the manifest a run published beside its artifact.
+   *
+   * A merge, not an overwrite: the artifact record already carries the signature and deadline
+   * the chain threw away, and a caller announcing a manifest pointer must not be the reason a
+   * verifier loses them. Idempotent like the rest of this file.
+   *
+   * Refuses a run with no artifact announced. A manifest with no run behind it is a document
+   * nobody asked for, and writing it here would make the disclosure look authoritative about
+   * a run that was never submitted.
+   */
+  async announceManifest(
+    runHash: string,
+    manifest: { cid: string; digest: string },
+  ): Promise<void> {
+    const key = runHash.toLowerCase();
+    const existing = this.data.artifacts[key];
+    if (!existing) {
+      throw new DisclosureError(
+        `no artifact announced for ${runHash}; announce the run before its manifest`,
+      );
+    }
+    if (existing.manifestCid === manifest.cid && existing.manifestDigest === manifest.digest) return;
+    await this.announceArtifact(runHash, {
+      ...existing,
+      manifestCid: manifest.cid,
+      manifestDigest: manifest.digest,
+    });
+  }
+
   /** The full announcement — a verifier needs the signature the chain discarded. */
   artifactRecordFor(runHash: string): RunRecord | undefined {
     return this.data.artifacts[runHash.toLowerCase()];
@@ -145,7 +187,16 @@ function fresh(): Disclosure {
 }
 
 function sameRecord(a: RunRecord, b: RunRecord): boolean {
-  return a.cid === b.cid && a.signature === b.signature && a.sigDeadline === b.sigDeadline;
+  // Every field, deliberately. The announce path returns early on equality, so a comparison
+  // that ignores `manifestCid` would read "already announced" and drop the manifest pointer
+  // forever — the run would verify and its evaluation record would have nothing to bind to.
+  return (
+    a.cid === b.cid &&
+    a.signature === b.signature &&
+    a.sigDeadline === b.sigDeadline &&
+    a.manifestCid === b.manifestCid &&
+    a.manifestDigest === b.manifestDigest
+  );
 }
 
 function normalize(parsed: unknown): Disclosure {
@@ -179,7 +230,13 @@ function asRecords(value: unknown): ArtifactMap {
     if (typeof v === "string") out[k.toLowerCase()] = { cid: v };
     else if (v && typeof v === "object" && typeof (v as { cid?: unknown }).cid === "string") {
       const r = v as RunRecord;
-      out[k.toLowerCase()] = { cid: r.cid, ...(r.signature ? { signature: r.signature } : {}), ...(r.sigDeadline ? { sigDeadline: r.sigDeadline } : {}) };
+      out[k.toLowerCase()] = {
+        cid: r.cid,
+        ...(r.signature ? { signature: r.signature } : {}),
+        ...(r.sigDeadline ? { sigDeadline: r.sigDeadline } : {}),
+        ...(r.manifestCid ? { manifestCid: r.manifestCid } : {}),
+        ...(r.manifestDigest ? { manifestDigest: r.manifestDigest } : {}),
+      };
     }
   }
   return out;

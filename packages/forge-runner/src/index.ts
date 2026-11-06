@@ -8,3 +8,4 @@ export * from "./agent.js";
 export * from "./tool-guard.js";
 export * from "./providers.js";
 export * from "./egress.js";
+export * from "./manifest-publisher.js";

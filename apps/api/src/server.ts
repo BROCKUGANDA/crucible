@@ -1,4 +1,5 @@
 import { serve } from "@hono/node-server";
+import { join } from "node:path";
 import { foundry } from "viem/chains";
 import { createPublicClient, http, keccak256, toHex, type Address } from "viem";
 import {
@@ -22,6 +23,7 @@ import { createApp } from "./app.js";
 import { OwnerGate, SponsorshipQueue, sponsorshipMessage } from "./sponsorship.js";
 import { disclosureFileIn, disclosedCids as readDisclosure, type DisclosureEntry } from "./disclosure.js";
 import { createContentSource, digestToCidMap } from "./content.js";
+import { createScorecardPublicationSource } from "./scorecard-publications.js";
 import { makeReplaySource } from "./replay.js";
 import { dlq } from "./dlq.js";
 import { createPassportSource } from "./passport.js";
@@ -509,6 +511,8 @@ void scribe.watch();
  * which is what every producer uses.
  */
 const contentDir = process.env.CRUCIBLE_CONTENT_DIR ?? ".crucible-content";
+const scorecardPublicationDir =
+  process.env.CRUCIBLE_SCORECARD_PUBLICATIONS_DIR ?? join(contentDir, "scorecards", "publications");
 
 function disclosedCids(): DisclosureEntry[] {
   return readDisclosure(contentDir, scribe.state.trials.values(), (message) =>
@@ -526,6 +530,16 @@ function disclosedCids(): DisclosureEntry[] {
 const contentLookup = createContentSource(contentDir, () =>
   digestToCidMap(disclosureFileIn(contentDir), (message) => dlq.push("content.disclosure", message)),
 );
+const scorecardPublications = createScorecardPublicationSource(scorecardPublicationDir);
+const scorecardContentLookup = createContentSource(join(contentDir, "scorecards"), () => new Map());
+
+const scorecardSigners = (process.env.CRUCIBLE_SCORECARD_SIGNERS ?? "")
+  .split(",")
+  .map((address) => address.trim())
+  .filter((address) => address.length > 0);
+if (scorecardSigners.some((address) => !/^0x[0-9a-fA-F]{40}$/.test(address))) {
+  throw new Error("CRUCIBLE_SCORECARD_SIGNERS must contain comma-separated Ethereum addresses");
+}
 
 /**
  * The v2 arena, when this host has one.
@@ -839,6 +853,9 @@ const app = createApp({
   getModel: () => scribe.state,
   disclosure: disclosedCids,
   contentLookup,
+  scorecardPublications,
+  scorecardContentLookup,
+  scorecardSigners,
   /**
    * Only when a scribe is actually running. Passing the model unconditionally made the route
    * report `projected: true` over an empty Map, which reads as "an arena with no trials" — the

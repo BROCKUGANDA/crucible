@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { VerifyReport } from "@crucible/argus";
+import { recordReplayabilityOf, replayabilityClassOf } from "@crucible/argus";
 import {
   NO_COMMIT,
   STATUS_CHALLENGED,
@@ -217,5 +218,24 @@ describe("replayabilityOf", () => {
     expect(replayabilityOf(rep("break-wins", "rubric"))).toBe("generation-attested");
     expect(replayabilityOf(rep("agent-wins", "deterministic"))).toBe("artifact-replayable");
     expect(replayabilityOf(rep("agent-wins", "rubric"))).toBe("generation-attested");
+  });
+
+  /**
+   * The second copy, held to the first.
+   *
+   * `packages/argus/src/persistence.ts` restates this rule because a package cannot import an
+   * app, and a restatement is two chances to disagree. This is the check that makes the second
+   * copy expensive to drift: change the mapping on one side and the row on the other goes red.
+   * The `@crucible/smith` half is the record's wire vocabulary (CRU-002), so the assertion
+   * covers the whole path — seal class, record word, and the pair in between.
+   */
+  it("agrees with the argus store's own derivation, for every phase", () => {
+    for (const phase of ["deterministic", "rubric", "abstain"] as const) {
+      const report = rep("agent-wins", phase);
+      expect(replayabilityClassOf(report), `class for ${phase}`).toBe(replayabilityOf(report));
+    }
+    expect(recordReplayabilityOf(rep("agent-wins", "deterministic"))).toBe("deterministic");
+    expect(recordReplayabilityOf(rep("agent-wins", "rubric"))).toBe("partial");
+    expect(recordReplayabilityOf(rep("abstain", "abstain"))).toBe("nondeterministic");
   });
 });

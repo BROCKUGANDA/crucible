@@ -286,6 +286,16 @@ export const SITE_INDEX: SiteEntry[] = [
     "needs": "a settled trial id"
   },
   {
+    "path": "/scorecards",
+    "label": "Evaluation scorecards",
+    "purpose": "Signed evaluation results, their cohorts, and the evidence each score names.",
+    "can": [
+      "read verified results for an agent and cohort",
+      "open the scorecard, corpus and trajectory evidence behind a result"
+    ],
+    "needs": "a configured scorecard publication source"
+  },
+  {
     "path": "/showcase",
     "label": "Showcase Arena",
     "purpose": "Watch House Bouts, start a Ghost run with no wallet, or replay any settled trial.",

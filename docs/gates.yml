@@ -1506,6 +1506,37 @@
 - id: 918
   title: A signature outranks a redirect (while a wallet signature is open, Frenchy speaks and offers the destination instead of taking it - the wallet's dialog belongs to the page that opened it, and navigating underneath it would leave a confirmed transaction with no receipt on screen; the count of open signatures is global and never goes below zero, because the thing that must not move is the page)
   frameworks: [soc2]
+- id: 919
+  title: Evaluation identity is derived, never declared (evaluationId is keccak256(abi.encode(chainId, trialId, runHash)); a record whose id disagrees with its own identity is refused, and the test pins that (1,23) and (12,3) do not collide - packed encoding would let them, and a public route dereferences this key)
+  frameworks: [ai-rmf, soc2]
+- id: 920
+  title: Eligibility is not an input (only an agent-wins verdict with an empty reason list may rank; eligible:false must name at least one reason; the leaderboard drops the tampered row that scored highest in its cohort - forcing eligible:true on an abstention is the mutation that turns this red)
+  frameworks: [ai-rmf, soc2]
+- id: 921
+  title: Verification reports are appended, never replaced (an identical delivery is a no-op that reports replayed:true; any difference against an existing (runHash, reportVersion) raises ReportConflictError; swallowing that throw turns two tests red, measured)
+  frameworks: [ai-rmf, soc2]
+- id: 922
+  title: The version chain cannot be skipped, spliced or self-preceded (version 3 with no version 2 is refused rather than healed; a predecessor digest belonging to another run is refused; version 1 that names a predecessor is refused)
+  frameworks: [ai-rmf, soc2]
+- id: 923
+  title: A manifest is read back before it is announced (pin canonical JSON, re-hash the bytes fetched back, refuse to write the pointer when they disagree - a lying store leaves no dangling announcement behind)
+  frameworks: [ai-rmf, soc2]
+- id: 924
+  title: A refused manifest publish does not rewrite a submitted run (undefined means the host configured no publisher, null means it was tried and refused, and both are announced on the status stream - the run is on chain either way, and an unpublished manifest is a gap to fix, not a failure to re-run)
+  frameworks: [ai-rmf, soc2]
+- id: 925
+  title: Replayability has one derivation and it is cross-checked (packages/argus restates apps/juror/src/policy.ts because a package cannot import an app, and the juror's own suite asserts the two agree for every phase; generation-attested becomes 'partial' on the wire, never 'nondeterministic' - the evidence does replay, only generation does not)
+  frameworks: [ai-rmf, scsvs]
+- id: 926
+  title: Evidence reports absent, damaged and present as three answers (not-pinned, unreadable/unresolved/corrupt, and ok each survive to the response; a record with no manifest CID or no published verification projects nothing at all rather than a row of zeros - a storage fault must never read as an unmade claim)
+  frameworks: [ai-rmf, soc2]
+- id: 927
+  title: A leaderboard refuses to compare cohorts (400 COHORT_INCOMPATIBLE naming both; until the manifest's suite and judge pins reach the comparison the refusal is on the name a cohort claims, which is stated in meta.comparability and in ADR-0024 rather than left implicit)
+  frameworks: [ai-rmf]
+- id: 928
+  title: Evaluation pagination walks the whole set without duplicates or gaps (the cursor is (timestamp, evaluationId) because verification time is not chain position and collides on whole seconds; a malformed cursor or limit is 400; meta.orderKey lets a client notice the ordering basis moved and restart instead of silently skipping a row)
+  frameworks: [soc2]
+- id: 929
   title: The sponsorship queue and the treasury ledger are the owner's view (GET /faucet/applications and GET /faucet/ledger answer the owner wallet only, and say which of the two it is when they say no: no queue on this host, no owner configured, or a wallet that is not the owner; the ledger is read from the funder, the only party that knows what left the wallet holding the test ETH)
   frameworks: [soc2]
 frameworks:
