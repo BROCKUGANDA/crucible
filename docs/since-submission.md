@@ -236,5 +236,4 @@ The fixes are the same shape. A copy count instead of a clock. A rule about
 which side wins instead of a hope that they agree. An explicit request for
 the next gate. A cron entry on the box that runs whether or not this
 repository is touched.
-
- 
+| 2026-11-06 | Fix CI workspace-list backslash, merge open PRs (#65/#66/#68), redesign navbar pill track, add ADR-0025 Forge Watch architecture | .github/workflows/ci.yml, apps/web/src/components/Chrome.tsx, docs/adr/0025-... |
