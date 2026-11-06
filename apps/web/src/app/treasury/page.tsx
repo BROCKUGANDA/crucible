@@ -5,14 +5,14 @@ import { useAccount, useReadContract } from "wagmi";
 import type { Address } from "viem";
 import { TRIALS_ABI } from "@crucible/smith";
 import { Chrome } from "@/components/Chrome";
-import { deployment } from "@/lib/wagmi";
+import { useDeployment } from "@/lib/wagmi";
 import { formatWei } from "@/lib/eth";
 import { buildWithdraw } from "@/lib/useTx";
 import { treasuryConnectionState } from "@/lib/treasury-view";
 import { WrongNetworkNotice } from "@/components/Wallet";
 
 export default function TreasuryPage() {
-  const dep = deployment();
+  const dep = useDeployment();
   const { address, chainId } = useAccount();
   const [copied, setCopied] = useState<string | null>(null);
   const [copyError, setCopyError] = useState<string | null>(null);

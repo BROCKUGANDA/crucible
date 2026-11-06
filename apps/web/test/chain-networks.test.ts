@@ -1,6 +1,8 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import {
   activeChain,
+  chainConfigured,
+  chainFromId,
   chainLabel,
   CHAIN_IDS,
   deployment,
@@ -8,9 +10,9 @@ import {
   rpcUrl,
   ZERO_ADDRESS,
 } from "../src/lib/networks";
-// `activeChainDef` needs the real chain objects (explorer URLs, currencies), which live
-// behind the viem chain barrel in `wagmi.ts` — the wallet-side module.
-import { activeChainDef } from "../src/lib/wagmi";
+// `activeChainDef` and the wallet config need the real chain objects, which live behind
+// the viem chain barrel in `wagmi.ts` — the wallet-side module.
+import { activeChainDef, buildConfig } from "../src/lib/wagmi";
 
 /**
  * The three networks this build can ship to, and the differences that must survive the
@@ -166,11 +168,66 @@ describe("deployment addresses per network", () => {
   });
 });
 
+describe("wallet registration", () => {
+  it("registers all three networks with the wallet, so the user can choose from it", () => {
+    // The network is chosen by the wallet now. A config that ships one chain per build
+    // would make that sentence false — the wallet would have nothing to switch to.
+    const config = buildConfig();
+    const ids = config.chains.map((c) => c.id).sort((a, b) => a - b);
+    expect(ids).toEqual([1, 31337, 11155111]);
+  });
+});
+
 describe("chainLabel", () => {
   it("names every network a wallet can be stranded on", () => {
     expect(chainLabel(CHAIN_IDS.mainnet)).toBe("Ethereum Mainnet");
     expect(chainLabel(CHAIN_IDS.sepolia)).toBe("Sepolia");
     expect(chainLabel(CHAIN_IDS.foundry)).toBe("Anvil");
     expect(chainLabel(999)).toBe("chain 999");
+  });
+});
+
+describe("deployment for a live chain id (the wallet's, not the build's)", () => {
+  beforeEach(() => {
+    // One env file, three deployments side by side — the runtime-selection scenario.
+    process.env.NEXT_PUBLIC_TRIALS_ADDRESS = TRIALS;
+    process.env.NEXT_PUBLIC_ALLOY_ADDRESS = ALLOY;
+    process.env.NEXT_PUBLIC_MAINNET_TRIALS_ADDRESS = MAINNET_TRIALS;
+    process.env.NEXT_PUBLIC_MAINNET_ALLOY_ADDRESS = MAINNET_ALLOY;
+  });
+
+  it("resolves contracts from the connected wallet's chain id", () => {
+    expect(deployment(1).trials).toBe(MAINNET_TRIALS);
+    expect(deployment(11155111).trials).toBe(TRIALS);
+    expect(deployment(31337).trials).toBe(TRIALS);
+  });
+
+  it("resolves an unknown chain to an unconfigured deployment with its own id", () => {
+    // The one failure mode worse than a broken page is a page that works against the
+    // WRONG contracts: a wallet on Base must never be handed Sepolia's addresses.
+    const dep = deployment(8453);
+    expect(dep.chainId).toBe(8453);
+    expect(dep.trials).toBe(ZERO_ADDRESS);
+    expect(dep.configured).toBe(false);
+    expect(chainConfigured(8453)).toBe(false);
+  });
+
+  it("without an argument, resolves the build's default network (the disconnected spectator)", () => {
+    process.env.NEXT_PUBLIC_CHAIN = "mainnet";
+    expect(deployment().chainId).toBe(1);
+    expect(deployment().trials).toBe(MAINNET_TRIALS);
+  });
+
+  it("chainFromId names the wallet's network, or null for a stranger", () => {
+    expect(chainFromId(1)).toBe("mainnet");
+    expect(chainFromId(11155111)).toBe("sepolia");
+    expect(chainFromId(31337)).toBe("foundry");
+    expect(chainFromId(8453)).toBeNull();
+  });
+
+  it("the badge can be asked about a network other than the build default", () => {
+    process.env.NEXT_PUBLIC_CHAIN = "sepolia";
+    expect(environmentBadge("mainnet").label).toBe("MAINNET");
+    expect(environmentBadge("foundry").label).toBe("LOCAL FORGE");
   });
 });

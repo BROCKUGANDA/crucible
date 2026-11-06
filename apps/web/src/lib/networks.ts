@@ -47,6 +47,12 @@ void _chainIdsMatchViem;
 
 export type SupportedChain = keyof typeof CHAIN_IDS;
 
+/** The network a wallet chain id belongs to, or null when the wallet is somewhere else. */
+export function chainFromId(chainId: number): SupportedChain | null {
+  const entry = Object.entries(CHAIN_IDS).find(([, id]) => id === chainId);
+  return entry ? (entry[0] as SupportedChain) : null;
+}
+
 /**
  * The chain this build talks to, named — not a raw cast of an env var.
  *
@@ -70,12 +76,15 @@ export function chainLabel(chainId: number): string {
 }
 
 /**
- * The header's environment chip. Each arm names the network's money in plain words: the
- * local and test chains have worthless ETH, mainnet does not, and a visitor should be
- * able to tell which one they are on without reading a chain id.
+ * The header's environment chip, for the network being *shown* — the connected wallet's
+ * chain when one is connected, the build's default when not. Each arm names the network's
+ * money in plain words: the local and test chains have worthless ETH, mainnet does not,
+ * and a visitor should be able to tell which one they are on without reading a chain id.
  */
-export function environmentBadge(): { label: string; compact: string; title: string } {
-  switch (activeChain()) {
+export function environmentBadge(
+  chain: SupportedChain = activeChain(),
+): { label: string; compact: string; title: string } {
+  switch (chain) {
     case "foundry":
       return {
         label: "LOCAL FORGE",
@@ -137,28 +146,60 @@ function address(name: string, value: string | undefined): Address {
  * expression on purpose: that is what webpack inlines into the client bundle (see the
  * comment on `address` above), so each branch has to name its variables spelled out.
  */
-export function deployment(): Deployment {
-  const chain = activeChain();
-  const trialsEnv =
-    chain === "mainnet"
-      ? (process.env.NEXT_PUBLIC_MAINNET_TRIALS_ADDRESS ?? process.env.NEXT_PUBLIC_TRIALS_ADDRESS)
-      : chain === "foundry"
-        ? (process.env.NEXT_PUBLIC_ANVIL_TRIALS_ADDRESS ?? process.env.NEXT_PUBLIC_TRIALS_ADDRESS)
-        : (process.env.NEXT_PUBLIC_SEPOLIA_TRIALS_ADDRESS ?? process.env.NEXT_PUBLIC_TRIALS_ADDRESS);
-  const alloyEnv =
-    chain === "mainnet"
-      ? (process.env.NEXT_PUBLIC_MAINNET_ALLOY_ADDRESS ?? process.env.NEXT_PUBLIC_ALLOY_ADDRESS)
-      : chain === "foundry"
-        ? (process.env.NEXT_PUBLIC_ANVIL_ALLOY_ADDRESS ?? process.env.NEXT_PUBLIC_ALLOY_ADDRESS)
-        : (process.env.NEXT_PUBLIC_SEPOLIA_ALLOY_ADDRESS ?? process.env.NEXT_PUBLIC_ALLOY_ADDRESS);
-  const trials = address("trials address", trialsEnv);
-  const alloy = address("alloy address", alloyEnv);
+function addressRecord(): Record<SupportedChain, { trials: string | undefined; alloy: string | undefined }> {
+  return {
+    mainnet: {
+      trials: process.env.NEXT_PUBLIC_MAINNET_TRIALS_ADDRESS ?? process.env.NEXT_PUBLIC_TRIALS_ADDRESS,
+      alloy: process.env.NEXT_PUBLIC_MAINNET_ALLOY_ADDRESS ?? process.env.NEXT_PUBLIC_ALLOY_ADDRESS,
+    },
+    sepolia: {
+      trials: process.env.NEXT_PUBLIC_SEPOLIA_TRIALS_ADDRESS ?? process.env.NEXT_PUBLIC_TRIALS_ADDRESS,
+      alloy: process.env.NEXT_PUBLIC_SEPOLIA_ALLOY_ADDRESS ?? process.env.NEXT_PUBLIC_ALLOY_ADDRESS,
+    },
+    foundry: {
+      trials: process.env.NEXT_PUBLIC_ANVIL_TRIALS_ADDRESS ?? process.env.NEXT_PUBLIC_TRIALS_ADDRESS,
+      alloy: process.env.NEXT_PUBLIC_ANVIL_ALLOY_ADDRESS ?? process.env.NEXT_PUBLIC_ALLOY_ADDRESS,
+    },
+  };
+}
+
+/**
+ * The deployment for a chain, resolved from the *connected wallet's* chain id when the
+ * caller has one.
+ *
+ * The first version took no argument and resolved from the build-time network, so the
+ * app could only ever talk to one chain per build: a user who switched their wallet to
+ * mainnet saw the wrong-network warning forever. Now the caller passes the live chain id
+ * and the right contracts follow. Chains this app does not know resolve to an
+ * *unconfigured* deployment — reads refuse, writes refuse, and the wrong-network notice
+ * steers the user back — never to another network's contracts, which would be the one
+ * failure mode worse than a broken page.
+ */
+function deploymentFor(chain: SupportedChain): Deployment {
+  const rec = addressRecord()[chain];
+  const trials = address("trials address", rec.trials);
+  const alloy = address("alloy address", rec.alloy);
   return {
     chainId: CHAIN_IDS[chain],
     trials,
     alloy,
     configured: trials !== ZERO_ADDRESS && alloy !== ZERO_ADDRESS,
   };
+}
+
+export function deployment(chainId?: number): Deployment {
+  // No chain given: the build's default network, for spectators who have not connected.
+  if (chainId === undefined) return deploymentFor(activeChain());
+  const chain = chainFromId(chainId);
+  if (chain === null) {
+    return { chainId, trials: ZERO_ADDRESS, alloy: ZERO_ADDRESS, configured: false };
+  }
+  return deploymentFor(chain);
+}
+
+/** Whether a chain has a signed-transaction deployment behind it. */
+export function chainConfigured(chainId: number): boolean {
+  return deployment(chainId).configured;
 }
 
 /** Public fallbacks so a fresh clone renders and can even read a live chain. */
@@ -168,8 +209,7 @@ const FALLBACK_RPC: Record<SupportedChain, string> = {
   foundry: "http://127.0.0.1:8545",
 };
 
-export function rpcUrl(): string {
-  const chain = activeChain();
+export function rpcUrl(chain: SupportedChain = activeChain()): string {
   const configured =
     chain === "foundry"
       ? process.env.NEXT_PUBLIC_ANVIL_RPC
@@ -177,4 +217,36 @@ export function rpcUrl(): string {
         ? process.env.NEXT_PUBLIC_MAINNET_RPC
         : process.env.NEXT_PUBLIC_SEPOLIA_RPC;
   return configured || FALLBACK_RPC[chain];
+}
+
+/**
+ * The money warning the wallet gate shows, per connected network — the sentences a
+ * stranger reads at the one button that can move their money.
+ *
+ * A function of the network, not of the build, because the network is chosen at runtime
+ * now: the same page serves a testnet visitor (who must be told the ETH is worthless) and
+ * a mainnet visitor (who must be told it is not). The unknown-chain arm exists because a
+ * wallet can sit on a network this app does not know; that visitor gets the conservative
+ * warning and the wrong-network notice steers them home.
+ *
+ * Plain words on purpose: "Anvil", "31337" and "testnet" are the vocabulary of whoever
+ * built this, not of the person being warned.
+ */
+export function gateMoneyNotice(chain: SupportedChain | null): { lead: string; body: string } {
+  if (chain === "mainnet") {
+    return {
+      lead: "This is the real network.",
+      body: "The forge runs on mainnet, and the metal here is real ETH with real value — a signature can move funds you cannot get back. Think before you sign.",
+    };
+  }
+  if (chain === null) {
+    return {
+      lead: "This forge runs on a different network.",
+      body: "Your wallet is on a network this forge does not know. Switch networks after connecting — and until then, treat everything here as read-only.",
+    };
+  }
+  return {
+    lead: "This is a demonstration.",
+    body: "The forge runs on a chain kept for showing it off, and the metal here is test ETH — worth nothing, and nothing you do on this page can spend anything real.",
+  };
 }

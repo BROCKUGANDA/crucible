@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { useAccount, useConnect } from "wagmi";
 import { WalletButton } from "@/components/Wallet";
 import { SeedPhrasePromise } from "@/components/SeedPhrasePromise";
-import { activeChain } from "@/lib/wagmi";
+import { activeChain, chainFromId, gateMoneyNotice } from "@/lib/wagmi";
 
 /**
  * The entry gate, and the only page in the app that is allowed to be theatre.
@@ -31,8 +31,13 @@ export function ForgeAuth({ mode }: { mode: "sign-in" | "sign-up" }) {
     ? "Connect your wallet to stake your first bond. There is no account, no password, no key you can lose."
     : "Connect your wallet to pick up where you left the forge.";
 
-  const { address, isConnected } = useAccount();
+  const { address, isConnected, chainId } = useAccount();
   const { isPending } = useConnect();
+
+  // The money warning follows the wallet, not the build: the network is chosen at
+  // runtime now, so the same gate serves a Sepolia tester (worthless ETH) and a mainnet
+  // earner (real funds). A wallet on an unknown chain gets the conservative arm.
+  const money = gateMoneyNotice(chainId === undefined ? activeChain() : chainFromId(chainId));
 
   // The gate has to *do* something once it is passed, or it is a splash screen wearing a
   // button. Connected means connected — say so, and hand over the way in.
@@ -81,26 +86,11 @@ export function ForgeAuth({ mode }: { mode: "sign-in" | "sign-up" }) {
               and to anyone who never thinks to hover — and this is the one button in the
               product that asks a stranger to sign something that moves money. A judge
               should not have to discover the chain's status by inspecting the page.
-              The money sentence is network-aware: telling a mainnet visitor the ETH is
-              "worth nothing" would be false, so the warning names what their network
-              actually is. Plain words on purpose: "Anvil", "31337" and "testnet" are the
-              vocabulary of whoever built this, not of the person being warned. */}
+              The sentences come from `gateMoneyNotice`, keyed to the connected wallet's
+              chain — mainnet and testnet visitors are warned about *their* money. */}
           <p className="forge-auth__demo" data-stage="3">
-            {activeChain() !== "mainnet" ? (
-              <>
-                <strong>This is a demonstration.</strong> The forge runs on a chain kept
-                for showing it off, and the metal here is test ETH — worth nothing, and
-                nothing you do on this page can spend anything real.
-              </>
-            ) : (
-              <>
-                <strong>This is the real network.</strong> The forge runs on mainnet, and
-                the metal here is real ETH with real value — a signature can move funds
-                you cannot get back. Think before you sign.
-              </>
-            )}{" "}
-            Your wallet is still your wallet: we ask it to sign, and we never hold a key
-            for it.
+            <strong>{money.lead}</strong> {money.body} Your wallet is still your wallet:
+            we ask it to sign, and we never hold a key for it.
           </p>
           {/* The gate hides the chrome, so the standing sentence has to be said here as well:
               this is the one screen that asks a stranger to connect a wallet, and it is the

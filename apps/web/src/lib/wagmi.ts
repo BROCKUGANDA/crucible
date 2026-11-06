@@ -1,4 +1,4 @@
-import { createConfig, http, cookieStorage, createStorage } from "wagmi";
+import { createConfig, http, cookieStorage, createStorage, useAccount } from "wagmi";
 import { foundry, mainnet, sepolia } from "wagmi/chains";
 import { coinbaseWallet, walletConnect, injected as injectedConnector } from "wagmi/connectors";
 import { getDefaultConfig } from "@rainbow-me/rainbowkit";
@@ -12,7 +12,6 @@ import {
   walletConnectWallet,
 } from "@rainbow-me/rainbowkit/wallets";
 import { bitgetConnector } from "./bitget";
-import type { Transport } from "viem";
 import type { Chain } from "viem/chains";
 import type { ChainDescription } from "./chainSwitch";
 
@@ -44,10 +43,13 @@ import type { ChainDescription } from "./chainSwitch";
 
 export {
   activeChain,
+  chainFromId,
   chainLabel,
+  chainConfigured,
   CHAIN_IDS,
   deployment,
   environmentBadge,
+  gateMoneyNotice,
   rpcUrl,
   ZERO_ADDRESS,
   type SupportedChain,
@@ -55,19 +57,22 @@ export {
 
 import {
   activeChain,
+  chainFromId,
   deployment,
   rpcUrl,
+  type Deployment,
+  type SupportedChain,
 } from "./networks";
 
 /**
- * The chain definition the active network resolves to. Lives here rather than in
- * `networks.ts` because it needs the real chain objects — explorers, native currency —
- * and those come from the `viem/chains` barrel, whose import cost is already paid by
- * every page that mounts the wallet stack. A JSON route that only wants a chain id must
- * not pay it.
+ * The chain definition for a network, or for the build default when none is given.
+ * Lives here rather than in `networks.ts` because it needs the real chain objects —
+ * explorers, native currency — and those come from the `viem/chains` barrel, whose
+ * import cost is already paid by every page that mounts the wallet stack. A JSON route
+ * that only wants a chain id must not pay it.
  */
-export function activeChainDef(): Chain {
-  switch (activeChain()) {
+export function activeChainDef(chain?: SupportedChain): Chain {
+  switch (chain ?? activeChain()) {
     case "mainnet":
       return mainnet;
     case "foundry":
@@ -77,15 +82,28 @@ export function activeChainDef(): Chain {
   }
 }
 
-/** The chain definition the active network resolves to — for wallet and explorer URLs. */
-export function chainForWallets(): ChainDescription {
-  const chain: Chain = activeChainDef();
-  const explorer = chain.blockExplorers?.default?.url;
+/**
+ * The deployment the app should act on right now: the connected wallet's network when a
+ * wallet is connected, the build's default network when not.
+ *
+ * Every page reads its contracts through this hook, which is what makes the network a
+ * runtime choice instead of a build-time constant — switch the wallet's network and the
+ * contracts, the reads and the signed transactions all follow, without a redeploy.
+ */
+export function useDeployment(): Deployment {
+  const { chainId } = useAccount();
+  return deployment(chainId);
+}
+
+/** The chain a wallet should be landed on — the build default, or an explicitly chosen one. */
+export function chainForWallets(chain?: SupportedChain): ChainDescription {
+  const def: Chain = activeChainDef(chain);
+  const explorer = def.blockExplorers?.default?.url;
   return {
-    chainId: chain.id,
-    name: activeChain() === "foundry" ? "Anvil" : chain.name,
-    rpcUrl: rpcUrl(),
-    nativeCurrency: chain.nativeCurrency,
+    chainId: def.id,
+    name: (chain ?? activeChain()) === "foundry" ? "Anvil" : def.name,
+    rpcUrl: rpcUrl(chain ?? activeChain()),
+    nativeCurrency: def.nativeCurrency,
     ...(explorer ? { explorerUrl: explorer } : {}),
   };
 }
@@ -124,10 +142,6 @@ export function walletConnectEnabled(): boolean {
   return rainbowKitProjectId().length > 0;
 }
 
-export function transportFor(): Transport {
-  return http(rpcUrl());
-}
-
 /**
  * The wallet list handed to RainbowKit when a WalletConnect project id exists.
  *
@@ -155,17 +169,40 @@ export function rainbowWalletGroups() {
   ];
 }
 
+/**
+ * Every network the app can talk to, registered with the wallet so the *user* chooses
+ * between them — mainnet to earn, Sepolia to test, the local forge to develop.
+ *
+ * The build default (`NEXT_PUBLIC_CHAIN`) is still what a disconnected spectator reads,
+ * but a connected wallet is followed, not overridden: the wallet's chain decides which
+ * deployment the app acts on. Testnet is listed first on purpose — the audience this
+ * order nudges is a first-time visitor deciding where to try the platform.
+ */
+const CHAINS = [sepolia, mainnet, foundry] as const;
+
 export function buildConfig() {
-  const chain = activeChainDef();
   const projectId = rainbowKitProjectId();
+
+  /** One transport per registered chain — each network is reached on its own RPC. */
+  const transports = Object.fromEntries(
+    CHAINS.map((chain) => {
+      const network = chainFromId(chain.id);
+      if (network === null) {
+        // A chain in CHAINS that networks.ts does not know would read contracts from
+        // nowhere; refuse at startup rather than at the first signature.
+        throw new Error(`chain ${chain.id} is registered with the wallet but has no network record`);
+      }
+      return [chain.id, http(rpcUrl(network))];
+    }),
+  ) as Record<1 | 11155111 | 31337, ReturnType<typeof http>>;
 
   if (projectId) {
     // Add Bitget explicitly while retaining Safe, popular wallets and injected fallback.
     return getDefaultConfig({
       appName: "Crucible",
       projectId,
-      chains: [chain],
-      transports: { [chain.id]: transportFor() },
+      chains: [...CHAINS],
+      transports,
       wallets: rainbowWalletGroups(),
       ssr: true,
     });
@@ -174,7 +211,7 @@ export function buildConfig() {
   // No project id: injected wallets still work and the app degrades to a plain button
   // rather than failing to load. Cookie storage keeps the session across SSR passes.
   return createConfig({
-    chains: [chain],
+    chains: [...CHAINS],
     connectors: [
       injectedConnector({ shimDisconnect: true }),
       // Binance Wallet is named explicitly because it does not reliably answer through
@@ -196,7 +233,7 @@ export function buildConfig() {
       coinbaseWallet({ appName: "Crucible", preference: "all" }),
       ...(projectId ? [walletConnect({ projectId })] : []),
     ],
-    transports: { [chain.id]: transportFor() },
+    transports,
     ssr: true,
     storage: createStorage({ storage: cookieStorage }),
   });
@@ -215,14 +252,18 @@ export function wagmiConfig() {
 }
 
 /**
- * Refuse to pretend a signature is possible when there is no deployment behind it.
- * Called by `useTx.send`, which is the only place that actually needs a live address.
+ * Refuse to pretend a signature is possible when there is no deployment behind *this*
+ * chain — the wallet may be on a network (or a chain the app does not know at all) that
+ * has no Crucible contracts, and the refusal has to name that network's situation, not
+ * the build default's. Called by `useTx.send`, the only place that needs a live address.
  */
-export function assertConfigured(): void {
-  if (deployment().configured) return;
+export function assertConfigured(chainId?: number): void {
+  if (deployment(chainId).configured) return;
   throw new Error(
-    "Crucible is not deployed in this environment. Set NEXT_PUBLIC_TRIALS_ADDRESS and " +
-      "NEXT_PUBLIC_ALLOY_ADDRESS in apps/web/.env.local (see .env.example).",
+    "Crucible is not deployed on this network. Set the per-network addresses " +
+      "(NEXT_PUBLIC_MAINNET_TRIALS_ADDRESS, NEXT_PUBLIC_SEPOLIA_TRIALS_ADDRESS, " +
+      "NEXT_PUBLIC_ANVIL_TRIALS_ADDRESS — or the generic NEXT_PUBLIC_TRIALS_ADDRESS) " +
+      "and the matching alloy addresses in apps/web/.env.local (see .env.example).",
   );
 }
 
