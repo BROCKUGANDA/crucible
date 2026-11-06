@@ -460,6 +460,105 @@ jobs:
       - run: npm run build:libs
       - run: npm run build --workspace @crucible/web
 
+  trivy:
+    name: Trivy (container image scan)
+    runs-on: [self-hosted, linux, X64, crucible]
+    # A public repository must never execute a fork's code on this runner. The runner IS the
+    # VPS that serves the site and holds its .env; `pull_request` runs the base branch's
+    # workflow file, so a fork cannot remove this guard, but the code it checks out is still
+    # the fork's. Same-repository branches (the ladder) keep running.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - uses: actions/checkout@v7
+
+      # Build the images this repo ships, so Trivy has something to scan. These are the
+      # same images deploy.yml builds (web, api, keeper) — scanning them in CI means a
+      # vulnerable layer fails the gate before it reaches the box. `--no-cache` is not
+      # used: the runner's layer cache is the only thing keeping this job under 10 min.
+      - name: build container images
+        run: |
+          set -euo pipefail
+          docker compose -f compose.yaml -f compose.vps.yaml build web api keeper funder 2>&1 | tail -20
+
+      # Trivy scans each image for OS-level and language-level vulnerabilities. The scan
+      # exits non-zero on CRITICAL/HIGH by default; .trivyignore documents accepted risks.
+      # `--severity` can be tightened to CRITICAL-only if the noise is too high initially.
+      - name: install trivy (digest-pinned)
+        run: |
+          set -euo pipefail
+          TRIVY_VERSION="0.69.3"
+          TRIVY_DIR="$RUNNER_TEMP/trivy"
+          mkdir -p "$TRIVY_DIR"
+          curl -sSL -o "$TRIVY_DIR/trivy.tar.gz" \
+            "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+          tar -xzf "$TRIVY_DIR/trivy.tar.gz" -C "$TRIVY_DIR"
+          echo "$TRIVY_DIR" >> "$GITHUB_PATH"
+          export PATH="$TRIVY_DIR:$PATH"
+          trivy --version
+
+      - name: scan web image
+        run: |
+          set -euo pipefail
+          export PATH="$RUNNER_TEMP/trivy:$PATH"
+          trivy image --severity CRITICAL,HIGH --ignore-unfixed \
+            --ignorefile .trivyignore \
+            --exit-code 1 \
+            --format table \
+            crucible-web:latest 2>&1 | tail -40
+
+      - name: scan api image
+        run: |
+          set -euo pipefail
+          export PATH="$RUNNER_TEMP/trivy:$PATH"
+          trivy image --severity CRITICAL,HIGH --ignore-unfixed \
+            --ignorefile .trivyignore \
+            --exit-code 1 \
+            --format table \
+            crucible-api:latest 2>&1 | tail -40
+
+      - name: scan keeper image
+        run: |
+          set -euo pipefail
+          export PATH="$RUNNER_TEMP/trivy:$PATH"
+          trivy image --severity CRITICAL,HIGH --ignore-unfixed \
+            --ignorefile .trivyignore \
+            --exit-code 1 \
+            --format table \
+            crucible-keeper:latest 2>&1 | tail -40
+
+      - name: scan funder image
+        run: |
+          set -euo pipefail
+          export PATH="$RUNNER_TEMP/trivy:$PATH"
+          trivy image --severity CRITICAL,HIGH --ignore-unfixed \
+            --ignorefile .trivyignore \
+            --exit-code 1 \
+            --format table \
+            crucible-funder:latest 2>&1 | tail -40
+
+      # Upload SARIF results for GitHub Security tab integration.
+      - name: trivy (SARIF upload)
+        if: always()
+        run: |
+          set -euo pipefail
+          export PATH="$RUNNER_TEMP/trivy:$PATH"
+          for svc in web api keeper funder; do
+            trivy image --severity CRITICAL,HIGH --ignore-unfixed \
+              --ignorefile .trivyignore \
+              --format sarif \
+              --output "trivy-${svc}.sarif" \
+              "crucible-${svc}:latest" 2>/dev/null || true
+          done
+
+      - name: upload SARIF artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: trivy-sarif-run-${{ github.run_id }}
+          path: trivy-*.sarif
+          if-no-files-found: ignore
+          retention-days: 30
+
   audit:
     name: Dependency audit
     runs-on: [self-hosted, linux, X64, crucible]

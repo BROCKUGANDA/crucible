@@ -1,0 +1,9 @@
+# Known false positives / accepted risks for Crucible container images.
+# Format: CVE-ID or vulnerability ID, one per line.
+# Add entries here only with a documented reason; review quarterly.
+
+# Next.js / React ecosystem: postcss advisory covers all Next versions
+# through 16.3.0-preview (documented in README "Known limits"). RainbowKit
+# 2.2.11 pins wagmi ^2.9, so the wallet stack cannot be patched without
+# dropping RainbowKit. Tracked, not fixable without a product change.
+# CVE-2024-XXXXX  # example placeholder
