@@ -420,6 +420,33 @@
   white-space: nowrap;
 }
 
+.chrome__nav-track {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bg1) 70%, transparent);
+  border: 1px solid var(--border);
+}
+
+.chrome__nav-track a {
+  padding: 6px 12px;
+  border-radius: 999px;
+  color: var(--dim);
+  transition: color var(--t-state) var(--ease-ignite), background var(--t-state) var(--ease-ignite);
+}
+
+.chrome__nav-track a:hover {
+  color: var(--text);
+  background: color-mix(in srgb, var(--ember) 12%, transparent);
+}
+
+.chrome__nav-track a[aria-current="page"] {
+  color: var(--hot);
+  background: color-mix(in srgb, var(--ember) 18%, transparent);
+}
+
 .chrome__nav a {
   position: relative;
   color: var(--dim);

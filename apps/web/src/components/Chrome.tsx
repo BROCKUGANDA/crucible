@@ -88,18 +88,19 @@ export function Chrome({ children }: { children: ReactNode }) {
             {env.compact}
           </span>
         </div>
-
-        <nav aria-label="Primary" className="chrome__nav">
-          {visiblePrimary.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              aria-current={pathname.startsWith(item.href) ? "page" : undefined}
-            >
-              {item.label}
-            </Link>
-          ))}
-        </nav>
+         <nav aria-label="Primary" className="chrome__nav">
+           <div className="chrome__nav-track">
+             {visiblePrimary.map((item) => (
+               <Link
+                 key={item.href}
+                 href={item.href}
+                 aria-current={pathname.startsWith(item.href) ? "page" : undefined}
+               >
+                 {item.label}
+               </Link>
+             ))}
+           </div>
+         </nav>
 
         <div className="chrome__actions">
           {/* Secondary routes stay reachable without making every label fight for the
