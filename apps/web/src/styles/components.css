@@ -357,6 +357,11 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  /* Wrap, never overlap: the brand chip once painted over the first nav link because a
+     nowrap flex row kept shrinking items with visible overflow. A wrapped row is ugly;
+     an unreadable one is worse. */
+  flex-wrap: wrap;
+  row-gap: 8px;
   gap: 16px;
   padding: 12px var(--pad);
   border-bottom: 1px solid color-mix(in srgb, var(--bg2) 90%, transparent);
@@ -647,11 +652,39 @@
   display: none;
 }
 
+/* ── desktop compaction ─────────────────────────────────────── */
+
+/* Seven links, the disclosure and five controls measure over 1900px on one row, so a
+   full-HD window already overflowed. Below the compaction tier the header spends its
+   saved widths: short wallet labels and the compact env chip — both of which already
+   existed for phones — plus a tighter nav track. Nothing is deleted; only full labels
+   that say the same thing in more pixels step aside. */
+@media (max-width: 1759px) {
+  .chrome__env--wide {
+    display: none;
+  }
+  .chrome__env--compact {
+    display: inline-flex;
+  }
+  .wallet-label-full {
+    display: none;
+  }
+  .wallet-label-short {
+    display: inline;
+  }
+  .chrome__actions {
+    gap: 8px;
+  }
+  .chrome__nav-track a {
+    padding: 6px 8px;
+  }
+}
+
 /* ── mobile ─────────────────────────────────────────────────── */
 
 /* Below a wide desktop the inline row cannot hold five routes, the disclosure and four
    controls without shrinking labels into two-line stubs. The sheet carries all of them. */
-@media (max-width: 1320px) {
+@media (max-width: 1560px) {
   .chrome__nav {
     display: none;
   }
