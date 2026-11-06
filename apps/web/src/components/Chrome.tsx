@@ -135,11 +135,17 @@ export function Chrome({ children }: { children: ReactNode }) {
 
           <VoiceControl />
           <PayoffSound />
-          <FrenchyWidget />
           <SponsorshipBadge />
           <WalletButton />
         </div>
       </header>
+
+      {/* Frenchy is deliberately NOT a header child. The header carries a backdrop-filter,
+          and a filtered element becomes the containing block for position:fixed descendants
+          — so a "fixed bottom-right" widget mounted inside it pinned to the header band
+          instead of the viewport, and surfaced top-right over the nav. Out here, the
+          viewport is once again what bottom/right measure against. */}
+      <FrenchyWidget />
 
       <Modal open={sheet} title="The forge" onRequestClose={() => setSheet(false)}>
         <nav id="forge-nav-sheet" aria-label="Primary" className="stack">
