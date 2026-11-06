@@ -37,10 +37,13 @@ describe("PgEventStore", () => {
   });
 
   it("translates unique violations to duplicate errors", async () => {
-    const store = new PgEventStore(async () => {
-      const err = new Error("unique violation") as Error & { code: string };
-      err.code = "23505";
-      throw err;
+    const store = new PgEventStore(async (text) => {
+      if (text.includes("INSERT INTO forge_watch_events")) {
+        const err = new Error("unique violation") as Error & { code: string };
+        err.code = "23505";
+        throw err;
+      }
+      return { rows: [] };
     });
     const event = await makeEvent(1);
     await expect(store.append(event)).rejects.toThrow(/run sequence conflict/);
