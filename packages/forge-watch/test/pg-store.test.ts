@@ -23,12 +23,12 @@ async function makeEvent(sequence: number) {
 describe("PgEventStore", () => {
   it("appends an event with the expected SQL shape", async () => {
     const calls: Array<{ text: string; params?: unknown[] }> = [];
+    const event = await makeEvent(1);
     const store = new PgEventStore(async (text, params) => {
       calls.push({ text, params });
-      return { rows: [] };
+      return { rows: [{ event_id: event.eventId }] };
     });
-    const event = await makeEvent(1);
-    await store.append(event);
+    expect(await store.append(event)).toBe(true);
     expect(calls.length).toBe(1);
     expect(calls[0].text).toContain("INSERT INTO forge_watch_events");
     expect(calls[0].params?.[0]).toBe(event.eventId);
@@ -43,13 +43,42 @@ describe("PgEventStore", () => {
       throw err;
     });
     const event = await makeEvent(1);
-    await expect(store.append(event)).rejects.toThrow(/duplicate forge-watch event/);
+    await expect(store.append(event)).rejects.toThrow(/run sequence conflict/);
   });
 
   it("isUniqueViolation detects PG 23505", () => {
     expect(isUniqueViolation({ code: "23505" })).toBe(true);
     expect(isUniqueViolation({ code: "23503" })).toBe(false);
     expect(isUniqueViolation(null)).toBe(false);
+  });
+
+  it("treats an identical event-id redelivery as an idempotent no-op", async () => {
+    const event = await makeEvent(1);
+    let insertCount = 0;
+    const store = new PgEventStore(async (text) => {
+      if (text.includes("INSERT INTO forge_watch_events")) {
+        insertCount += 1;
+        return insertCount === 1
+          ? { rows: [{ event_id: event.eventId }] }
+          : { rows: [] };
+      }
+      return { rows: [{ envelope: event }] };
+    });
+
+    expect(await store.append(event)).toBe(true);
+    expect(await store.append(event)).toBe(false);
+  });
+
+  it("rejects an event id replayed with different canonical bytes", async () => {
+    const event = await makeEvent(1);
+    const conflicting = await makeEvent(1);
+    conflicting.toolId = "different-tool";
+    const store = new PgEventStore(async (text) => {
+      if (text.includes("INSERT INTO forge_watch_events")) return { rows: [] };
+      return { rows: [{ envelope: event }] };
+    });
+
+    await expect(store.append(conflicting)).rejects.toThrow(/event id conflict/);
   });
 
   it("get returns null when no row", async () => {
