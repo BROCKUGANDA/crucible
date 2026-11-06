@@ -12,6 +12,10 @@ import {
   wrapUntrusted,
   type Permission,
 } from "@crucible/agent-security";
+import {
+  ForgeWatchEventType,
+  type ForgeWatchEvent,
+} from "@crucible/forge-watch";
 import { assertEgressAllowed } from "./egress.js";
 import { ANTHROPIC_BASE, assertProviderUrl } from "./providers.js";
 
@@ -86,6 +90,14 @@ export interface ForgedAgentOptions {
       permission: string;
     }): Promise<{ ok: boolean; reason?: string; output?: unknown }>;
   };
+  /**
+   * Optional Forge Watch emitter (host boundary). Emits provider.request/response/error
+   * around model calls. Never throws into the agent step; the monitor stays outside the
+   * agent's execution boundary.
+   */
+  emitEvent?(event: ForgeWatchEvent): void | Promise<void>;
+  /** Run identity for telemetry attribution (used when emitEvent is set). */
+  runMeta?: { runId: number; trialId: number; agentId: number; tenantId?: string };
 }
 
 /**
@@ -235,11 +247,43 @@ export function createForgedAgent(opts: ForgedAgentOptions): SmithAgent {
       }
 
       if (raw === null) {
-        raw = await opts.client.complete({
-          system: SYSTEM_PROMPT,
-          prompt,
-          temperature: opts.temperature ?? 0.2,
-        });
+        const watch = (eventType: ForgeWatchEvent["eventType"], extra?: Partial<ForgeWatchEvent>) => {
+          if (!opts.emitEvent || !opts.runMeta) return;
+          try {
+            void opts.emitEvent({
+              schemaVersion: 1,
+              timestamp: Date.now(),
+              eventId: crypto.randomUUID(),
+              sequence: 0,
+              runId: String(opts.runMeta.runId),
+              trialId: String(opts.runMeta.trialId),
+              agentId: String(opts.runMeta.agentId),
+              tenantId: opts.runMeta.tenantId && opts.runMeta.tenantId.length > 0 ? opts.runMeta.tenantId : "default",
+              source: "forge-runner.agent",
+              eventType,
+              providerId: opts.model,
+              modelId: opts.model,
+              ...extra,
+            } as ForgeWatchEvent);
+          } catch {
+            /* telemetry must never break the step */
+          }
+        };
+        watch(ForgeWatchEventType.providerRequest, { correlationId: String(ctx.iteration) });
+        try {
+          raw = await opts.client.complete({
+            system: SYSTEM_PROMPT,
+            prompt,
+            temperature: opts.temperature ?? 0.2,
+          });
+          watch(ForgeWatchEventType.providerResponse, { correlationId: String(ctx.iteration) });
+        } catch (err) {
+          watch(ForgeWatchEventType.providerError, {
+            correlationId: String(ctx.iteration),
+            payloadDigest: err instanceof Error ? err.name : "error",
+          });
+          throw err;
+        }
       }
 
       const patch = extractDiff(raw);

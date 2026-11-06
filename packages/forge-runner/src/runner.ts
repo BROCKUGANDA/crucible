@@ -36,6 +36,10 @@ import {
   type StatusSink,
   type ForgeStatus,
 } from "./status.js";
+import {
+  ForgeWatchEventType,
+  type ForgeWatchEvent,
+} from "@crucible/forge-watch";
 
 /**
  * ForgeRunner — the work-performing agent.
@@ -118,6 +122,13 @@ export interface RunnerDeps {
    */
   manifest?: Omit<ManifestInputs, "model" | "specDigest" | "suiteDigest">;
   status?: StatusSink;
+  /**
+   * Optional telemetry emitter for Forge Watch. The runner calls it with a
+   * canonical envelope at each execution boundary; the host wires it to the
+   * TelemetryCollector. The runner never imports the collector itself, so the
+   * monitor stays outside the agent's execution boundary.
+   */
+  emitEvent?(event: ForgeWatchEvent): void | Promise<void>;
 }
 
 export interface RunRequest {
@@ -204,6 +215,39 @@ interface RunState {
 export class ForgeRunner {
   constructor(private readonly deps: RunnerDeps) {}
 
+  /**
+   * Emit a canonical Forge Watch event. Never throws — telemetry must never
+   * break a run, and the monitor lives outside the agent's execution boundary.
+   */
+  private watch(
+    runId: number,
+    trialId: number,
+    agentId: number,
+    event: Partial<Omit<ForgeWatchEvent, "runId" | "trialId" | "agentId">> & {
+      eventType: ForgeWatchEvent["eventType"];
+    },
+  ): void {
+    const { emitEvent } = this.deps;
+    if (!emitEvent) return;
+    try {
+      const envelope = {
+        ...event,
+        schemaVersion: 1,
+        timestamp: Date.now(),
+        eventId: crypto.randomUUID(),
+        sequence: 0,
+        runId: String(runId),
+        trialId: String(trialId),
+        agentId: String(agentId),
+        tenantId: "default",
+        source: "forge-runner",
+      };
+      void emitEvent(envelope as ForgeWatchEvent);
+    } catch {
+      // a failing emitter must not take down the run
+    }
+  }
+
   async run(req: RunRequest): Promise<RunOutcome> {
     const sink = this.deps.status ?? consoleSink();
     const emit = (
@@ -252,6 +296,15 @@ export class ForgeRunner {
       state.degraded = sandbox.degraded;
       state.imageDigest = sandbox.imageDigest;
       state.sandboxSpec = sandbox.spec;
+      this.watch(
+        req.trialId,
+        req.trialId,
+        req.agentId,
+        {
+          eventType: ForgeWatchEventType.containerCreate,
+          environmentId: sandbox.degraded ? "degraded" : "sandbox",
+        },
+      );
       if (sandbox.degraded) {
         // Say it out loud. A silent fallback would produce an artifact claiming
         // sandboxed execution it never had — exactly what a skeptic is paid to break.
@@ -271,6 +324,15 @@ export class ForgeRunner {
       while (state.iterations < req.iterBudget) {
         this.assertBeforeDeadline(req);
         state.iterations += 1;
+        this.watch(
+          req.trialId,
+          req.trialId,
+          req.agentId,
+          {
+            eventType: ForgeWatchEventType.agentTurnStart,
+            sequence: state.iterations,
+          },
+        );
         emit("forging", `iter ${state.iterations}/${req.iterBudget} — forging`, {
           iteration: state.iterations,
           maxIterations: req.iterBudget,
@@ -285,6 +347,16 @@ export class ForgeRunner {
         };
 
         const step = await this.runAgentStep(ctx);
+        this.watch(
+          req.trialId,
+          req.trialId,
+          req.agentId,
+          {
+            eventType: ForgeWatchEventType.toolCallCreate,
+            toolId: "plan",
+            correlationId: String(state.iterations),
+          },
+        );
         if (step.withheld?.suiteOutput) {
           // Say it out loud: the agent wrote this iteration's patch without the previous
           // suite output. The label names the cause and carries none of the withheld text.
@@ -298,14 +370,43 @@ export class ForgeRunner {
             },
           );
         }
+        this.watch(
+          req.trialId,
+          req.trialId,
+          req.agentId,
+          {
+            eventType: ForgeWatchEventType.toolCallExecute,
+            toolId: "apply_patch",
+            correlationId: String(state.iterations),
+          },
+        );
         await this.applyStep(sandbox, step);
 
         // run the pinned suite
+        this.watch(
+          req.trialId,
+          req.trialId,
+          req.agentId,
+          {
+            eventType: ForgeWatchEventType.graderExecution,
+            correlationId: String(state.iterations),
+          },
+        );
         emit("suite-running", "suite loaded — pinned", {
           iteration: state.iterations,
           maxIterations: req.iterBudget,
         });
         const suite = await sandbox.runSuite(req.suiteCommand);
+        this.watch(
+          req.trialId,
+          req.trialId,
+          req.agentId,
+          {
+            eventType: ForgeWatchEventType.toolCallOutput,
+            toolId: "run_suite",
+            correlationId: String(state.iterations),
+          },
+        );
         state.lastOutput = `${suite.stdout}\n${suite.stderr}`.trim();
         state.parsed = readSuiteResults(state.lastOutput);
         // Every iteration, not the last one. `state.lastOutput` is overwritten each pass and

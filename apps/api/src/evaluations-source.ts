@@ -61,12 +61,19 @@ export interface EvaluationSourceDeps {
   /**
    * Score and cohort for a run, from the authoritative scorecards.
    *
-   * Injected and optional because the scorecards are their own published surface with their own
-   * cohort vocabulary (`isScorecardCohort`, `apps/api/src/scorecards.ts:205`) and this file must
-   * not invent a second one. Null means "no measured score", which the record carries as an
-   * absent field rather than a zero: a 0.0 accuracy is a measurement, a missing one is not.
+   * Keyed on `(agentId, manifestDigest)` rather than on `runHash`, because that is the pair both
+   * sides can actually prove: a scorecard publication names a cohort, an agent and a manifest —
+   * never a trial or a run — and `manifestDigest` is recomputed from the row's own manifest by the
+   * publication verifier and from the pinned bytes by this file. `scorecard-ranking.ts` is that
+   * join, and it states there why the key is not invented.
+   *
+   * `manifestDigest` here is the digest this host *verified*, and it is null whenever the announced
+   * digest and the pinned bytes disagree — so a run whose evidence failed its own check cannot
+   * carry a score in on the number that just got refused. Null from the callback means "no
+   * measured score", which the record carries as an absent field rather than a zero: a 0.0
+   * accuracy is a measurement, a missing one is not.
    */
-  ranking?: (runHash: Hex) => EvaluationRankingInput | null;
+  ranking?: (args: { agentId: number; manifestDigest: Hex | null }) => EvaluationRankingInput | null;
 }
 
 /** What one read of a pinned document can conclude, kept apart because the repairs differ. */
@@ -167,6 +174,11 @@ function inputForRun(
   const manifestCid = record.manifestCid ?? null;
   const manifestDigestAnnounced = record.manifestDigest ? (record.manifestDigest as Hex) : null;
   let manifestDigestOk = false;
+  // The digest recomputed from the bytes, kept separate from the announced one on purpose: the
+  // score join is keyed on the number this host proved, not the number the runner quoted. When the
+  // two disagree the evidence is already refused below, and a score must not ride in on the
+  // announced value.
+  let verifiedManifestDigest: Hex | null = null;
   if (manifestCid !== null && manifestDigestAnnounced !== null) {
     const pinned = readPinned(deps.store, manifestCid);
     if (pinned.kind === "ok") {
@@ -174,7 +186,9 @@ function inputForRun(
         const parsed = JSON.parse(new TextDecoder("utf8", { fatal: true }).decode(pinned.bytes)) as EvalManifest;
         // `manifestDigest` is the escrow's own function, so this is the number a verifier would
         // compute — not a second implementation free to drift from the first.
-        manifestDigestOk = manifestDigest(parsed).toLowerCase() === manifestDigestAnnounced.toLowerCase();
+        const computed = manifestDigest(parsed);
+        manifestDigestOk = computed.toLowerCase() === manifestDigestAnnounced.toLowerCase();
+        if (manifestDigestOk) verifiedManifestDigest = computed;
       } catch {
         manifestDigestOk = false;
       }
@@ -191,7 +205,7 @@ function inputForRun(
 
   const signer = RUN_SIGNER_NOT_RECOVERED;
 
-  const ranking = deps.ranking?.(run.runHash as Hex) ?? null;
+  const ranking = deps.ranking?.({ agentId: run.agentId, manifestDigest: verifiedManifestDigest }) ?? null;
 
   return {
     run: {

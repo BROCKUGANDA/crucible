@@ -88,18 +88,19 @@ export function Chrome({ children }: { children: ReactNode }) {
             {env.compact}
           </span>
         </div>
-
-        <nav aria-label="Primary" className="chrome__nav">
-          {visiblePrimary.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              aria-current={pathname.startsWith(item.href) ? "page" : undefined}
-            >
-              {item.label}
-            </Link>
-          ))}
-        </nav>
+         <nav aria-label="Primary" className="chrome__nav">
+           <div className="chrome__nav-track">
+             {visiblePrimary.map((item) => (
+               <Link
+                 key={item.href}
+                 href={item.href}
+                 aria-current={pathname.startsWith(item.href) ? "page" : undefined}
+               >
+                 {item.label}
+               </Link>
+             ))}
+           </div>
+         </nav>
 
         <div className="chrome__actions">
           {/* Secondary routes stay reachable without making every label fight for the
@@ -121,13 +122,30 @@ export function Chrome({ children }: { children: ReactNode }) {
             </div>
           </details>
 
+          <button
+            type="button"
+            className="chrome__menu-btn"
+            aria-label="Open navigation menu"
+            aria-expanded={sheet}
+            aria-controls="forge-nav-sheet"
+            onClick={() => setSheet(true)}
+          >
+            <span aria-hidden="true">☰</span>
+          </button>
+
           <VoiceControl />
           <PayoffSound />
-          <FrenchyWidget />
           <SponsorshipBadge />
           <WalletButton />
         </div>
       </header>
+
+      {/* Frenchy is deliberately NOT a header child. The header carries a backdrop-filter,
+          and a filtered element becomes the containing block for position:fixed descendants
+          — so a "fixed bottom-right" widget mounted inside it pinned to the header band
+          instead of the viewport, and surfaced top-right over the nav. Out here, the
+          viewport is once again what bottom/right measure against. */}
+      <FrenchyWidget />
 
       <Modal open={sheet} title="The forge" onRequestClose={() => setSheet(false)}>
         <nav id="forge-nav-sheet" aria-label="Primary" className="stack">
