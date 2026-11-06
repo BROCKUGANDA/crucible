@@ -12,7 +12,7 @@
  */
 
 import { Hono, type Context } from "hono";
-import { configuredChainId } from "./auth.js";
+import { configuredChainId, verifiedSessionFromContext } from "./auth.js";
 import {
   buildOrganisationPrincipal,
   createOrganisation,
@@ -40,42 +40,15 @@ import {
 } from "@crucible/agent-security";
 
 function resolveWalletPrincipal(c: Context): OrganisationPrincipal | null {
-  const auth = {
-    walletAddress: null as string | null,
-    sessionId: null as string | null,
-    chainId: configuredChainId(),
-  };
-  const cookie = c.req.header("cookie");
-  if (cookie) {
-    for (const part of cookie.split(";")) {
-      const [k, ...v] = part.trim().split("=");
-      if (k === "crucible_session") {
-        auth.sessionId = v.join("=");
-        try {
-          const encoded = auth.sessionId.split(".")[0];
-          if (encoded) {
-            const payload = JSON.parse(
-              Buffer.from(encoded, "base64url").toString("utf8"),
-            ) as { address?: string };
-            if (payload.address) auth.walletAddress = payload.address;
-          }
-        } catch {
-          // malformed session cookie
-        }
-        break;
-      }
-    }
-  }
-  if (!auth.walletAddress || !auth.sessionId) return null;
-  const principal = buildOrganisationPrincipal(
-    {
-      address: auth.walletAddress,
-      id: `eip155:${configuredChainId()}:${auth.walletAddress.toLowerCase()}`,
-      sessionId: auth.sessionId,
-      authenticated: true,
-    },
-  );
-  return principal;
+  const session = verifiedSessionFromContext(c);
+  if (!session) return null;
+  const address = session.payload.address;
+  return buildOrganisationPrincipal({
+    address,
+    id: `eip155:${configuredChainId()}:${address.toLowerCase()}`,
+    sessionId: session.sessionId,
+    authenticated: true,
+  });
 }
 
 export function createOrgRoutes(): Hono {
