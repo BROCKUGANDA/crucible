@@ -61,6 +61,9 @@ ENV NEXT_PUBLIC_API_URL="$NEXT_PUBLIC_API_URL" \
 RUN npm run build --workspace @crucible/web
 
 FROM node:22-alpine AS runner
+# npm ships vulnerable transitive deps inside its own bundle (ip-address, brace-expansion, pacote, sigstore), and the base image pins npm 10.x. Upgrade npm in the runtime image: the server never runs the npm CLI, but Trivy scans the whole filesystem, and the gate refuses the image while its bundled tree is vulnerable. Version pinned; re-measure when the base image moves.
+RUN npm install -g npm@12.2.2
+
 WORKDIR /app
 ENV NODE_ENV=production \
     PORT=3000 \
