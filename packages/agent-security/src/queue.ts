@@ -117,6 +117,13 @@ export const QUEUE_NAMES = {
   SETTLEMENT: 'settlement',
   NOTIFICATION: 'notification',
   RECONCILIATION: 'reconciliation',
+  /** Forge Watch: L0/L1/L2/L3 monitor dispatch (durable, at-least-once). */
+  FORGE_WATCH_L0: 'forge-watch-l0',
+  FORGE_WATCH_L1: 'forge-watch-l1',
+  FORGE_WATCH_L2: 'forge-watch-l2',
+  FORGE_WATCH_L3: 'forge-watch-l3',
+  /** Dead-letter sink for monitor jobs that exhaust retry budget. */
+  FORGE_WATCH_DLQ: 'forge-watch-dlq',
 } as const;
 
 export type QueueName = typeof QUEUE_NAMES[keyof typeof QUEUE_NAMES];

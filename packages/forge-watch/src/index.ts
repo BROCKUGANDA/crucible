@@ -26,3 +26,10 @@ export {
   type CollectorStats,
   type EventStore,
 } from "./collector.js";
+export {
+  PgEventStore,
+  createPgEventStore,
+  isUniqueViolation,
+  type PgExecutor,
+  type PgQueryResult,
+} from "./pg-store.js";
