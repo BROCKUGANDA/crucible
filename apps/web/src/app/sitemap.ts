@@ -8,6 +8,7 @@ const ROUTES = [
   "/trials/new",
   "/bounties",
   "/agents",
+  "/scorecards",
   "/hall",
   "/assay",
   "/escrow",

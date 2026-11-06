@@ -58,6 +58,7 @@ import {
   type SecurityConfig,
 } from "./security.js";
 import { streamSSE } from "hono/streaming";
+import { scorecardRoutes, type ScorecardPublicationSource } from "./scorecards.js";
 
 /**
  * The REST surface, built as a pure function over a read-model getter so it can be
@@ -138,6 +139,12 @@ export interface ApiDeps {
    * exist, and a 404 would say otherwise.
    */
   contentLookup?: ContentLookup;
+  /** Signed scorecard publication envelopes from the immutable content volume. */
+  scorecardPublications?: ScorecardPublicationSource;
+  /** Non-evicting content store for published scorecard, corpus and evidence bytes. */
+  scorecardContentLookup?: ContentLookup;
+  /** EIP-712 authorities permitted to publish evaluation results. */
+  scorecardSigners?: readonly string[];
   /**
    * The escrow's own trial bounds, read off the chain at boot (see `readTrialLimits`). Absent means
    * this process never read them, and `prepare_create_trial` then reports `limitsChecked:false`
@@ -1494,6 +1501,21 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
         return c.json({ error: "Nothing here names those bytes", id, reason: read.reason }, 404);
     }
   });
+
+  /**
+   * Public, verified evaluation results. The route reads only immutable publication files and the
+   * content volume; its signer set and chain projection are supplied by this host.
+   */
+  app.route(
+    "/scorecards",
+    scorecardRoutes({
+      getModel: deps.getModel,
+      contentLookup: deps.scorecardContentLookup,
+      proofSource: deps.proofSource,
+      publications: deps.scorecardPublications,
+      signers: deps.scorecardSigners,
+    }),
+  );
 
   /**
    * Mint one single-use Coinbase Onramp session for a sponsor wallet.
