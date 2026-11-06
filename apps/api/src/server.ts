@@ -26,6 +26,7 @@ import { OwnerGate, SponsorshipQueue, sponsorshipMessage } from "./sponsorship.j
 import { disclosureFileIn, disclosedCids as readDisclosure, type DisclosureEntry } from "./disclosure.js";
 import { createContentSource, digestToCidMap } from "./content.js";
 import { createEvaluationSource } from "./evaluations-source.js";
+import { createScorecardRanking } from "./scorecard-ranking.js";
 import { createScorecardPublicationSource } from "./scorecard-publications.js";
 import { makeReplaySource } from "./replay.js";
 import { dlq } from "./dlq.js";
@@ -864,11 +865,13 @@ if (security.allowCredentials) {
  * The store is opened **read-only**: an API that pins is an API that can rewrite what a digest
  * names, and ADR-0006 already says this process holds no chain key for the same reason.
  *
- * `ranking` is deliberately not supplied. Scorecards carry a measured score and a cohort, but they
- * are keyed by their own subject id, not by `runHash`, and inventing a subject→run mapping here
- * would put a second identity beside the one the chain holds. Until that join exists the records
- * carry no `score`, no `uncertainty` and no `cohortId` — absent fields, not zeros — and
- * `/leaderboards/cohorts` answers an empty list. ADR-0024 keeps that as open work.
+ * `ranking` is supplied by `scorecard-ranking.ts`, joined on `(agentId, manifestDigest)` — the
+ * pair both sides can prove, since a scorecard publication names a cohort, an agent and a manifest
+ * and never a trial or a run. It is built from `verifyPublications`, the same function that backs
+ * `GET /scorecards`, so nothing weaker runs beside it. Where no row matches, the record carries no
+ * `score` and no `cohortId` — absent fields, not zeros — and `uncertainty` is never filled at all,
+ * because choosing a confidence-interval estimator is a decision to make on purpose, not as a side
+ * effect of a join.
  *
  * **And it is switched off when there is nothing to read.** A read-only `CidStore` refuses to
  * open a directory that does not exist — that refusal is the point of the flag, so a producer with
@@ -896,6 +899,16 @@ const evaluations =
         disclosure: evaluationDisclosure,
         reports: evaluationReports,
         store: evaluationStore,
+        // The run → score join. Built once at boot from the same `verifyPublications` that backs
+        // `GET /scorecards`, so a scorecard this host refuses cannot reach a leaderboard; the
+        // lookup itself is synchronous because the projection that calls it is.
+        ranking: await createScorecardRanking({
+          getModel: () => scribe.state,
+          contentLookup: scorecardContentLookup,
+          proofSource: { chain: foundry.name, chainId: foundry.id, trialsAddress },
+          publications: scorecardPublications,
+          signers: scorecardSigners,
+        }),
       })
     : null;
 
