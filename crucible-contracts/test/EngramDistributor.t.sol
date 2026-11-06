@@ -55,7 +55,7 @@ contract EngramDistributorTest is Test {
         vm.prank(user);
         d.claim(cid, 1, proof);
         // another user with valid proof would be needed; budget already 1/1
-        (, , , uint256 claimed, , , ) = d.campaigns(cid);
+        (,,, uint256 claimed,,,) = d.campaigns(cid);
         assertEq(claimed, 1);
     }
 }

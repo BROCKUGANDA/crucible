@@ -22,7 +22,9 @@ contract EngramDistributor {
     mapping(uint256 => mapping(address => bool)) public hasClaimed;
     uint256 public campaignCount;
 
-    event CampaignCreated(uint256 indexed campaignId, bytes32 root, uint256 tokenId, uint256 budget, uint64 start, uint64 end);
+    event CampaignCreated(
+        uint256 indexed campaignId, bytes32 root, uint256 tokenId, uint256 budget, uint64 start, uint64 end
+    );
     event Claimed(uint256 indexed campaignId, address indexed recipient, uint256 amount);
     event CampaignPaused(uint256 indexed campaignId, bool paused);
 
@@ -44,7 +46,11 @@ contract EngramDistributor {
         engram = engram_;
     }
 
-    function createCampaign(bytes32 root, uint256 tokenId, uint256 budget, uint64 start, uint64 end) external onlyAdmin returns (uint256 id) {
+    function createCampaign(bytes32 root, uint256 tokenId, uint256 budget, uint64 start, uint64 end)
+        external
+        onlyAdmin
+        returns (uint256 id)
+    {
         require(start < end, "bad window");
         id = campaignCount++;
         campaigns[id] = Campaign(root, tokenId, budget, 0, start, end, false);
