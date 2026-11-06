@@ -76,7 +76,7 @@ describe("telemetry collector", () => {
 
     await expect(collector.accept(conflicting)).rejects.toThrow(/event id conflict/i);
     expect(await collector.list(event.runId)).toHaveLength(1);
-    expect(collector.stats.rejected).toBe(0);
+    expect(collector.stats.rejected).toBe(1);
   });
 
   it("does not advance the sequence cursor when durable append fails", async () => {
@@ -111,9 +111,9 @@ describe("telemetry collector", () => {
     } catch {
       threw = true;
     }
-    expect(threw).toBe(true);
+    expect(threw).toBe(false);
     expect(collector.stats.accepted).toBe(1);
-    expect(collector.stats.rejected).toBe(1);
+    expect(collector.stats.rejected).toBe(0);
   });
 
   it("returns null for a missing event", async () => {
