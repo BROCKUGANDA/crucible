@@ -73,10 +73,11 @@
     "vite": "^8.3.5"
   },
   "dependencies": {
-    "zod": "^4.6.7"
+    "zod": "^4.6.7",
+    "ws": "8.21.0"
   },
   "overrides": {
-    "brace-expansion@<2": "1.1.18",
+    "brace-expansion@<2": "1.1.20",
     "brace-expansion@2": "2.1.4",
     "brace-expansion@3": "3.0.6",
     "brace-expansion@>=4": "5.0.9",
@@ -86,6 +87,7 @@
     "sigstore": "4.1.1",
     "decode-uri-component": "0.5.1",
     "follow-redirects@<2": "1.16.2",
-    "ws@8": "8.21.0"
+    "ws@8": "8.21.0",
+    "ws@<8": "7.5.13"
   }
 }
