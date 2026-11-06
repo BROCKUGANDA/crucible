@@ -54,7 +54,7 @@ export function getQueue(name: string, options?: QueueOptions): Queue {
 export function createWorker(
   name: string,
   processor: (job: Job) => Promise<void>,
-  options?: WorkerOptions
+  options?: Partial<WorkerOptions>
 ): Worker {
   return new Worker(
     name,
@@ -62,7 +62,7 @@ export function createWorker(
     {
       connection: redisConnection,
       ...options,
-    }
+    } as WorkerOptions
   );
 }
 
@@ -125,5 +125,13 @@ export const QUEUE_NAMES = {
   /** Dead-letter sink for monitor jobs that exhaust retry budget. */
   FORGE_WATCH_DLQ: 'forge-watch-dlq',
 } as const;
+
+/** Default BullMQ job options for Forge Watch monitor dispatch (idempotent jobs). */
+export const FORGE_WATCH_JOB_DEFAULTS = {
+  attempts: 5,
+  backoff: { type: 'exponential' as const, delay: 1000 },
+  removeOnComplete: 200,
+  removeOnFail: 500,
+};
 
 export type QueueName = typeof QUEUE_NAMES[keyof typeof QUEUE_NAMES];
