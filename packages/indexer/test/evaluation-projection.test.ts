@@ -27,7 +27,7 @@ function input(over: Partial<EvaluationProjectionInput> = {}): EvaluationProject
       runHash: RUN_HASH,
       transactionHash: TX,
       blockNumber: 428,
-      timestamp: 1_793_923_200_000,
+      timestamp: 1_793_923_200,
     },
     evidence: {
       manifestCid: "bafkreihmanifest",

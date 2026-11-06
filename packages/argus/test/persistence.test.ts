@@ -1,11 +1,6 @@
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { CidStore } from "@crucible/cidstore";
-import { canonicalize } from "json-canonicalize";
+import { VerificationReportStore as CidVerificationReportStore } from "@crucible/cidstore";
 import type { Hex } from "viem";
-import { ReportConflictError, verificationReportDigest } from "@crucible/smith";
 import {
   envelopeFromReport,
   recordReplayabilityOf,
@@ -39,132 +34,49 @@ function draft(over: Partial<Parameters<typeof envelopeFromReport>[0]> = {}): St
   });
 }
 
-describe("publishing a verification", () => {
-  it("writes the envelope under a CID and reads it back as the same digest", () => {
-    const content = CidStore.inMemory();
-    const store = new VerificationReportStore(content);
-    const envelope = draft();
-    const write = store.append(envelope);
-
-    expect(write.replayed).toBe(false);
-    expect(write.reportVersion).toBe(1);
-    expect(write.digest).toBe(verificationReportDigest(envelope));
-    expect(content.get(write.cid)).toBe(canonicalize(envelope));
-    expect(store.byCid(write.cid)).toEqual(envelope);
+/**
+ * What argus owns here: the translation from a `VerifyReport` to an envelope, and the class the
+ * record's word comes from.
+ *
+ * The version chain itself is tested in `packages/cidstore/test/report-store.test.ts`, next to
+ * the class that implements it, and that file deliberately never imports this package.
+ */
+describe("the envelope this package builds", () => {
+  it("carries a real VerifyReport through the envelope contract", () => {
+    const e = draft();
+    expect(e.evaluator.name).toBe("argus");
+    expect(e.result.verdict).toBe("agent-wins");
+    expect(e.result.phase).toBe("deterministic");
+    expect(e.schemaVersion).toBe(1);
   });
 
-  it("treats an identical delivery as a no-op rather than a second version", () => {
-    const store = VerificationReportStore.inMemory();
-    const first = store.append(draft());
-    const again = store.append(draft());
+  it("leaves `previousReportDigest` off version 1 and on from the draft, not from a default", () => {
+    expect("previousReportDigest" in draft()).toBe(false);
+    expect(
+      "previousReportDigest" in draft({ reportVersion: 2, previousReportDigest: `0x${"11".repeat(32)}` as Hex }),
+    ).toBe(true);
+    // And the other direction is a refusal, not a silent drop: a version 1 that claims a
+    // predecessor is a chain that started somewhere this envelope cannot see.
+    expect(() => draft({ previousReportDigest: `0x${"11".repeat(32)}` as Hex })).toThrow(
+      /version 1 cannot name a predecessor/,
+    );
+  });
 
-    expect(again.replayed).toBe(true);
-    expect(again.cid).toBe(first.cid);
-    expect(store.versions(RUN)).toHaveLength(1);
+  it("refuses an evaluator version that is empty, because a nameless verifier is not evidence", () => {
+    expect(() => draft({ evaluator: { version: "" } })).toThrow(/evaluator.version/);
   });
 
   /**
-   * The behaviour the whole file exists for.
+   * One implementation, checked rather than commented.
    *
-   * A re-verification that reaches a different conclusion is not an update to version 1. It is
-   * version 2, or it is nothing: the alternative is a store where the answer a skeptic already
-   * quoted silently becomes the newest answer, which is what `apps/juror/src/state.ts` does
-   * today for its own one-per-trial record.
+   * The class moved to `@crucible/cidstore` so a reader of published evidence would not have to
+   * depend on the sandbox SDK, and argus re-exports it for the seat. The failure mode of a
+   * re-export is the fork: somebody pastes the class back here, both exist, and the API and the
+   * seat stop agreeing about what a version chain is while every test in each package passes.
+   * Reference identity is the cheapest assertion that makes that impossible to miss.
    */
-  it("refuses a different report for a version that already exists, and keeps the original", () => {
-    const store = VerificationReportStore.inMemory();
-    const original = draft();
-    const write = store.append(original);
-
-    const rewritten = draft({ report: report({ verdict: "break-wins", reason: "re-ran and it failed" }) });
-    expect(() => store.append(rewritten)).toThrow(ReportConflictError);
-    expect(store.versions(RUN)).toEqual([original]);
-    expect(store.byCid(write.cid)).toEqual(original);
-  });
-
-  it("refuses a late write whose timestamp alone moved", () => {
-    const store = VerificationReportStore.inMemory();
-    store.append(draft());
-    expect(() => store.append(draft({ createdAt: "2026-11-06T04:30:01Z" }))).toThrow(/already holds this version/);
-  });
-});
-
-describe("the version chain", () => {
-  it("accepts a second version that names the digest of the first", () => {
-    const store = VerificationReportStore.inMemory();
-    const first = store.append(draft());
-    const second = draft({
-      reportVersion: 2,
-      previousReportDigest: first.digest,
-      report: report({ verdict: "abstain", phase: "abstain", reason: "the suite could not be re-run" }),
-      createdAt: "2026-11-06T05:00:00Z",
-    });
-    const write = store.append(second);
-
-    expect(write.replayed).toBe(false);
-    expect(store.versions(RUN).map((e) => e.reportVersion)).toEqual([1, 2]);
-    expect(store.latest(RUN)?.reportVersion).toBe(2);
-    expect(store.latest(RUN)?.previousReportDigest).toBe(first.digest);
-  });
-
-  it("refuses a second version that names no predecessor", () => {
-    const store = VerificationReportStore.inMemory();
-    store.append(draft());
-    expect(() => store.append(draft({ reportVersion: 2 }))).toThrow(/must name its predecessor/);
-  });
-
-  it("refuses a second version that names the wrong predecessor", () => {
-    const store = VerificationReportStore.inMemory();
-    store.append(draft());
-    expect(() =>
-      store.append(draft({ reportVersion: 2, previousReportDigest: `0x${"00".repeat(32)}` })),
-    ).toThrow(/does not match the digest of the stored predecessor/);
-  });
-
-  it("refuses a chain that skips a version rather than healing the gap on write", () => {
-    const store = VerificationReportStore.inMemory();
-    const first = store.append(draft());
-    expect(() =>
-      store.append(draft({ reportVersion: 3, previousReportDigest: first.digest })),
-    ).toThrow(/version 2 is not in the store/);
-    expect(store.versions(RUN)).toHaveLength(1);
-  });
-
-  it("keeps runs apart: another run's digest will not pass for a predecessor", () => {
-    const store = VerificationReportStore.inMemory();
-    const firstRun = store.append(draft());
-    store.append(draft({ runHash: OTHER_RUN }));
-    expect(store.versions(RUN)).toHaveLength(1);
-    expect(store.versions(OTHER_RUN)).toHaveLength(1);
-
-    // OTHER_RUN does have a version 1, so this reaches the lineage check rather than the
-    // missing-predecessor one — and a real digest belonging to a different run must still be
-    // refused, or one long chain could be spliced across two evaluations.
-    expect(() =>
-      store.append(draft({ runHash: OTHER_RUN, reportVersion: 2, previousReportDigest: firstRun.digest })),
-    ).toThrow(/does not match the digest of the stored predecessor/);
-  });
-});
-
-describe("the store has no second index", () => {
-  it("re-derives the whole chain from the content store after a restart", () => {
-    const dir = mkdtempSync(join(tmpdir(), "crucible-reports-"));
-    try {
-      const writer = new VerificationReportStore(new CidStore({ dir }));
-      const first = writer.append(draft());
-      writer.append(
-        draft({ reportVersion: 2, previousReportDigest: first.digest, createdAt: "2026-11-06T05:00:00Z" }),
-      );
-
-      const reader = new VerificationReportStore(new CidStore({ dir }));
-      expect(reader.versions(RUN).map((e) => e.reportVersion)).toEqual([1, 2]);
-      // The same bytes, so the same CID: an index rebuilt from content must agree with the one
-      // the writer held in memory, or "the store is the record" is a slogan.
-      expect(reader.append(draft()).cid).toBe(first.cid);
-      expect(reader.append(draft()).replayed).toBe(true);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
+  it("is the same class the content store exports, not a copy", () => {
+    expect(VerificationReportStore).toBe(CidVerificationReportStore);
   });
 });
 

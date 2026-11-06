@@ -1,4 +1,5 @@
 import { serve } from "@hono/node-server";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { foundry } from "viem/chains";
 import { createPublicClient, http, keccak256, toHex, type Address } from "viem";
@@ -18,11 +19,13 @@ import {
   type TeamLedgerModel,
 } from "@crucible/indexer";
 import { ALLOY_ABI, ARENA_ABI, TEAM_LEDGER_ABI, selfSchedulingLoop } from "@crucible/smith";
+import { CidStore, DisclosureLog, VerificationReportStore } from "@crucible/cidstore";
 import { webhookNotifier } from "@crucible/warden";
 import { createApp } from "./app.js";
 import { OwnerGate, SponsorshipQueue, sponsorshipMessage } from "./sponsorship.js";
 import { disclosureFileIn, disclosedCids as readDisclosure, type DisclosureEntry } from "./disclosure.js";
 import { createContentSource, digestToCidMap } from "./content.js";
+import { createEvaluationSource } from "./evaluations-source.js";
 import { createScorecardPublicationSource } from "./scorecard-publications.js";
 import { makeReplaySource } from "./replay.js";
 import { dlq } from "./dlq.js";
@@ -849,6 +852,55 @@ if (security.allowCredentials) {
   }
 }
 
+/**
+ * The evidence behind `/evaluations`, assembled from the three places it already lives.
+ *
+ * Read-only over the same directory the seat writes to: the disclosure log the runner announced,
+ * the content store the manifests and verification envelopes were pinned in, and the in-memory
+ * read model Scribe keeps. `CRUCIBLE_CONTENT_DIR` is the one variable that decides whether this
+ * host can answer at all, and the history of that variable (the misspelling, the missing volume)
+ * is recorded above rather than re-litigated here.
+ *
+ * The store is opened **read-only**: an API that pins is an API that can rewrite what a digest
+ * names, and ADR-0006 already says this process holds no chain key for the same reason.
+ *
+ * `ranking` is deliberately not supplied. Scorecards carry a measured score and a cohort, but they
+ * are keyed by their own subject id, not by `runHash`, and inventing a subject→run mapping here
+ * would put a second identity beside the one the chain holds. Until that join exists the records
+ * carry no `score`, no `uncertainty` and no `cohortId` — absent fields, not zeros — and
+ * `/leaderboards/cohorts` answers an empty list. ADR-0024 keeps that as open work.
+ *
+ * **And it is switched off when there is nothing to read.** A read-only `CidStore` refuses to
+ * open a directory that does not exist — that refusal is the point of the flag, so a producer with
+ * a typo in its mount gets an error instead of an empty store. A *reader* must not die over it:
+ * a host that has never been seeded is a normal thing to start, and these routes already answer
+ * 503 with the reason. So the directory is checked before it is opened, and the surface stays off
+ * until a producer writes it.
+ */
+const evaluationStoreDir = join(contentDir, "store");
+const evaluationStore = existsSync(evaluationStoreDir)
+  ? new CidStore({ dir: evaluationStoreDir, readonly: true })
+  : null;
+const evaluations = evaluationStore
+  ? createEvaluationSource({
+      model: () => scribe.state,
+      chainId: foundry.id,
+      // `open` is the only public entry, and it `mkdir`s its directory on the way in. That is a
+      // write by a reader, and the trade is stated rather than hidden: refusing to start over an
+      // absent disclosure log would be worse (a seat that has never disputed anything has no log
+      // either), and the log is empty until a producer announces into it.
+      disclosure: await DisclosureLog.open(join(contentDir, "disclosure")),
+      reports: new VerificationReportStore(evaluationStore),
+      store: evaluationStore,
+    })
+  : null;
+if (evaluations === null) {
+  console.log(
+    `[api] /evaluations and /leaderboards are off: no content store at ${evaluationStoreDir}. ` +
+      "Seed it with scripts/seed-content.mjs, or mount the volume the seat writes to.",
+  );
+}
+
 const app = createApp({
   getModel: () => scribe.state,
   disclosure: disclosedCids,
@@ -906,6 +958,8 @@ const app = createApp({
   // The replay projector reads a trial's own logs back from the node the index already talks
   // to. Same hop, same breaker, no new authority: the API still holds no chain key (ADR-0006).
   replay: makeReplaySource({ reader: publicClient, address: trialsAddress, windowBlocks: replayWindowBlocks }),
+  // The evidence behind `/evaluations` and `/leaderboards`, or null and they answer 503.
+  evaluations,
   // Off by default: forwarded headers are caller-writable, so trusting them lets a loop
   // mint a new bucket per request. Set TRUST_PROXY=1 only behind something that overwrites
   // them (Cloudflare, an ALB) — which is what `cf-connecting-ip` is, and also what makes

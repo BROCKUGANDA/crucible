@@ -27,6 +27,13 @@ import { encodeAbiParameters, getAddress, isAddress, keccak256, stringToHex, typ
 
 export const EVALUATION_RECORD_SCHEMA_VERSION = 1 as const;
 
+/**
+ * The ceiling `identity.timestamp` accepts, as a Unix **seconds** value: 9999-12-31T23:59:59Z
+ * (253402300799). A millisecond epoch for any real date is ≥ 1e12, so a mixed-unit value cannot
+ * clear this bar — which is the whole reason the constant exists.
+ */
+export const MAX_UNIX_SECONDS = 253402300799;
+
 /** Why a record exists but does not count. Every reason is a fact about evidence, not a judgement. */
 export type EvaluationExclusionReason =
   | "UNVERIFIED"
@@ -84,7 +91,16 @@ export interface EvaluationRecordIdentity {
   runner: Address;
   transactionHash: Hex;
   blockNumber: number;
-  /** Unix milliseconds. */
+  /**
+   * Unix **seconds** — the chain's own unit. `eth_getBlockByNumber` answers `timestamp` as a
+   * second-granularity integer and `hydrateTimestamps` stores that number unchanged, so this
+   * field is seconds by construction, not by convention.
+   *
+   * The unit is enforced in `assertEvaluationRecord` rather than left to this comment. A
+   * millisecond value silently mixed in reads as the year 57000 on every client that formats
+   * it, which is the same shape of defect as a wei amount fed to `formatEth` as if it were ETH:
+   * the number is plausible, so nothing complains until a human reads the page.
+   */
   timestamp: number;
 }
 
@@ -269,6 +285,16 @@ export function assertEvaluationRecord(value: unknown): EvaluationRecord {
     blockNumber: requireWholeNumber(value.identity.blockNumber, "identity.blockNumber", 1),
     timestamp: requireWholeNumber(value.identity.timestamp, "identity.timestamp", 1),
   };
+
+  // Seconds, enforced. The window is generous on purpose: it rejects a millisecond value
+  // (1e12 onward, i.e. year ~33654 in seconds) without rejecting a legitimately old or far-future
+  // block, and it rejects a negative or zero timestamp, which no chain produces.
+  if (identity.timestamp < 0 || identity.timestamp > MAX_UNIX_SECONDS) {
+    throw new EvaluationRecordError(
+      "identity.timestamp",
+      `must be Unix seconds in [0, ${MAX_UNIX_SECONDS}]; got ${identity.timestamp}, which is not a second-granularity block time`,
+    );
+  }
 
   const derived = evaluationIdOf({ chainId: identity.chainId, trialId: identity.trialId, runHash });
   if (derived.toLowerCase() !== evaluationId.toLowerCase()) {
