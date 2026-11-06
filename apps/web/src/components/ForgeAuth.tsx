@@ -81,13 +81,26 @@ export function ForgeAuth({ mode }: { mode: "sign-in" | "sign-up" }) {
               and to anyone who never thinks to hover — and this is the one button in the
               product that asks a stranger to sign something that moves money. A judge
               should not have to discover the chain's status by inspecting the page.
-              Plain words on purpose: "Anvil", "31337" and "testnet" are the vocabulary of
-              whoever built this, not of the person being warned. */}
+              The money sentence is network-aware: telling a mainnet visitor the ETH is
+              "worth nothing" would be false, so the warning names what their network
+              actually is. Plain words on purpose: "Anvil", "31337" and "testnet" are the
+              vocabulary of whoever built this, not of the person being warned. */}
           <p className="forge-auth__demo" data-stage="3">
-            <strong>This is a demonstration.</strong> The forge runs on a chain kept for
-            showing it off, and the metal here is test ETH — worth nothing, and nothing you
-            do on this page can spend anything real. Your wallet is still your wallet: we
-            ask it to sign, and we never hold a key for it.
+            {activeChain() !== "mainnet" ? (
+              <>
+                <strong>This is a demonstration.</strong> The forge runs on a chain kept
+                for showing it off, and the metal here is test ETH — worth nothing, and
+                nothing you do on this page can spend anything real.
+              </>
+            ) : (
+              <>
+                <strong>This is the real network.</strong> The forge runs on mainnet, and
+                the metal here is real ETH with real value — a signature can move funds
+                you cannot get back. Think before you sign.
+              </>
+            )}{" "}
+            Your wallet is still your wallet: we ask it to sign, and we never hold a key
+            for it.
           </p>
           {/* The gate hides the chrome, so the standing sentence has to be said here as well:
               this is the one screen that asks a stranger to connect a wallet, and it is the

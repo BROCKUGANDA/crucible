@@ -60,6 +60,34 @@ describe("the demonstration notice at the wallet gate", () => {
     expect(notice).toMatch(/spend anything real/);
   });
 
+  /**
+   * The warning is network-aware: a mainnet build renders the real-money arm instead of
+   * the demonstration one, so both arms must exist in the source and the mainnet arm must
+   * name the danger honestly. A mainnet gate that kept the "worth nothing" sentence would
+   * be lying to the one visitor most in need of a warning.
+   */
+  it("warns differently on mainnet, where the value is real", () => {
+    const notice = demoNotice(GATE);
+    expect(notice).toMatch(/This is the real network\./);
+    expect(notice).toMatch(/real value/);
+    expect(notice).toMatch(/cannot get back/);
+    expect(notice).toMatch(/Think before you sign/);
+  });
+
+  /**
+   * The arms must actually be selected by the chain, not merely present. Source text
+   * alone cannot prove a branch runs — the conditional could rot into `true ?` and the
+   * text assertions above would stay green — so this reads the executed expression,
+   * comments stripped, per the wiring-check rule: assert the statement, not the prose.
+   */
+  it("selects the money warning by the active chain, not by a constant", () => {
+    const statements = GATE.split("\n")
+      .map((l) => l.replace(/\/\/.*$/, "").trim())
+      .filter((l) => l.length > 0 && !l.startsWith("*") && !l.startsWith("/*"))
+      .join("\n");
+    expect(statements).toMatch(/activeChain\(\) !== "mainnet" \?/);
+  });
+
   it("says it is a demonstration in the first words, not the last", () => {
     const notice = demoNotice(GATE);
     const strong = /<strong>([^<]+)<\/strong>/.exec(notice)?.[1] ?? "";
