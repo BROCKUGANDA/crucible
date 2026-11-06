@@ -33,15 +33,5 @@
     "@types/react-dom": "^19.0.3",
     "typescript": "^7.0.2",
     "vitest": "^5.0.5"
-  },
-  "overrides": {
-    "brace-expansion@<2": "1.1.18",
-    "brace-expansion@2": "2.1.4",
-    "brace-expansion@3": "3.0.6",
-    "brace-expansion@>=4": "5.0.9",
-    "ip-address": "10.3.1",
-    "picomatch@4": "4.0.4",
-    "pacote": "21.5.1",
-    "sigstore": "4.1.1"
   }
 }
