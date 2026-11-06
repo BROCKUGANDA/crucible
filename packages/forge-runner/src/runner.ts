@@ -123,6 +123,11 @@ export interface RunnerDeps {
   manifest?: Omit<ManifestInputs, "model" | "specDigest" | "suiteDigest">;
   status?: StatusSink;
   /**
+   * Trusted tenant identity supplied by the execution host. Never read this
+   * value from an agent payload or an untrusted request body.
+   */
+  tenantId?: string;
+  /**
    * Optional telemetry emitter for Forge Watch. The runner calls it with a
    * canonical envelope at each execution boundary; the host wires it to the
    * TelemetryCollector. The runner never imports the collector itself, so the
@@ -160,6 +165,14 @@ export interface RunRequest {
 export interface RunOutcome {
   ok: boolean;
   status: ForgeStatus;
+  /** Unique execution identity, distinct from the reusable trial identifier. */
+  runId: string;
+  /** Delivery result for instrumented runtime events, not an Argus verdict. */
+  telemetry: {
+    status: "complete" | "partial" | "unavailable";
+    emitted: number;
+    failed: number;
+  };
   artifact?: RunArtifact;
   runHash?: `0x${string}`;
   txHash?: `0x${string}`;
@@ -215,40 +228,50 @@ interface RunState {
 export class ForgeRunner {
   constructor(private readonly deps: RunnerDeps) {}
 
-  /**
-   * Emit a canonical Forge Watch event. Never throws — telemetry must never
-   * break a run, and the monitor lives outside the agent's execution boundary.
-   */
-  private watch(
-    runId: number,
-    trialId: number,
-    agentId: number,
-    event: Partial<Omit<ForgeWatchEvent, "runId" | "trialId" | "agentId">> & {
-      eventType: ForgeWatchEvent["eventType"];
-    },
-  ): void {
-    const { emitEvent } = this.deps;
-    if (!emitEvent) return;
-    try {
-      const envelope = {
+  async run(req: RunRequest): Promise<RunOutcome> {
+    const runId = crypto.randomUUID();
+    let nextEventSequence = 1;
+    let telemetryEmitted = 0;
+    let telemetryFailed = 0;
+    const configuredEmitter = typeof this.deps.emitEvent === "function";
+    const telemetrySummary = (): RunOutcome["telemetry"] => ({
+      status: !configuredEmitter
+        ? "unavailable"
+        : telemetryFailed > 0 || telemetryEmitted === 0
+          ? "partial"
+          : "complete",
+      emitted: telemetryEmitted,
+      failed: telemetryFailed,
+    });
+    const watch = async (
+      event: Partial<Omit<ForgeWatchEvent, "runId" | "trialId" | "agentId" | "tenantId" | "sequence">> & {
+        eventType: ForgeWatchEvent["eventType"];
+      },
+    ): Promise<void> => {
+      const emitEvent = this.deps.emitEvent;
+      if (!emitEvent) return;
+      const envelope: ForgeWatchEvent = {
         ...event,
         schemaVersion: 1,
         timestamp: Date.now(),
         eventId: crypto.randomUUID(),
-        sequence: 0,
-        runId: String(runId),
-        trialId: String(trialId),
-        agentId: String(agentId),
-        tenantId: "default",
+        sequence: nextEventSequence++,
+        runId,
+        trialId: String(req.trialId),
+        agentId: String(req.agentId),
+        tenantId: this.deps.tenantId ?? "default",
         source: "forge-runner",
       };
-      void emitEvent(envelope as ForgeWatchEvent);
-    } catch {
-      // a failing emitter must not take down the run
-    }
-  }
-
-  async run(req: RunRequest): Promise<RunOutcome> {
+      try {
+        await emitEvent(envelope);
+        telemetryEmitted += 1;
+      } catch {
+        // Monitoring is outside the agent's control and must not crash execution.
+        // The failure remains visible on RunOutcome.telemetry and blocks a
+        // downstream "runtime complete" classification.
+        telemetryFailed += 1;
+      }
+    };
     const sink = this.deps.status ?? consoleSink();
     const emit = (
       status: ForgeStatus,
@@ -296,15 +319,10 @@ export class ForgeRunner {
       state.degraded = sandbox.degraded;
       state.imageDigest = sandbox.imageDigest;
       state.sandboxSpec = sandbox.spec;
-      this.watch(
-        req.trialId,
-        req.trialId,
-        req.agentId,
-        {
-          eventType: ForgeWatchEventType.containerCreate,
-          environmentId: sandbox.degraded ? "degraded" : "sandbox",
-        },
-      );
+      await watch({
+        eventType: ForgeWatchEventType.containerCreate,
+        environmentId: sandbox.degraded ? "degraded" : "sandbox",
+      });
       if (sandbox.degraded) {
         // Say it out loud. A silent fallback would produce an artifact claiming
         // sandboxed execution it never had — exactly what a skeptic is paid to break.
@@ -324,15 +342,10 @@ export class ForgeRunner {
       while (state.iterations < req.iterBudget) {
         this.assertBeforeDeadline(req);
         state.iterations += 1;
-        this.watch(
-          req.trialId,
-          req.trialId,
-          req.agentId,
-          {
-            eventType: ForgeWatchEventType.agentTurnStart,
-            sequence: state.iterations,
-          },
-        );
+        await watch({
+          eventType: ForgeWatchEventType.agentTurnStart,
+          correlationId: String(state.iterations),
+        });
         emit("forging", `iter ${state.iterations}/${req.iterBudget} — forging`, {
           iteration: state.iterations,
           maxIterations: req.iterBudget,
@@ -347,16 +360,11 @@ export class ForgeRunner {
         };
 
         const step = await this.runAgentStep(ctx);
-        this.watch(
-          req.trialId,
-          req.trialId,
-          req.agentId,
-          {
-            eventType: ForgeWatchEventType.toolCallCreate,
-            toolId: "plan",
-            correlationId: String(state.iterations),
-          },
-        );
+        await watch({
+          eventType: ForgeWatchEventType.toolCallCreate,
+          toolId: "plan",
+          correlationId: String(state.iterations),
+        });
         if (step.withheld?.suiteOutput) {
           // Say it out loud: the agent wrote this iteration's patch without the previous
           // suite output. The label names the cause and carries none of the withheld text.
@@ -370,43 +378,28 @@ export class ForgeRunner {
             },
           );
         }
-        this.watch(
-          req.trialId,
-          req.trialId,
-          req.agentId,
-          {
-            eventType: ForgeWatchEventType.toolCallExecute,
-            toolId: "apply_patch",
-            correlationId: String(state.iterations),
-          },
-        );
+        await watch({
+          eventType: ForgeWatchEventType.toolCallExecute,
+          toolId: "apply_patch",
+          correlationId: String(state.iterations),
+        });
         await this.applyStep(sandbox, step);
 
         // run the pinned suite
-        this.watch(
-          req.trialId,
-          req.trialId,
-          req.agentId,
-          {
-            eventType: ForgeWatchEventType.graderExecution,
-            correlationId: String(state.iterations),
-          },
-        );
+        await watch({
+          eventType: ForgeWatchEventType.graderExecution,
+          correlationId: String(state.iterations),
+        });
         emit("suite-running", "suite loaded — pinned", {
           iteration: state.iterations,
           maxIterations: req.iterBudget,
         });
         const suite = await sandbox.runSuite(req.suiteCommand);
-        this.watch(
-          req.trialId,
-          req.trialId,
-          req.agentId,
-          {
-            eventType: ForgeWatchEventType.toolCallOutput,
-            toolId: "run_suite",
-            correlationId: String(state.iterations),
-          },
-        );
+        await watch({
+          eventType: ForgeWatchEventType.toolCallOutput,
+          toolId: "run_suite",
+          correlationId: String(state.iterations),
+        });
         state.lastOutput = `${suite.stdout}\n${suite.stderr}`.trim();
         state.parsed = readSuiteResults(state.lastOutput);
         // Every iteration, not the last one. `state.lastOutput` is overwritten each pass and
@@ -528,6 +521,8 @@ export class ForgeRunner {
       return {
         ok: true,
         status: "submitted",
+        runId,
+        telemetry: telemetrySummary(),
         artifact,
         runHash,
         txHash,
@@ -544,6 +539,8 @@ export class ForgeRunner {
       return {
         ok: false,
         status: "failed",
+        runId,
+        telemetry: telemetrySummary(),
         iterations: state.iterations,
         degraded: state.degraded,
         failure,
