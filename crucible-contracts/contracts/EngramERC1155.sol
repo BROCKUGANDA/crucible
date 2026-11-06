@@ -13,7 +13,9 @@ contract EngramERC1155 {
     mapping(uint256 => uint256) public totalMinted;
 
     event TransferSingle(address indexed operator, address indexed from, address indexed to, uint256 id, uint256 value);
-    event TransferBatch(address indexed operator, address indexed from, address indexed to, uint256[] ids, uint256[] values);
+    event TransferBatch(
+        address indexed operator, address indexed from, address indexed to, uint256[] ids, uint256[] values
+    );
     event EngramMinted(address indexed to, uint256 indexed tokenId, uint256 amount, bytes32 evidenceRef);
     event CapSet(uint256 indexed tokenId, uint256 newCap);
     event MinterSet(address indexed previousMinter, address indexed newMinter);
@@ -64,11 +66,15 @@ contract EngramERC1155 {
         emit EngramMinted(to, tokenId, amount, evidenceRef);
     }
 
-    function mintBatch(address to, uint256[] calldata tokenIds, uint256[] calldata amounts, bytes32[] calldata evidenceRefs)
-        external
-        onlyMinter
-    {
-        if (tokenIds.length != amounts.length || tokenIds.length != evidenceRefs.length) revert LengthMismatch();
+    function mintBatch(
+        address to,
+        uint256[] calldata tokenIds,
+        uint256[] calldata amounts,
+        bytes32[] calldata evidenceRefs
+    ) external onlyMinter {
+        if (tokenIds.length != amounts.length || tokenIds.length != evidenceRefs.length) {
+            revert LengthMismatch();
+        }
         for (uint256 i = 0; i < tokenIds.length; i++) {
             if (amounts[i] == 0) revert AmountZero();
             uint256 newTotal = totalMinted[tokenIds[i]] + amounts[i];
