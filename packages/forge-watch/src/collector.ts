@@ -107,7 +107,6 @@ export class TelemetryCollector {
   private readonly onFinding?: (finding: CollectorFinding) => void;
   private accepted = 0;
   private rejected = 0;
-  private seenEventIds = new Set<string>();
 
   constructor(opts: CollectorOptions) {
     this.store = opts.store;
@@ -130,9 +129,8 @@ export class TelemetryCollector {
    * must already be validated by `parseForgeWatchEvent`; the collector re-validates
    * here because the boundary is where trust starts and ends.
    *
-   * Returns the assigned sequence. On a duplicate eventId the event is rejected
-   * (envelope uniqueness enforced downstream by PostgreSQL unique constraint;
-   * here by the seen set).
+   * Returns the assigned sequence. An identical redelivery is a no-op; reuse
+   * of an eventId with different canonical bytes is rejected as an integrity finding.
    */
   async accept(event: ForgeWatchEvent): Promise<number> {
     const existing = await this.store.find(event.eventId);
