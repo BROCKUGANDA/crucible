@@ -29,8 +29,21 @@ way it does and what would have to change to revisit it.
 | [0016](0016-faucet-sizes-by-risk-not-denial.md) | The faucet sizes by risk; absence of evidence is not denial | Accepted |
 | [0017](0017-evaluation-manifest.md) | The evaluation manifest is hashed separately from the signed run artifact | Accepted |
 | [0018](0018-speech-to-speech-and-turn-monitor.md) | A speech-to-speech host and a turn monitor; the caller's words never reach the synthesiser | Accepted |
+| [0019](0019-both-fee-schedules-legible.md) | Both fee schedules stay legible: 5% escrow and 15% arena are two laws, not one discrepancy | Proposed |
+| [0020](0020-named-environments-and-provider-boundaries.md) | Named environments, a provider that is asked, and Shield outside the escrow | Accepted |
+| [0020](0020-company-treasury-safe-and-mainnet-release-gate.md) | Company treasury Safe and the mainnet release gate — **number collision: two ADRs share 0020** (this one was written later; it is the file most `ADR-0020` citations mean) | Proposed |
+| [0021](0021-explicit-owner-constructor-for-crucible-trials.md) | CrucibleTrials takes its owner explicitly at construction | Proposed |
 | [0022](0022-organisation-tenancy-foundation.md) | Organisation and tenancy foundation | Accepted |
 | [0023](0023-production-infrastructure-postgres-redis-bullmq-r2.md) | Production infrastructure: PostgreSQL + Redis + BullMQ + R2 | Accepted |
+| [0024](0024-evaluation-evidence-pipeline.md) | Evaluation evidence pipeline: a parallel surface, adopted deliberately | Accepted |
+
+**A numbering defect, recorded rather than papered over.** `0020` names two ADRs written a
+week apart by different sessions. The later one (treasury) is what most of the newer
+documents mean when they cite `ADR-0020`, and renumbering either now would rewrite citations
+across a dozen files — including `docs/since-submission.md`, which is a dated log and must not
+be edited after the fact — while other sessions still have those files open. So both are
+listed here with what each decides, and the fix is a single rename plus a log row, which is a
+deliberate small change rather than something to slip into an unrelated commit.
 
 ## Writing a new ADR
 
