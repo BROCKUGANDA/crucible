@@ -29,7 +29,10 @@ function record(over: Partial<Record<string, unknown>> = {}): EvaluationRecord {
       runner: RUNNER,
       transactionHash: TX,
       blockNumber: 428,
-      timestamp: 1_793_923_200_000,
+      // Unix seconds — what a block carries. The value that used to sit here was
+      // `1_793_923_200_000`, a millisecond epoch, and every test in this file passed over it
+      // until `assertEvaluationRecord` grew the unit guard below.
+      timestamp: 1_793_923_200,
     },
     evidence: {
       manifestCid: "bafkreihexample",
@@ -142,6 +145,26 @@ describe("assertEvaluationRecord", () => {
     expect(() => assertEvaluationRecord({ ...r, identity: { ...r.identity, timestamp: 0 } })).toThrow(
       /identity.timestamp/,
     );
+  });
+
+  /**
+   * The unit gate, mutation-proven by being the failure this file had.
+   *
+   * Every fixture here carried a millisecond epoch and nothing complained, because a whole number
+   * is a whole number. The chain answers block timestamps in seconds (`hydrateTimestamps` stores
+   * what `eth_getBlockByNumber` gave it, unchanged), so a record whose `timestamp` is in ms is a
+   * record no reader can render — `new Date(1.79e12 * 1000)` is the year 58,000, and the page
+   * would print it happily. This is the same class as a wei amount handed to `formatEth` as if it
+   * were ETH: the number is plausible, so only a stated unit and a check can catch it.
+   */
+  it("refuses a timestamp that is in milliseconds rather than seconds", () => {
+    const r = record();
+    expect(() =>
+      assertEvaluationRecord({ ...r, identity: { ...r.identity, timestamp: 1_793_923_200_000 } }),
+    ).toThrow(/Unix seconds/);
+    // And the seconds form of the same instant passes, so the refusal is about the unit and not
+    // about the magnitude.
+    expect(() => assertEvaluationRecord({ ...r, identity: { ...r.identity, timestamp: 1_793_923_200 } })).not.toThrow();
   });
 
   it("refuses a verifiedAt that is not UTC", () => {

@@ -59,7 +59,7 @@ export interface EvaluationRunFacts {
   runHash: Hex;
   transactionHash: Hex;
   blockNumber: number;
-  /** Unix milliseconds, from the chain. */
+  /** Unix **seconds**, from the chain — see `EvaluationRecordIdentity.timestamp`. */
   timestamp: number;
 }
 

@@ -1442,6 +1442,7 @@
   frameworks: [ai-rmf]
 - id: 897
   title: Grader fairness standard (ships in part: falseFail tracked in grader/src/eval/scorer.ts with tests, JCS and dataset canonicalization exist; no per-grader false-fail regression suite in CI)
+  frameworks: [ai-rmf]
 - id: 898
   title: Public chain RPC method gate (the gate in deploy/edge/rpc-gate allowlists the wallet's own methods and refuses the node-control namespaces anvil_/evm_/debug_/personal_/admin_ before the node sees them, with per-IP rate limiting; it holds no key, signs nothing, authenticates nobody - sufficient only while the chain is valueless, and gate 903 is what proves a deployed edge actually routes through it)
   frameworks: [owasp-top10, soc2, ai-rmf]
@@ -1538,6 +1539,24 @@
   frameworks: [soc2]
 - id: 929
   title: The sponsorship queue and the treasury ledger are the owner's view (GET /faucet/applications and GET /faucet/ledger answer the owner wallet only, and say which of the two it is when they say no: no queue on this host, no owner configured, or a wallet that is not the owner; the ledger is read from the funder, the only party that knows what left the wallet holding the test ETH)
+  frameworks: [soc2]
+- id: 930
+  title: The evaluation join re-derives both evidence digests instead of repeating announced ones (the manifest pinned behind the disclosure CID is parsed and hashed with the escrow's own manifestDigest and compared to the digest the runner announced, and the envelope's digest is recomputed from the bytes the store hands back; a swapped suite epoch in the pinned manifest and a CID that resolves to nothing both yield MANIFEST_DIGEST_MISMATCH with eligible false, and forcing the comparison to true turns the case red)
+  frameworks: [soc2, slsa]
+- id: 931
+  title: Absence and exclusion stay different facts all the way out of the host (a run nobody disclosed, a run nobody verified and a run whose manifest was never announced yield no record at all rather than a row with a zeroed digest or an empty reason list; each of the three guards is separately the only thing that can fail its case, proven by deleting one at a time after the first version of this file passed with two guards removed)
+  frameworks: [soc2]
+- id: 932
+  title: An Argus seat publishes its verification before it acts on it, and casts no ballot when publishing fails (the envelope append sits ahead of both the abstention record and the seal so a commitment never outruns its evidence, an abstention is published too because declining to decide is a reportable outcome, and a store error propagates to the pass and stops the vote rather than letting the seat vote on an uncitable verdict)
+  frameworks: [soc2, slsa]
+- id: 933
+  title: There is one verification-report store, not a copy per consumer (the class lives in @crucible/cidstore beside the content it indexes so a reader of published reports does not depend on the evaluator and the sandbox SDK, argus re-exports it for the seat, and reference identity between the two exports is asserted because the failure mode of a re-export is a behaviourally identical fork that every suite in both packages passes)
+  frameworks: [slsa]
+- id: 934
+  title: A verification envelope states and enforces what its payload must say (result carries verdict, phase, steps and reason and the validator refuses a document that does not, because the payload is generic to dodge an import cycle from argus down into smith and an envelope read off a content store has never passed through a compiler; a reader handed unknown would either cast or be unable to read the one field it came for)
+  frameworks: [soc2, slsa]
+- id: 935
+  title: Evaluation timestamps are Unix seconds and the unit is enforced rather than documented (identity.timestamp is what a block carries and hydrateTimestamps stores unchanged, assertEvaluationRecord refuses anything in a millisecond range and refuses zero, and the guard is what caught four fixtures that had been agreeing with each other in the wrong unit, including a verifiedAt built by multiplying the wrong one back up)
   frameworks: [soc2]
 frameworks:
   owasp-top10: "OWASP Web Top 10 (2021)"

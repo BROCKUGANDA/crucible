@@ -77,6 +77,21 @@ export interface OperatorDeps {
   chain: ChainPort;
   index: IndexPort;
   judge: JudgePort;
+  /**
+   * Publish this seat's verification report as an immutable envelope, before the seat acts on it.
+   *
+   * Optional because a seat can be run without anywhere to put reports (a dry patrol, a test),
+   * and then it is honestly silent rather than pretending. What it must not be is *late*: the
+   * append happens ahead of both the abstention record and the seal, so a ballot that reaches the
+   * chain has evidence behind it that a reader can fetch. A report published only after the vote
+   * would leave every dispute whose seat crashed in between with an unverifiable verdict, and the
+   * version chain has no way to say "this seat decided X" afterwards.
+   *
+   * A failure here propagates to the pass's own `catch`, which records `pass failed: …` and moves
+   * to the next trial. That is the designed outcome, not a fragility: a seat that cannot publish
+   * its evidence does not get to cast a vote on the strength of it alone.
+   */
+  publish?: (facts: RunFacts, report: VerifyReport) => Promise<void>;
   cast: SeatCast;
   state: VoteState;
   /** how long a recorded abstention sits before its suite is re-run; see `reverifyAt` */
@@ -240,6 +255,11 @@ export function createOperator(deps: OperatorDeps): JurorOperator {
         const facts = await deps.judge.facts(trialId);
         verified += 1;
         const report = await deps.judge.verify(facts);
+        // Published before the ballot is formed, so the durable record of this verification
+        // exists whether the seat goes on to abstain, forfeit or seal. `append` is idempotent
+        // against a replay and refuses a conflict, so a re-verify of the same run either writes
+        // the next version or changes nothing.
+        await deps.publish?.(facts, report);
         const ballot = ballotFor(report);
 
         if (ballot.vote === "abstain") {

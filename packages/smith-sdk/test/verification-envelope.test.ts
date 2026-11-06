@@ -15,6 +15,16 @@ const OTHER_RUN = `0x${"77".repeat(32)}` as Hex;
 /** The report shape `packages/argus` returns; here it is opaque on purpose. */
 const REPORT = { verdict: "agent-wins", phase: "deterministic", steps: [], reason: "suite green" };
 
+/**
+ * A second *well-formed* report with a different answer.
+ *
+ * Not `{ verdict: "break-wins" }` on its own: `assertVerificationReportEnvelope` validates the
+ * payload's minimum shape (verdict, phase, steps, reason), so a thin object stops at validation
+ * and never reaches the digest or the lineage check this file is testing. A malformed payload is
+ * rejected before it can be compared — which is the behaviour, not an inconvenience.
+ */
+const BREAK_WINS = { verdict: "break-wins", phase: "deterministic", steps: [], reason: "the break reproduced" };
+
 function envelope(over: Partial<VerificationReportEnvelope> = {}): VerificationReportEnvelope {
   const base: VerificationReportEnvelope = {
     schemaVersion: 1,
@@ -53,7 +63,7 @@ describe("the envelope digest", () => {
 
   it("moves when the verdict, the evaluator or the image moves", () => {
     const a = envelope();
-    expect(verificationReportDigest(envelope({ result: { verdict: "break-wins" } }))).not.toBe(
+    expect(verificationReportDigest(envelope({ result: BREAK_WINS }))).not.toBe(
       verificationReportDigest(a),
     );
     expect(
@@ -191,6 +201,6 @@ describe("classifyReplay", () => {
   it("treats any difference as a conflict, including a cosmetic one", () => {
     const a = envelope();
     expect(classifyReplay(a, envelope({ createdAt: "2026-11-06T04:30:01Z" }))).toBe("conflict");
-    expect(classifyReplay(a, envelope({ result: { verdict: "break-wins" } }))).toBe("conflict");
+    expect(classifyReplay(a, envelope({ result: BREAK_WINS }))).toBe("conflict");
   });
 });

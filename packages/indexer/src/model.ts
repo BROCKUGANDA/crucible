@@ -139,7 +139,16 @@ export interface RunRow {
   agentId: number;
   runHash: string;
   signature: string | null;
-  submittedAt: number;
+  /**
+   * The block the `RunSubmitted` log was seen in — a chain position, not a wall clock.
+   *
+   * This field used to be called `submittedAt`, and nothing read it, so the name cost nothing.
+   * The evaluation projection reads it as the record's `blockNumber` next to the trial row's
+   * hydrated `runAt`, and a block number under an `At` suffix is how a chain position gets
+   * printed as 1970. `hydrateTimestamps` rewrites the trial row's three time fields and does
+   * not touch this map: the run's own wall clock is `trial.runAt`, which is the same block.
+   */
+  blockNumber: number;
   txHash: string | null;
   /** artifact CID, learned when the operator publishes it */
   artifactCID: string | null;
@@ -407,7 +416,7 @@ function didMutate(next: ReadModel, ev: EventLike): boolean {
         agentId: num(a.agentId),
         runHash: str(a.runHash),
         signature: null,
-        submittedAt: Number(ev.blockNumber),
+        blockNumber: Number(ev.blockNumber),
         txHash: ev.transactionHash,
         artifactCID: null,
       });
