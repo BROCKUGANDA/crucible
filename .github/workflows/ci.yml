@@ -554,6 +554,9 @@ jobs:
 
       - name: upload SARIF artifacts
         if: always()
+        # The artifact store has a quota; the scan gates above already decided the run.
+        # An exhausted quota is a reporting failure, not a vulnerability finding.
+        continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
           name: trivy-sarif-run-${{ github.run_id }}
