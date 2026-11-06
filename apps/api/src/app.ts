@@ -41,7 +41,7 @@ import { createMcpHandler, type TrialLimits } from "./mcp.js";
 import { rateLimit } from "./rate-limit.js";
 import { dlq } from "./dlq.js";
 import { TickPump } from "./tick-pump.js";
-import { authRoutes } from "./auth.js";
+import { authRoutes, configuredChainId } from "./auth.js";
 import { isBlocked, status as killSwitchStatus } from "@crucible/agent-security";
 import { createForgeRoutes } from "./forge.js";
 import { createVoiceRoutes, type VoiceConfig } from "./voice.js";
@@ -2081,7 +2081,7 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
                 at: log.blockTimestamp
                   ? new Date(Number(log.blockTimestamp) * 1000).toISOString()
                   : new Date().toISOString(),
-                chainRef: { caip2: "eip155:31337", tx: log.transactionHash, slotOrBlock: Number(log.blockNumber), commitment: "confirmed" },
+                chainRef: { caip2: `eip155:${configuredChainId()}`, tx: log.transactionHash, slotOrBlock: Number(log.blockNumber), commitment: "confirmed" },
               });
             }
           }
