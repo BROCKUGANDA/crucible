@@ -41,7 +41,7 @@ import { createMcpHandler, type TrialLimits } from "./mcp.js";
 import { rateLimit } from "./rate-limit.js";
 import { dlq } from "./dlq.js";
 import { TickPump } from "./tick-pump.js";
-import { authRoutes, configuredChainId } from "./auth.js";
+import { authRoutes, configuredChainId, verifiedSessionFromContext } from "./auth.js";
 import { isBlocked, status as killSwitchStatus } from "@crucible/agent-security";
 import { createForgeRoutes } from "./forge.js";
 import { createOrgRoutes } from "./orgs.js";
@@ -1811,11 +1811,8 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
    * gets nothing, and gets a 403 that says why rather than an empty list that
    * would read as "nobody has applied".
    *
-   * The address in `wallet` is *claimed*, not proved - see `OwnerGate`. The
-   * queue holds applicant addresses and amounts, which the applicants can see
-   * for themselves, so the exposure is a list of who else asked rather than a
-   * secret; the production gate is a signature, and this route says so rather
-   * than implying a protection it does not have.
+   * The wallet principal is derived from a server-verified SIWE session. A
+   * query-string wallet is never authority for this private owner view.
    */
   app.get("/faucet/applications", (c) => {
     const sponsorship = deps.sponsorship;
@@ -1826,8 +1823,9 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
       );
     }
 
-    const wallet = (c.req.query("wallet") ?? "").trim();
-    if (!sponsorship.owners.isOwner(wallet)) {
+    const session = verifiedSessionFromContext(c);
+    const wallet = session?.payload.address ?? "";
+    if (!wallet || !sponsorship.owners.isOwner(wallet)) {
       c.header("Cache-Control", "no-store");
       return c.json(
         {
