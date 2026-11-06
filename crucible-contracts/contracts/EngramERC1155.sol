@@ -5,7 +5,7 @@ pragma solidity ^0.8.26;
 /// @notice Minimal ERC-1155 collection for Engrams without external deps.
 ///         Minting restricted to minter. Credential tokens (id < 2000) soulbound.
 contract EngramERC1155 {
-    address public admin;
+    address public immutable admin;
     address public minter;
 
     mapping(uint256 => mapping(address => uint256)) private _balances;
@@ -16,6 +16,7 @@ contract EngramERC1155 {
     event TransferBatch(address indexed operator, address indexed from, address indexed to, uint256[] ids, uint256[] values);
     event EngramMinted(address indexed to, uint256 indexed tokenId, uint256 amount, bytes32 evidenceRef);
     event CapSet(uint256 indexed tokenId, uint256 newCap);
+    event MinterSet(address indexed previousMinter, address indexed newMinter);
 
     error NotAdmin();
     error NotMinter();
@@ -42,7 +43,9 @@ contract EngramERC1155 {
     }
 
     function setMinter(address newMinter) external onlyAdmin {
+        address previousMinter = minter;
         minter = newMinter;
+        emit MinterSet(previousMinter, newMinter);
     }
 
     function setCap(uint256 tokenId, uint256 newCap) external onlyAdmin {
