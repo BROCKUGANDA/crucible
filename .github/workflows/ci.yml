@@ -382,6 +382,7 @@ jobs:
             --workspace @crucible/warden \
             --workspace @crucible/agent-security \
             --workspace @crucible/cidstore \
+            --workspace @crucible/forge-watch \
             --workspace @crucible/crypto \
             --workspace @crucible/frame \
             --workspace @crucible/arena-events \
@@ -408,6 +409,7 @@ jobs:
             --workspace @crucible/warden \
             --workspace @crucible/agent-security \
             --workspace @crucible/cidstore \
+            --workspace @crucible/forge-watch \
             --workspace @crucible/crypto \
             --workspace @crucible/frame \
             --workspace @crucible/arena-events \
