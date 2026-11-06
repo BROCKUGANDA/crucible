@@ -13,6 +13,7 @@ import { SponsorshipBadge } from "@/components/SponsorshipBadge";
 import { Modal } from "@/components/Modal";
 import { activeChain, activeChainDef, chainFromId, chainLabel, CHAIN_IDS, explorerTxUrl } from "@/lib/wagmi";
 import { NetworkMenu } from "@/components/NetworkMenu";
+import { useAuthSession } from "@/lib/auth-session";
 
 interface NavItem {
   href: string;
@@ -55,6 +56,8 @@ export function Chrome({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const { address } = useAccount();
   const isConnected = Boolean(address);
+  const auth = useAuthSession();
+  const canUsePrivateNavigation = auth.canUsePrivateResources;
 
   // A route change is an answer to the question the menu was asked. Leaving it open would
   // strand the next page behind a scrim, or leave a dropdown hanging over the new page.
@@ -63,9 +66,10 @@ export function Chrome({ children }: { children: ReactNode }) {
     if (moreRef.current) moreRef.current.open = false;
   }, [pathname]);
 
-  // Auth-gated nav items: only show when connected
-  const visiblePrimary = NAV_PRIMARY.filter((item) => !item.auth || isConnected);
-  const visibleMore = NAV_MORE.filter((item) => !item.auth || isConnected);
+  // Protected navigation follows a server-verified SIWE session, not wagmi connection state.
+  // Wallet-bound writes still require the connected wallet to match the session principal.
+  const visiblePrimary = NAV_PRIMARY.filter((item) => !item.auth || canUsePrivateNavigation);
+  const visibleMore = NAV_MORE.filter((item) => !item.auth || canUsePrivateNavigation);
   const visibleNav = [...visiblePrimary, ...visibleMore];
 
   return (
