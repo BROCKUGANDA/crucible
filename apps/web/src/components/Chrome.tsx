@@ -122,6 +122,17 @@ export function Chrome({ children }: { children: ReactNode }) {
             </div>
           </details>
 
+          <button
+            type="button"
+            className="chrome__menu-btn"
+            aria-label="Open navigation menu"
+            aria-expanded={sheet}
+            aria-controls="forge-nav-sheet"
+            onClick={() => setSheet(true)}
+          >
+            <span aria-hidden="true">☰</span>
+          </button>
+
           <VoiceControl />
           <PayoffSound />
           <FrenchyWidget />

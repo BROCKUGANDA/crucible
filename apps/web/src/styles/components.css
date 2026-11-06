@@ -358,11 +358,12 @@
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 14px var(--pad);
-  border-bottom: 1px solid var(--bg1);
-  background: color-mix(in srgb, var(--bg0) 85%, transparent);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  padding: 12px var(--pad);
+  border-bottom: 1px solid color-mix(in srgb, var(--bg2) 90%, transparent);
+  background: color-mix(in srgb, var(--bg0) 82%, transparent);
+  backdrop-filter: blur(12px) saturate(1.1);
+  -webkit-backdrop-filter: blur(12px) saturate(1.1);
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--text) 3%, transparent);
 }
 
 .chrome__brand {
@@ -423,11 +424,12 @@
 .chrome__nav-track {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   padding: 4px;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--bg1) 70%, transparent);
-  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg1) 72%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ash, #888) 22%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--text) 4%, transparent);
 }
 
 .chrome__nav-track a {
@@ -558,10 +560,33 @@
 /* The menu button and the inline nav are the same control at two widths. On desktop
    the inline nav is shown and the button is hidden; on mobile the button opens a
    sheet that carries the full nav. */
-.chrome__menu {
+.chrome__menu,
+.chrome__menu-btn {
   display: none;
   align-items: center;
+  justify-content: center;
   gap: 8px;
+  min-height: 40px;
+  min-width: 40px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--bg2);
+  background: color-mix(in srgb, var(--bg1) 65%, transparent);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  transition: border-color var(--t-tap), background var(--t-tap), color var(--t-tap);
+}
+
+.chrome__menu-btn:hover,
+.chrome__menu-btn:focus-visible {
+  border-color: var(--ember);
+  background: var(--bg2);
+  outline: none;
+}
+
+.chrome__menu-btn:focus-visible {
+  box-shadow: var(--ring);
 }
 
 .menu-glyph {
@@ -630,7 +655,8 @@
   .chrome__nav {
     display: none;
   }
-  .chrome__menu {
+  .chrome__menu,
+  .chrome__menu-btn {
     display: inline-flex;
   }
 }
@@ -652,7 +678,8 @@
 
   /* The menu is the only way to navigate here, so it keeps a thumb-sized target even
      though it wears the compact button class. */
-  .chrome__menu {
+  .chrome__menu,
+  .chrome__menu-btn {
     min-height: 44px;
     min-width: 44px;
     padding-inline: 12px;
