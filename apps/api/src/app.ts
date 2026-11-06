@@ -44,6 +44,7 @@ import { TickPump } from "./tick-pump.js";
 import { authRoutes, configuredChainId } from "./auth.js";
 import { isBlocked, status as killSwitchStatus } from "@crucible/agent-security";
 import { createForgeRoutes } from "./forge.js";
+import { createOrgRoutes } from "./orgs.js";
 import { createVoiceRoutes, type VoiceConfig } from "./voice.js";
 import { createReplayRoutes, type ReplaySourceResult } from "./replay.js";
 import { createFrenchyRoutes, DEFAULT_BRAIN_TIMEOUT_MS, type FrenchyConfig } from "./frenchy.js";
@@ -2108,6 +2109,12 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
    * no chain keys held by the API.
    */
   app.route("/forge", createForgeRoutes());
+
+  /**
+   * Organisation (tenancy) read routes — list/read the organisations a signed-in
+   * wallet belongs to. Membership is resolved server-side per request.
+   */
+  app.route("/orgs", createOrgRoutes());
 
   app.notFound((c) => c.json({ error: "Lost slag. This page never left the crucible." }, 404));
 
