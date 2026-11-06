@@ -36,6 +36,7 @@ way it does and what would have to change to revisit it.
 | [0022](0022-organisation-tenancy-foundation.md) | Organisation and tenancy foundation | Accepted |
 | [0023](0023-production-infrastructure-postgres-redis-bullmq-r2.md) | Production infrastructure: PostgreSQL + Redis + BullMQ + R2 | Accepted |
 | [0024](0024-evaluation-evidence-pipeline.md) | Evaluation evidence pipeline: a parallel surface, adopted deliberately | Accepted |
+| [0025](0025-forge-watch-runtime-monitoring.md) | Forge Watch: runtime monitoring, misalignment detection and incident response | Accepted (architecture) |
 
 **A numbering defect, recorded rather than papered over.** `0020` names two ADRs written a
 week apart by different sessions. The later one (treasury) is what most of the newer
