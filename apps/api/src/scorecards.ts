@@ -20,7 +20,7 @@ export interface StoredScorecardPublication {
 
 export type ScorecardPublicationSource = () => readonly StoredScorecardPublication[];
 
-interface ScorecardRouteDeps {
+export interface ScorecardRouteDeps {
   getModel: () => ReadModel;
   contentLookup?: ContentLookup;
   proofSource?: { chain: string; chainId: number; trialsAddress: string };
@@ -28,7 +28,7 @@ interface ScorecardRouteDeps {
   signers?: readonly string[];
 }
 
-interface VerifiedScorecard {
+export interface VerifiedScorecard {
   publication: ScorecardPublication;
   scorecard: Record<string, unknown>;
 }
@@ -261,6 +261,38 @@ async function verifyPublication(
   return { publication, scorecard: parsed };
 }
 
+/**
+ * Every stored publication, verified — the one implementation of that sentence.
+ *
+ * Exported because the run→score join needs exactly this work done and nothing weaker beside it:
+ * a second path that read the publication files on its own would be a second verifier that is
+ * accidentally laxer than the first, which is precisely how a scorecard that `GET /scorecards`
+ * refuses could still end up putting a number on a leaderboard.
+ */
+export async function verifyPublications(
+  deps: ScorecardRouteDeps,
+): Promise<{ verified: VerifiedScorecard[] } | { error: "Scorecard publication verification is not configured" }> {
+  if (!deps.publications || !deps.contentLookup || !deps.proofSource || !deps.signers?.length) {
+    return { error: "Scorecard publication verification is not configured" };
+  }
+  const raw = deps.publications();
+  const ids = new Set<string>();
+  const verified: VerifiedScorecard[] = [];
+  for (const stored of raw) {
+    const result = await verifyPublication(stored, {
+      getModel: deps.getModel,
+      contentLookup: deps.contentLookup,
+      proofSource: deps.proofSource,
+      signers: deps.signers,
+    });
+    const id = result.publication.id.toLowerCase();
+    if (ids.has(id)) throw new PublicationError("publication replay appears more than once in the store");
+    ids.add(id);
+    verified.push(result);
+  }
+  return { verified };
+}
+
 export function scorecardRoutes(deps: ScorecardRouteDeps): Hono {
   const app = new Hono();
 
@@ -281,27 +313,7 @@ export function scorecardRoutes(deps: ScorecardRouteDeps): Hono {
     return c.json({ error: "Scorecard content is not stored on this host" }, 404);
   });
 
-  const readVerified = async () => {
-    if (!deps.publications || !deps.contentLookup || !deps.proofSource || !deps.signers?.length) {
-      return { error: "Scorecard publication verification is not configured" as const };
-    }
-    const raw = deps.publications();
-    const ids = new Set<string>();
-    const verified: VerifiedScorecard[] = [];
-    for (const stored of raw) {
-      const result = await verifyPublication(stored, {
-        getModel: deps.getModel,
-        contentLookup: deps.contentLookup,
-        proofSource: deps.proofSource,
-        signers: deps.signers,
-      });
-      const id = result.publication.id.toLowerCase();
-      if (ids.has(id)) throw new PublicationError("publication replay appears more than once in the store");
-      ids.add(id);
-      verified.push(result);
-    }
-    return { verified };
-  };
+  const readVerified = () => verifyPublications(deps);
 
   app.get("/", async (c) => {
     const cohort = c.req.query("cohort");
