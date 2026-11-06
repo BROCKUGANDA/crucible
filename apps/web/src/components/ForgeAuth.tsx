@@ -2,10 +2,12 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { useAccount, useConnect } from "wagmi";
+import { useAccount, useConnect, useSignMessage } from "wagmi";
 import { WalletButton } from "@/components/Wallet";
 import { SeedPhrasePromise } from "@/components/SeedPhrasePromise";
 import { activeChain, chainFromId, gateMoneyNotice } from "@/lib/wagmi";
+import { API_BASE } from "@/lib/apiBase";
+import { useAuthSession } from "@/lib/auth-session";
 
 /**
  * The entry gate, and the only page in the app that is allowed to be theatre.
@@ -27,87 +29,114 @@ import { activeChain, chainFromId, gateMoneyNotice } from "@/lib/wagmi";
 export function ForgeAuth({ mode }: { mode: "sign-in" | "sign-up" }) {
   const fresh = mode === "sign-up";
   const headline = fresh ? "Enter the forge" : "Return to the forge";
-  const sub = fresh
-    ? "Connect your wallet to stake your first bond. There is no account, no password, no key you can lose."
-    : "Connect your wallet to pick up where you left the forge.";
+  const sub = "Connect your wallet, then sign a free login message. Signing in does not send a transaction.";
 
   const { address, isConnected, chainId } = useAccount();
-  const { isPending } = useConnect();
-
-  // The money warning follows the wallet, not the build: the network is chosen at
-  // runtime now, so the same gate serves a Sepolia tester (worthless ETH) and a mainnet
-  // earner (real funds). A wallet on an unknown chain gets the conservative arm.
+  const { isPending: connecting } = useConnect();
+  const { signMessageAsync, isPending: signing } = useSignMessage();
+  const auth = useAuthSession();
   const money = gateMoneyNotice(chainId === undefined ? activeChain() : chainFromId(chainId));
-
-  // The gate has to *do* something once it is passed, or it is a splash screen wearing a
-  // button. Connected means connected — say so, and hand over the way in.
   const [settled, setSettled] = useState(false);
+  const [authBusy, setAuthBusy] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+
   useEffect(() => {
-    if (!isConnected) {
+    if (!auth.canUsePrivateResources) {
       setSettled(false);
       return;
     }
     const t = setTimeout(() => setSettled(true), 900);
     return () => clearTimeout(t);
-  }, [isConnected]);
+  }, [auth.canUsePrivateResources]);
+
+  async function authenticateWallet() {
+    if (!address) return;
+    setAuthBusy(true);
+    setAuthError(null);
+    try {
+      const nonceResponse = await fetch(`${API_BASE}/auth/nonce`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "content-type": "application/json", accept: "application/json" },
+        body: JSON.stringify({ address }),
+      });
+      const challenge = (await nonceResponse.json().catch(() => null)) as
+        | { message?: string; nonce?: string; error?: string; messageDetail?: string }
+        | null;
+      if (!nonceResponse.ok || !challenge?.message || !challenge.nonce) {
+        throw new Error(challenge?.messageDetail ?? challenge?.error ?? `Could not start sign-in (${nonceResponse.status}).`);
+      }
+
+      // Sign the exact message returned by the server. This is authentication only,
+      // not a blockchain transaction and not permission to move funds.
+      const signature = await signMessageAsync({ message: challenge.message });
+      const verifyResponse = await fetch(`${API_BASE}/auth/verify`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "content-type": "application/json", accept: "application/json" },
+        body: JSON.stringify({ address, nonce: challenge.nonce, signature }),
+      });
+      const verified = (await verifyResponse.json().catch(() => null)) as
+        | { error?: string; message?: string }
+        | null;
+      if (!verifyResponse.ok) {
+        throw new Error(verified?.message ?? verified?.error ?? `Sign-in failed (${verifyResponse.status}).`);
+      }
+      await auth.refresh();
+    } catch (error) {
+      setAuthError(error instanceof Error ? error.message : "Wallet authentication failed.");
+    } finally {
+      setAuthBusy(false);
+    }
+  }
 
   return (
     <main className={`forge-auth ${fresh ? "forge-auth--pour" : "forge-auth--reheat"}`}>
       <div className="forge-auth__inner">
         <Crucible fresh={fresh} settled={settled} />
 
-        <h1 className="forge-auth__title" data-stage="1">
-          {headline}
-        </h1>
-        <p className="forge-auth__sub" data-stage="2">
-          {sub}
-        </p>
+        <h1 className="forge-auth__title" data-stage="1">{headline}</h1>
+        <p className="forge-auth__sub" data-stage="2">{sub}</p>
 
         <div className="forge-auth__gate" data-stage="3">
-          {isConnected ? (
+          {!isConnected ? (
+            <div className="forge-auth__cta"><WalletButton /></div>
+          ) : auth.canUsePrivateResources ? (
             <Link href="/forge" className="btn btn-primary forge-auth__cta">
               {settled ? "Step to the crucible" : "Ingot set…"}
             </Link>
           ) : (
-            <div className="forge-auth__cta">
-              <WalletButton />
-            </div>
+            <button
+              type="button"
+              className="btn btn-primary forge-auth__cta"
+              onClick={() => void authenticateWallet()}
+              disabled={authBusy || signing}
+            >
+              {authBusy || signing ? "Verifying wallet…" : auth.isAuthenticated ? "Authenticate this wallet" : "Sign in with wallet"}
+            </button>
           )}
+
           <span className="mono forge-auth__chain">
             {isConnected && address
               ? short(address)
-              : isPending
+              : connecting
                 ? "opening your wallet…"
                 : `running on ${activeChain()}`}
           </span>
 
-          {/* Said here, at the action, rather than left to the header chip's tooltip. The
-              chip names the network and is honest, but `title` text is invisible on a phone
-              and to anyone who never thinks to hover — and this is the one button in the
-              product that asks a stranger to sign something that moves money. A judge
-              should not have to discover the chain's status by inspecting the page.
-              The sentences come from `gateMoneyNotice`, keyed to the connected wallet's
-              chain — mainnet and testnet visitors are warned about *their* money. */}
+          {auth.isAuthenticated && isConnected && !auth.walletMatches ? (
+            <p className="hint" role="status">Your connected wallet differs from the wallet signed into Crucible. Sign in again with this wallet to continue.</p>
+          ) : null}
+          {authError ? <p className="hint" data-tone="sear" role="alert">{authError}</p> : null}
+
           <p className="forge-auth__demo" data-stage="3">
-            <strong>{money.lead}</strong> {money.body} Your wallet is still your wallet:
-            we ask it to sign, and we never hold a key for it.
+            <strong>{money.lead}</strong> {money.body} The login message is free and never sends a transaction. Your wallet signs it locally; Crucible never holds your keys.
           </p>
-          {/* The gate hides the chrome, so the standing sentence has to be said here as well:
-              this is the one screen that asks a stranger to connect a wallet, and it is the
-              screen a page imitating this one would be copied from. */}
           <SeedPhrasePromise />
         </div>
 
         <p className="forge-auth__switch" data-stage="4">
-          {fresh ? (
-            <>
-              Already in? <Link href="/sign-in">Sign in</Link>
-            </>
-          ) : (
-            <>
-              First time? <Link href="/sign-up">Sign up</Link>
-            </>
-          )}
+          {fresh ? <>Already in? <Link href="/sign-in">Sign in</Link></> : <>First time? <Link href="/sign-up">Sign up</Link></>}
         </p>
       </div>
     </main>
