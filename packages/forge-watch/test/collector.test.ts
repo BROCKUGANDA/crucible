@@ -82,12 +82,12 @@ describe("telemetry collector", () => {
   it("does not advance the sequence cursor when durable append fails", async () => {
     class FailOnceStore extends InMemoryEventStore {
       private failures = 1;
-      override async append(event: Awaited<ReturnType<typeof makeEvent>>) {
+      override async append(event: Awaited<ReturnType<typeof makeEvent>>): Promise<boolean> {
         if (this.failures > 0) {
           this.failures -= 1;
           throw new Error("postgres unavailable");
         }
-        await super.append(event);
+        return super.append(event);
       }
     }
 
