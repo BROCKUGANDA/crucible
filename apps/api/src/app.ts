@@ -1861,8 +1861,9 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
       return c.json({ error: "this host keeps no sponsorship queue", allocations: null }, 501);
     }
 
-    const wallet = (c.req.query("wallet") ?? "").trim();
-    if (!sponsorship.owners.isOwner(wallet)) {
+    const session = verifiedSessionFromContext(c);
+    const wallet = session?.payload.address ?? "";
+    if (!wallet || !sponsorship.owners.isOwner(wallet)) {
       c.header("Cache-Control", "no-store");
       return c.json(
         {
