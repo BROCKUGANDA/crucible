@@ -485,15 +485,15 @@ jobs:
       # Trivy scans each image for OS-level and language-level vulnerabilities. The scan
       # exits non-zero on CRITICAL/HIGH by default; .trivyignore documents accepted risks.
       # `--severity` can be tightened to CRITICAL-only if the noise is too high initially.
+      # The download goes through scripts/install-tool.sh, which refuses the tarball unless
+      # it hashes to the digest recorded there — the same gate every other release download
+      # in this repository passes, and the one no-orphan.test.ts enforces for all of them.
       - name: install trivy (digest-pinned)
         run: |
           set -euo pipefail
-          TRIVY_VERSION="0.69.3"
           TRIVY_DIR="$RUNNER_TEMP/trivy"
           mkdir -p "$TRIVY_DIR"
-          curl -sSL -o "$TRIVY_DIR/trivy.tar.gz" \
-            "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
-          tar -xzf "$TRIVY_DIR/trivy.tar.gz" -C "$TRIVY_DIR"
+          bash "$GITHUB_WORKSPACE/scripts/install-tool.sh" trivy "$TRIVY_DIR"
           echo "$TRIVY_DIR" >> "$GITHUB_PATH"
           export PATH="$TRIVY_DIR:$PATH"
           trivy --version
