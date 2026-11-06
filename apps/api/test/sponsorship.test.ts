@@ -340,7 +340,9 @@ describe("the treasury's ledger", () => {
     const f = await fakeFunder({});
     try {
       const { app } = apiWith({ funderUrl: f.url, owners: [OWNER] });
-      const res = await app.request(`/faucet/ledger?wallet=${STRANGER}`);
+      const res = await app.request(`/faucet/ledger?wallet=${OWNER}`, {
+        headers: sessionHeaders(STRANGER),
+      });
       expect(res.status).toBe(403);
       expect((await res.json()).allocations).toBeNull();
     } finally {
@@ -351,7 +353,9 @@ describe("the treasury's ledger", () => {
 
   it("does not answer the ledger with an empty one when the funder could not be reached", async () => {
     const { app } = apiWith({ funderUrl: "http://127.0.0.1:1", owners: [OWNER] });
-    const res = await app.request(`/faucet/ledger?wallet=${OWNER}`);
+    const res = await app.request(`/faucet/ledger?wallet=${OWNER}`, {
+      headers: sessionHeaders(OWNER),
+    });
     expect(res.status).toBe(502);
     expect((await res.json()).allocations).toBeNull();
   });
