@@ -36,6 +36,8 @@ export type SequenceFinding = SequenceGap | SequenceRegression;
  */
 export class RunSequencer {
   private readonly nextByRun = new Map<string, number>();
+  /** Out-of-order sequence numbers waiting for the missing contiguous prefix. */
+  private readonly pendingByRun = new Map<string, Set<number>>();
   private readonly findings: SequenceFinding[] = [];
 
   /** All integrity findings raised so far (append-only, never cleared). */
@@ -75,7 +77,10 @@ export class RunSequencer {
           observed: expected,
           at,
         });
-      } else if (expected > previous) {
+        // A late event is recorded but must never rewind the contiguous cursor.
+        return expected;
+      }
+      if (expected > previous) {
         this.findings.push({
           kind: "gap",
           runId,
@@ -83,29 +88,35 @@ export class RunSequencer {
           observed: expected,
           at,
         });
+        const pending = this.pendingByRun.get(runId) ?? new Set<number>();
+        pending.add(expected);
+        this.pendingByRun.set(runId, pending);
+        return expected;
       }
-      // expected === previous: in order, nothing to record.
-      this.nextByRun.set(runId, expected + 1);
+      this.advance(runId, previous + 1);
       return expected;
     }
 
-    // No expected on the event: assign and record a gap if the run already
-    // has history (a fresh run starts at 1).
-    if (previous > 1) {
-      this.findings.push({
-        runId,
-        expected: previous,
-        observed: previous,
-        at,
-      } as unknown as SequenceGap);
-    }
-    this.nextByRun.set(runId, previous + 1);
+    this.advance(runId, previous + 1);
     return previous;
+  }
+
+  /**
+   * Move the contiguous watermark forward and absorb any already-observed
+   * out-of-order events that now close the gap.
+   */
+  private advance(runId: string, candidate: number): void {
+    const pending = this.pendingByRun.get(runId);
+    let next = candidate;
+    while (pending?.delete(next)) next += 1;
+    if (pending && pending.size === 0) this.pendingByRun.delete(runId);
+    this.nextByRun.set(runId, next);
   }
 
   /** Reset tracking for a run (test/teardown only — never in production). */
   __resetForTests(runId: string): void {
     this.nextByRun.delete(runId);
+    this.pendingByRun.delete(runId);
   }
 
   /** Clear all findings (test/teardown only). */
