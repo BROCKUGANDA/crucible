@@ -39,3 +39,11 @@ export {
   type ForgeWatchRuntime,
   type ForgeWatchRuntimeOptions,
 } from "./runtime.js";
+export {
+  FORGE_WATCH_QUEUE_NAMES,
+  eventJobId,
+  runJobId,
+  monitorJob,
+  type ForgeWatchQueueLevel,
+  type MonitorJobPayload,
+} from "./dispatch.js";
