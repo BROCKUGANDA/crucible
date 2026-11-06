@@ -1,0 +1,109 @@
+/**
+ * @file engrams.ts — Engram achievement + rewards routes (REW-001..003).
+ */
+
+import { Hono, type Context } from "hono";
+import {
+  AchievementEngine,
+  newAchievementRule,
+  buildMerkleTree,
+  type VerifiedEvent,
+} from "@crucible/engrams";
+
+const engine = new AchievementEngine();
+
+// Register a starter set of achievement rules (REW-001 catalogue).
+engine.registerRule(
+  newAchievementRule({
+    id: "first-forge",
+    version: 1,
+    name: "The First Forge",
+    description: "First qualifying verified trial.",
+    qualifyingEvents: ["trial.settled"],
+    requiredEvidence: ["runHash", "trialId"],
+    tokenId: 1001,
+    rarity: "common",
+    issuanceCap: 0,
+  }),
+);
+engine.registerRule(
+  newAchievementRule({
+    id: "break-survivor",
+    version: 1,
+    name: "The Break Survivor",
+    description: "Run survived a valid adversarial challenge.",
+    qualifyingEvents: ["trial.broken-survived"],
+    requiredEvidence: ["runHash", "trialId", "argusVerdict"],
+    tokenId: 1002,
+    rarity: "rare",
+  }),
+);
+
+function resolveRecipient(c: Context): string | null {
+  const cookie = c.req.header("cookie");
+  if (!cookie) return null;
+  for (const part of cookie.split(";")) {
+    const [k, ...v] = part.trim().split("=");
+    if (k === "crucible_session") {
+      try {
+        const encoded = v.join("=").split(".")[0];
+        if (encoded) {
+          const payload = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8")) as { address?: string };
+          if (payload.address) return payload.address;
+        }
+      } catch {
+        // malformed
+      }
+    }
+  }
+  return null;
+}
+
+export function createEngramRoutes(): Hono {
+  const app = new Hono();
+
+  app.get("/:recipient", async (c) => {
+    const recipient = c.req.param("recipient");
+    return c.json({ entitlements: engine.entitlementsFor(recipient) });
+  });
+
+  app.post("/evaluate", async (c) => {
+    const recipient = resolveRecipient(c);
+    if (!recipient) {
+      return c.json({ error: "unauthenticated", code: "no-credential" }, 401);
+    }
+    let body: { event?: VerifiedEvent } = {};
+    try {
+      body = (await c.req.json()) as typeof body;
+    } catch {
+      return c.json({ error: "invalid body", code: "bad-request" }, 400);
+    }
+    if (!body.event) {
+      return c.json({ error: "event is required", code: "bad-request" }, 400);
+    }
+    const result = engine.evaluate(body.event, recipient);
+    return c.json(result, 201);
+  });
+
+  app.post("/merkle", async (c) => {
+    let body: { leaves?: { recipient: string; amount: string; campaignId: string }[] } = {};
+    try {
+      body = (await c.req.json()) as typeof body;
+    } catch {
+      return c.json({ error: "invalid body", code: "bad-request" }, 400);
+    }
+    const leaves = (body.leaves ?? []).map((l) => ({
+      recipient: l.recipient as `0x${string}`,
+      amount: BigInt(l.amount),
+      campaignId: BigInt(l.campaignId),
+    }));
+    const tree = buildMerkleTree(leaves);
+    const proofs: Record<string, string[]> = {};
+    for (const [leaf, proof] of tree.proofs.entries()) {
+      proofs[leaf] = proof;
+    }
+    return c.json({ root: tree.root, leaves: tree.leaves, proofs });
+  });
+
+  return app;
+}
