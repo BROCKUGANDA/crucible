@@ -13,6 +13,7 @@ import {
   type CommandResult,
 } from "../src/index.js";
 import type { SandboxSpec } from "../src/sandbox.js";
+import type { ForgeWatchEvent } from "@crucible/forge-watch";
 
 const CID_A = "bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi";
 const RUNNER = "0x1111111111111111111111111111111111111111" as const;
@@ -205,6 +206,55 @@ describe("classify", () => {
     for (const [k, v] of Object.entries(FAILURE_COPY)) {
       expect(v.length, `missing copy for ${k}`).toBeGreaterThan(0);
     }
+  });
+});
+
+describe("ForgeRunner runtime telemetry", () => {
+  it("uses one unique run id and a monotonic sequence for every event", async () => {
+    const events: ForgeWatchEvent[] = [];
+    const deps = harness();
+    deps.emitEvent = async (event) => {
+      events.push(event);
+    };
+
+    const outcome = await new ForgeRunner(deps).run(request({ suiteCommand: GREEN_SUITE }));
+
+    expect(outcome.ok).toBe(true);
+    expect(events.length).toBeGreaterThan(0);
+    expect(new Set(events.map((event) => event.runId)).size).toBe(1);
+    expect(events[0]!.runId).not.toBe(String(request().trialId));
+    expect(events.map((event) => event.sequence)).toEqual(
+      events.map((_, index) => index + 1),
+    );
+    expect(events.every((event) => event.trialId === String(request().trialId))).toBe(true);
+    expect(outcome.runId).toBe(events[0]!.runId);
+    expect(outcome.telemetry.status).toBe("complete");
+  });
+
+  it("records an asynchronous telemetry persistence failure without losing the run result", async () => {
+    let calls = 0;
+    const deps = harness();
+    deps.emitEvent = async () => {
+      calls += 1;
+      throw new Error("postgres unavailable");
+    };
+
+    const outcome = await new ForgeRunner(deps).run(request({ suiteCommand: GREEN_SUITE }));
+
+    expect(outcome.ok).toBe(true);
+    expect(calls).toBeGreaterThan(0);
+    expect(outcome.telemetry.status).toBe("partial");
+    expect(outcome.telemetry.failed).toBe(calls);
+    expect(outcome.telemetry.emitted).toBe(0);
+  });
+
+  it("does not claim runtime telemetry when no emitter is configured", async () => {
+    const outcome = await new ForgeRunner(harness()).run(request({ suiteCommand: GREEN_SUITE }));
+
+    expect(outcome.ok).toBe(true);
+    expect(outcome.telemetry.status).toBe("unavailable");
+    expect(outcome.telemetry.emitted).toBe(0);
+    expect(outcome.telemetry.failed).toBe(0);
   });
 });
 
