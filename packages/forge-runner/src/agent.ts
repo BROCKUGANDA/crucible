@@ -97,7 +97,14 @@ export interface ForgedAgentOptions {
    */
   emitEvent?(event: ForgeWatchEvent): void | Promise<void>;
   /** Run identity for telemetry attribution (used when emitEvent is set). */
-  runMeta?: { runId: number; trialId: number; agentId: number; tenantId?: string };
+  runMeta?: {
+    runId: string | number;
+    trialId: string | number;
+    agentId: string | number;
+    tenantId?: string;
+  };
+  /** Report async telemetry failures without allowing the monitor to crash the agent. */
+  onTelemetryError?: (error: unknown, event: ForgeWatchEvent) => void;
 }
 
 /**
@@ -144,6 +151,9 @@ export function createForgedAgent(opts: ForgedAgentOptions): SmithAgent {
     model: opts.model,
     tools: opts.tools ?? ["read_file", "write_file", "run_suite"],
   };
+  // One agent instance can serve several iterations for the same run. Keep its
+  // provider-event cursor outside step() so calls never restart at sequence 0.
+  const nextSequenceByRun = new Map<string, number>();
 
   return defineAgent({
     name: `forged-${opts.model}`,
@@ -247,38 +257,49 @@ export function createForgedAgent(opts: ForgedAgentOptions): SmithAgent {
       }
 
       if (raw === null) {
-        const watch = (eventType: ForgeWatchEvent["eventType"], extra?: Partial<ForgeWatchEvent>) => {
+        const watch = async (
+          eventType: ForgeWatchEvent["eventType"],
+          extra?: Partial<ForgeWatchEvent>,
+        ): Promise<void> => {
           if (!opts.emitEvent || !opts.runMeta) return;
+          const runId = String(opts.runMeta.runId);
+          const sequence = nextSequenceByRun.get(runId) ?? 1;
+          nextSequenceByRun.set(runId, sequence + 1);
+          const event: ForgeWatchEvent = {
+            schemaVersion: 1,
+            timestamp: Date.now(),
+            eventId: crypto.randomUUID(),
+            sequence,
+            runId,
+            trialId: String(opts.runMeta.trialId),
+            agentId: String(opts.runMeta.agentId),
+            tenantId: opts.runMeta.tenantId && opts.runMeta.tenantId.length > 0 ? opts.runMeta.tenantId : "default",
+            source: "forge-runner.agent",
+            eventType,
+            providerId: opts.model,
+            modelId: opts.model,
+            ...extra,
+          };
           try {
-            void opts.emitEvent({
-              schemaVersion: 1,
-              timestamp: Date.now(),
-              eventId: crypto.randomUUID(),
-              sequence: 0,
-              runId: String(opts.runMeta.runId),
-              trialId: String(opts.runMeta.trialId),
-              agentId: String(opts.runMeta.agentId),
-              tenantId: opts.runMeta.tenantId && opts.runMeta.tenantId.length > 0 ? opts.runMeta.tenantId : "default",
-              source: "forge-runner.agent",
-              eventType,
-              providerId: opts.model,
-              modelId: opts.model,
-              ...extra,
-            } as ForgeWatchEvent);
-          } catch {
-            /* telemetry must never break the step */
+            await opts.emitEvent(event);
+          } catch (error) {
+            try {
+              opts.onTelemetryError?.(error, event);
+            } catch {
+              // A failing telemetry error handler must not escape into the agent.
+            }
           }
         };
-        watch(ForgeWatchEventType.providerRequest, { correlationId: String(ctx.iteration) });
+        await watch(ForgeWatchEventType.providerRequest, { correlationId: String(ctx.iteration) });
         try {
           raw = await opts.client.complete({
             system: SYSTEM_PROMPT,
             prompt,
             temperature: opts.temperature ?? 0.2,
           });
-          watch(ForgeWatchEventType.providerResponse, { correlationId: String(ctx.iteration) });
+          await watch(ForgeWatchEventType.providerResponse, { correlationId: String(ctx.iteration) });
         } catch (err) {
-          watch(ForgeWatchEventType.providerError, {
+          await watch(ForgeWatchEventType.providerError, {
             correlationId: String(ctx.iteration),
             payloadDigest: err instanceof Error ? err.name : "error",
           });
