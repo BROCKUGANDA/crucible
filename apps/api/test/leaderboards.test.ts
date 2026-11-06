@@ -36,7 +36,7 @@ function record(seed: Seed): EvaluationRecord {
       runner: RUNNER,
       transactionHash: `0x${"5d".repeat(32)}`,
       blockNumber: 400 + seed.trialId,
-      timestamp: 1_793_923_200_000 + seed.trialId * 1000,
+      timestamp: 1_793_923_200 + seed.trialId,
     },
     evidence: {
       manifestCid: "bafkmanifest",

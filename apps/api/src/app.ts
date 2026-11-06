@@ -409,9 +409,13 @@ export interface ApiOptions {
    * Null (the default) makes both answer 503 with the reason, rather than serving an empty
    * list a reader could mistake for "no verified evaluations exist". The host turns it on by
    * passing a source assembled from the read model, the disclosure and the verification store;
-   * `docs/adr/0024-evaluation-evidence-pipeline.md` names the two facts that source still needs
-   * from the indexer (a block number on the run row, and the signer recovered from the
-   * signature the chain kept) and why the surface is mounted before it is fed.
+   * `apps/api/src/evaluations-source.ts` is that join, and it is fed — with two exceptions
+   * recorded there and in `docs/adr/0024-evaluation-evidence-pipeline.md` rather than papered
+   * over: the run's signer is not recovered here (every viem recovery entry point is async and
+   * these routes are not, and the attribution check that question feeds is already Argus's
+   * step 4/5 and the chain's own `BadSigner` revert), and no score or cohort is attached,
+   * because scorecards are keyed by their own subject id and a subject→run mapping invented
+   * here would be a second identity beside the chain's.
    */
   evaluations?: EvaluationSource | null;
   /**
@@ -1041,7 +1045,7 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
       trialId: number;
       agentId: number;
       runHash: string;
-      submittedAt: number;
+      blockNumber: number;
       artifactCID: string | null;
       signature: string | null;
     }[] = [];
@@ -1051,7 +1055,7 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
         trialId: r.trialId,
         agentId: r.agentId,
         runHash: r.runHash,
-        submittedAt: r.submittedAt,
+        blockNumber: r.blockNumber,
         artifactCID: r.artifactCID,
         // The signature is published: it is public data that lets anyone re-verify.
         signature: r.signature,

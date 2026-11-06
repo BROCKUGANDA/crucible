@@ -63,6 +63,18 @@ interface Fixture {
   commits: { trialId: number; commit: Hex }[];
   reveals: { trialId: number; breakWins: boolean; salt: Hex }[];
   verified: number[];
+  /**
+   * Everything this pass published as evidence, in order, keyed by what the envelope says.
+   *
+   * The assertion this exists for is not "was `publish` called" — it is the ordering: an envelope
+   * written *after* the seal would let a reader hold a ballot with no verdict behind it, which is
+   * the failure the version chain was built to prevent.
+   */
+  published: { runHash: Hex; verdict: string; phase: string }[];
+  /** Shared event tape, so a test can ask what came first rather than what came at all. */
+  events: string[];
+  /** Set to make publishing fail, which must stop the ballot, not silently precede it. */
+  publishError: Error | null;
   disputeReads: number;
   logs: string[];
   setView(trialId: number, patch: Partial<DisputeView>): void;
@@ -97,6 +109,9 @@ async function harness(opts: { stateDir?: string; initial?: VerifyReport } = {})
     commits: [],
     reveals: [],
     verified: [],
+    published: [],
+    events: [],
+    publishError: null,
     disputeReads: 0,
     logs: [],
     now: OPENED_AT + 60,
@@ -108,6 +123,7 @@ async function harness(opts: { stateDir?: string; initial?: VerifyReport } = {})
 
   const poster: VotePoster = {
     commitVote: async (trialId, commit) => {
+      fixture.events!.push("commit");
       fixture.commits!.push({ trialId, commit });
       // The real contract records the commitment; mirror that so a second pass sees the same
       // word the chain would, and a test cannot accidentally pass by leaving it at zero.
@@ -156,9 +172,16 @@ async function harness(opts: { stateDir?: string; initial?: VerifyReport } = {})
         sigDeadline: 1n,
       }) satisfies RunFacts,
     verify: async (facts) => {
+      fixture.events!.push("verify");
       fixture.verified!.push(facts.trialId);
       return typeof fixture.verdict === "function" ? fixture.verdict(facts.trialId) : fixture.verdict;
     },
+  };
+
+  const publish = async (facts: RunFacts, r: VerifyReport): Promise<void> => {
+    if (fixture.publishError) throw fixture.publishError;
+    fixture.events!.push("publish");
+    fixture.published!.push({ runHash: facts.runHash, verdict: r.verdict, phase: r.phase });
   };
 
   const index: IndexPort = {
@@ -175,6 +198,7 @@ async function harness(opts: { stateDir?: string; initial?: VerifyReport } = {})
     chain,
     index,
     judge,
+    publish,
     cast,
     state,
     reverifyMs: 900_000,
@@ -600,5 +624,43 @@ describe("the seat operator's pass", () => {
     // printed here would let anyone pre-open the seat's next commitment.
     const printed = [...f.logs, JSON.stringify(first), JSON.stringify(second)].join("\n");
     expect(printed).not.toContain(salt);
+  });
+});
+
+/**
+ * The seat publishes its verification as evidence, and the order is the whole claim.
+ *
+ * ADR-0024's argument in one line: a verdict that exists only in a return value is not evidence,
+ * and the seat's own durable record holds one entry per trial and *replaces* it. So the envelope
+ * has to be written by the seat, at the moment the verdict exists — and before anything the chain
+ * can see, because a ballot whose evidence was never published is precisely the unverifiable
+ * dispute this pipeline was built to end.
+ */
+describe("publishing the verification", () => {
+  it("publishes once, ahead of the seal, naming the run it verified", async () => {
+    const f = await harness();
+    const result = await f.operator.pass();
+    expect(result.counts.commit).toBe(1);
+    expect(f.published).toEqual([{ runHash: RUN_HASH, verdict: "break-wins", phase: "deterministic" }]);
+    expect(f.events).toEqual(["verify", "publish", "commit"]);
+  });
+
+  it('publishes an abstention too, because "nothing to report" is itself a reportable outcome', async () => {
+    const f = await harness({ initial: report({ verdict: "abstain", phase: "abstain", reason: "no docker bench" }) });
+    await f.operator.pass();
+    // No commitment is cast (the rule above this file's list), but the evidence of the decision
+    // exists — otherwise a reader cannot tell "the seat abstained" from "the seat never ran".
+    expect(f.commits).toHaveLength(0);
+    expect(f.published).toHaveLength(1);
+    expect(f.published[0]!.verdict).toBe("abstain");
+  });
+
+  it("casts no ballot when publishing fails, and says so instead of voting anyway", async () => {
+    const f = await harness();
+    f.publishError = new Error("content store is full");
+    const result = await f.operator.pass();
+    expect(f.commits).toHaveLength(0);
+    expect(result.counts.commit).toBe(0);
+    expect(result.actions.some((a) => a.action === "error" && /content store is full/.test(a.detail))).toBe(true);
   });
 });

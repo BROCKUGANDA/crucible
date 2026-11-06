@@ -55,7 +55,12 @@ function record(seed: Seed): EvaluationRecord {
       phase: verdict === "agent-wins" ? "deterministic" : "rubric",
       replayability: verdict === "agent-wins" ? "deterministic" : "partial",
       evaluatorVersion: "1.4.0",
-      verifiedAt: new Date(seed.timestamp).toISOString().replace(".000Z", "Z"),
+      // `* 1000` is the whole unit story in one token: `identity.timestamp` is Unix **seconds**
+      // (what a block carries) and `verifiedAt` is an ISO string, so the fixture converts. This
+      // file used to hold a millisecond epoch in `timestamp` and pass `new Date(seed.timestamp)`
+      // straight through — both halves agreed with each other and neither matched the chain, which
+      // is exactly what `assertEvaluationRecord` now refuses.
+      verifiedAt: new Date(seed.timestamp * 1000).toISOString().replace(".000Z", "Z"),
       reportVersion: 1,
     },
     ranking: {
@@ -73,13 +78,13 @@ const RUN_B = `0x${"b2".repeat(32)}` as Hex;
 const RUN_C = `0x${"c3".repeat(32)}` as Hex;
 
 const SEEDS: Seed[] = [
-  { trialId: 1, agentId: 3, runHash: RUN_A, timestamp: 1_793_923_200_000, cohortId: "alpha", score: 0.88, uncertainty: 0.02 },
-  { trialId: 2, agentId: 4, runHash: RUN_B, timestamp: 1_793_923_300_000, cohortId: "alpha", score: 0.61 },
+  { trialId: 1, agentId: 3, runHash: RUN_A, timestamp: 1_793_923_200, cohortId: "alpha", score: 0.88, uncertainty: 0.02 },
+  { trialId: 2, agentId: 4, runHash: RUN_B, timestamp: 1_793_923_300, cohortId: "alpha", score: 0.61 },
   {
     trialId: 3,
     agentId: 3,
     runHash: RUN_C,
-    timestamp: 1_793_923_400_000,
+    timestamp: 1_793_923_400,
     verdict: "abstain",
     cohortId: "beta",
   },
@@ -260,8 +265,8 @@ describe("page ordering is a property of the data, not of arrival", () => {
 
   it("breaks a timestamp tie by id, so two calls cannot disagree about who is first", () => {
     const same = [
-      record({ trialId: 1, agentId: 3, runHash: RUN_A, timestamp: 1_793_923_200_000 }),
-      record({ trialId: 2, agentId: 4, runHash: RUN_B, timestamp: 1_793_923_200_000 }),
+      record({ trialId: 1, agentId: 3, runHash: RUN_A, timestamp: 1_793_923_200 }),
+      record({ trialId: 2, agentId: 4, runHash: RUN_B, timestamp: 1_793_923_200 }),
     ];
     const first = pageEvaluations(same).records[0]!;
     const reversed = pageEvaluations([...same].reverse()).records[0]!;

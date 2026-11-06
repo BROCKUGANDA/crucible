@@ -1,5 +1,6 @@
 import { canonicalize } from "json-canonicalize";
 import { keccak256, stringToHex, type Hex } from "viem";
+import type { EvaluationPhase, EvaluationVerdict } from "./evaluation-record.js";
 
 /**
  * One verification result, as a link in a chain that is never overwritten.
@@ -28,7 +29,33 @@ export interface VerificationReportEvaluator {
   imageDigest?: string;
 }
 
-export interface VerificationReportEnvelope<TReport = unknown> {
+/**
+ * The minimum the envelope's payload has to say, declared here rather than imported from the
+ * evaluator.
+ *
+ * `VerificationReportEnvelope.result` was typed as Argus's `VerifyReport` in the specification
+ * that proposed this document, and it cannot be: `@crucible/argus` depends on `@crucible/smith`,
+ * so an import in the other direction closes a cycle the toolchain refuses. That is the same
+ * reason the generic exists.
+ *
+ * The generic alone is not enough, though — a reader that gets `unknown` back either casts (a
+ * lie with a type annotation on it) or cannot read the verdict at all, which is the one field
+ * every consumer of this document came for. So the four fields that make an envelope *mean*
+ * something are validated here, and everything above them — the per-step detail, the re-run
+ * results, whatever a future evaluator adds — passes through as the caller declares it.
+ *
+ * `verdict` and `phase` are the escrow's own vocabulary (`evaluation-record.ts`), not a second
+ * enum: Argus's `ArgusVerdict`/`ArgusPhase` are the same three words, and
+ * `apps/juror/test/policy.test.ts` is what keeps the translation between them from drifting.
+ */
+export interface VerificationReportResult {
+  verdict: EvaluationVerdict;
+  phase: EvaluationPhase;
+  steps: unknown[];
+  reason: string;
+}
+
+export interface VerificationReportEnvelope<TReport = VerificationReportResult> {
   schemaVersion: typeof VERIFICATION_REPORT_ENVELOPE_SCHEMA_VERSION;
   runHash: Hex;
   /** 1-indexed. Version 1 carries no `previousReportDigest`; every later one carries exactly one. */
@@ -83,7 +110,7 @@ export function verificationReportDigest<TReport>(envelope: VerificationReportEn
  * no `previousReportDigest` is not an incomplete record, it is a broken chain, and the store
  * must refuse it rather than project it.
  */
-export function assertVerificationReportEnvelope<TReport = unknown>(
+export function assertVerificationReportEnvelope<TReport = VerificationReportResult>(
   value: unknown,
 ): VerificationReportEnvelope<TReport> {
   if (!isRecord(value)) throw new TypeError("envelope: must be an object");
@@ -108,6 +135,26 @@ export function assertVerificationReportEnvelope<TReport = unknown>(
     throw new TypeError("createdAt: must be ISO 8601 in UTC (Z)");
   }
   if (value.result === undefined) throw new TypeError("result: is required");
+  // The minimum every reader is allowed to assume. Checked rather than declared, because a
+  // payload that reaches this function from disk has never passed through a compiler: an
+  // envelope whose `result` has no verdict is not a weakly-typed report, it is a document that
+  // cannot mean anything, and the alternative is every consumer casting `unknown` to get at it.
+  if (!isRecord(value.result)) throw new TypeError("result: must be an object");
+  const result = value.result as Record<string, unknown>;
+  if (
+    result.verdict !== "break-wins" &&
+    result.verdict !== "agent-wins" &&
+    result.verdict !== "abstain"
+  ) {
+    throw new TypeError(`result.verdict: must be "break-wins", "agent-wins" or "abstain"; got ${String(result.verdict)}`);
+  }
+  if (result.phase !== "deterministic" && result.phase !== "rubric" && result.phase !== "abstain") {
+    throw new TypeError(`result.phase: must be "deterministic", "rubric" or "abstain"; got ${String(result.phase)}`);
+  }
+  if (!Array.isArray(result.steps)) throw new TypeError("result.steps: must be the array of checks the verifier ran");
+  if (typeof result.reason !== "string" || result.reason.length === 0) {
+    throw new TypeError("result.reason: must be a non-empty string — a verdict nobody can read the reason for is not evidence");
+  }
 
   const envelope: VerificationReportEnvelope<TReport> = {
     schemaVersion: 1,

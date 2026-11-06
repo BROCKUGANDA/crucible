@@ -71,22 +71,60 @@ Adopt the pipeline as a **parallel surface**, additive, with nothing existing re
 6. **The read surface is mounted before it is fed.** `/evaluations` and `/leaderboards` answer
    503 with a reason when the host supplies no source, rather than an empty list that would
    read as "nothing was verified".
+7. **The version-chain store lives in `@crucible/cidstore`, not in the evaluator, and the
+   envelope declares what its payload must say.** Two halves of one decision, both forced by a
+   consumer rather than by taste. The store started in `@crucible/argus`; the first thing that
+   needed to *read* published reports was the API host serving `GET /evaluations/:id/history`,
+   and depending on argus for a class that never verifies would have pulled
+   `@crucible/forge-runner` — the sandbox SDK — into a reader's process. The store needs a
+   `CidStore` and the envelope contract, nothing more, so it moved beside the content it indexes
+   and argus re-exports it; a test asserts the two references are the same class, because the
+   failure mode of a re-export is a fork that every suite passes. The other half: the envelope
+   was generic over its payload because `VerifyReport` cannot be imported downward without a
+   cycle, and a reader handed `unknown` either casts or cannot read the verdict — the one field
+   it came for. So `VerificationReportResult` declares the minimum (`verdict`, `phase`, `steps`,
+   `reason`) and the validator enforces it, which turns out to matter on disk: an envelope read
+   from a content store has never passed through a compiler.
 
 ## What is not claimed
 
-- **No production caller assembles the source yet.** The host-side join needs two facts the
-  read model does not carry: a block number on `RunRow` (`model.ts:140-143` has none), and the
-  signer recovered from the EIP-712 signature the chain kept. Guessing either would produce
-  records that validate and lie, so the routes ship unfed and the gap is named in
-  `apps/api/src/app.ts` and in the register.
+- **The join is assembled and fed, and one half of the identity it names is not recovered.**
+  `apps/api/src/evaluations-source.ts` is the host-side join, and the two facts this ADR first
+  said the read model could not supply were both wrong as stated, so they are corrected here
+  rather than quietly dropped:
+  - *a block number on `RunRow`* — `RunRow` already carried one, under the name `submittedAt`,
+    which nothing read. It is renamed `blockNumber`, because the join is that field's first
+    consumer and a chain position under an `At` suffix is how a block height gets printed as a
+    date. The run's wall clock comes from `trial.runAt`, which `hydrateTimestamps` turns into
+    Unix **seconds**; `assertEvaluationRecord` now refuses a value that looks like milliseconds,
+    which is the mixed-unit bug three fixtures were carrying.
+  - *the signer recovered from the EIP-712 signature the chain kept* — **the chain keeps no
+    signature.** `submitRun` recovers it, compares it with the registered runner key and reverts
+    `BadSigner()` on a mismatch (`CrucibleTrials.sol:533-548`); the surviving copy is in the
+    disclosure record, which is why `RunRecord` has `signature` and `sigDeadline` at all
+    (`packages/cidstore/src/disclosure.ts:22-26`), and why `LiveVerifier.verify` already does
+    the recovery (`packages/argus/src/live.ts:157-175`). So the join does not need a new chain
+    read — but it still does not perform the recovery: every viem entry point for it
+    (`recoverTypedDataAddress`, `recoverAddress`, `recoverPublicKey`) resolves a promise and
+    these routes are synchronous, and the alternative is a second secp256k1 implementation. The
+    consequence is stated in `RUN_SIGNER_NOT_RECOVERED` and asserted by a test: from this host,
+    `IDENTITY_MISMATCH` is unreachable and an agent with no registry row yields **no record**
+    rather than a `RUNNER_UNREGISTERED` finding. The attribution question is answered by Argus's
+    steps 4 and 5 and by the chain's own revert; closing this half properly means the seat that
+    recovered the signer writing it into the envelope as a structured field at schema version 2.
 - **No cohort has real members yet.** The projection carries `cohortId` only when the host
-  supplies one, which means joining runs to scorecard publications. Until that exists,
-  `/leaderboards/cohorts` answers an empty list, truthfully.
+  supplies one, and the host does not: scorecards are keyed by their own subject id, not by
+  `runHash`, and inventing that mapping would put a second identity beside the chain's. Until it
+  exists `/leaderboards/cohorts` answers an empty list, truthfully, and records carry no `score`
+  and no `uncertainty` — absent fields, not zeros.
+- **The seat publishes its envelope before it votes, on the host that runs a seat.** The append
+  is wired into `apps/juror` (`operator.ts` `publish`, ahead of both the abstention record and
+  the seal) and a failure to publish stops the ballot. What is *not* claimed is that any seat has
+  done so in production: no run on any host has yet published a manifest or an envelope, so the
+  endpoints answer 503 or an empty page depending on whether a content directory is mounted.
 - **Comparability is claimed, not verified.** The refusal is on the cohort *name*, not on the
   suite and judge pins, because the record does not carry them to the comparison. A cohort
   that asserts a name it has not earned would rank. Gate 927 says so in its own text.
-- **Nothing has been deployed with this ADR's endpoints fed.** No run on any host has yet
-  published a manifest or an envelope.
 
 ## Consequences
 

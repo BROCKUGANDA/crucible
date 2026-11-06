@@ -1,4 +1,3 @@
-import { CidStore } from "@crucible/cidstore";
 import { canonicalize } from "json-canonicalize";
 import type { Hex } from "viem";
 import {
@@ -35,14 +34,6 @@ import type { VerifyReport } from "./argus.js";
  */
 
 export type StoredVerificationReport = VerificationReportEnvelope<VerifyReport>;
-
-export interface VerificationReportWrite {
-  cid: string;
-  digest: Hex;
-  reportVersion: number;
-  /** True when these exact bytes were already stored and nothing was written. */
-  replayed: boolean;
-}
 
 export interface EnvelopeDraft {
   runHash: Hex;
@@ -96,104 +87,21 @@ export function envelopeFromReport(draft: EnvelopeDraft): StoredVerificationRepo
   });
 }
 
-export class VerificationReportStore {
-  private readonly content: CidStore;
-  private index: Map<string, Map<number, string>> | null = null;
+/**
+ * The store itself lives in `@crucible/cidstore` (`packages/cidstore/src/report-store.ts`), and
+ * this line is the whole reason it moved.
+ *
+ * It started here, in the evaluator, and the first thing that needed to *read* published reports
+ * was the API host serving `GET /evaluations/:id/history`. Depending on `@crucible/argus` for a
+ * class that never verifies would have pulled `@crucible/forge-runner` — the sandbox SDK — into
+ * the API's runtime graph for an index over bytes. The store needs a `CidStore` and the envelope
+ * contract from `@crucible/smith`; it does not need a verdict, a bench, or the word "Argus"
+ * outside `evaluator.name`. So it lives beside the store it reads, one implementation, reached
+ * from both sides.
+ *
+ * `VerificationReportWrite` is re-exported for the same reason: it is the store's return type,
+ * not argus's.
+ */
+export { VerificationReportStore } from "@crucible/cidstore";
+export type { VerificationReportWrite, StoredEnvelope } from "@crucible/cidstore";
 
-  constructor(content: CidStore) {
-    this.content = content;
-  }
-
-  static inMemory(): VerificationReportStore {
-    return new VerificationReportStore(CidStore.inMemory());
-  }
-
-  private static key(runHash: Hex): string {
-    return runHash.toLowerCase();
-  }
-
-  private read(cid: string): StoredVerificationReport | null {
-    const parsed = this.content.getJson<unknown>(cid);
-    if (parsed === null) return null;
-    try {
-      return assertVerificationReportEnvelope<VerifyReport>(parsed);
-    } catch {
-      // Not an envelope. The store holds artifacts and disclosures too, so an unrelated
-      // document that parses as JSON is not a fault here — it is simply not a verdict.
-      return null;
-    }
-  }
-
-  /** Read every stored document once and group the envelopes by run and version. */
-  private loadIndex(): Map<string, Map<number, string>> {
-    if (this.index !== null) return this.index;
-    const built = new Map<string, Map<number, string>>();
-    for (const cid of this.content.list()) {
-      const envelope = this.read(cid);
-      if (envelope === null) continue;
-      const byRun = built.get(VerificationReportStore.key(envelope.runHash)) ?? new Map<number, string>();
-      // Two CIDs for one version can only mean two payloads. Keep the lexicographically
-      // smallest so the refusal a caller gets is deterministic across restarts, and let
-      // `append` raise the conflict rather than picking a winner by write order.
-      const held = byRun.get(envelope.reportVersion);
-      if (held === undefined || cid < held) byRun.set(envelope.reportVersion, cid);
-      built.set(VerificationReportStore.key(envelope.runHash), byRun);
-    }
-    this.index = built;
-    return built;
-  }
-
-  /**
-   * Append one verification.
-   *
-   * The order is the safety: validate the shape, resolve the predecessor the envelope claims,
-   * assert the lineage against what is actually stored, and only then write. A rejected append
-   * leaves nothing behind, so a caller can retry without asking whether half a chain landed.
-   */
-  append(envelope: StoredVerificationReport): VerificationReportWrite {
-    const valid = assertVerificationReportEnvelope<VerifyReport>(envelope);
-    const index = this.loadIndex();
-    const byRun = index.get(VerificationReportStore.key(valid.runHash)) ?? new Map<number, string>();
-    const digest = verificationReportDigest(valid);
-
-    const atVersion = byRun.get(valid.reportVersion);
-    if (atVersion !== undefined) {
-      const stored = this.read(atVersion);
-      if (stored !== null && classifyReplay(stored, valid) === "replayed") {
-        return { cid: atVersion, digest, reportVersion: valid.reportVersion, replayed: true };
-      }
-      throw new ReportConflictError(valid.runHash, valid.reportVersion, "a different report already holds this version");
-    }
-
-    if (valid.reportVersion > 1) {
-      const previousCid = byRun.get(valid.reportVersion - 1) ?? null;
-      assertLineage<VerifyReport>(previousCid === null ? null : this.read(previousCid), valid);
-    } else {
-      assertLineage<VerifyReport>(null, valid);
-    }
-
-    // Canonical bytes: a skeptic who fetches this CID must get the exact bytes the digest was
-    // taken over, not a re-serialisation that happens to agree.
-    const cid = this.content.put(canonicalize(valid));
-    byRun.set(valid.reportVersion, cid);
-    index.set(VerificationReportStore.key(valid.runHash), byRun);
-    return { cid, digest, reportVersion: valid.reportVersion, replayed: false };
-  }
-
-  versions(runHash: Hex): StoredVerificationReport[] {
-    const byRun = this.loadIndex().get(VerificationReportStore.key(runHash));
-    if (!byRun) return [];
-    return [...byRun.entries()]
-      .sort((a, b) => a[0] - b[0])
-      .map(([, cid]) => this.read(cid))
-      .filter((value): value is StoredVerificationReport => value !== null);
-  }
-
-  latest(runHash: Hex): StoredVerificationReport | null {
-    return this.versions(runHash).at(-1) ?? null;
-  }
-
-  byCid(cid: string): StoredVerificationReport | null {
-    return this.read(cid);
-  }
-}

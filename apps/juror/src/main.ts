@@ -4,15 +4,15 @@ import { resolve as resolvePath } from "node:path";
 import { fileURLToPath } from "node:url";
 import { ContentBridge, CidStore, DisclosureLog } from "@crucible/cidstore";
 import { ContentService, DEFAULT_SANDBOX, resolveVerifierImage } from "@crucible/forge-runner";
-import { LiveVerifier } from "@crucible/argus";
-import { CircuitBreaker, Flags, digestOfContent, envKillSwitches } from "@crucible/smith";
+import { LiveVerifier, VerificationReportStore, envelopeFromReport } from "@crucible/argus";
+import { CircuitBreaker, Flags, digestOfContent, envKillSwitches, verificationReportDigest } from "@crucible/smith";
 import { Scribe, TRIALS_SOURCE, disputeState, listTrials } from "@crucible/indexer";
 import { readConfig } from "./config.js";
 import { CrucibleChain } from "./chain.js";
 import { DurableSeat } from "./cast.js";
 import { FileState } from "./state.js";
 import { assembleChainFacts, toRunFacts } from "./facts.js";
-import { createOperator, type IndexPort, type JudgePort } from "./operator.js";
+import { createOperator, type IndexPort, type JudgePort, type OperatorDeps } from "./operator.js";
 import { createPatrolLoop } from "./patrol.js";
 
 /**
@@ -44,16 +44,36 @@ import { createPatrolLoop } from "./patrol.js";
  * seat's address, which is public, and how many seals are pending, which reveals nothing.
  */
 
-/** The store the seat reads, wired exactly as `scripts/seed-content.mjs` and `verify-roundtrip` do it. */
-async function openContent(contentDir: string): Promise<ContentService> {
-  return new ContentService({
-    bridge: new ContentBridge({
-      store: new CidStore({ dir: join(contentDir, "store") }),
-      disclosure: await DisclosureLog.open(join(contentDir, "disclosure")),
-      digestOf: digestOfContent,
-    }),
-  });
+/**
+ * The store the seat reads, wired exactly as `scripts/seed-content.mjs` and `verify-roundtrip` do
+ * it — and returned in pieces, because the seat now writes to the same store it reads from.
+ *
+ * The three parts used to be built and buried inside a `ContentService`. `VerificationReportStore`
+ * needs the `CidStore` itself, and taking `join(contentDir, "store")` a second time to build a
+ * second handle on the same directory would be two eviction ledgers and two write clocks over one
+ * set of bytes, which is the "second source of truth beside the first" this repository keeps
+ * having to delete. One instance, handed out.
+ */
+async function openContent(contentDir: string): Promise<{ content: ContentService; store: CidStore }> {
+  const store = new CidStore({ dir: join(contentDir, "store") });
+  const disclosure = await DisclosureLog.open(join(contentDir, "disclosure"));
+  return {
+    content: new ContentService({ bridge: new ContentBridge({ store, disclosure, digestOf: digestOfContent }) }),
+    store,
+  };
 }
+
+/**
+ * The evaluator identity every envelope this seat publishes carries.
+ *
+ * This is `packages/argus/package.json`'s `version`, and `apps/juror/test/publisher.test.ts`
+ * asserts the two agree rather than trusting this comment. A hardcoded version string in a
+ * runtime path is exactly the fake shape this repository refuses — it reads like a measurement
+ * and freezes whenever the code it names moves. The alternative (reading the manifest at boot)
+ * puts a `readFileSync` of a file that is not in the seat's container on a money-adjacent path,
+ * so the pairing is pinned by a test instead.
+ */
+const ARGUS_EVALUATOR_VERSION = "0.1.0";
 
 async function boot(): Promise<void> {
   const cfg = readConfig();
@@ -96,11 +116,44 @@ async function boot(): Promise<void> {
     process.exit(1);
   }
 
-  const content = await openContent(cfg.contentDir);
+  const { content, store: contentStore } = await openContent(cfg.contentDir);
   console.log(
     `[juror] content store ${cfg.contentDir} — the bytes behind every run hash live there, and ` +
       "scripts/seed-content.mjs is what puts them there",
   );
+
+  // The seat's verdicts become a public, append-only chain of envelopes in the same store it
+  // reads artifacts from, which is what lets `GET /evaluations/:id/history` answer at all.
+  const reports = new VerificationReportStore(contentStore);
+
+  /**
+   * Append this verification as the next version of the run's report chain.
+   *
+   * `reportVersion` is read from the chain rather than counted in memory: two seats sharing a
+   * content directory, or one seat restarted mid-pass, must not both write version 3 over each
+   * other, and `append` turns that into a `ReportConflictError` instead of a silent overwrite.
+   * `createdAt` is the seat's wall clock and that is correct here — it is the timestamp *of this
+   * verification*, not a deadline, and every rule in `operator.ts` still measures deadlines
+   * against `chain.chainNow()`.
+   */
+  const publish: NonNullable<OperatorDeps["publish"]> = async (facts, report) => {
+    const previous = reports.latest(facts.runHash);
+    const write = reports.append(
+      envelopeFromReport({
+        runHash: facts.runHash,
+        reportVersion: (previous?.reportVersion ?? 0) + 1,
+        ...(previous ? { previousReportDigest: verificationReportDigest(previous) } : {}),
+        evaluator: { version: ARGUS_EVALUATOR_VERSION },
+        report,
+        createdAt: new Date().toISOString(),
+      }),
+    );
+    console.log(
+      `[juror] run ${facts.runHash.slice(0, 12)}… report v${write.reportVersion}${
+        write.replayed ? " (already published, nothing written)" : ` pinned ${write.cid}`
+      } — ${write.digest.slice(0, 12)}…`,
+    );
+  };
 
   const state = await FileState.open(cfg.stateDir);
   const pending = await state.pending();
@@ -146,6 +199,7 @@ async function boot(): Promise<void> {
     chain: { chainNow: () => chain.chainNow(), disputeView: (id, votes) => chain.disputeView(id, votes) },
     index,
     judge,
+    publish,
     cast,
     state,
     reverifyMs: cfg.reverifyMs,
