@@ -171,6 +171,35 @@ export class PgEventStore implements EventStore {
     );
     return res.rows.map(rowToEvent);
   }
+
+  /** Persist a telemetry-integrity finding (idempotent on finding_id). */
+  async insertFinding(finding: {
+    findingId: string;
+    runId: string;
+    kind: string;
+    sequence?: number;
+    expected?: number;
+    observed?: number;
+    detail: string;
+    atMs: number;
+  }): Promise<void> {
+    await this.exec(
+      `INSERT INTO forge_watch_findings
+        (finding_id, run_id, kind, sequence, expected, observed, detail, at_ms)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+       ON CONFLICT (finding_id) DO NOTHING`,
+      [
+        finding.findingId,
+        finding.runId,
+        finding.kind,
+        finding.sequence ?? null,
+        finding.expected ?? null,
+        finding.observed ?? null,
+        finding.detail,
+        finding.atMs,
+      ],
+    );
+  }
 }
 
 /** Create a PgEventStore from an executor (e.g. agent-security's `query`). */

@@ -12,6 +12,7 @@ import type { ForgeWatchEvent } from "./events.js";
 
 /** A hole in the per-run sequence: expected N, saw M. */
 export interface SequenceGap {
+  kind: "gap";
   runId: string;
   expected: number;
   observed: number;
@@ -20,6 +21,7 @@ export interface SequenceGap {
 
 /** An out-of-order event: observed sequence goes backwards. */
 export interface SequenceRegression {
+  kind: "regression";
   runId: string;
   previous: number;
   observed: number;
@@ -72,7 +74,7 @@ export class RunSequencer {
           previous,
           observed: expected,
           at,
-        } as SequenceRegression);
+        });
       } else if (expected > previous) {
         this.findings.push({
           kind: "gap",
@@ -80,7 +82,7 @@ export class RunSequencer {
           expected: previous,
           observed: expected,
           at,
-        } as SequenceGap);
+        });
       }
       // expected === previous: in order, nothing to record.
       this.nextByRun.set(runId, expected + 1);

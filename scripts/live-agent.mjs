@@ -340,11 +340,35 @@ async function main() {
       `for role ${principal.role}, ceiling ${ceiling} model call(s)`,
   );
 
+  // Optional Forge Watch telemetry (host boundary). Enable with --telemetry.
+  // FORGE_WATCH_PERSIST=true + DATABASE_URL persists to PG (migrations must be run).
+  let watch = null;
+  if (flag("telemetry")) {
+    try {
+      const fwDist = path.join(ROOT, "packages/forge-watch/dist/index.js");
+      if (existsSync(fwDist)) {
+        const { createForgeWatchRuntime } = await import(pathToFileURL(fwDist).href);
+        watch = createForgeWatchRuntime();
+        console.log("  watch     Forge Watch telemetry enabled (in-memory)");
+      } else {
+        console.log("  watch     skipped (forge-watch not built)");
+      }
+    } catch (err) {
+      console.log(`  watch     skipped (${String(err?.message ?? err)})`);
+    }
+  }
+
   const agent = createForgedAgent({
     client: countedClient,
     model: provider.model,
     temperature,
     guard: guardBox.guard,
+    ...(watch
+      ? {
+          emitEvent: watch.emitEvent,
+          runMeta: { runId: 0, trialId: 0, agentId: 0, tenantId: "live-agent" },
+        }
+      : {}),
   });
 
   // Seed a real Foundry project so `forge test` means something.
@@ -374,6 +398,15 @@ async function main() {
   /** Every exit path owes the operator the same two things: what the policy saw, and the sandbox. */
   async function closeOut() {
     reportPolicy(sessionId, guardBox, directCalls);
+    if (watch) {
+      try {
+        const list = await watch.collector.list("0");
+        console.log(`  watch     ${list.length} event(s) captured`);
+        await watch.close();
+      } catch {
+        /* telemetry teardown must not mask the run result */
+      }
+    }
     await finish(sandbox);
   }
 

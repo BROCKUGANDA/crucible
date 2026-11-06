@@ -33,3 +33,9 @@ export {
   type PgExecutor,
   type PgQueryResult,
 } from "./pg-store.js";
+export {
+  createForgeWatchRuntime,
+  isForgeWatchPersistEnabled,
+  type ForgeWatchRuntime,
+  type ForgeWatchRuntimeOptions,
+} from "./runtime.js";

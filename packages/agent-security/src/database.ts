@@ -86,12 +86,26 @@ export async function withTransaction<T>(
 }
 
 /**
+ * Resolve the migrations directory. Deployments can override with
+ * CRUCIBLE_MIGRATIONS_DIR; otherwise defaults to `<repo>/migrations` relative
+ * to this package's compiled location.
+ */
+export function resolveMigrationsDir(explicit?: string): string {
+  if (explicit) return explicit;
+  if (process.env.CRUCIBLE_MIGRATIONS_DIR) return process.env.CRUCIBLE_MIGRATIONS_DIR;
+  return join(__dirname, '..', '..', '..', 'migrations');
+}
+
+/**
  * Run all pending migration files in order. Migration files are SQL files
  * in the migrations directory, named with a numeric prefix (e.g.,
  * 0001_identity.sql). Each migration is run inside a transaction.
+ *
+ * Note: there is no applied-migrations ledger; migrations MUST be idempotent
+ * (CREATE TABLE IF NOT EXISTS, CREATE INDEX IF NOT EXISTS, etc.).
  */
 export async function runMigrations(migrationsDir?: string): Promise<void> {
-  const dir = migrationsDir || join(__dirname, '..', '..', '..', 'migrations');
+  const dir = resolveMigrationsDir(migrationsDir);
   const client = await activePool().connect();
   try {
     await runMigrationsImpl(client, dir);

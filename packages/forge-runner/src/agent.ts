@@ -258,7 +258,7 @@ export function createForgedAgent(opts: ForgedAgentOptions): SmithAgent {
               runId: String(opts.runMeta.runId),
               trialId: String(opts.runMeta.trialId),
               agentId: String(opts.runMeta.agentId),
-              tenantId: opts.runMeta.tenantId ?? "",
+              tenantId: opts.runMeta.tenantId && opts.runMeta.tenantId.length > 0 ? opts.runMeta.tenantId : "default",
               source: "forge-runner.agent",
               eventType,
               providerId: opts.model,

@@ -239,7 +239,7 @@ export class ForgeRunner {
         runId: String(runId),
         trialId: String(trialId),
         agentId: String(agentId),
-        tenantId: "",
+        tenantId: "default",
         source: "forge-runner",
       };
       void emitEvent(envelope as ForgeWatchEvent);
