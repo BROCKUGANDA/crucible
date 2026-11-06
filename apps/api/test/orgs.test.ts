@@ -24,13 +24,16 @@ const ownerPrincipalId = `eip155:31337:${OWNER.toLowerCase()}`;
 const testOrg = newOrganisation(ORG_ID, "Test Org", "test-org", ownerPrincipalId);
 createOrganisation(testOrg);
 
-function sessionHeaders(address: string): Headers {
+function sessionHeaders(
+  address: string,
+  options: { expiresInSeconds?: number; audience?: string } = {},
+): Headers {
   const now = Date.now();
   const payload = {
     address,
     issuedAt: Math.floor(now / 1000),
-    expiresAt: Math.floor(now / 1000) + 60 * 60 * 24 * 7,
-    aud: "http://localhost:3000",
+    expiresAt: Math.floor(now / 1000) + (options.expiresInSeconds ?? 60 * 60 * 24 * 7),
+    aud: options.audience ?? "http://localhost:3000",
   };
   const encoded = Buffer.from(JSON.stringify(payload)).toString("base64url");
   const sig = Buffer.from(
@@ -72,6 +75,30 @@ describe("Org routes", () => {
   it("rejects unauthenticated callers", async () => {
     const app = appWith();
     const res = await app.request("/orgs");
+    expect(res.status).toBe(401);
+  });
+
+  it("rejects a forged session cookie with an invalid HMAC", async () => {
+    const headers = sessionHeaders(OWNER);
+    const token = headers.get("cookie")!.replace("crucible_session=", "");
+    const [payload] = token.split(".");
+    headers.set("cookie", `crucible_session=${payload}.${Buffer.alloc(32, 0).toString("base64url")}`);
+
+    const res = await appWith().request("/orgs", { headers });
+    expect(res.status).toBe(401);
+  });
+
+  it("rejects a session issued for a different audience", async () => {
+    const res = await appWith().request("/orgs", {
+      headers: sessionHeaders(OWNER, { audience: "https://attacker.example" }),
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it("rejects an expired session", async () => {
+    const res = await appWith().request("/orgs", {
+      headers: sessionHeaders(OWNER, { expiresInSeconds: -1 }),
+    });
     expect(res.status).toBe(401);
   });
 
