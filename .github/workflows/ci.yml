@@ -394,6 +394,7 @@ jobs:
             --workspace @crucible/web \
             --workspace @crucible/datasets \
             --workspace @crucible/eval \
+            --workspace @crucible/engrams \
             --workspace @crucible/registry \
             --workspace @crucible/site-index \
             --workspace @crucible/funder \
@@ -435,6 +436,7 @@ jobs:
             --workspace @crucible/web \
             --workspace @crucible/datasets \
             --workspace @crucible/eval \
+            --workspace @crucible/engrams \
             --workspace @crucible/registry \
             --workspace @crucible/site-index \
             --workspace @crucible/funder \
