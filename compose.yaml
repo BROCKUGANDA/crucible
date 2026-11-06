@@ -147,6 +147,8 @@ services:
       # disclosed yet" — which is what the live page said until 2026-10-26 even though the
       # juror had written the file 43 hours earlier.
       CRUCIBLE_CONTENT_DIR: /content
+      CRUCIBLE_SCORECARD_SIGNERS: ${CRUCIBLE_SCORECARD_SIGNERS:-}
+      CRUCIBLE_SCORECARD_PUBLICATIONS_DIR: ${CRUCIBLE_SCORECARD_PUBLICATIONS_DIR:-/content/scorecards/publications}
       # The funder is a compose service; the host's FUNDER_URL is for host-run scripts.
       FUNDER_URL: http://funder:8788
       # The remaining names the API's code reads (voice, Frenchy, passport,

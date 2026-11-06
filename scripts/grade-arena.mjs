@@ -40,6 +40,13 @@
  *   --timeout-ms <n>   per-call deadline, default 300000
  *   --content-dir <d>  default $CRUCIBLE_CONTENT_DIR or .crucible-content
  *   --ledger <file>    append one JSONL scorecard row for the tracker/leaderboard after a pin
+ *   --publish           publish an attested, cohort-bound result for a registered agent
+ *   --cohort <id>       cohort recorded in the signed scorecard (required with --publish)
+ *   --agent-id <n>      registered on-chain agent id (required with --publish)
+ *   --runner <address>  registered runner address (required with --publish)
+ *   --chain-id <n>      chain id of that registration (required with --publish)
+ *   CRUCIBLE_SCORECARD_SIGNER_KEY  off-chain attestor key; API must allowlist its address
+ *   CRUCIBLE_SCORECARD_PUBLICATIONS_DIR  default <content-dir>/scorecards/publications
  *   --require-survivor exit 1 when every row was disqualified
  *   --no-pin           score the run without writing to the content store
  *
@@ -53,9 +60,16 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { CidStore, ContentBridge, DisclosureLog } from "@crucible/cidstore";
-import { ContentService } from "@crucible/forge-runner";
-import { digestOfContent } from "@crucible/smith";
+import { privateKeyToAccount } from "viem/accounts";
+import { isAddress } from "viem";
+import { CidStore } from "@crucible/cidstore";
+import {
+  digestOfContent,
+  isScorecardCohort,
+  manifestDigest,
+  scorecardPublicationId,
+  scorecardTypedData,
+} from "@crucible/smith";
 import { countRate, percent } from "./panel-format.mjs";
 import {
   Arena,
@@ -77,6 +91,7 @@ import {
   verifyDraw,
   isAnchor,
   buildGraderManifest,
+  writeScorecardPublication,
 } from "@crucible/grader";
 
 /**
@@ -132,12 +147,54 @@ const API_KEY_ENV = arg("api-key-env", "OPENAI_API_KEY");
 const API_KEY_FILE = arg("api-key-file");
 const KEYS_FILE = arg("keys-file");
 const LEDGER = arg("ledger");
+const PUBLISH = flag("publish");
+const COHORT = arg("cohort");
+const AGENT_ID = arg("agent-id");
+const RUNNER = arg("runner");
+const CHAIN_ID = arg("chain-id");
 
 const dirFlag = arg("dir", arg("content-dir"));
 const CONTENT_DIR =
   dirFlag === null
     ? process.env.CRUCIBLE_CONTENT_DIR || path.join(ROOT, ".crucible-content")
     : path.resolve(dirFlag);
+
+function publicationContext() {
+  if (!PUBLISH) return null;
+  if (!PIN) fail("--publish requires pinning; a scorecard without immutable bytes cannot be signed");
+  if (PROVIDER === "stub") fail("the stub provider cannot publish an authoritative scorecard");
+  if (!isScorecardCohort(COHORT)) fail("--publish requires a cohort id of 1–64 plain letters, numbers, dots, underscores, colons or hyphens");
+  const agentId = Number(AGENT_ID);
+  if (!/^\d+$/.test(String(AGENT_ID ?? "")) || !Number.isSafeInteger(agentId) || agentId < 1) {
+    fail("--publish requires --agent-id with a positive whole number");
+  }
+  const chainId = Number(CHAIN_ID);
+  if (!/^\d+$/.test(String(CHAIN_ID ?? "")) || !Number.isSafeInteger(chainId) || chainId < 1) {
+    fail("--publish requires --chain-id with a positive whole number");
+  }
+  if (typeof RUNNER !== "string" || !isAddress(RUNNER, { strict: false })) {
+    fail("--publish requires --runner with a valid Ethereum address");
+  }
+  const privateKey = process.env.CRUCIBLE_SCORECARD_SIGNER_KEY;
+  if (!/^0x[0-9a-fA-F]{64}$/.test(privateKey ?? "")) {
+    fail("CRUCIBLE_SCORECARD_SIGNER_KEY must contain the off-chain attestor's 32-byte private key");
+  }
+  let signer;
+  try {
+    signer = privateKeyToAccount(privateKey);
+  } catch {
+    fail("CRUCIBLE_SCORECARD_SIGNER_KEY is not a valid private key");
+  }
+  return {
+    cohort: COHORT,
+    agentId,
+    chainId,
+    runner: RUNNER,
+    issuedAt: Math.floor(Date.now() / 1000),
+    signer,
+    directory: process.env.CRUCIBLE_SCORECARD_PUBLICATIONS_DIR || path.join(CONTENT_DIR, "scorecards", "publications"),
+  };
+}
 
 /**
  * Keys read from a KEY=value file, kept in memory. The point is to use a key that lives in the
@@ -330,15 +387,16 @@ function resolveProvider() {
   };
 }
 
-// ── content sink ─────────────────────────────────────────────────────────
+// ── durable scorecard sink ────────────────────────────────────────────────
 
-async function contentService() {
-  return new ContentService({
-    bridge: new ContentBridge({
-      store: new CidStore({ dir: path.join(CONTENT_DIR, "store") }),
-      disclosure: await DisclosureLog.open(path.join(CONTENT_DIR, "disclosure")),
-      digestOf: digestOfContent,
-    }),
+function scorecardBlobStore() {
+  // The general run cache evicts old entries to stay bounded. Published evaluations are records,
+  // so this separate store never evicts: the filesystem either keeps the bytes or refuses a write.
+  return new CidStore({
+    dir: path.join(CONTENT_DIR, "scorecards", "store"),
+    maxBytes: Number.MAX_SAFE_INTEGER,
+    maxEntries: Number.MAX_SAFE_INTEGER,
+    maxEntryBytes: Number.MAX_SAFE_INTEGER,
   });
 }
 
@@ -352,6 +410,7 @@ const RETENTION_IN_PLAIN_WORDS = {
 };
 
 async function main() {
+  const publish = publicationContext();
   const corpus = CORPORA[SUITE];
   if (!corpus) {
     fail(
@@ -686,10 +745,62 @@ async function main() {
   }
 
   // ── the sink ───────────────────────────────────────────────────────────
+  const content = scorecardBlobStore();
+  for (const row of scorecard.rows) {
+    if (manifestDigest(row.manifest).toLowerCase() !== String(row.manifestDigest).toLowerCase()) {
+      fail(`the ${row.modelId}/${row.suite} row has a manifest digest that does not match its manifest`);
+    }
+  }
+  const corpusEvidenceText = JSON.stringify(artifacts);
+  const corpusEvidence = {
+    cid: content.put(corpusEvidenceText),
+    digest: digestOfContent(corpusEvidenceText),
+  };
+  if (content.get(corpusEvidence.cid) !== corpusEvidenceText) {
+    fail("the corpus evidence could not be read back byte-identically; the scorecard was not published");
+  }
+  const trajectories = [];
+  for (const row of scorecard.rows) {
+    for (const failure of row.abstention?.failures ?? []) {
+      const artifact = artifacts.find((a) => a.claimHash === failure.claimHash);
+      if (!artifact) {
+        fail(
+          `the ${row.suite} row names ${failure.claimHash}, which is not in the drawn corpus. ` +
+            "Nothing was pinned — a trajectory without its payload is a claim no reader can check.",
+        );
+      }
+      const evidenceText = JSON.stringify(artifact.payload);
+      const evidence = {
+        cid: content.put(evidenceText),
+        digest: digestOfContent(evidenceText),
+      };
+      if (content.get(evidence.cid) !== evidenceText) {
+        fail(`the trajectory evidence for ${failure.claimHash} could not be read back byte-identically`);
+      }
+      trajectories.push({
+        modelId: row.modelId,
+        suite: row.suite,
+        ...failure,
+        payload: artifact.payload,
+        evidence: { cid: evidence.cid, digest: evidence.digest },
+      });
+    }
+  }
+  const publicationSubject = publish
+    ? {
+        cohort: publish.cohort,
+        chainId: publish.chainId,
+        agentId: publish.agentId,
+        runner: publish.runner,
+        issuedAt: publish.issuedAt,
+        signer: publish.signer.address,
+      }
+    : undefined;
   const record = {
     kind: "crucible/arena-scorecard",
     version: 1,
     generatedAt: scorecard.generatedAt,
+    ...(publicationSubject ? { publication: publicationSubject } : {}),
     corpusEpoch: scorecard.corpusEpoch,
     stage: SCOPE,
     corpus: {
@@ -739,23 +850,8 @@ async function main() {
      * A failure whose payload is missing would be a claim about a probe nobody can fetch, so it
      * stops the pin instead of being written with a null.
      */
-    trajectories: scorecard.rows.flatMap((row) =>
-      (row.abstention?.failures ?? []).map((failure) => {
-        const artifact = artifacts.find((a) => a.claimHash === failure.claimHash);
-        if (!artifact) {
-          fail(
-            `the ${row.suite} row names ${failure.claimHash}, which is not in the drawn corpus. ` +
-              "Nothing was pinned — a trajectory without its payload is a claim no reader can check.",
-          );
-        }
-        return {
-          modelId: row.modelId,
-          suite: row.suite,
-          ...failure,
-          payload: artifact.payload,
-        };
-      }),
-    ),
+    corpusEvidence: { cid: corpusEvidence.cid, digest: corpusEvidence.digest },
+    trajectories,
     // null means "no code path measured this", not zero. The stub tier is not wrapped by the
     // frontier guard, so there is no ledger entry to read and no honest number to write.
     measured: {
@@ -769,15 +865,18 @@ async function main() {
   };
   const bytes = JSON.stringify(record, null, 2);
 
-  const content = await contentService();
-  const pinned = await content.pinText(bytes);
+  const pinned = {
+    cid: content.put(bytes),
+    digest: digestOfContent(bytes),
+    bytes: Buffer.byteLength(bytes),
+  };
 
   // Prove the round trip. seed-content.mjs does the same, for the same reason: a pin that wrote
   // nothing readable is a scorecard no skeptic can fetch, and only the writer can catch that.
-  const back = await content.fetchTextByDigest(pinned.digest);
+  const back = content.get(pinned.cid);
   if (back !== bytes) {
     fail(
-      `the digest ${pinned.digest} did not resolve to the scorecard that was just pinned. ` +
+      `the CID ${pinned.cid} did not resolve to the scorecard that was just pinned. ` +
         "The store accepted the write and cannot answer for it, so nothing was published.",
     );
   }
@@ -786,9 +885,32 @@ async function main() {
   console.log(`  cid      ${pinned.cid}`);
   console.log(`  digest   ${pinned.digest}`);
   console.log(`  bytes    ${bytes.length}`);
-  console.log(`  read back by digest: yes, byte-identical`);
-  console.log(`  store    ${path.relative(ROOT, path.join(CONTENT_DIR, "store"))}`);
+  console.log(`  read back by CID: yes, byte-identical`);
+  console.log(`  store    ${path.relative(ROOT, path.join(CONTENT_DIR, "scorecards", "store"))}`);
   console.log(`  warm cache entries now ${cache.size}\n`);
+
+  if (publish) {
+    const message = {
+      cohort: publish.cohort,
+      chainId: publish.chainId,
+      agentId: publish.agentId,
+      runner: publish.runner,
+      scorecardCid: pinned.cid,
+      scorecardDigest: pinned.digest,
+      issuedAt: publish.issuedAt,
+    };
+    const signature = await publish.signer.signTypedData(scorecardTypedData(message));
+    const attestation = {
+      schemaVersion: 1,
+      id: scorecardPublicationId(message),
+      signer: publish.signer.address,
+      message,
+      signature,
+    };
+    const saved = writeScorecardPublication(publish.directory, attestation);
+    console.log(`  publication ${saved.id} — ${saved.replayed ? "identical replay accepted" : "signed and stored"}`);
+    console.log(`  cohort      ${publish.cohort} · agent #${publish.agentId} · runner ${publish.runner}\n`);
+  }
 
   if (LEDGER) {
     const ledgerPath = path.resolve(LEDGER);

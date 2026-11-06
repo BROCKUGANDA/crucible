@@ -58,6 +58,9 @@ import {
   type SecurityConfig,
 } from "./security.js";
 import { streamSSE } from "hono/streaming";
+import { scorecardRoutes, type ScorecardPublicationSource } from "./scorecards.js";
+import { evaluationRoutes, type EvaluationSource } from "./evaluations.js";
+import { leaderboardRoutes } from "./leaderboards.js";
 
 /**
  * The REST surface, built as a pure function over a read-model getter so it can be
@@ -138,6 +141,12 @@ export interface ApiDeps {
    * exist, and a 404 would say otherwise.
    */
   contentLookup?: ContentLookup;
+  /** Signed scorecard publication envelopes from the immutable content volume. */
+  scorecardPublications?: ScorecardPublicationSource;
+  /** Non-evicting content store for published scorecard, corpus and evidence bytes. */
+  scorecardContentLookup?: ContentLookup;
+  /** EIP-712 authorities permitted to publish evaluation results. */
+  scorecardSigners?: readonly string[];
   /**
    * The escrow's own trial bounds, read off the chain at boot (see `readTrialLimits`). Absent means
    * this process never read them, and `prepare_create_trial` then reports `limitsChecked:false`
@@ -394,6 +403,17 @@ export interface ApiOptions {
    * the rest of the app is unchanged.
    */
   voice?: VoiceConfig | null;
+  /**
+   * The per-run evaluation surface (`/evaluations`, `/leaderboards`).
+   *
+   * Null (the default) makes both answer 503 with the reason, rather than serving an empty
+   * list a reader could mistake for "no verified evaluations exist". The host turns it on by
+   * passing a source assembled from the read model, the disclosure and the verification store;
+   * `docs/adr/0024-evaluation-evidence-pipeline.md` names the two facts that source still needs
+   * from the indexer (a block number on the run row, and the signer recovered from the
+   * signature the chain kept) and why the surface is mounted before it is fed.
+   */
+  evaluations?: EvaluationSource | null;
   /**
    * Frenchy's brain. Null or absent means the conversational assistant is off.
    */
@@ -1494,6 +1514,30 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
         return c.json({ error: "Nothing here names those bytes", id, reason: read.reason }, 404);
     }
   });
+
+  /**
+   * Public, verified evaluation results. The route reads only immutable publication files and the
+   * content volume; its signer set and chain projection are supplied by this host.
+   */
+  app.route(
+    "/scorecards",
+    scorecardRoutes({
+      getModel: deps.getModel,
+      contentLookup: deps.scorecardContentLookup,
+      proofSource: deps.proofSource,
+      publications: deps.scorecardPublications,
+      signers: deps.scorecardSigners,
+    }),
+  );
+
+  /**
+   * Per-run evaluation evidence, and the rankings that only make sense inside a cohort
+   * (CRU-002E). Both read; neither judges. The records are projected from chain facts plus the
+   * content the runner and the verifier published, and an unconfigured host says 503 rather
+   * than showing an empty list that reads like "nothing was verified".
+   */
+  app.route("/evaluations", evaluationRoutes(opts.evaluations ?? null));
+  app.route("/leaderboards", leaderboardRoutes(opts.evaluations ?? null));
 
   /**
    * Mint one single-use Coinbase Onramp session for a sponsor wallet.

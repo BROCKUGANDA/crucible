@@ -387,3 +387,78 @@
   outline: 2px solid var(--gold);
   outline-offset: 2px;
 }
+
+/* ── signed evaluation scorecards ─────────────────────────── */
+
+.scorecards-filters {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--s-4);
+  flex-wrap: wrap;
+}
+
+.scorecards-filters label {
+  min-width: 12rem;
+}
+
+.scorecards-count {
+  margin-left: auto;
+  color: var(--faint);
+}
+
+.scorecards-list {
+  display: grid;
+  gap: var(--s-4);
+  margin-top: var(--s-4);
+}
+
+.scorecard-card {
+  display: grid;
+  gap: var(--s-4);
+}
+
+.scorecard-card__heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s-4);
+  flex-wrap: wrap;
+}
+
+.scorecard-card__heading h2 {
+  margin: var(--s-1) 0 0;
+}
+
+.scorecard-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  gap: var(--s-3);
+  margin: 0;
+}
+
+.scorecard-facts dt {
+  color: var(--faint);
+  font-size: var(--fs-micro);
+  text-transform: uppercase;
+  letter-spacing: var(--track-micro);
+}
+
+.scorecard-facts dd {
+  margin: var(--s-1) 0 0;
+  overflow-wrap: anywhere;
+}
+
+.scorecard-evidence {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-3) var(--s-4);
+}
+
+.scorecard-signature summary {
+  cursor: pointer;
+  color: var(--dim);
+}
+
+.scorecard-signature p {
+  overflow-wrap: anywhere;
+}

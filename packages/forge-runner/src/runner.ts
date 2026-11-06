@@ -62,6 +62,18 @@ export interface RunnerDeps {
   uploadLogs(contents: string): Promise<string>;
   /** pin the agent's work; returns the CID */
   uploadRepo(sandbox: Sandbox): Promise<string>;
+  /**
+   * Publish the evaluation manifest beside the run and announce it for its hash.
+   *
+   * Optional, because a host that has no content volume has nothing to publish to — but a host
+   * that does should not have to remember. `ManifestPublisher` in `manifest-publisher.js` is
+   * the implementation; a run whose manifest was never published can be re-derived from its
+   * artifact by anyone holding the same inputs, which is the point of pinning it.
+   */
+  publishManifest?(args: {
+    runHash: `0x${string}`;
+    manifest: EmittedManifest["manifest"];
+  }): Promise<{ cid: string; digest: `0x${string}` }>;
   /** sign with the runner key */
   sign(args: {
     runHash: `0x${string}`;
@@ -154,6 +166,14 @@ export interface RunOutcome {
    * needs to vouch for it (ADR-0017).
    */
   manifest?: EmittedManifest;
+  /**
+   * What `publishManifest` returned, when there was a host to publish to.
+   *
+   * `null` means it was tried and refused, `undefined` means there was nothing to try (no
+   * publisher, or no manifest to publish). Those are different operational facts and an
+   * operator reading this must be able to tell them apart.
+   */
+  manifestPublished?: { cid: string; digest: `0x${string}` } | null;
 }
 
 /**
@@ -379,6 +399,31 @@ export class ForgeRunner {
       // manifest to describe.
       const manifest = this.emitManifestFor(req, startedAt, Date.now(), state);
 
+      /**
+       * Publish the manifest, and say so either way.
+       *
+       * A published manifest is evidence, not a receipt: the run is already on chain, so a
+       * failure here must not rewrite an outcome the caller has acted on, must not un-submit
+       * anything, and must not be caught-and-forgotten. It is announced on the status stream
+       * and carried in the outcome, because a run whose manifest never landed is a score whose
+       * conditions nobody can re-derive — the kind of gap a silent `catch {}` turns permanent.
+       */
+      let manifestPublished: { cid: string; digest: `0x${string}` } | null | undefined;
+      if (this.deps.publishManifest && manifest) {
+        try {
+          manifestPublished = await this.deps.publishManifest({ runHash, manifest: manifest.manifest });
+          emit("manifest-published", `evaluation manifest pinned as ${manifestPublished.cid}`);
+        } catch (err) {
+          manifestPublished = null;
+          emit(
+            "manifest-unpublished",
+            `the run is on chain, but its evaluation manifest was not published: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          );
+        }
+      }
+
       return {
         ok: true,
         status: "submitted",
@@ -389,6 +434,7 @@ export class ForgeRunner {
         summary: results,
         degraded: state.degraded,
         manifest,
+        manifestPublished,
       };
     } catch (err) {
       const failure = classify(err);

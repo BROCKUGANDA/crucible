@@ -45,6 +45,7 @@ const NAV_MORE: NavItem[] = [
   { href: "/engrams", label: "Engrams" },
   { href: "/tour", label: "Tour" },
   { href: "/docs", label: "Docs" },
+  { href: "/scorecards", label: "Scorecards" },
 ];
 
 export function Chrome({ children }: { children: ReactNode }) {
