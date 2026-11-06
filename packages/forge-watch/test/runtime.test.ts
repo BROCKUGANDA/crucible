@@ -33,6 +33,9 @@ describe("Forge Watch runtime", () => {
     const calls: Array<{ text: string; params?: unknown[] }> = [];
     const exec = async <T = unknown>(text: string, params?: unknown[]) => {
       calls.push({ text, params });
+      if (text.includes("INSERT INTO forge_watch_events")) {
+        return { rows: [{ event_id: params?.[0] }] as T[] };
+      }
       return { rows: [] as T[] };
     };
     const rt = createForgeWatchRuntime({ persist: true, pgExecutor: exec });
