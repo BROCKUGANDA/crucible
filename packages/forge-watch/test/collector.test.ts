@@ -50,18 +50,54 @@ describe("telemetry collector", () => {
     expect(list.map((e) => e.sequence)).toEqual([1, 2]);
   });
 
-  it("rejects duplicate eventIds", async () => {
+  it("treats an exact redelivery as an idempotent no-op", async () => {
+    const store = new InMemoryEventStore();
+    const collector = new TelemetryCollector({ store });
+    const event = await makeEvent();
+
+    expect(await collector.accept(event)).toBe(1);
+    expect(await collector.accept(event)).toBe(1);
+    expect(await collector.list(event.runId)).toHaveLength(1);
+    expect(collector.stats.accepted).toBe(1);
+    expect(collector.stats.rejected).toBe(0);
+  });
+
+  it("rejects reuse of an event id with a different payload", async () => {
     const store = new InMemoryEventStore();
     const collector = new TelemetryCollector({ store });
     const event = await makeEvent();
     await collector.accept(event);
-    let threw = false;
-    try {
-      await collector.accept(event); // same object -> same eventId
-    } catch {
-      threw = true;
+
+    const conflicting = await makeEvent({
+      eventId: event.eventId,
+      sequence: 1,
+      toolId: "different-tool",
+    });
+
+    await expect(collector.accept(conflicting)).rejects.toThrow(/event id conflict/i);
+    expect(await collector.list(event.runId)).toHaveLength(1);
+    expect(collector.stats.rejected).toBe(0);
+  });
+
+  it("does not advance the sequence cursor when durable append fails", async () => {
+    class FailOnceStore extends InMemoryEventStore {
+      private failures = 1;
+      override async append(event: Awaited<ReturnType<typeof makeEvent>>) {
+        if (this.failures > 0) {
+          this.failures -= 1;
+          throw new Error("postgres unavailable");
+        }
+        await super.append(event);
+      }
     }
-    expect(threw).toBe(true);
+
+    const store = new FailOnceStore();
+    const collector = new TelemetryCollector({ store });
+    const event = await makeEvent();
+
+    await expect(collector.accept(event)).rejects.toThrow("postgres unavailable");
+    expect(await collector.accept(event)).toBe(1);
+    expect((await collector.list(event.runId)).map((item) => item.sequence)).toEqual([1]);
   });
 
   it("tracks accepted/rejected counts", async () => {
