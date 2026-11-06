@@ -5,8 +5,8 @@ pragma solidity ^0.8.26;
 /// @notice Users lock Engram tokens (transfer to this contract) for a fixed
 ///         duration to gain access. Unlock returns tokens after the lock expires.
 contract EngramLocker {
-    address public admin;
-    address public engram; // EngramERC1155
+    address public immutable admin;
+    address public immutable engram; // EngramERC1155
 
     struct Lock {
         address owner;

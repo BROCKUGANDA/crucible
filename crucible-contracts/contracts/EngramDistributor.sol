@@ -5,8 +5,8 @@ pragma solidity ^0.8.26;
 /// @notice Campaigns are funded with token inventory; recipients claim via
 ///         Merkle proof. Each campaign has a root, budget, and claim window.
 contract EngramDistributor {
-    address public admin;
-    address public engram; // EngramERC1155 address (informational)
+    address public immutable admin;
+    address public immutable engram; // EngramERC1155 address (informational)
 
     struct Campaign {
         bytes32 merkleRoot;

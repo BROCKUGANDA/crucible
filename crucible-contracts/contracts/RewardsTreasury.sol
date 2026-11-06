@@ -20,6 +20,7 @@ contract RewardsTreasury {
     event CampaignFunded(uint256 indexed id, uint256 amount, uint256 funded);
     event ClaimRecorded(uint256 indexed id, uint256 amount, uint256 claimed);
     event CampaignToggled(uint256 indexed id, bool active);
+    event AdminChanged(address indexed previousAdmin, address indexed newAdmin);
 
     error NotAdmin();
     error UnknownCampaign();
@@ -38,6 +39,7 @@ contract RewardsTreasury {
     }
 
     function setAdmin(address newAdmin) external onlyAdmin {
+        emit AdminChanged(admin, newAdmin);
         admin = newAdmin;
     }
 
