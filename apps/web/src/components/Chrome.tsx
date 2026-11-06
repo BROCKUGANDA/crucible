@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { useAccount } from "wagmi";
 import { WalletButton, WalletNotConfiguredNotice } from "@/components/Wallet";
 import { VoiceControl } from "@/components/VoiceControl";
 import { PayoffSound } from "@/components/PayoffSound";
@@ -54,8 +53,6 @@ export function Chrome({ children }: { children: ReactNode }) {
   const [sheet, setSheet] = useState(false);
   const moreRef = useRef<HTMLDetailsElement | null>(null);
   const pathname = usePathname();
-  const { address } = useAccount();
-  const isConnected = Boolean(address);
   const auth = useAuthSession();
   const canUsePrivateNavigation = auth.canUsePrivateResources;
 
