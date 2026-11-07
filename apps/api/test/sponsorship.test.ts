@@ -291,7 +291,7 @@ describe("the queue is the owner's view", () => {
 
   it("answers with no applications rather than an empty list when there were none", async () => {
     const { app } = apiWith({ owners: [OWNER] });
-    const body = await (await app.request(`/faucet/applications?wallet=${OWNER}`)).json();
+    const body = await (await app.request(`/faucet/applications?wallet=${OWNER}`, { headers: sessionHeaders(OWNER) })).json();
     expect(body.applications).toEqual([]);
   });
 });
