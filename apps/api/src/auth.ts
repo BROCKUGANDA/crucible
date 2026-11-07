@@ -642,7 +642,7 @@ const WALLET_RE = /^0x[0-9a-fA-F]{40}$/;
  * the resolved org principal through `c.set("orgPrincipal", ...)`.
  */
 export function resolveIdentityState(c: Context): IdentityState {
-  const session = verifiedSession(c);
+  const session = verifiedSessionFromContext(c);
   if (session) return "SIWE_AUTHENTICATED";
 
   const wallet = c.req.header(WALLET_HEADER);
@@ -701,13 +701,13 @@ export function requireIdentityState(minState: IdentityState) {
  * Returns null when the caller is not SIWE-authenticated.
  */
 export function sessionPrincipal(c: Context, chainId?: string): OrganisationPrincipal | null {
-  const session = verifiedSession(c);
+  const session = verifiedSessionFromContext(c);
   if (!session) return null;
   const address = session.payload.address;
   return buildOrganisationPrincipal({
     address,
     id: `eip155:${chainId ?? configuredChainId()}:${address.toLowerCase()}`,
-    sessionId: session.token,
+    sessionId: session.sessionId,
     authenticated: true,
   });
 }

@@ -41,7 +41,7 @@ import { createMcpHandler, type TrialLimits } from "./mcp.js";
 import { rateLimit } from "./rate-limit.js";
 import { dlq } from "./dlq.js";
 import { TickPump } from "./tick-pump.js";
-import { authRoutes, configuredChainId, verifiedSession, identityStateMiddleware } from "./auth.js";
+import { authRoutes, configuredChainId, verifiedSessionFromContext, identityStateMiddleware } from "./auth.js";
 import { buildOrganisationPrincipal, isBlocked, status as killSwitchStatus } from "@crucible/agent-security";
 import {
   createTrial,
@@ -60,6 +60,7 @@ import {
   validateTransition,
 } from "./trial-lifecycle.js";
 import { createForgeRoutes } from "./forge.js";
+import { createSafetyRoutes, resolveSafetyConfig, type SafetyConfig } from "./safety.js";
 import { createOrgRoutes } from "./orgs.js";
 import { createEngramRoutes } from "./engrams.js";
 import { createVoiceRoutes, type VoiceConfig } from "./voice.js";
@@ -449,6 +450,12 @@ export interface ApiOptions {
    * Frenchy's brain. Null or absent means the conversational assistant is off.
    */
   frenchy?: FrenchyConfig | null;
+  /**
+   * The safety screening configuration (Qwen3Guard via the OVH endpoint).
+   * Absent means the env is resolved at createApp time; a missing key makes
+   * the moderation surface answer `unconfigured` — fail closed, never safe.
+   */
+  safety?: SafetyConfig;
   /**
    * The voice route spends a provider credit per call, so it gets its own bucket
    * rather than sharing the 60/min read allowance. `false` disables it for tests.
@@ -893,6 +900,23 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
   app.route("/frenchy", createFrenchyRoutes(opts.frenchy ?? null, { getModel: deps.getModel }));
 
   /**
+   * Safety screening (Qwen3Guard). The policy and benchmark catalogue are
+   * public disclosures; moderate/health/benchmark-run spend inference credits
+   * or report host state, so they get their own bucket — an evaluation spike
+   * must not starve, or be starved by, the reads that matter.
+   */
+  {
+    const safetyLimiter = rateLimit({
+      limit: 30,
+      windowMs: 60_000,
+      burst: 10,
+      trustProxy: opts.trustProxy ?? false,
+    });
+    app.use("/safety/*", safetyLimiter);
+  }
+  app.route("/safety", createSafetyRoutes({ config: opts.safety ?? resolveSafetyConfig() }));
+
+  /**
    * Frenchy, spoken: the speech-to-speech host.
    *
    * Two buckets, because the host serves two very different requests:
@@ -1170,7 +1194,7 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
    * presence yet; `chainStatus` is null until `createTrial` is broadcast.
    */
   app.post("/trials", async (c) => {
-    const session = verifiedSession(c);
+    const session = verifiedSessionFromContext(c);
     if (!session) {
       return c.json({ error: "unauthenticated", code: "no-credential" }, 401);
     }
@@ -1220,7 +1244,7 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
       return c.json({ error: `trial ${id} not found`, code: "not-found" }, 404);
     }
 
-    const session = verifiedSession(c);
+    const session = verifiedSessionFromContext(c);
     const wallet = c.req.header("x-crucible-wallet");
 
     let body: { to?: unknown; sponsor?: unknown } = {};
@@ -1255,7 +1279,7 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
         ? buildOrganisationPrincipal({
             address: session.payload.address,
             id: `eip155:${configuredChainId()}:${session.payload.address.toLowerCase()}`,
-            sessionId: session.token,
+            sessionId: session.sessionId,
             authenticated: true,
           })
         : null,
@@ -1290,7 +1314,7 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
       return c.json({ error: `trial ${id} not found`, code: "not-found" }, 404);
     }
 
-    const session = verifiedSession(c);
+    const session = verifiedSessionFromContext(c);
     if (!session) {
       return c.json({ error: "unauthenticated", code: "no-credential" }, 401);
     }
