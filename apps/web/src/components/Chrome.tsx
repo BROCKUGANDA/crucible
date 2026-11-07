@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useAccount } from "wagmi";
 import { WalletButton, WalletNotConfiguredNotice } from "@/components/Wallet";
 import { VoiceControl } from "@/components/VoiceControl";
 import { PayoffSound } from "@/components/PayoffSound";
