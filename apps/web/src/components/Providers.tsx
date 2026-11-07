@@ -5,6 +5,7 @@ import { WagmiProvider } from "wagmi";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RainbowKitProvider, darkTheme } from "@rainbow-me/rainbowkit";
 import { FrenchyProvider } from "@/lib/frenchy/provider";
+import { AuthSessionProvider } from "@/lib/auth-session";
 import { rainbowKitProjectId, wagmiConfig } from "@/lib/wagmi";
 import { forge } from "@/lib/forge";
 
@@ -55,13 +56,15 @@ export function Providers({ children }: { children: ReactNode }) {
     <WagmiProvider config={wagmiConfig()}>
       <QueryClientProvider client={queryClient}>
         <FrenchyProvider>
-          {withRainbowKit ? (
-            <RainbowKitProvider modalSize="compact" theme={rainbowTheme}>
-              {children}
-            </RainbowKitProvider>
-          ) : (
-            children
-          )}
+          <AuthSessionProvider>
+            {withRainbowKit ? (
+              <RainbowKitProvider modalSize="compact" theme={rainbowTheme}>
+                {children}
+              </RainbowKitProvider>
+            ) : (
+              children
+            )}
+          </AuthSessionProvider>
         </FrenchyProvider>
       </QueryClientProvider>
     </WagmiProvider>

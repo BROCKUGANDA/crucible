@@ -330,6 +330,27 @@ function cookieOf(c: Context, name: string): string | null {
 }
 
 /**
+ * Resolve a cookie into a trusted SIWE principal.
+ *
+ * Never decode the JWT-like payload and trust its address: the HMAC, expiry
+ * and deployment audience are the authentication boundary. All API routers
+ * that need a wallet principal must call this helper instead of parsing the
+ * cookie themselves.
+ */
+export function verifiedSessionFromContext(
+  c: Context,
+): { sessionId: string; payload: SessionPayload } | null {
+  const key = secret();
+  const audience = configuredOrigin();
+  if (!key || !audience) return null;
+  const token = cookieOf(c, COOKIE_NAME);
+  if (!token) return null;
+  const payload = verifySessionToken(token, key, audience);
+  if (!payload) return null;
+  return { sessionId: token, payload };
+}
+
+/**
  * The cookie that carries the challenge id.
  *
  * It is HttpOnly and short-lived: it names the challenge, and the challenge is

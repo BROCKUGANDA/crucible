@@ -96,11 +96,26 @@ export function createApp() {
     }
   });
 
-  app.post("/ghost/:id/stop", (c) => {
+  app.post("/ghost/:id/stop", async (c) => {
     const trialId = Number(c.req.param("id"));
     const r = running.get(trialId);
     if (!r) return c.json({ error: "not running" }, 404);
+    // SIGTERM lets anvil shut down gracefully, and a graceful shutdown still answers
+    // requests for a few hundred milliseconds — long enough for a caller that polls
+    // straight after this 200 to see a fork that "stop" claims has ended. The response
+    // therefore waits for the exit (SIGKILL after a grace period if the graceful path
+    // stalls), so the 200 means the RPC is actually gone.
     r.proc.kill();
+    await new Promise<void>((resolve) => {
+      if (r.proc.exitCode !== null || r.proc.signalCode) return resolve();
+      const killTimer = setTimeout(() => {
+        r.proc.kill("SIGKILL");
+      }, 5_000);
+      r.proc.once("exit", () => {
+        clearTimeout(killTimer);
+        resolve();
+      });
+    });
     running.delete(trialId);
     return c.json({ ok: true });
   });

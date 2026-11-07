@@ -30,7 +30,7 @@
 # be the thing that proves the two agree. Do not paste a hash from a release note without
 # re-measuring the asset it names.
 #
-# Usage: install-tool.sh <foundry|gitleaks> <destination-dir> [expected-sha256]
+# Usage: install-tool.sh <foundry|gitleaks|trivy> <destination-dir> [expected-sha256]
 # The third argument overrides the table; it exists so the failure path can be tested
 # without waiting for an attack.
 
@@ -41,6 +41,13 @@ FOUNDRY_SHA256="6c66ffcc55fa4249197721baa3098bc208014ea1d8aa04b2ed50ac6bccffb226
 
 GITLEAKS_VERSION="8.24.0"
 GITLEAKS_SHA256="cb49b7de5ee986510fe8666ca0273a6cc15eb82571f2f14832c9e8920751f3a4"
+
+# trivy 0.69.3 measured 2026-11-06 on this machine from the download, and
+# corroborated by the checksums file that release publishes:
+#   curl -fsSL https://github.com/aquasecurity/trivy/releases/download/v0.69.3/trivy_0.69.3_checksums.txt
+#   -> the Linux-64bit.tar.gz line equals the measured value.
+TRIVY_VERSION="0.69.3"
+TRIVY_SHA256="1816b632dfe529869c740c0913e36bd1629cb7688bd5634f4a858c1d57c88b75"
 
 tool="${1:-}"
 dest="${2:-}"
@@ -60,12 +67,16 @@ case "$tool" in
     url="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
     [ -n "$expected" ] || expected="$GITLEAKS_SHA256"
     ;;
+  trivy)
+    url="https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+    [ -n "$expected" ] || expected="$TRIVY_SHA256"
+    ;;
   *)
     # An unknown name is a refusal, not a miss: fetching nothing and extracting nothing
     # would leave the job to fail later on a missing binary, which reads like a broken
     # runner rather than a typo in a workflow.
     echo "install-tool.sh: no tool named '$tool' is pinned here" >&2
-    echo "pinned: foundry ${FOUNDRY_VERSION}, gitleaks ${GITLEAKS_VERSION}" >&2
+    echo "pinned: foundry ${FOUNDRY_VERSION}, gitleaks ${GITLEAKS_VERSION}, trivy ${TRIVY_VERSION}" >&2
     exit 2
     ;;
 esac

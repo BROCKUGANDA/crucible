@@ -1,0 +1,62 @@
+name: trivy-nightly
+
+# Nightly re-scan of the shipped images, independent of any push.
+#
+# The per-push ci.yml already gates the images with Trivy before anything is
+# swapped, and that gate is the one that blocks deploys. This workflow exists
+# for the other direction: an advisory published Tuesday must be caught by
+# Wednesday morning even if nothing was pushed in between. It rebuilds the same
+# images deploy.yml ships (web, api, keeper) and applies the same refusal rules
+# — CRITICAL/HIGH fails the run, .trivyignore documents accepted risks.
+#
+# It is deliberately NOT part of the promote/deploy chain: promote listens for
+# `ci` completions, not this one, so a nightly scan can never ship anything.
+# The download goes through scripts/install-tool.sh, which refuses the tarball
+# unless it hashes to the digest recorded there.
+
+on:
+  schedule:
+    - cron: "0 3 * * *" # 03:00 UTC, before the working day in the operator's TZ
+  workflow_dispatch:
+
+concurrency:
+  group: trivy-nightly
+  cancel-in-progress: true
+
+jobs:
+  scan:
+    name: Trivy (nightly image scan)
+    runs-on: [self-hosted, linux, X64, crucible]
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: build container images
+        run: |
+          set -euo pipefail
+          docker compose -f compose.yaml -f compose.vps.yaml build web api keeper 2>&1 | tail -20
+
+      - name: install trivy (digest-pinned)
+        run: |
+          set -euo pipefail
+          TRIVY_DIR="$RUNNER_TEMP/trivy"
+          mkdir -p "$TRIVY_DIR"
+          bash "$GITHUB_WORKSPACE/scripts/install-tool.sh" trivy "$TRIVY_DIR"
+          echo "$TRIVY_DIR" >> "$GITHUB_PATH"
+          trivy --version
+
+      - name: scan images
+        run: |
+          set -euo pipefail
+          export PATH="$RUNNER_TEMP/trivy:$PATH"
+          FAIL=0
+          for svc in web api keeper; do
+            echo "::group::scan $svc"
+            trivy image --severity CRITICAL,HIGH --ignore-unfixed \
+              --ignorefile .trivyignore \
+              --exit-code 1 \
+              --format table \
+              "crucible-${svc}:latest" 2>&1 | tail -40 || FAIL=1
+            echo "::endgroup::"
+          done
+          exit $FAIL
