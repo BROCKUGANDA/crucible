@@ -45,6 +45,7 @@ import { authRoutes, configuredChainId, verifiedSessionFromContext } from "./aut
 import { isBlocked, status as killSwitchStatus } from "@crucible/agent-security";
 import { createForgeRoutes } from "./forge.js";
 import { createOrgRoutes } from "./orgs.js";
+import { createEngramRoutes } from "./engrams.js";
 import { createVoiceRoutes, type VoiceConfig } from "./voice.js";
 import { createReplayRoutes, type ReplaySourceResult } from "./replay.js";
 import { createFrenchyRoutes, DEFAULT_BRAIN_TIMEOUT_MS, type FrenchyConfig } from "./frenchy.js";
@@ -2114,6 +2115,11 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
    * wallet belongs to. Membership is resolved server-side per request.
    */
   app.route("/orgs", createOrgRoutes());
+
+  /**
+   * Engram achievement + rewards routes (REW-001..003).
+   */
+  app.route("/engrams", createEngramRoutes());
 
   app.notFound((c) => c.json({ error: "Lost slag. This page never left the crucible." }, 404));
 

@@ -18,7 +18,7 @@ contract EngramERC1155 {
     );
     event EngramMinted(address indexed to, uint256 indexed tokenId, uint256 amount, bytes32 evidenceRef);
     event CapSet(uint256 indexed tokenId, uint256 newCap);
-    event MinterSet(address indexed previousMinter, address indexed newMinter);
+    event MinterChanged(address indexed previousMinter, address indexed newMinter);
 
     error NotAdmin();
     error NotMinter();
@@ -45,9 +45,8 @@ contract EngramERC1155 {
     }
 
     function setMinter(address newMinter) external onlyAdmin {
-        address previousMinter = minter;
+        emit MinterChanged(minter, newMinter);
         minter = newMinter;
-        emit MinterSet(previousMinter, newMinter);
     }
 
     function setCap(uint256 tokenId, uint256 newCap) external onlyAdmin {
