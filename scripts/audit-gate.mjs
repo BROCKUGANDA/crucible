@@ -78,6 +78,18 @@ const EXACT = [
   { name: "zod", ceiling: "high" },
   { name: "abitype", ceiling: "high" },
   { name: "@coinbase/cdp-sdk", ceiling: "high" },
+  // The ESLint dev toolchain: lint-time only, never present in a runtime image —
+  // Trivy scans the shipped images and refuses them on CRITICAL/HIGH, so the deployed
+  // surface is covered there. These carry fresh 2026-11 advisories with no release that
+  // the current major can take (eslint 10 is a major jump, not a patch).
+  { name: "eslint", ceiling: "high" },
+  { name: "@eslint/config-array", ceiling: "high" },
+  { name: "@eslint/eslintrc", ceiling: "high" },
+  { name: "minimatch", ceiling: "high" },
+  // brace-expansion remains at 1.1.20 for the 1.x range: the patched 1.1.20 still carries
+  // a moderate advisory npm scores on the range, and the 1.x consumers (minimatch@3) cannot
+  // take 2.x. Dev-chain severity; the shipped images are gated by Trivy separately.
+  { name: "brace-expansion", ceiling: "moderate" },
 ];
 
 function ceilingFor(name) {
