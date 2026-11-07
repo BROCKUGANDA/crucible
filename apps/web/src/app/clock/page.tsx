@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useReadContracts } from "wagmi";
 import { TRIALS_ABI } from "@crucible/smith";
 import { Chrome, Quenching } from "@/components/Chrome";
-import { deployment } from "@/lib/wagmi";
+import { useDeployment } from "@/lib/wagmi";
 import {
   CLOCK_FUNCTIONS,
   clockRead,
@@ -32,7 +32,7 @@ import {
  * spent its whole existence refusing.
  */
 export default function ClockPage() {
-  const dep = deployment();
+  const dep = useDeployment();
 
   // One batched read of every constant, so the page does not open fourteen round-trips. Gated on
   // a real deployment: pointed at the zero address it would read the void and paint void numbers.

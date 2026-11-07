@@ -15,6 +15,7 @@
   "dependencies": {
     "@crucible/agent-security": "*",
     "@crucible/cidstore": "*",
+    "@crucible/engrams": "*",
     "@crucible/eval": "*",
     "@crucible/frame": "*",
     "@crucible/indexer": "*",

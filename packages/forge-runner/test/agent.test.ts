@@ -97,6 +97,92 @@ describe("createForgedAgent", () => {
     return { complete: vi.fn(async () => text) };
   }
 
+  it("emits Forge Watch provider events when emitEvent/runMeta are set", async () => {
+    const events: Array<{ eventType: string; correlationId?: string }> = [];
+    const agent = createForgedAgent({
+      client: clientReturning(DIFF),
+      model: "test-model",
+      runMeta: { runId: 7, trialId: 8, agentId: 9, tenantId: "t1" },
+      emitEvent: (e) => {
+        events.push({ eventType: e.eventType, correlationId: e.correlationId });
+      },
+    });
+    await agent.step(ctx());
+    expect(events.map((e) => e.eventType)).toEqual([
+      "provider.request",
+      "provider.response",
+    ]);
+    expect(events[0]?.correlationId).toBe("1");
+  });
+
+  it("awaits telemetry delivery and assigns monotonically increasing provider event sequences", async () => {
+    const events: Array<{ eventType: string; sequence: number; runId: string }> = [];
+    const agent = createForgedAgent({
+      client: clientReturning(DIFF),
+      model: "test-model",
+      runMeta: { runId: 7, trialId: 8, agentId: 9, tenantId: "t1" },
+      emitEvent: async (event) => {
+        events.push({ eventType: event.eventType, sequence: event.sequence, runId: event.runId });
+      },
+    });
+
+    await agent.step(ctx({ iteration: 1 }));
+    await agent.step(ctx({ iteration: 2 }));
+
+    expect(events.map((event) => event.eventType)).toEqual([
+      "provider.request",
+      "provider.response",
+      "provider.request",
+      "provider.response",
+    ]);
+    expect(events.map((event) => event.sequence)).toEqual([1, 2, 3, 4]);
+    expect(new Set(events.map((event) => event.runId))).toEqual(new Set(["7"]));
+  });
+
+  it("reports asynchronous telemetry failures without failing the agent step", async () => {
+    const failures: string[] = [];
+    const agent = createForgedAgent({
+      client: clientReturning(DIFF),
+      model: "test-model",
+      runMeta: { runId: "live-run", trialId: "live-trial", agentId: "live-agent" },
+      emitEvent: async () => {
+        throw new Error("telemetry database unavailable");
+      },
+      onTelemetryError: (error) => {
+        failures.push(error instanceof Error ? error.message : String(error));
+      },
+    });
+
+    const result = await agent.step(ctx());
+
+    expect(result.patch).toContain("balances[msg.sender]");
+    expect(failures).toEqual([
+      "telemetry database unavailable",
+      "telemetry database unavailable",
+    ]);
+  });
+
+  it("emits provider.error and rethrows on model failure when instrumented", async () => {
+    const events: Array<{ eventType: string }> = [];
+    const agent = createForgedAgent({
+      client: {
+        complete: async () => {
+          throw new Error("rate limited");
+        },
+      },
+      model: "test-model",
+      runMeta: { runId: 7, trialId: 8, agentId: 9 },
+      emitEvent: (e) => {
+        events.push({ eventType: e.eventType });
+      },
+    });
+    await expect(agent.step(ctx())).rejects.toThrow("rate limited");
+    expect(events.map((e) => e.eventType)).toEqual([
+      "provider.request",
+      "provider.error",
+    ]);
+  });
+
   it("returns the model's diff as a patch", async () => {
     const agent = createForgedAgent({ client: clientReturning(DIFF), model: "test-model" });
     const r = await agent.step(ctx());

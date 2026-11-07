@@ -11,11 +11,14 @@ COPY packages/cidstore/package.json packages/cidstore/
 COPY packages/crypto/package.json packages/crypto/
 COPY packages/datasets/package.json packages/datasets/
 COPY packages/eval/package.json packages/eval/
+COPY packages/engrams/package.json packages/engrams/
 COPY packages/registry/package.json packages/registry/
 COPY packages/forge-runner/package.json packages/forge-runner/
+COPY packages/forge-watch/package.json packages/forge-watch/
 COPY packages/frame/package.json packages/frame/
 COPY packages/arena-events/package.json packages/arena-events/
 COPY packages/forge-runner/package.json packages/forge-runner/
+COPY packages/forge-watch/package.json packages/forge-watch/
 COPY packages/indexer/package.json packages/indexer/
 COPY packages/smith-sdk/package.json packages/smith-sdk/
 COPY packages/warden/package.json packages/warden/

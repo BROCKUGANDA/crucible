@@ -41,9 +41,11 @@ import { createMcpHandler, type TrialLimits } from "./mcp.js";
 import { rateLimit } from "./rate-limit.js";
 import { dlq } from "./dlq.js";
 import { TickPump } from "./tick-pump.js";
-import { authRoutes } from "./auth.js";
+import { authRoutes, configuredChainId, verifiedSessionFromContext } from "./auth.js";
 import { isBlocked, status as killSwitchStatus } from "@crucible/agent-security";
 import { createForgeRoutes } from "./forge.js";
+import { createOrgRoutes } from "./orgs.js";
+import { createEngramRoutes } from "./engrams.js";
 import { createVoiceRoutes, type VoiceConfig } from "./voice.js";
 import { createReplayRoutes, type ReplaySourceResult } from "./replay.js";
 import { createFrenchyRoutes, DEFAULT_BRAIN_TIMEOUT_MS, type FrenchyConfig } from "./frenchy.js";
@@ -1810,11 +1812,8 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
    * gets nothing, and gets a 403 that says why rather than an empty list that
    * would read as "nobody has applied".
    *
-   * The address in `wallet` is *claimed*, not proved - see `OwnerGate`. The
-   * queue holds applicant addresses and amounts, which the applicants can see
-   * for themselves, so the exposure is a list of who else asked rather than a
-   * secret; the production gate is a signature, and this route says so rather
-   * than implying a protection it does not have.
+   * The wallet principal is derived from a server-verified SIWE session. A
+   * query-string wallet is never authority for this private owner view.
    */
   app.get("/faucet/applications", (c) => {
     const sponsorship = deps.sponsorship;
@@ -1825,8 +1824,9 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
       );
     }
 
-    const wallet = (c.req.query("wallet") ?? "").trim();
-    if (!sponsorship.owners.isOwner(wallet)) {
+    const session = verifiedSessionFromContext(c);
+    const wallet = session?.payload.address ?? "";
+    if (!wallet || !sponsorship.owners.isOwner(wallet)) {
       c.header("Cache-Control", "no-store");
       return c.json(
         {
@@ -1862,8 +1862,9 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
       return c.json({ error: "this host keeps no sponsorship queue", allocations: null }, 501);
     }
 
-    const wallet = (c.req.query("wallet") ?? "").trim();
-    if (!sponsorship.owners.isOwner(wallet)) {
+    const session = verifiedSessionFromContext(c);
+    const wallet = session?.payload.address ?? "";
+    if (!wallet || !sponsorship.owners.isOwner(wallet)) {
       c.header("Cache-Control", "no-store");
       return c.json(
         {
@@ -2081,7 +2082,7 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
                 at: log.blockTimestamp
                   ? new Date(Number(log.blockTimestamp) * 1000).toISOString()
                   : new Date().toISOString(),
-                chainRef: { caip2: "eip155:31337", tx: log.transactionHash, slotOrBlock: Number(log.blockNumber), commitment: "confirmed" },
+                chainRef: { caip2: `eip155:${configuredChainId()}`, tx: log.transactionHash, slotOrBlock: Number(log.blockNumber), commitment: "confirmed" },
               });
             }
           }
@@ -2108,6 +2109,17 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
    * no chain keys held by the API.
    */
   app.route("/forge", createForgeRoutes());
+
+  /**
+   * Organisation (tenancy) read routes — list/read the organisations a signed-in
+   * wallet belongs to. Membership is resolved server-side per request.
+   */
+  app.route("/orgs", createOrgRoutes());
+
+  /**
+   * Engram achievement + rewards routes (REW-001..003).
+   */
+  app.route("/engrams", createEngramRoutes());
 
   app.notFound((c) => c.json({ error: "Lost slag. This page never left the crucible." }, 404));
 

@@ -1,4 +1,8 @@
+process.env.AUTH_ALLOW_DEV_SECRET = "1";
+process.env.AUTH_ORIGIN = "http://localhost:3000";
+
 import { afterAll, afterEach, describe, expect, it } from "vitest";
+import { createHmac } from "node:crypto";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 import { emptyModel } from "@crucible/indexer";
@@ -20,6 +24,20 @@ import { OwnerGate, SponsorshipQueue, type SponsorshipApplication } from "../src
 const OWNER = `0x${"11".repeat(20)}`;
 const APPLICANT = `0x${"22".repeat(20)}`;
 const STRANGER = `0x${"33".repeat(20)}`;
+const DEV_SECRET = "crucible-local-dev-secret-not-for-production";
+
+function sessionHeaders(address: string): Headers {
+  const now = Date.now();
+  const payload = {
+    address: address.toLowerCase(),
+    issuedAt: Math.floor(now / 1000),
+    expiresAt: Math.floor(now / 1000) + 60 * 60 * 24 * 7,
+    aud: "http://localhost:3000",
+  };
+  const encoded = Buffer.from(JSON.stringify(payload)).toString("base64url");
+  const signature = createHmac("sha256", DEV_SECRET).update(encoded).digest("base64url");
+  return new Headers({ cookie: `crucible_session=${encoded}.${signature}` });
+}
 
 let funder: http.Server | null = null;
 
@@ -126,7 +144,7 @@ describe("an application reaches the owner", () => {
       expect(told[0].requestedEth).toBe("0.05");
       expect(told[0].grantedEth).toBe("0.05");
 
-      const queue = await app.request(`/faucet/applications?wallet=${OWNER}`);
+      const queue = await app.request(`/faucet/applications?wallet=${OWNER}`, { headers: sessionHeaders(OWNER) });
       expect(queue.status).toBe(200);
       const body = await queue.json();
       expect(body.owner).toBe(true);
@@ -205,7 +223,7 @@ describe("an application reaches the owner", () => {
       expect(dlq.summary().lastDetail).toMatch(/webhook responded 500/);
 
       // And the application is in the queue regardless.
-      const queue = await app.request(`/faucet/applications?wallet=${OWNER}`);
+      const queue = await app.request(`/faucet/applications?wallet=${OWNER}`, { headers: sessionHeaders(OWNER) });
       expect((await queue.json()).applications).toHaveLength(1);
     } finally {
       await f.close();
@@ -220,7 +238,7 @@ describe("an application reaches the owner", () => {
       await apply(app, APPLICANT);
       await apply(app, STRANGER);
 
-      const body = await (await app.request(`/faucet/applications?wallet=${OWNER}`)).json();
+      const body = await (await app.request(`/faucet/applications?wallet=${OWNER}`, { headers: sessionHeaders(OWNER) })).json();
       expect(body.applications).toHaveLength(2);
       expect(body.applications[0].id).toBeGreaterThan(body.applications[1].id);
     } finally {
@@ -231,6 +249,22 @@ describe("an application reaches the owner", () => {
 });
 
 describe("the queue is the owner's view", () => {
+  it("does not trust a query-string wallet without a verified session", async () => {
+    const { app } = apiWith({ owners: [OWNER] });
+    const res = await app.request(`/faucet/applications?wallet=${OWNER}`);
+    expect(res.status).toBe(403);
+    expect((await res.json()).owner).toBe(false);
+  });
+
+  it("does not let a non-owner session impersonate the owner through the query", async () => {
+    const { app } = apiWith({ owners: [OWNER] });
+    const res = await app.request(`/faucet/applications?wallet=${OWNER}`, {
+      headers: sessionHeaders(STRANGER),
+    });
+    expect(res.status).toBe(403);
+    expect((await res.json()).owner).toBe(false);
+  });
+
   it("tells a wallet that is not the owner that the queue is not for it", async () => {
     const { app } = apiWith({ owners: [OWNER] });
     const res = await app.request(`/faucet/applications?wallet=${STRANGER}`);
@@ -257,12 +291,19 @@ describe("the queue is the owner's view", () => {
 
   it("answers with no applications rather than an empty list when there were none", async () => {
     const { app } = apiWith({ owners: [OWNER] });
-    const body = await (await app.request(`/faucet/applications?wallet=${OWNER}`)).json();
+    const body = await (await app.request(`/faucet/applications?wallet=${OWNER}`, { headers: sessionHeaders(OWNER) })).json();
     expect(body.applications).toEqual([]);
   });
 });
 
 describe("the treasury's ledger", () => {
+  it("does not trust a query-string wallet without a verified session", async () => {
+    const { app } = apiWith({ funderUrl: "http://127.0.0.1:1", owners: [OWNER] });
+    const res = await app.request(`/faucet/ledger?wallet=${OWNER}`);
+    expect(res.status).toBe(403);
+    expect((await res.json()).allocations).toBeNull();
+  });
+
   it("shows the owner what the funder handed out", async () => {
     const f = await fakeFunder({
       allocations: {
@@ -284,7 +325,7 @@ describe("the treasury's ledger", () => {
     });
     try {
       const { app } = apiWith({ funderUrl: f.url, owners: [OWNER] });
-      const res = await app.request(`/faucet/ledger?wallet=${OWNER}`);
+      const res = await app.request(`/faucet/ledger?wallet=${OWNER}`, { headers: sessionHeaders(OWNER) });
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.allocations).toHaveLength(1);
@@ -299,7 +340,9 @@ describe("the treasury's ledger", () => {
     const f = await fakeFunder({});
     try {
       const { app } = apiWith({ funderUrl: f.url, owners: [OWNER] });
-      const res = await app.request(`/faucet/ledger?wallet=${STRANGER}`);
+      const res = await app.request(`/faucet/ledger?wallet=${OWNER}`, {
+        headers: sessionHeaders(STRANGER),
+      });
       expect(res.status).toBe(403);
       expect((await res.json()).allocations).toBeNull();
     } finally {
@@ -310,7 +353,9 @@ describe("the treasury's ledger", () => {
 
   it("does not answer the ledger with an empty one when the funder could not be reached", async () => {
     const { app } = apiWith({ funderUrl: "http://127.0.0.1:1", owners: [OWNER] });
-    const res = await app.request(`/faucet/ledger?wallet=${OWNER}`);
+    const res = await app.request(`/faucet/ledger?wallet=${OWNER}`, {
+      headers: sessionHeaders(OWNER),
+    });
     expect(res.status).toBe(502);
     expect((await res.json()).allocations).toBeNull();
   });

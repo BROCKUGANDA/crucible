@@ -13,11 +13,14 @@ COPY packages/cidstore/package.json packages/cidstore/
 COPY packages/crypto/package.json packages/crypto/
 COPY packages/datasets/package.json packages/datasets/
 COPY packages/eval/package.json packages/eval/
+COPY packages/engrams/package.json packages/engrams/
 COPY packages/registry/package.json packages/registry/
 COPY packages/forge-runner/package.json packages/forge-runner/
+COPY packages/forge-watch/package.json packages/forge-watch/
 COPY packages/frame/package.json packages/frame/
 COPY packages/arena-events/package.json packages/arena-events/
 COPY packages/forge-runner/package.json packages/forge-runner/
+COPY packages/forge-watch/package.json packages/forge-watch/
 COPY packages/indexer/package.json packages/indexer/
 COPY packages/smith-sdk/package.json packages/smith-sdk/
 COPY packages/warden/package.json packages/warden/
@@ -37,6 +40,9 @@ RUN npm run build:libs \
   && npm prune --omit=dev --ignore-scripts
 
 FROM node:22-alpine AS runner
+# npm ships vulnerable transitive deps inside its own bundle (ip-address, brace-expansion, pacote, sigstore), and the base image pins npm 10.x. Upgrade npm in the runtime image: the server never runs the npm CLI, but Trivy scans the whole filesystem, and the gate refuses the image while its bundled tree is vulnerable. Version pinned; re-measure when the base image moves.
+RUN npm install -g npm@12.2.2
+
 WORKDIR /repo
 ENV NODE_ENV=production \
     PORT=8789

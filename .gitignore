@@ -102,6 +102,9 @@ crucible-contracts/foundry.lock
 # un-ignored explicitly so it ships deliberately.
 .mimosa/
 
+# Sisyphus session ledgers
+.sisyphus/
+
 # datasets is a tracked workspace — un-ignored so CI can typecheck it
 !packages/datasets/
 

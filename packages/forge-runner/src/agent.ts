@@ -12,6 +12,10 @@ import {
   wrapUntrusted,
   type Permission,
 } from "@crucible/agent-security";
+import {
+  ForgeWatchEventType,
+  type ForgeWatchEvent,
+} from "@crucible/forge-watch";
 import { assertEgressAllowed } from "./egress.js";
 import { ANTHROPIC_BASE, assertProviderUrl } from "./providers.js";
 
@@ -86,6 +90,21 @@ export interface ForgedAgentOptions {
       permission: string;
     }): Promise<{ ok: boolean; reason?: string; output?: unknown }>;
   };
+  /**
+   * Optional Forge Watch emitter (host boundary). Emits provider.request/response/error
+   * around model calls. Never throws into the agent step; the monitor stays outside the
+   * agent's execution boundary.
+   */
+  emitEvent?(event: ForgeWatchEvent): void | Promise<void>;
+  /** Run identity for telemetry attribution (used when emitEvent is set). */
+  runMeta?: {
+    runId: string | number;
+    trialId: string | number;
+    agentId: string | number;
+    tenantId?: string;
+  };
+  /** Report async telemetry failures without allowing the monitor to crash the agent. */
+  onTelemetryError?: (error: unknown, event: ForgeWatchEvent) => void;
 }
 
 /**
@@ -132,6 +151,9 @@ export function createForgedAgent(opts: ForgedAgentOptions): SmithAgent {
     model: opts.model,
     tools: opts.tools ?? ["read_file", "write_file", "run_suite"],
   };
+  // One agent instance can serve several iterations for the same run. Keep its
+  // provider-event cursor outside step() so calls never restart at sequence 0.
+  const nextSequenceByRun = new Map<string, number>();
 
   return defineAgent({
     name: `forged-${opts.model}`,
@@ -235,11 +257,54 @@ export function createForgedAgent(opts: ForgedAgentOptions): SmithAgent {
       }
 
       if (raw === null) {
-        raw = await opts.client.complete({
-          system: SYSTEM_PROMPT,
-          prompt,
-          temperature: opts.temperature ?? 0.2,
-        });
+        const watch = async (
+          eventType: ForgeWatchEvent["eventType"],
+          extra?: Partial<ForgeWatchEvent>,
+        ): Promise<void> => {
+          if (!opts.emitEvent || !opts.runMeta) return;
+          const runId = String(opts.runMeta.runId);
+          const sequence = nextSequenceByRun.get(runId) ?? 1;
+          nextSequenceByRun.set(runId, sequence + 1);
+          const event: ForgeWatchEvent = {
+            schemaVersion: 1,
+            timestamp: Date.now(),
+            eventId: crypto.randomUUID(),
+            sequence,
+            runId,
+            trialId: String(opts.runMeta.trialId),
+            agentId: String(opts.runMeta.agentId),
+            tenantId: opts.runMeta.tenantId && opts.runMeta.tenantId.length > 0 ? opts.runMeta.tenantId : "default",
+            source: "forge-runner.agent",
+            eventType,
+            providerId: opts.model,
+            modelId: opts.model,
+            ...extra,
+          };
+          try {
+            await opts.emitEvent(event);
+          } catch (error) {
+            try {
+              opts.onTelemetryError?.(error, event);
+            } catch {
+              // A failing telemetry error handler must not escape into the agent.
+            }
+          }
+        };
+        await watch(ForgeWatchEventType.providerRequest, { correlationId: String(ctx.iteration) });
+        try {
+          raw = await opts.client.complete({
+            system: SYSTEM_PROMPT,
+            prompt,
+            temperature: opts.temperature ?? 0.2,
+          });
+          await watch(ForgeWatchEventType.providerResponse, { correlationId: String(ctx.iteration) });
+        } catch (err) {
+          await watch(ForgeWatchEventType.providerError, {
+            correlationId: String(ctx.iteration),
+            payloadDigest: err instanceof Error ? err.name : "error",
+          });
+          throw err;
+        }
       }
 
       const patch = extractDiff(raw);

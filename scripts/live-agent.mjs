@@ -340,11 +340,77 @@ async function main() {
       `for role ${principal.role}, ceiling ${ceiling} model call(s)`,
   );
 
+  // Optional Forge Watch telemetry (host boundary). Enable with --telemetry.
+  // Production-quality persistence requires FORGE_WATCH_PERSIST=true and DATABASE_URL.
+  let watch = null;
+  let watchPool = null;
+  const watchRunId = crypto.randomUUID();
+  if (flag("telemetry")) {
+    try {
+      const fwDist = path.join(ROOT, "packages/forge-watch/dist/index.js");
+      if (!existsSync(fwDist)) throw new Error("forge-watch is not built");
+
+      const { createForgeWatchRuntime } = await import(pathToFileURL(fwDist).href);
+      const persist = process.env.FORGE_WATCH_PERSIST === "true";
+      if (persist) {
+        if (!process.env.DATABASE_URL) {
+          throw new Error("DATABASE_URL is required when FORGE_WATCH_PERSIST=true");
+        }
+        const { Pool } = await import("pg");
+        watchPool = new Pool({
+          connectionString: process.env.DATABASE_URL,
+          max: 4,
+          connectionTimeoutMillis: 5_000,
+        });
+        const migration = await readFile(
+          path.join(ROOT, "migrations", "0001_forge_watch_events.sql"),
+          "utf8",
+        );
+        await watchPool.query(migration);
+        watch = createForgeWatchRuntime({
+          persist: true,
+          pgExecutor: async (sql, params) => {
+            const result = await watchPool.query(sql, params);
+            return { rows: result.rows, rowCount: result.rowCount };
+          },
+        });
+        console.log("  watch     Forge Watch telemetry enabled (PostgreSQL outbox)");
+      } else {
+        if (process.env.NODE_ENV === "production") {
+          throw new Error("production telemetry requires FORGE_WATCH_PERSIST=true");
+        }
+        watch = createForgeWatchRuntime({ persist: false });
+        console.log("  watch     Forge Watch telemetry enabled (demo in-memory; not durable)");
+      }
+    } catch (err) {
+      await watchPool?.end().catch(() => {});
+      watchPool = null;
+      console.error(`  watch     FAILED (${String(err?.message ?? err)})`);
+      throw err;
+    }
+  }
+
   const agent = createForgedAgent({
     client: countedClient,
     model: provider.model,
     temperature,
     guard: guardBox.guard,
+    ...(watch
+      ? {
+          emitEvent: watch.emitEvent,
+          runMeta: {
+            runId: watchRunId,
+            trialId: "live-agent-fixture",
+            agentId: "live-agent",
+            tenantId: "local",
+          },
+          onTelemetryError: (error, event) => {
+            console.error(
+              `  watch     delivery failed at ${event.sequence} (${event.eventType}): ${String(error?.message ?? error)}`,
+            );
+          },
+        }
+      : {}),
   });
 
   // Seed a real Foundry project so `forge test` means something.
@@ -374,6 +440,19 @@ async function main() {
   /** Every exit path owes the operator the same two things: what the policy saw, and the sandbox. */
   async function closeOut() {
     reportPolicy(sessionId, guardBox, directCalls);
+    if (watch) {
+      try {
+        const flushed = await watch.flushFindings(watchRunId);
+        const list = await watch.collector.list(watchRunId);
+        console.log(`  watch     ${list.length} event(s) captured; ${flushed} integrity finding(s) flushed`);
+        await watch.close();
+      } catch (error) {
+        console.error(`  watch     teardown failed: ${String(error?.message ?? error)}`);
+      }
+    }
+    await watchPool?.end().catch((error) => {
+      console.error(`  watch     PostgreSQL pool close failed: ${String(error?.message ?? error)}`);
+    });
     await finish(sandbox);
   }
 

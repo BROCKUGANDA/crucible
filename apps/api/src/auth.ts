@@ -129,8 +129,15 @@ function configuredOrigin(): string | null {
   return "http://localhost:3000";
 }
 
-/** The chain the session is for. EIP-4361 requires it in the message. */
-function configuredChainId(): string {
+/**
+ * The chain this deployment is for, from `CHAIN_ID` — Anvil's 31337 only when unset.
+ *
+ * Exported because the session's chain must be the deployment's chain everywhere: the
+ * SIWE message here, the wallet principal built in `forge.ts`, and the `caip2` refs on
+ * streamed events. A testnet deployment that set `CHAIN_ID=11155111` but still issued
+ * `eip155:31337` principals would bind sessions to a chain its own contracts are not on.
+ */
+export function configuredChainId(): string {
   const raw = process.env.CHAIN_ID?.trim();
   if (raw && /^\d+$/.test(raw)) return raw;
   return "31337";
@@ -320,6 +327,27 @@ function cookieOf(c: Context, name: string): string | null {
     if (k === name) return v.join("=");
   }
   return null;
+}
+
+/**
+ * Resolve a cookie into a trusted SIWE principal.
+ *
+ * Never decode the JWT-like payload and trust its address: the HMAC, expiry
+ * and deployment audience are the authentication boundary. All API routers
+ * that need a wallet principal must call this helper instead of parsing the
+ * cookie themselves.
+ */
+export function verifiedSessionFromContext(
+  c: Context,
+): { sessionId: string; payload: SessionPayload } | null {
+  const key = secret();
+  const audience = configuredOrigin();
+  if (!key || !audience) return null;
+  const token = cookieOf(c, COOKIE_NAME);
+  if (!token) return null;
+  const payload = verifySessionToken(token, key, audience);
+  if (!payload) return null;
+  return { sessionId: token, payload };
 }
 
 /**
