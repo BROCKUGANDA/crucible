@@ -130,7 +130,8 @@ export function ForgeAuth({ mode }: { mode: "sign-in" | "sign-up" }) {
           {authError ? <p className="hint" data-tone="sear" role="alert">{authError}</p> : null}
 
           <p className="forge-auth__demo" data-stage="3">
-            <strong>{money.lead}</strong> {money.body} The login message is free and never sends a transaction. Your wallet signs it locally; Crucible never holds your keys.
+            <strong>{money.lead}</strong> {money.body} Your wallet is still your wallet:
+            we ask it to sign, and we never hold a key for it.
           </p>
           <SeedPhrasePromise />
         </div>
