@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useAccount } from "wagmi";
 import { API_BASE } from "@/lib/apiBase";
 import { readApplications } from "@/lib/sponsorship";
+import { useAuthSession } from "@/lib/auth-session";
 
 /**
  * The owner's notification that someone applied for sponsorship.
@@ -24,10 +25,11 @@ const POLL_MS = 15_000;
 
 export function SponsorshipBadge() {
   const { address } = useAccount();
+  const { canUsePrivateResources } = useAuthSession();
   const [count, setCount] = useState<number | null>(null);
 
   useEffect(() => {
-    if (!address) {
+    if (!address || !canUsePrivateResources) {
       setCount(null);
       return;
     }
@@ -40,7 +42,8 @@ export function SponsorshipBadge() {
       const c = new AbortController();
       controller = c;
       try {
-        const res = await fetch(`${API_BASE}/faucet/applications?wallet=${address}`, {
+        const res = await fetch(`${API_BASE}/faucet/applications`, {
+          credentials: "include",
           signal: c.signal,
         });
         if (!alive || !res.ok) return;
@@ -63,7 +66,7 @@ export function SponsorshipBadge() {
       controller?.abort();
       clearInterval(timer);
     };
-  }, [address]);
+  }, [address, canUsePrivateResources]);
 
   if (count === null || count === 0) return null;
 

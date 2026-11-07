@@ -16,6 +16,7 @@ import {
   type SponsorshipApplication,
 } from "@/lib/sponsorship";
 import { useAccount } from "wagmi";
+import { useAuthSession } from "@/lib/auth-session";
 
 /**
  * Apply for test ETH from the funder - and, for the wallet that owns the
@@ -61,6 +62,7 @@ function outcomeLine(application: SponsorshipApplication): string {
 
 export default function FaucetPage() {
   const { address, isConnected } = useAccount();
+  const { canUsePrivateResources } = useAuthSession();
   const [amount, setAmount] = useState("0.1");
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<string | null>(null);
@@ -87,7 +89,9 @@ export default function FaucetPage() {
    * good news.
    */
   useEffect(() => {
-    if (!address) {
+    // The owner's views are read with the verified session cookie, not a wallet
+    // query string, so they are only asked for when the session can use them.
+    if (!address || !canUsePrivateResources) {
       setOwnerState("unknown");
       setQueue(null);
       setLedger(null);
@@ -104,7 +108,8 @@ export default function FaucetPage() {
 
       let res: Response;
       try {
-        res = await fetch(`${API_BASE}/faucet/applications?wallet=${address}`, {
+        res = await fetch(`${API_BASE}/faucet/applications`, {
+          credentials: "include",
           signal: controller.signal,
         });
       } catch (err) {
@@ -149,7 +154,8 @@ export default function FaucetPage() {
       // from the funder, and a funder that cannot be reached does not empty
       // the list - it says so.
       try {
-        const ledgerRes = await fetch(`${API_BASE}/faucet/ledger?wallet=${address}`, {
+        const ledgerRes = await fetch(`${API_BASE}/faucet/ledger`, {
+          credentials: "include",
           signal: controller.signal,
         });
         if (!alive || !ledgerRes.ok) return;
@@ -171,7 +177,7 @@ export default function FaucetPage() {
       inFlight?.abort();
       clearInterval(timer);
     };
-  }, [address]);
+  }, [address, canUsePrivateResources]);
 
   async function confirmApply() {
     if (!address) return;
