@@ -34,7 +34,12 @@ async function main() {
   const balance = await rpc('eth_getBalance', [AGENT_WALLET, 'latest']);
   console.log('agent wallet:', AGENT_WALLET);
   console.log('balance (wei):', BigInt(balance).toString());
-  console.log('balance (ETH):', (Number(BigInt(balance)) / 1e18).toFixed(6));
+  // Bigint decimal formatting: no floating point, and truncation (not rounding)
+  // so the displayed amount can never exceed the actual balance.
+  const wei = BigInt(balance);
+  const ethWhole = wei / 10n ** 18n;
+  const ethFrac = (wei % 10n ** 18n).toString().padStart(18, '0').slice(0, 6);
+  console.log('balance (ETH):', `${ethWhole}.${ethFrac}`);
 
   const gasPrice = await rpc('eth_gasPrice');
   console.log('gas price (wei):', BigInt(gasPrice).toString());
