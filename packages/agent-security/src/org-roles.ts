@@ -14,4 +14,7 @@ export {
   separationOfDutiesDenial,
   parseOrgRole,
   orgRoleToSecurityRole,
+  identityStatePermissions,
+  identityStateAllows,
+  type IdentityState,
 } from "./organisation.js";

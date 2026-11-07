@@ -28,6 +28,10 @@ import { Hono } from "hono";
 import type { Context } from "hono";
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { keccak256, recoverAddress, recoverMessageAddress, toBytes } from "viem";
+import {
+  buildOrganisationPrincipal,
+  type OrganisationPrincipal,
+} from "@crucible/agent-security";
 
 const CHALLENGE_TTL_MS = 5 * 60_000;
 const CONSUMED_TTL_MS = 10 * 60_000;
@@ -587,4 +591,123 @@ export function authRoutes(maxBodyBytes = 16 * 1024): Hono {
   });
 
   return app;
+}
+
+/* ------------------------------------------------------------------ */
+/* Seven-state identity model (blueprint §2)                          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The seven distinct identity states a caller can hold.
+ *
+ * States 1–3 are request-level: resolvable from the HTTP request alone.
+ * States 4–5 require organisation context (route-specific orgId).
+ * States 6–7 require run/action context (not login roles).
+ *
+ * Order matters: `requireIdentityState(min)` grants the state and every
+ * state above it.
+ */
+export type IdentityState =
+  | "ANONYMOUS"
+  | "WALLET_CONNECTED"
+  | "SIWE_AUTHENTICATED"
+  | "TENANT_MEMBER"
+  | "ROLE_AUTHORIZED"
+  | "TRANSACTION_AUTHORIZED"
+  | "RUNTIME_VERIFIED";
+
+export const IDENTITY_STATE_ORDER: Record<IdentityState, number> = {
+  ANONYMOUS: 0,
+  WALLET_CONNECTED: 1,
+  SIWE_AUTHENTICATED: 2,
+  TENANT_MEMBER: 3,
+  ROLE_AUTHORIZED: 4,
+  TRANSACTION_AUTHORIZED: 5,
+  RUNTIME_VERIFIED: 6,
+} as const;
+
+const WALLET_HEADER = "x-crucible-wallet";
+const WALLET_RE = /^0x[0-9a-fA-F]{40}$/;
+
+/**
+ * The caller's identity state for this request.
+ *
+ * Resolves states 1–3 from the request alone: a valid SIWE session is
+ * `SIWE_AUTHENTICATED`; a well-formed connected-wallet header without a
+ * session is `WALLET_CONNECTED`; neither is `ANONYMOUS`.
+ *
+ * States 4–5 (TENANT_MEMBER, ROLE_AUTHORIZED) are not resolved here: they
+ * require an orgId that only the route knows, and are resolved by the
+ * organisation-authorisation middleware instead. Callers that need them pass
+ * the resolved org principal through `c.set("orgPrincipal", ...)`.
+ */
+export function resolveIdentityState(c: Context): IdentityState {
+  const session = verifiedSession(c);
+  if (session) return "SIWE_AUTHENTICATED";
+
+  const wallet = c.req.header(WALLET_HEADER);
+  if (wallet && WALLET_RE.test(wallet)) return "WALLET_CONNECTED";
+
+  return "ANONYMOUS";
+}
+
+/**
+ * Hono middleware: attaches the caller's identity state to the context and
+ * echoes it back as a response header so clients (and audit logs) can see
+ * which tier was applied.
+ *
+ * Mounted globally so every route observes the same state resolution.
+ */
+export function identityStateMiddleware() {
+  return async (c: Context, next: () => Promise<void>): Promise<void | Response> => {
+    const state = resolveIdentityState(c);
+    c.set("identityState", state);
+    c.header("X-Crucible-Identity-State", state);
+    await next();
+  };
+}
+
+/**
+ * Middleware factory: reject callers below a minimum identity state.
+ *
+ * `requireIdentityState("SIWE_AUTHENTICATED")` permits authenticated,
+ * tenant-member, role-authorized, transaction-authorized and
+ * runtime-verified callers, but rejects anonymous and wallet-connected ones.
+ */
+export function requireIdentityState(minState: IdentityState) {
+  const minLevel = IDENTITY_STATE_ORDER[minState];
+  return async (c: Context, next: () => Promise<void>): Promise<void | Response> => {
+    const state = (c.get("identityState") as IdentityState) ?? resolveIdentityState(c);
+    const level = IDENTITY_STATE_ORDER[state];
+    if (level < minLevel) {
+      c.header("X-Crucible-Identity-State", state);
+      return c.json(
+        {
+          error: "insufficient_identity_state",
+          required: minState,
+          current: state,
+        },
+        403,
+      );
+    }
+    await next();
+  };
+}
+
+/**
+ * Build an OrganisationPrincipal from the request's verified session, for use
+ * by org-scoped routes that need TENANT_MEMBER or ROLE_AUTHORIZED states.
+ *
+ * Returns null when the caller is not SIWE-authenticated.
+ */
+export function sessionPrincipal(c: Context, chainId?: string): OrganisationPrincipal | null {
+  const session = verifiedSession(c);
+  if (!session) return null;
+  const address = session.payload.address;
+  return buildOrganisationPrincipal({
+    address,
+    id: `eip155:${chainId ?? configuredChainId()}:${address.toLowerCase()}`,
+    sessionId: session.token,
+    authenticated: true,
+  });
 }

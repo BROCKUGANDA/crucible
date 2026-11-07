@@ -9,6 +9,8 @@ import {
   separationOfDutiesDenial,
   parseOrgRole,
   orgRoleToSecurityRole,
+  identityStatePermissions,
+  identityStateAllows,
 } from "../src/org-roles.js";
 
 describe("ORG_ROLE_RANK", () => {
@@ -132,5 +134,69 @@ describe("orgRoleToSecurityRole", () => {
 
   it("returns null for unknown role", () => {
     expect(orgRoleToSecurityRole("not-a-role" as any)).toBeNull();
+  });
+});
+
+describe("identity state permissions (blueprint items 1-20)", () => {
+  it("ANONYMOUS gets public read-only permissions", () => {
+    const perms = identityStatePermissions("ANONYMOUS");
+    expect(perms).toContain("trials:read:public");
+    expect(perms).toContain("agents:read:public");
+    expect(perms).toContain("scorecards:read:public");
+    expect(perms).toContain("leaderboards:read:public");
+    expect(perms).toContain("hall:read:public");
+    expect(perms).toContain("engrams:read:public");
+    expect(perms).toContain("docs:read");
+    // Anonymous cannot do wallet-aware or org actions.
+    expect(perms).not.toContain("chain:read:public");
+    expect(perms).not.toContain("transaction:prepare");
+    expect(perms).not.toContain("workspace:read:own");
+    expect(perms).not.toContain("org:read");
+  });
+
+  it("WALLET_CONNECTED inherits anonymous plus chain reads and transaction prep", () => {
+    const perms = identityStatePermissions("WALLET_CONNECTED");
+    expect(perms).toContain("trials:read:public");
+    expect(perms).toContain("chain:read:public");
+    expect(perms).toContain("transaction:prepare");
+    expect(perms).not.toContain("workspace:read:own");
+  });
+
+  it("SIWE_AUTHENTICATED inherits wallet-connected plus own workspace", () => {
+    const perms = identityStatePermissions("SIWE_AUTHENTICATED");
+    expect(perms).toContain("chain:read:public");
+    expect(perms).toContain("transaction:prepare");
+    expect(perms).toContain("workspace:read:own");
+    expect(perms).not.toContain("org:read");
+  });
+
+  it("TENANT_MEMBER inherits authenticated plus org read", () => {
+    const perms = identityStatePermissions("TENANT_MEMBER");
+    expect(perms).toContain("workspace:read:own");
+    expect(perms).toContain("org:read");
+  });
+
+  it("higher states inherit all lower state permissions", () => {
+    const anon = identityStatePermissions("ANONYMOUS");
+    const wallet = identityStatePermissions("WALLET_CONNECTED");
+    const siwe = identityStatePermissions("SIWE_AUTHENTICATED");
+    const tenant = identityStatePermissions("TENANT_MEMBER");
+    expect(wallet).toEqual(expect.arrayContaining(anon));
+    expect(siwe).toEqual(expect.arrayContaining(wallet));
+    expect(tenant).toEqual(expect.arrayContaining(siwe));
+  });
+
+  it("identityStateAllows returns true for held permissions", () => {
+    expect(identityStateAllows("ANONYMOUS", "trials:read:public")).toBe(true);
+    expect(identityStateAllows("WALLET_CONNECTED", "chain:read:public")).toBe(true);
+    expect(identityStateAllows("SIWE_AUTHENTICATED", "workspace:read:own")).toBe(true);
+    expect(identityStateAllows("TENANT_MEMBER", "org:read")).toBe(true);
+  });
+
+  it("identityStateAllows returns false for unheld permissions", () => {
+    expect(identityStateAllows("ANONYMOUS", "chain:read:public")).toBe(false);
+    expect(identityStateAllows("ANONYMOUS", "org:read")).toBe(false);
+    expect(identityStateAllows("WALLET_CONNECTED", "workspace:read:own")).toBe(false);
+    expect(identityStateAllows("SIWE_AUTHENTICATED", "org:read")).toBe(false);
   });
 });
