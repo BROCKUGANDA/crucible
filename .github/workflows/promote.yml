@@ -39,7 +39,15 @@ concurrency:
 
 jobs:
   promote:
-    runs-on: [self-hosted, linux, X64, crucible]
+    # A hung wait must not sit forever; the longest legitimate path is two chained gates.
+    timeout-minutes: 120
+    runs-on: ubuntu-latest
+    # GitHub-hosted, deliberately. This job is git merges and API calls: it needs no secret
+    # and nothing on the VPS. On the crucible runners it held one while "gh run watch"-ing
+    # the next gate — a job waiting on a ci run that was itself queued behind waiting jobs.
+    # Two promote chains plus a deploy held all four runners and the ladder locked. Moving
+    # promotion off the box removes the cycle; the runners are left to the workloads that
+    # actually need the machine: ci's docker builds and the deploy.
     # No `permissions:` block on this job — against the rule the earlier version
     # of this comment stated, and here is why. The promotion push writes files
     # under .github/workflows, and `workflows` is the one scope GitHub will not
