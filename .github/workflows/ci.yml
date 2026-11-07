@@ -128,6 +128,9 @@ jobs:
       # because most failures produce no campaign state at all (a compile error, a floor miss).
       - name: upload campaign state
         if: failure()
+        # The artifact store quota is exhausted at the account level (billing lock).
+        # Evidence collection is reporting: it must never decide a red run is greener
+        # or fail a green one. Revisit when the quota is cleared.        continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
           name: forge-campaign-state-run-${{ github.run_id }}
