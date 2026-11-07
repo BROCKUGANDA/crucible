@@ -216,12 +216,12 @@ describe("CRU-SAFETY v1 — the dataset and the metrics", () => {
   });
 
   it("scores the whole set against a fake moderator and keeps the rows additive", async () => {
-    // Ground truth: 10 unsafe, 6 safe in the dev set. A moderator that answers
+    // Ground truth: 11 unsafe, 5 safe in the dev set. A moderator that answers
     // Unsafe for everything yields tp=10, fp=6, tn=0, fn=0.
     const cfg: SafetyConfig = { ...CFG, fetchImpl: providerReply("Unsafe", ["x"]) as unknown as typeof fetch };
     const report = await runSafetyBenchmark(cfg);
-    expect(report.overall.tp).toBe(10);
-    expect(report.overall.fp).toBe(6);
+    expect(report.overall.tp).toBe(11);
+    expect(report.overall.fp).toBe(5);
     expect(report.overall.tn).toBe(0);
     expect(report.overall.fn).toBe(0);
     expect(report.overall.total).toBe(16);
@@ -231,8 +231,8 @@ describe("CRU-SAFETY v1 — the dataset and the metrics", () => {
       (acc, d) => ({ tp: acc.tp + d.tp, fp: acc.fp + d.fp, tn: acc.tn + d.tn, fn: acc.fn + d.fn, errors: acc.errors + d.errors }),
       { tp: 0, fp: 0, tn: 0, fn: 0, errors: 0 },
     );
-    expect(sum).toEqual({ tp: 10, fp: 6, tn: 0, fn: 0, errors: 0 });
-    expect(report.overall.precision).toBeCloseTo(10 / 16);
+    expect(sum).toEqual({ tp: 11, fp: 5, tn: 0, fn: 0, errors: 0 });
+    expect(report.overall.precision).toBeCloseTo(11 / 16);
     expect(report.overall.recall).toBe(1);
     expect(report.benchmarkVersion).toBe(SAFETY_BENCHMARK_VERSION);
     expect(report.model).toBe(DEFAULT_MODEL_ID);

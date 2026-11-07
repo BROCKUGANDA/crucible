@@ -914,7 +914,7 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
     });
     app.use("/safety/*", safetyLimiter);
   }
-  app.route("/safety", createSafetyRoutes({ config: opts.safety ?? resolveSafetyConfig() }));
+  app.route("/safety", createSafetyRoutes({ config: deps.safety ?? resolveSafetyConfig() }));
 
   /**
    * Frenchy, spoken: the speech-to-speech host.
