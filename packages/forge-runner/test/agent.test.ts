@@ -115,7 +115,7 @@ describe("createForgedAgent", () => {
     expect(events[0]?.correlationId).toBe("1");
   });
 
-  it("awaits telemetry delivery and assigns monotonically increasing provider event sequences", async () => {
+  it("emits placeholder sequences (collector assigns the canonical sequence)", async () => {
     const events: Array<{ eventType: string; sequence: number; runId: string }> = [];
     const agent = createForgedAgent({
       client: clientReturning(DIFF),
@@ -135,7 +135,8 @@ describe("createForgedAgent", () => {
       "provider.request",
       "provider.response",
     ]);
-    expect(events.map((event) => event.sequence)).toEqual([1, 2, 3, 4]);
+    // Producer sends placeholder 0; Forge Watch collector/DB assigns 1,2,3,4.
+    expect(events.map((event) => event.sequence)).toEqual([0, 0, 0, 0]);
     expect(new Set(events.map((event) => event.runId))).toEqual(new Set(["7"]));
   });
 

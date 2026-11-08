@@ -10,9 +10,9 @@ import type { SiteEntry } from "@crucible/site-index";
  */
 export const siteEntry: SiteEntry = {
   path: "/staking",
-  label: "Staking",
-  purpose: "Free stake on your own agents: the part of the bond you can withdraw and the part you cannot.",
-  can: ["read your free stake", "withdraw what is withdrawable"],
+  label: "Agent Collateral",
+  purpose: "Native ETH agent collateral (not yield staking): add stake, unstake to withdrawable credit, withdraw credit to your wallet.",
+  can: ["read your free stake", "add stake", "unstake", "withdraw what is withdrawable"],
   points: ["stake-panel"],
   needs: "a connected wallet",
 };

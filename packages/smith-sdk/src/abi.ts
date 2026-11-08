@@ -545,6 +545,15 @@ export const TRIALS_ABI = [
   },
   {
     type: "event",
+    name: "StakeAdded",
+    inputs: [
+      { indexed: true, name: "agentId", type: "uint256" },
+      { indexed: true, name: "operator", type: "address" },
+      { indexed: false, name: "amount", type: "uint256" },
+    ],
+  },
+  {
+    type: "event",
     name: "Withdrawn",
     inputs: [
       { indexed: true, name: "to", type: "address" },
