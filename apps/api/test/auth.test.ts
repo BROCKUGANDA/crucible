@@ -353,3 +353,58 @@ describe("identity: requireIdentityState middleware", () => {
     expect(res.status).toBe(200);
   });
 });
+
+/**
+ * The race the async nonce store reopened, and the atomic consume that closes it.
+ *
+ * The route reads the challenge, awaits signature recovery (real crypto, real milliseconds), then
+ * marks it consumed. With a process-local Map the mark was synchronous and could not interleave;
+ * with Redis it became get → check → set across two round trips, so two concurrent requests carrying
+ * one captured `{address, nonce, signature}` both read an unconsumed record and both minted a
+ * session. That is the replay the store exists to prevent.
+ *
+ * The assertion is on the *count of sessions*, not on a status code: a fix that returned 401 for
+ * both requests would pass a weaker test and break sign-in entirely.
+ */
+describe("auth: one signature, one session, even concurrently", () => {
+  it("mints exactly one session when the same verify arrives twice at once", async () => {
+    const { message, nonce, cookie } = await issueNonce(ADDRESS);
+    const signature = await account.signMessage({ message });
+    const request = () =>
+      app.request("/auth/verify", {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie },
+        body: JSON.stringify({ address: ADDRESS, nonce, signature }),
+      });
+
+    const [a, b] = await Promise.all([request(), request()]);
+    const bodies = await Promise.all([a.json(), b.json()]);
+    const minted = [a, b].filter((res, i) => res.status === 200 && (bodies[i] as { replayed?: boolean }).replayed === false);
+    const refused = [a, b].filter((res) => res.status === 401);
+
+    expect(minted).toHaveLength(1);
+    expect(refused).toHaveLength(1);
+    // And the refusal names the reason rather than looking like a bad signature.
+    const refusedBody = bodies[[a, b].findIndex((res) => res.status === 401)] as { error: string };
+    expect(refusedBody.error).toBe("challenge_used");
+  });
+
+  it("still replays a sequential retry with the original cookie", async () => {
+    const { message, nonce, cookie } = await issueNonce(ADDRESS);
+    const signature = await account.signMessage({ message });
+    const request = () =>
+      app.request("/auth/verify", {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie },
+        body: JSON.stringify({ address: ADDRESS, nonce, signature }),
+      });
+
+    const first = await request();
+    const second = await request();
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    expect((await second.json()).replayed).toBe(true);
+    // Byte-identical: a replay must not mint a second credential with a different expiry.
+    expect(second.headers.get("Set-Cookie")).toBe(first.headers.get("Set-Cookie"));
+  });
+});

@@ -31,6 +31,9 @@ import { keccak256, recoverAddress, recoverMessageAddress, toBytes } from "viem"
 import {
   buildOrganisationPrincipal,
   type OrganisationPrincipal,
+  createNonceStore,
+  type NonceStore,
+  type StoredChallenge,
 } from "@crucible/agent-security";
 
 const CHALLENGE_TTL_MS = 5 * 60_000;
@@ -62,42 +65,39 @@ export type SessionPayload = {
   aud: string;
 };
 
-type Challenge = {
-  nonce: string;
-  message: string;
-  /** the address the challenge was issued for */
-  address: string;
-  issuedAt: number;
-  expiresAt: number;
-  signature?: string;
-  sessionToken?: string;
-};
+/**
+ * The nonce store, initialised once at module load.
+ *
+ * In production this connects to Redis so multiple API instances share the
+ * same challenge map. In development and tests it falls back to an in-memory
+ * Map that survives hot-reloads via globalThis.
+ *
+ * The store is lazy: `initNonceStore()` runs once when the first auth route
+ * fires, so a process that never serves auth traffic does not waste a Redis
+ * connection.
+ */
+let nonceStore: NonceStore | null = null;
+let nonceStoreInit: Promise<NonceStore> | null = null;
+
+async function getNonceStore(): Promise<NonceStore> {
+  if (nonceStore) return nonceStore;
+  if (nonceStoreInit) return nonceStoreInit;
+  nonceStoreInit = createNonceStore().then((store) => {
+    nonceStore = store;
+    return store;
+  });
+  return nonceStoreInit;
+}
 
 /**
- * Process memory, keyed on globalThis so a dev-server hot reload does not empty the
- * store mid-flow. A single-instance deployment is the documented shape — the contract
- * of this module is "one process owns the challenges", which a real deployment would
- * move to Redis without changing a route.
+ * Prune expired entries from the store.
+ *
+ * For the in-memory store this is a lazy sweep on every write.
+ * For Redis this is a no-op (TTL is native).
  */
-const STATE_KEY = "__crucible_auth_nonces__";
-const globalScope = globalThis as unknown as Record<string, unknown>;
-const state: { entries: Map<string, Challenge> } =
-  (globalScope[STATE_KEY] as { entries: Map<string, Challenge> } | undefined) ?? {
-    entries: new Map<string, Challenge>(),
-  };
-globalScope[STATE_KEY] = state;
-
-function prune(now: number): void {
-  for (const [key, record] of state.entries) {
-    const ttl = record.signature ? CONSUMED_TTL_MS : CHALLENGE_TTL_MS;
-    if (record.issuedAt + ttl <= now) state.entries.delete(key);
-  }
-  if (state.entries.size > MAX_ENTRIES) {
-    for (const key of state.entries.keys()) {
-      if (state.entries.size <= MAX_ENTRIES - 1) break;
-      state.entries.delete(key);
-    }
-  }
+async function prune(maxEntries: number = MAX_ENTRIES): Promise<void> {
+  const store = await getNonceStore();
+  await store.prune(maxEntries);
 }
 
 /**
@@ -187,25 +187,26 @@ export function buildSignInMessage(
  * for an address, or by watching a victim's request — can complete it from a
  * different browser, and the session it mints lands there.
  */
-export function issueChallenge(address: string, origin: string): {
+export async function issueChallenge(address: string, origin: string): Promise<{
   challengeId: string;
   nonce: string;
   message: string;
   expiresAt: number;
   replayed: boolean;
-} {
+}> {
+  const store = await getNonceStore();
+  await prune();
   const now = Date.now();
-  prune(now);
   const challengeId = randomBytes(16).toString("hex");
   const nonce = randomBytes(16).toString("hex");
-  const record: Challenge = {
+  const record: StoredChallenge = {
     nonce,
     message: buildSignInMessage(address, nonce, origin, now),
     address: address.toLowerCase(),
     issuedAt: now,
     expiresAt: now + CHALLENGE_TTL_MS,
   };
-  state.entries.set(challengeId, record);
+  await store.set(challengeId, record, CHALLENGE_TTL_MS);
   return {
     challengeId,
     nonce: record.nonce,
@@ -216,25 +217,36 @@ export function issueChallenge(address: string, origin: string): {
 }
 
 /** Returns the live challenge for a session (consumed ones included, for replay). */
-function peekChallenge(challengeId: string): Challenge | null {
-  const record = state.entries.get(challengeId);
+async function peekChallenge(challengeId: string): Promise<StoredChallenge | null> {
+  const store = await getNonceStore();
+  const record = await store.get(challengeId);
   if (!record) return null;
   const ttl = record.signature ? CONSUMED_TTL_MS : CHALLENGE_TTL_MS;
   if (record.issuedAt + ttl <= Date.now()) return null;
   return record;
 }
 
-function markConsumed(challengeId: string, nonce: string, signature: string): void {
-  const record = state.entries.get(challengeId);
-  if (record && record.nonce === nonce && !record.signature) {
-    record.signature = signature;
-    record.expiresAt = Date.now() + CONSUMED_TTL_MS;
-  }
+/**
+ * Atomically consume the challenge, and report whether this caller won.
+ *
+ * The boolean is the point. Reading the record, checking `!record.signature` and writing it back
+ * is three steps with awaits between them, and two concurrent requests carrying the same captured
+ * `{address, nonce, signature}` both pass that check and both mint a session — which is the replay
+ * the store exists to prevent, reintroduced by making the store async. `consume` is one operation
+ * on both backends, so exactly one caller can win.
+ */
+async function markConsumed(challengeId: string, nonce: string, signature: string): Promise<boolean> {
+  const store = await getNonceStore();
+  return store.consume(challengeId, nonce, signature, CONSUMED_TTL_MS);
 }
 
-function rememberSessionToken(challengeId: string, nonce: string, sessionToken: string): void {
-  const record = state.entries.get(challengeId);
-  if (record && record.nonce === nonce) record.sessionToken = sessionToken;
+async function rememberSessionToken(challengeId: string, nonce: string, sessionToken: string): Promise<void> {
+  const store = await getNonceStore();
+  const record = await store.get(challengeId);
+  if (record && record.nonce === nonce) {
+    record.sessionToken = sessionToken;
+    await store.set(challengeId, record, CONSUMED_TTL_MS);
+  }
 }
 
 /**
@@ -482,7 +494,7 @@ export function authRoutes(maxBodyBytes = 16 * 1024): Hono {
     }
     const address = typeof body.address === "string" ? body.address : "";
     if (!ADDRESS_RE.test(address)) return c.json({ error: "invalid_address" }, 400);
-    const challenge = issueChallenge(address, origin);
+    const challenge = await issueChallenge(address, origin);
     // The challenge id goes back as an HttpOnly cookie, not in the body: the
     // client has no business choosing which challenge it completes.
     c.header("Set-Cookie", challengeCookie(challenge.challengeId));
@@ -528,7 +540,7 @@ export function authRoutes(maxBodyBytes = 16 * 1024): Hono {
     // anyone who learns a nonce could complete it from a different browser,
     // and the session it mints would land there.
     const challengeId = cookieOf(c, CHALLENGE_COOKIE);
-    const challenge = challengeId ? peekChallenge(challengeId) : null;
+    const challenge = challengeId ? await peekChallenge(challengeId) : null;
     if (!challenge) {
       return c.json({ error: "challenge_expired", message: "Request a new nonce and sign again." }, 401);
     }
@@ -563,10 +575,17 @@ export function authRoutes(maxBodyBytes = 16 * 1024): Hono {
       return c.json({ error: "bad_signature", message: "Signature does not match the address." }, 401);
     }
 
-    markConsumed(challengeId!, nonce, sig);
+    // Whoever loses this race does not get a session. The sequential replay case is already
+    // handled above (the consumed challenge hands back its original token); this is the concurrent
+    // one, where a second request read the challenge before the first finished consuming it. A 401
+    // here is safe and honest — the client can retry and will land on the replay path once the
+    // winner's token is remembered. Minting anyway would hand out two sessions for one signature.
+    if (!(await markConsumed(challengeId!, nonce, sig))) {
+      return c.json({ error: "challenge_used", message: "This nonce was already used." }, 401);
+    }
     const minted = createSessionToken(address, key, origin);
     c.header("Set-Cookie", sessionCookie(minted.token));
-    rememberSessionToken(challengeId!, nonce, minted.token);
+    await rememberSessionToken(challengeId!, nonce, minted.token);
 
     return c.json({
       address: minted.payload.address,

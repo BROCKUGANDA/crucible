@@ -289,7 +289,7 @@ export async function classifyContent(
   content: string,
   direction: ContentDirection,
 ): Promise<ModerationResult> {
-  const started = Date.now();
+    const started = Date.now();
   const base = {
     requestId: randomUUID(),
     policyVersion: MODERATION_POLICY_VERSION,

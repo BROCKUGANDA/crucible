@@ -268,8 +268,8 @@ const USER = `0x${"44".repeat(20)}`;
 
 function appWith(safety?: Partial<SafetyConfig>) {
   return createApp(
-    { getModel: () => emptyModel(), safety: { ...CFG, ...safety } },
-    { rateLimit: false },
+    { getModel: () => emptyModel() },
+    { safety: { ...CFG, ...safety }, rateLimit: false },
   );
 }
 

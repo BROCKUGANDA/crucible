@@ -9,6 +9,7 @@ import {
   buildMerkleTree,
   type VerifiedEvent,
 } from "@crucible/engrams";
+import { verifiedSessionFromContext } from "./auth.js";
 
 const engine = new AchievementEngine();
 
@@ -62,8 +63,22 @@ function resolveRecipient(c: Context): string | null {
 export function createEngramRoutes(): Hono {
   const app = new Hono();
 
+  /**
+   * List entitlements for a recipient.
+   *
+   * Session-gated: only the recipient can query their own entitlements.
+   * A public endpoint would leak achievement status for every address.
+   */
   app.get("/:recipient", async (c) => {
+    const session = verifiedSessionFromContext(c);
+    if (!session) {
+      return c.json({ error: "unauthenticated", code: "no-credential" }, 401);
+    }
     const recipient = c.req.param("recipient");
+    // Only allow querying your own entitlements
+    if (session.payload.address.toLowerCase() !== recipient.toLowerCase()) {
+      return c.json({ error: "forbidden", code: "not-your-entitlements" }, 403);
+    }
     return c.json({ entitlements: engine.entitlementsFor(recipient) });
   });
 
@@ -85,7 +100,18 @@ export function createEngramRoutes(): Hono {
     return c.json(result, 201);
   });
 
+  /**
+   * Build a Merkle tree from distribution leaves.
+   *
+   * Session-gated: only authenticated callers can request Merkle proofs.
+   * An unauthenticated endpoint would allow anyone to generate proofs for
+   * arbitrary distributions, enabling Sybil attacks.
+   */
   app.post("/merkle", async (c) => {
+    const session = verifiedSessionFromContext(c);
+    if (!session) {
+      return c.json({ error: "unauthenticated", code: "no-credential" }, 401);
+    }
     let body: { leaves?: { recipient: string; amount: string; campaignId: string }[] } = {};
     try {
       body = (await c.req.json()) as typeof body;

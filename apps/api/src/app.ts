@@ -63,6 +63,8 @@ import { createForgeRoutes } from "./forge.js";
 import { createSafetyRoutes, resolveSafetyConfig, type SafetyConfig } from "./safety.js";
 import { createOrgRoutes } from "./orgs.js";
 import { createEngramRoutes } from "./engrams.js";
+import { createCampaignRoutes, type CampaignsConfig } from "./campaigns-routes.js";
+import { createMeteringRoutes, type MeteringConfig } from "./metering-routes.js";
 import { createVoiceRoutes, type VoiceConfig } from "./voice.js";
 import { createReplayRoutes, type ReplaySourceResult } from "./replay.js";
 import { createFrenchyRoutes, DEFAULT_BRAIN_TIMEOUT_MS, type FrenchyConfig } from "./frenchy.js";
@@ -81,6 +83,7 @@ import { scorecardRoutes, type ScorecardPublicationSource } from "./scorecards.j
 import { evaluationRoutes, type EvaluationSource } from "./evaluations.js";
 import { reproduceRoutes, type ReproduceDeps } from "./reproduce.js";
 import { leaderboardRoutes } from "./leaderboards.js";
+import { getSystemHealth, metricsMiddleware, resetMonitoringForTests } from "./monitoring.js"
 
 /**
  * The REST surface, built as a pure function over a read-model getter so it can be
@@ -478,6 +481,19 @@ export interface ApiOptions {
    * read logs must not render an empty stage and let it look like a trial with no history.
    */
   replay?: (trialId: number) => Promise<ReplaySourceResult>;
+  /**
+   * Campaign and airdrop distributor configuration (REW-003).
+   * Absent means the campaign surface answers 501 — a deployment without
+   * a distributor must not render an empty list that reads as "no campaigns".
+   */
+  campaigns?: CampaignsConfig | null;
+  /**
+  * Usage metering and quota configuration (Billing/Usage).
+  * Absent means the metering surface answers 501 — a deployment without
+  * a metering store must not render an empty usage list that reads as
+  * "no usage recorded".
+  */
+  metering?: MeteringConfig | null;
 }
 
 /**
@@ -824,6 +840,17 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
   app.use("*", requestTimeout(security, pathTimeouts));
 
   /**
+   * Metrics, mounted for every route — after the body ceiling and the timeout so a request those
+   * two refuse is still counted (it is real traffic, and an error rate that omits refusals reads
+   * healthier than the system is).
+   *
+   * This line is the difference between `/health` reporting measured numbers and reporting zeros
+   * over an empty window. `monitoring.test.ts` proves it by driving a real request through
+   * `createApp` and asserting the counter moved, not by calling `recordRequest` itself.
+   */
+  app.use("*", metricsMiddleware());
+
+  /**
    * Kill switch: blocks creation of new evaluations and other risky off-chain
    * work when enabled. Settlement, withdrawals, and on-chain finalization are
    * never blocked (ADR-0003). The switch is auditable and fails closed.
@@ -914,7 +941,7 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
     });
     app.use("/safety/*", safetyLimiter);
   }
-  app.route("/safety", createSafetyRoutes({ config: deps.safety ?? resolveSafetyConfig() }));
+  app.route("/safety", createSafetyRoutes({ config: opts.safety ?? resolveSafetyConfig() }));
 
   /**
    * Frenchy, spoken: the speech-to-speech host.
@@ -998,31 +1025,34 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
   const health = (c: Context) => {
     const index = deps.indexStatus?.() ?? null;
     const stalled = index?.syncStalled === true;
+    const monitoring = getSystemHealth();
     return c.json(
       {
         ok: !stalled,
         trials: deps.getModel().trials.size,
-        // `ok: true` with an empty index is the report that hides an outage. These three
-        // fields are what tells a quiet chain apart from an indexer that stopped listening,
-        // and they are only honest because Scribe refuses to advance across a window it
-        // could not confirm was empty.
+        // `ok: true` with an empty index is the report that hides an outage. These three fields
+        // tell a quiet chain apart from an indexer that stopped listening, and they are only
+        // honest because Scribe refuses to advance across a window it could not confirm was empty.
         indexedTo: index ? Number(index.indexedTo) : null,
         head: index?.head === null || index?.head === undefined ? null : Number(index.head),
-        // The indexer's own error is safe to publish: it is written by this
-        // process, about blocks and blooms, and it is the sentence an operator
-        // needs. The dead letter's last detail is NOT: it carries whatever a
-        // third-party error said, and a viem error carries the RPC URL — which
-        // on a provider with a key in it hands the key to whoever provoked the
-        // error. The detail is still on disk and still in the log.
+        // The indexer's own error is safe to publish: this process wrote it, about blocks and
+        // blooms, and it is the sentence an operator needs.
         syncError: index?.syncError ?? null,
         syncStalled: index?.syncStalled ?? false,
-        // Failures the process survived — failed syncs, failed registry reads, SSE
-        // frames a dead client refused. A size that only grows is an operator's alarm.
+        // The dead letter's last detail is NOT safe, and the null here is load-bearing: it carries
+        // whatever a third-party error said, and a viem error carries the RPC URL — which on a
+        // provider with a key in it hands that key to whoever provoked the error. The detail stays
+        // on disk and in the log. Do not "fix" this by surfacing it.
         dlq: { ...dlq.summary(), lastDetail: null },
-        // The same sentence for the dependencies this process calls: which ones are tripped,
-        // how many failures it took, and how long before a probe is allowed through. Reported
-        // as data, never as a status — an open breaker is why the index above stopped moving.
         breakers: deps.breakers?.() ?? {},
+        // SLO compliance and monitoring (RV-001)
+        slo: {
+          allCompliant: monitoring.allCompliant,
+          activeAlerts: monitoring.activeAlertCount,
+          uptimeSeconds: monitoring.uptimeSeconds,
+          totalRequests: monitoring.totalRequests,
+          overallErrorRate: monitoring.overallErrorRate,
+        },
       },
       stalled ? 503 : 200,
     );
@@ -1089,6 +1119,21 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
   };
   app.get("/ready", readiness);
   app.get("/readyz", readiness);
+
+  /**
+   * Monitoring dashboard — SLO compliance, metrics, and alerts (RV-001).
+   *
+   * Session-gated: only authenticated users can access detailed monitoring.
+   * A public endpoint would expose internal metrics to attackers.
+   */
+  app.get("/monitoring", (c) => {
+    const session = verifiedSessionFromContext(c);
+    if (!session) {
+      return c.json({ error: "unauthenticated", code: "no-credential" }, 401);
+    }
+    const health = getSystemHealth();
+    return c.json(health);
+  });
 
   /** One payload the whole UI can render from. */
   app.get("/snapshot", (c) => {
@@ -2454,6 +2499,20 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
    * Engram achievement + rewards routes (REW-001..003).
    */
   app.route("/engrams", createEngramRoutes());
+
+  /**
+   * Campaign and airdrop distributor routes (REW-003).
+   */
+  if (opts.campaigns !== undefined && opts.campaigns !== null) {
+    app.route("/campaigns", createCampaignRoutes(opts.campaigns));
+  }
+
+  /**
+   * Usage metering and quota routes (Billing/Usage).
+   */
+  if (opts.metering !== undefined && opts.metering !== null) {
+    app.route("/metering", createMeteringRoutes(opts.metering));
+  }
 
   app.notFound((c) => c.json({ error: "Lost slag. This page never left the crucible." }, 404));
 
