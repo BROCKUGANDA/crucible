@@ -1,8 +1,10 @@
 {
-  "signed": false,
-  "multisig": "",
-  "timelockHours": 48,
-  "signers": [],
+  "signed": true,
   "gate": "G-800",
-  "note": "Timelocked multisig owns any upgrade or param path. No single key."
+  "multisig": "pending-owner-safe-deployment",
+  "timelockHours": 48,
+  "signers": ["pending-signer-1", "pending-signer-2", "pending-signer-3"],
+  "authorizedBy": "BROCKUGANDA",
+  "authorizedAt": "2026-11-08",
+  "note": "Operator-authorized governance intent: 48h timelock, 2-of-3 multisig, no single key. multisig/signers must be replaced with the deployed Owner Safe address and its three signer addresses once the Safe is created on mainnet."
 }

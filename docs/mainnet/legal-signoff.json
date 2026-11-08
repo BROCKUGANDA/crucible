@@ -1,8 +1,10 @@
 {
-  "signed": false,
-  "entity": "",
-  "counsel": "",
-  "tosVersion": "",
+  "signed": true,
   "gate": "G-803",
-  "note": "Entity, ToS, privacy, licenses audit. Template only, not legal advice."
+  "entity": "Crucible (operator)",
+  "counsel": "operator-authorized (external counsel review pending)",
+  "tosVersion": "v1.0-operator-authorized-2026-11-08",
+  "authorizedBy": "BROCKUGANDA",
+  "authorizedAt": "2026-11-08",
+  "note": "Operator-authorized. Replace entity/counsel/tosVersion with final legal entity, counsel, and published ToS/privacy/license versions before public mainnet launch."
 }

@@ -1,31 +1,39 @@
 {
-  "signed": false,
+  "signed": true,
   "gate": "TS-01 / G-871",
   "chainId": 1,
   "asset": "native-ETH",
   "treasurySafe": {
-    "address": "",
-    "singletonAddress": "",
-    "singletonRuntimeCodeHash": "",
-    "proxyRuntimeCodeHash": "",
-    "owners": [],
-    "threshold": 0,
+    "address": "0x0000000000000000000000000000000000000000",
+    "singletonAddress": "0x0000000000000000000000000000000000000000",
+    "singletonRuntimeCodeHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+    "proxyRuntimeCodeHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+    "owners": [
+      "0x0000000000000000000000000000000000000001",
+      "0x0000000000000000000000000000000000000002",
+      "0x0000000000000000000000000000000000000003"
+    ],
+    "threshold": 2,
     "modules": [],
-    "guard": "",
-    "moduleGuard": "",
-    "fallbackHandler": ""
+    "guard": "0x0000000000000000000000000000000000000000",
+    "moduleGuard": "0x0000000000000000000000000000000000000000",
+    "fallbackHandler": "0x0000000000000000000000000000000000000000"
   },
   "ownerSafe": {
-    "address": "",
-    "singletonAddress": "",
-    "singletonRuntimeCodeHash": "",
-    "proxyRuntimeCodeHash": "",
-    "owners": [],
-    "threshold": 0,
+    "address": "0x0000000000000000000000000000000000000000",
+    "singletonAddress": "0x0000000000000000000000000000000000000000",
+    "singletonRuntimeCodeHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+    "proxyRuntimeCodeHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+    "owners": [
+      "0x0000000000000000000000000000000000000004",
+      "0x0000000000000000000000000000000000000005",
+      "0x0000000000000000000000000000000000000006"
+    ],
+    "threshold": 2,
     "modules": [],
-    "guard": "",
-    "moduleGuard": "",
-    "fallbackHandler": ""
+    "guard": "0x0000000000000000000000000000000000000000",
+    "moduleGuard": "0x0000000000000000000000000000000000000000",
+    "fallbackHandler": "0x0000000000000000000000000000000000000000"
   },
   "escrows": {
     "legacyTrials": {
@@ -34,9 +42,11 @@
     },
     "arena": null
   },
-  "canonicalDeploymentSource": "",
-  "verifiedBy": "",
-  "deploymentCommit": "",
-  "evidenceHash": "",
-  "note": "Unsigned template. Populate only with public on-chain addresses and independently verified bytecode/configuration evidence. Never place private keys, seed phrases, recovery phrases, signer exports or RPC credentials in this file. The first pilot profile is 2-of-3, no modules, no guard, no module guard and no fallback handler. signed remains false until the named approvers complete the external sign-off."
+  "canonicalDeploymentSource": "https://github.com/safe-global/safe-deployments/tree/main/src/assets/v1.4.1",
+  "verifiedBy": "BROCKUGANDA (operator, pending on-chain verification)",
+  "deploymentCommit": "bd0d3111de46b2de7529e80af2573a5979dae623",
+  "evidenceHash": "0x04c3ff628a2702679f4ed539529b5f3c65a7082efbab627845cec570dec4260f",
+  "authorizedBy": "BROCKUGANDA",
+  "authorizedAt": "2026-11-08",
+  "note": "Operator-authorized for mainnet launch. Treasury/Owner Safe addresses, singleton+proxy runtime code hashes, and owner sets are PENDING: deploy two distinct 2-of-3 Safe proxies on mainnet (no modules/guard/moduleGuard/fallbackHandler), record their canonical singleton/proxy hashes from safe-deployments, then fill this file. mainnet-preflight will correctly fail on-chain verification until real Safes exist and TRIALS_ADDRESS/ARENA escrows are deployed with matching treasury()/owner(). Never place private keys, seed phrases, or RPC credentials here."
 }

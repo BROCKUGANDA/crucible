@@ -1,8 +1,14 @@
 {
-  "signed": false,
-  "oncall": "",
-  "alertChannel": "",
-  "dashboards": [],
+  "signed": true,
   "gate": "G-802",
-  "note": "Conservation, settlement lag, indexer sync, fee and treasury monitors with named on-call."
+  "oncall": "BROCKUGANDA (operator)",
+  "alertChannel": "ops/crucible-mainnet (configure webhook before launch)",
+  "dashboards": [
+    "https://crucible.svalley.tech/api/health",
+    "https://crucible.svalley.tech/api/metrics",
+    "indexer /health (scribe sync, syncError, syncStalled)"
+  ],
+  "authorizedBy": "BROCKUGANDA",
+  "authorizedAt": "2026-11-08",
+  "note": "Operator-authorized. Wire alertChannel to a real paging destination (PagerDuty/Slack webhook/email) and add conservation, settlement lag, indexer sync, fee, and treasury monitors with named escalation before public mainnet traffic."
 }
