@@ -197,6 +197,7 @@ services:
       # the queue was unreadable and the notice went nowhere on a deployed box.
       CRUCIBLE_OWNER_ADDRESSES: ${CRUCIBLE_OWNER_ADDRESSES:-}
       WARDEN_WEBHOOK_URL: ${WARDEN_WEBHOOK_URL:-}
+      KEEPER_API_KEY: ${KEEPER_API_KEY:-}
     ports:
       - "${API_HOST_PORT:-8787}:8787"
     volumes:

@@ -6,5 +6,5 @@
   "signers": ["pending-signer-1", "pending-signer-2", "pending-signer-3"],
   "authorizedBy": "BROCKUGANDA",
   "authorizedAt": "2026-11-08",
-  "note": "Operator-authorized governance intent: 48h timelock, 2-of-3 multisig, no single key. multisig/signers must be replaced with the deployed Owner Safe address and its three signer addresses once the Safe is created on mainnet."
+  "note": "Governance intent: 48h timelock, 2-of-3 Owner Safe multisig, no single key. multisig must be replaced with the deployed Owner Safe address and signers with its three signer addresses once the Safe is created on mainnet (Phase 2). treasury.json ownerSafe.address drives this field post-deploy."
 }

@@ -250,12 +250,16 @@ export class ForgeRunner {
     ): Promise<void> => {
       const emitEvent = this.deps.emitEvent;
       if (!emitEvent) return;
+      // Sequence is assigned by Forge Watch collector/DB, never by the
+      // producer. This placeholder is overwritten collector-side; passing
+      // 0 avoids the old nextEventSequence collision (runner+agent both
+      // started at 1 for the same runId).
       const envelope: ForgeWatchEvent = {
         ...event,
         schemaVersion: 1,
         timestamp: Date.now(),
         eventId: crypto.randomUUID(),
-        sequence: nextEventSequence++,
+        sequence: 0,
         runId,
         trialId: String(req.trialId),
         agentId: String(req.agentId),

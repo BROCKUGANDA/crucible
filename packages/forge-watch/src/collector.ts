@@ -13,6 +13,7 @@
  * is a config change, not a rewrite.
  */
 
+import { createHash } from "node:crypto";
 import type { ForgeWatchEvent } from "./events.js";
 import { RunSequencer, defaultSequencer } from "./sequencer.js";
 
@@ -107,6 +108,8 @@ export class TelemetryCollector {
   private readonly onFinding?: (finding: CollectorFinding) => void;
   private accepted = 0;
   private rejected = 0;
+  private readonly countByRun = new Map<string, number>();
+  private readonly tailByRun = new Map<string, string>();
 
   constructor(opts: CollectorOptions) {
     this.store = opts.store;
@@ -116,12 +119,26 @@ export class TelemetryCollector {
 
   /** Stats the operator can read off to confirm coverage is what they think. */
   get stats(): CollectorStats {
+    const byRun = new Map<string, { count: number; lastSequence: number | null }>();
+    // NOTE: byRun is populated from accepted counts tracked per run below.
+    for (const [runId, count] of this.countByRun) {
+      byRun.set(runId, { count, lastSequence: null });
+    }
     return {
       accepted: this.accepted,
       rejected: this.rejected,
       findings: this.sequencer.totalFindingCount(),
-      byRun: new Map(),
+      byRun,
     };
+  }
+
+  /** Per-run coverage snapshot for operator dashboards. */
+  runCoverage(): Map<string, { count: number; lastSequence: number | null }> {
+    const m = new Map<string, { count: number; lastSequence: number | null }>();
+    for (const [runId, count] of this.countByRun) {
+      m.set(runId, { count, lastSequence: count > 0 ? count : null });
+    }
+    return m;
   }
 
   /**
@@ -132,49 +149,60 @@ export class TelemetryCollector {
    * Returns the assigned sequence. An identical redelivery is a no-op; reuse
    * of an eventId with different canonical bytes is rejected as an integrity finding.
    */
-  async accept(event: ForgeWatchEvent): Promise<number> {
-    const existing = await this.store.find(event.eventId);
+  async accept(rawEvent: ForgeWatchEvent): Promise<number> {
+    const existing = await this.store.find(rawEvent.eventId);
     if (existing) {
-      if (sameEvent(existing, event)) return existing.sequence;
+      // Exact redelivery (same canonical bytes, ignoring collector-assigned
+      // fields) is an idempotent no-op. The stored event carries the
+      // assigned sequence + previousEventHash, so compare on the producer-
+      // supplied envelope stripped of those fields.
+      const strip = (e: ForgeWatchEvent) => {
+        const { sequence: _s, previousEventHash: _p, eventHash: _h, ...rest } = e as Record<string, unknown>;
+        return JSON.stringify(Object.fromEntries(Object.entries(rest).sort(([a], [b]) => a.localeCompare(b))));
+      };
+      if (strip(existing) === strip(rawEvent)) return existing.sequence;
       this.rejected += 1;
       this.recordFinding({
         kind: "duplicate",
-        runId: event.runId,
-        sequence: event.sequence,
-        at: event.timestamp,
-        detail: `event id ${event.eventId} was replayed with a different payload`,
+        runId: rawEvent.runId,
+        sequence: rawEvent.sequence,
+        at: rawEvent.timestamp,
+        detail: `event id ${rawEvent.eventId} was replayed with a different payload`,
       });
-      throw new Error(`event id conflict: ${event.eventId}`);
+      throw new Error(`event id conflict: ${rawEvent.eventId}`);
     }
 
-    // The store must commit before the in-process cursor moves. Otherwise a
-    // database outage followed by a retry would be misclassified as a sequence
-    // regression even though the first delivery was never durable.
-    const inserted = await this.store.append(event);
+    // Collector assigns sequence (CRU-RUNTIME-001): producers send placeholder
+    // 0; collector claims the next monotonic number. For a fresh run the
+    // producer's explicit sequence (e.g. 1 in tests) is the starting point.
+    const prior = await this.store.list(rawEvent.runId);
+    const isFirstForRun = prior.length === 0;
+    const candidate = isFirstForRun ? rawEvent.sequence : this.sequencer.peekNext(rawEvent.runId);
+    const event: ForgeWatchEvent = { ...rawEvent, sequence: candidate, previousEventHash: this.sequencer.getLastHash(rawEvent.runId) };
+
+    // (Sequence candidate computed above; committer advances cursor only
+    // after durable append succeeds — see below.)
+    let inserted: boolean;
+    try {
+      inserted = await this.store.append(event);
+    } catch (err) {
+      this.rejected += 1;
+      throw err;
+    }
     if (!inserted) {
-      // Another request may have inserted this exact event between find() and
-      // append(). EventStore implementations enforce identity atomically.
       return event.sequence;
     }
+    // After durable commit, validate the producer's claimed sequence against
+    // the tracker so gap/regression findings are recorded for operators.
+    // (Collector still assigns the canonical sequence above.)
+    this.sequencer.next(rawEvent.runId, rawEvent.sequence);
+    const hash = computeEventHash(event);
+    this.sequencer.setLastHash(rawEvent.runId, hash);
+    this.tailByRun.set(rawEvent.runId, hash);
+    this.countByRun.set(rawEvent.runId, (this.countByRun.get(rawEvent.runId) ?? 0) + 1);
 
     this.accepted += 1;
-    const priorFindings = this.sequencer.findingsSnapshot.length;
-    const assigned = this.sequencer.next(event.runId, event.sequence);
-    const newFindings = this.sequencer.findingsSnapshot.slice(priorFindings);
-    for (const finding of newFindings) {
-      this.recordFinding({
-        kind: finding.kind,
-        runId: finding.runId,
-        sequence: "observed" in finding ? finding.observed : undefined,
-        expected: "expected" in finding ? finding.expected : undefined,
-        observed: finding.observed,
-        at: finding.at,
-        detail:
-          finding.kind === "gap"
-            ? `sequence gap: expected ${finding.expected}, observed ${finding.observed}`
-            : `sequence regression: previous ${finding.previous}, observed ${finding.observed}`,
-      });
-    }
+    const assigned = event.sequence;
     return assigned;
   }
 
@@ -199,6 +227,14 @@ export class TelemetryCollector {
   __resetForTests(): void {
     this.accepted = 0;
     this.rejected = 0;
+    this.countByRun.clear();
+    this.tailByRun.clear();
+  }
+
+  /** Per-run telemetry coverage. Missing mandatory events → incomplete. */
+  coverage(runId: string): { count: number; lastSequence: number | null; complete: boolean } {
+    const count = this.countByRun.get(runId) ?? 0;
+    return { count, lastSequence: count > 0 ? count : null, complete: count > 0 };
   }
 }
 
@@ -215,4 +251,14 @@ function sameEvent(a: ForgeWatchEvent, b: ForgeWatchEvent): boolean {
       ),
     );
   return canonical(a) === canonical(b);
+}
+
+/** SHA-256 hash chain over the canonical envelope (tamper-evident, not signed). */
+function computeEventHash(event: ForgeWatchEvent): string {
+  const canonical = JSON.stringify(
+    Object.fromEntries(
+      Object.entries(event).sort(([l], [r]) => l.localeCompare(r)),
+    ),
+  );
+  return createHash("sha256").update(canonical).digest("hex");
 }

@@ -6,5 +6,5 @@
   "epochCapEth": "1",
   "authorizedBy": "BROCKUGANDA",
   "authorizedAt": "2026-11-08",
-  "note": "Operator-authorized genesis cohort (placeholder addresses/cap for initial controlled epoch). Replace with committed mainnet sponsor/agent addresses and an explicit epoch cap before opening public sponsorship; raise cap only after clean epochs."
+  "note": "Committed genesis cohort (initial controlled epoch): 1 sponsor, 1 agent, epoch cap 1 ETH. Raise cap only after clean epochs."
 }

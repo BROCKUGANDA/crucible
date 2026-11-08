@@ -40,8 +40,11 @@ import {
 /** The lifecycle status of a campaign. */
 export type CampaignStatus = "draft" | "active" | "paused" | "ended" | "depleted";
 
-/** The type of asset a campaign distributes. */
-export type CampaignAssetType = "token" | "credit" | "nft" | "custom";
+/** The type of asset a campaign distributes. "sol" = native SOL on Solana. */
+export type CampaignAssetType = "token" | "credit" | "nft" | "custom" | "sol";
+
+/** Which network a campaign pays out on. EVM stays Sepolia-first; Solana starts devnet-only. */
+export type CampaignChain = "evm" | "solana";
 
 /** Eligibility criterion type. */
 export type EligibilityType =
@@ -68,6 +71,8 @@ export interface Campaign {
   readonly description: string;
   readonly sponsor: string;
   readonly assetType: CampaignAssetType;
+  readonly chain: CampaignChain;
+  readonly cluster?: string;
   readonly assetSymbol?: string;
   readonly assetContract?: string;
   readonly totalBudget: bigint;
@@ -339,6 +344,8 @@ export function createCampaign(params: {
   description: string;
   sponsor: string;
   assetType: CampaignAssetType;
+  chain?: CampaignChain;
+  cluster?: string;
   assetSymbol?: string;
   assetContract?: string;
   totalBudget: bigint;
@@ -398,12 +405,22 @@ export function createCampaign(params: {
     }
   }
 
+  const chain: CampaignChain = params.chain ?? (params.assetType === "sol" ? "solana" : "evm");
+  // Solana starts devnet-only. Mainnet-beta payouts require the signed
+  // production manifest (gate enforced at claim confirm time, not creation).
+  const cluster = params.cluster ?? (chain === "solana" ? "devnet" : "sepolia");
+  if (chain === "solana" && cluster !== "devnet") {
+    throw new Error("solana campaigns are devnet-only until the production manifest is signed");
+  }
+
   return {
     campaignId,
     name: params.name,
     description: params.description,
     sponsor: params.sponsor.toLowerCase(),
     assetType: params.assetType,
+    chain,
+    cluster,
     assetSymbol: params.assetSymbol,
     assetContract: params.assetContract,
     totalBudget: params.totalBudget,

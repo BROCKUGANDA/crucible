@@ -22,6 +22,16 @@ import { ALLOY_ABI, ARENA_ABI, TEAM_LEDGER_ABI, TRIALS_ABI, selfSchedulingLoop }
 import { CidStore, DisclosureLog, VerificationReportStore } from "@crucible/cidstore";
 import { webhookNotifier } from "@crucible/warden";
 import { createApp } from "./app.js";
+import { runMigrations } from "@crucible/agent-security";
+
+// Durable storage gate: production refuses in-memory backends. Postgres must
+// be reachable and migrated before serving real-money traffic.
+if (process.env.NODE_ENV === "production" && (process.env.STORAGE_BACKEND ?? "postgres") !== "postgres") {
+  throw new Error("Production requires durable PostgreSQL storage (STORAGE_BACKEND=postgres).");
+}
+if (process.env.DATABASE_URL) {
+  await runMigrations();
+}
 import { OwnerGate, SponsorshipQueue, sponsorshipMessage } from "./sponsorship.js";
 import { disclosureFileIn, disclosedCids as readDisclosure, type DisclosureEntry } from "./disclosure.js";
 import { createContentSource, digestToCidMap } from "./content.js";
@@ -1088,6 +1098,12 @@ const app = createApp({
   voice,
   frenchy,
   sts,
+  // Campaigns distributor (REW-003) — in-memory (ADR-0008); web /airdrops →
+  // REW-003 routes. Webhooks wake only (REW-003).
+  campaigns: {},
+  // STAMP stays explicit: disabled unless STAMP_MODE is set. Treasury/Owner
+  // Safe custody is never replaced by STAMP legal entitlements.
+  stamp: { mode: (process.env.STAMP_MODE as "disabled" | "sandbox" | "manual_review" | "production" | undefined) ?? "disabled" },
 });
 
 serve({ fetch: app.fetch, port }, (info) => {

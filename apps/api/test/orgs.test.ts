@@ -30,10 +30,8 @@ createOrganisation(testOrg);
 // A hand-signed cookie for the tests that construct deliberately-broken ones.
 function handSignedCookie(payload: Record<string, unknown>): Headers {
   const encoded = Buffer.from(JSON.stringify(payload)).toString("base64url");
-  const sig = Buffer.from(
-    createHmac("sha256", DEV_SECRET).update(encoded).digest("base64url"),
-  ).toString("base64url");
-  return new Headers({ cookie: `crucible_session=${encoded}.${sig}` });
+  const sig = createHmac("sha256", DEV_SECRET).update(encoded).digest("base64url");
+  return new Headers({ cookie: `__Host-crucible_session=${encoded}.${sig}` });
 }
 
 // Sessions are minted the way the browser mints them: nonce, signature over the
@@ -96,9 +94,9 @@ describe("Org routes", () => {
 
   it("rejects a forged session cookie with an invalid HMAC", async () => {
     const headers = await signIn(appWith(), ownerAccount);
-    const token = headers.get("cookie")!.replace("crucible_session=", "");
+    const token = headers.get("cookie")!.replace("__Host-crucible_session=", "");
     const [payload] = token.split(".");
-    headers.set("cookie", `crucible_session=${payload}.${Buffer.alloc(32, 0).toString("base64url")}`);
+    headers.set("cookie", `__Host-crucible_session=${payload}.${Buffer.alloc(32, 0).toString("base64url")}`);
 
     const res = await appWith().request("/orgs", { headers });
     expect(res.status).toBe(401);

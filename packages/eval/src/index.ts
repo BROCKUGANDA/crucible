@@ -1,6 +1,32 @@
 // Value exports
 export { splitBank, verifyPartition, isHoldout } from "./splits.js";
 export {
+  canTransition,
+  nextStates,
+  isTerminal,
+  validateManifest,
+} from "./workload-contracts.js";
+export {
+  validateEngineeringTask,
+  SoftwareEngineeringAdapter,
+  softwareEngineeringAdapter,
+} from "./workload-software.js";
+export {
+  validateDataContract,
+  checkRows,
+  StructuredDataAdapter,
+  structuredDataAdapter,
+  DATA_RUBRIC,
+} from "./workload-data.js";
+export {
+  validateMandate,
+  riskCheck,
+  AutonomousFinanceAdapter,
+  autonomousFinanceAdapter,
+  FINANCE_RUBRIC,
+} from "./workload-finance.js";
+export { getAdapter, listAdapters } from "./workload.js";
+export {
   trajectoryFromResult,
   trajectoryToJsonl,
   trajectoryFromJsonl,
@@ -45,6 +71,29 @@ export {
 } from "./forge-campaign.js";
 
 // Type exports
+export type {
+  WorkloadProfile,
+  VerificationStatus,
+  RunState,
+  RunContext,
+  ValidationReport,
+  PreparedTask,
+  ExecutionResult,
+  VerificationReport,
+  CheckResult,
+  Scorecard,
+  ArtifactRef,
+  ExecutionManifest,
+  WorkloadAdapter,
+  VersionedRubric,
+} from "./workload-contracts.js";
+export type { EngineeringTaskPackage } from "./workload-software.js";
+export type { DataContract } from "./workload-data.js";
+export type {
+  AutonomyLevel,
+  FinanceMandate,
+  OrderProposal,
+} from "./workload-finance.js";
 export type { ProbeRecord, SplitResult } from "./splits.js";
 export type { TrajectoryRecord } from "./trajectories.js";
 export type {

@@ -15,6 +15,11 @@ const fromBlock = process.env.FROM_BLOCK ? BigInt(process.env.FROM_BLOCK) : 0n;
 
 const scribe = trialsAddress ? new Scribe({ source: { ...TRIALS_SOURCE, address: trialsAddress }, chain: foundry, rpcUrl, fromBlock, cursorFile: process.env.CRUSIBLE_CURSOR_FILE }) : null;
 
+// Start canonical sync loop — without this, /health would report indexedTo=0 forever.
+if (scribe) {
+  scribe.watch?.().catch((err) => console.error("[indexer] watch failed:", err));
+}
+
 const app = new Hono();
 /**
  * Liveness + how far the index reaches.

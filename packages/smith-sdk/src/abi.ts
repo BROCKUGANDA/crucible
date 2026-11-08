@@ -59,6 +59,13 @@ export const TRIALS_ABI = [
   },
   {
     type: "function",
+    name: "addStake",
+    stateMutability: "payable",
+    inputs: [{ name: "agentId", type: "uint256" }],
+    outputs: [],
+  },
+  {
+    type: "function",
     name: "submitRun",
     stateMutability: "nonpayable",
     inputs: [

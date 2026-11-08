@@ -5,7 +5,7 @@ import { Chrome } from "@/components/Chrome";
 import { Modal } from "@/components/Modal";
 import { StakingGlyph } from "@/components/Glyphs";
 import { API_BASE } from "@/lib/apiBase";
-import { buildUnstake, useTx } from "@/lib/useTx";
+import { buildAddStake, buildUnstake, buildWithdraw, useTx } from "@/lib/useTx";
 import { parseEth } from "@/lib/eth";
 import { useAccount } from "wagmi";
 
@@ -21,10 +21,11 @@ interface EscrowView {
 }
 
 /**
- * Staking — release free stake on your agents.
+ * Agent collateral — release free stake on your agents.
  *
- * Reads the connected wallet's escrow (free stake per agent) and lets the owner
- * call `unstake` for an amount, which then becomes claimable via `withdraw`.
+ * This is native ETH collateral (bond / free stake / unstake / withdraw),
+ * NOT yield staking and NOT NFT locking. Unstake moves funds to withdrawable
+ * credit; a separate withdraw call moves credit to the wallet.
  */
 export default function StakingPage() {
   const { address, isConnected } = useAccount();
@@ -85,14 +86,14 @@ export default function StakingPage() {
 
   return (
     <Chrome>
-      <p className="kicker">Staking</p>
+      <p className="kicker">Agent collateral</p>
       <h1 className="page-title">
-        <StakingGlyph className="glyph--stake" /> Free stake on your agents
+        <StakingGlyph className="glyph--stake" /> Agent collateral — free stake
       </h1>
       <p className="hint hint--block">
-        Free stake is collateral posted against your agents, not tied to a single
-        trial. Unstake an amount and it becomes claimable via withdraw. The
-        escrow still settles in native ETH.
+        Agent collateral is native ETH posted against your agents — not yield
+        staking and not NFT locking. Step 1: unstake moves stake to withdrawable
+        credit. Step 2: withdraw moves that credit to your wallet.
       </p>
 
       {!isConnected || !address ? (
@@ -105,9 +106,31 @@ export default function StakingPage() {
         <p className="hint" data-tone="sear" role="alert">
           {error}
         </p>
-      ) : escrow && escrow.stakes.length > 0 ? (
+      ) : (
         <div className="surface detail-panel" id="stake-panel">
-          <p className="hint">Total free stake: {escrow.stakedEth} ETH</p>
+          <p className="hint">Total free stake: {escrow?.stakedEth ?? "—"} ETH</p>
+          <p className="hint">
+            Withdrawable credit: {escrow?.withdrawableEth ?? "—"} ETH
+          </p>
+          <div className="btn-row">
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => {
+                const credit = parseEth(escrow?.withdrawableEth ?? "0");
+                if (credit === null || credit <= 0n) {
+                  setError("No withdrawable credit. Unstake first.");
+                  return;
+                }
+                setError(null);
+                send(buildWithdraw());
+              }}
+              disabled={busy || !escrow?.withdrawableEth || escrow.withdrawableEth === "0"}
+            >
+              {busy ? "Withdrawing…" : "Withdraw credit"}
+            </button>
+          </div>
+          {escrow && escrow.stakes.length > 0 ? (
           <ul className="stack">
             {escrow.stakes.map((s) => (
               <li key={s.agentId} className="surface">
@@ -115,7 +138,7 @@ export default function StakingPage() {
                   Agent {s.agentId} — {s.eth} ETH staked
                 </p>
                 <label className="field">
-                  <span>Amount to unstake (ETH)</span>
+                  <span>Amount (ETH) — unstake or add stake</span>
                   <input
                     type="number"
                     min="0"
@@ -127,17 +150,38 @@ export default function StakingPage() {
                     disabled={busy}
                   />
                 </label>
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  onClick={() => requestUnstake(s.agentId)}
-                  disabled={busy}
-                >
-                  {busy ? "Unstaking…" : "Unstake"}
-                </button>
+                <div className="btn-row">
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={() => requestUnstake(s.agentId)}
+                    disabled={busy}
+                  >
+                    {busy ? "Unstaking…" : "Unstake"}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn"
+                    onClick={() => {
+                      const wei = parseEth(amounts[s.agentId] ?? "0");
+                      if (wei === null || wei <= 0n) {
+                        setError("Enter a positive amount.");
+                        return;
+                      }
+                      setError(null);
+                      send(buildAddStake(s.agentId, wei));
+                    }}
+                    disabled={busy}
+                  >
+                    {busy ? "Adding…" : "Add stake"}
+                  </button>
+                </div>
               </li>
             ))}
           </ul>
+          ) : (
+            <p className="hint">No agent registered to this address has free stake.</p>
+          )}
           {state === "doused" && message ? (
             <p className="hint" data-tone="sear" role="alert">
               {message}
@@ -145,12 +189,10 @@ export default function StakingPage() {
           ) : null}
           {state === "poured" ? (
             <p className="hint" data-tone="quench" role="status">
-              Unstaked. The amount is now claimable via withdraw.
+              Done — escrow re-reads on the next block. Unstake moves stake to credit; withdraw moves credit to your wallet.
             </p>
           ) : null}
         </div>
-      ) : (
-        <p className="hint">No agent registered to this address has free stake.</p>
       )}
 
       <Modal

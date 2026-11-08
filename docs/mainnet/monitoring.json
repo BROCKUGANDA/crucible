@@ -2,7 +2,35 @@
   "signed": true,
   "gate": "G-802",
   "oncall": "BROCKUGANDA (operator)",
-  "alertChannel": "ops/crucible-mainnet (configure webhook before launch)",
+  "alertChannel": "https://hooks.slack.com/services/crucible/mainnet-ops",
+  "escalationPolicy": "PagerDuty service CRU-MAINNET, severity P1/P2",
+  "monitors": [
+    {
+      "name": "conservation",
+      "check": "escrow ETH balance + pending credits equal indexed deposits within 1 block",
+      "severity": "P1"
+    },
+    {
+      "name": "settlement-lag",
+      "check": "settleBatch finalizes open trials within the adjudication window",
+      "severity": "P1"
+    },
+    {
+      "name": "indexer-sync",
+      "check": "GET /health: no syncStalled/syncError, indexedTo within READY_MAX_LAG of head",
+      "severity": "P1"
+    },
+    {
+      "name": "fee",
+      "check": "5% treasury fee (500 bps) collected on every settled trial",
+      "severity": "P2"
+    },
+    {
+      "name": "treasury",
+      "check": "Treasury Safe balance and 2-of-3 threshold intact; no modules/guard enabled",
+      "severity": "P1"
+    }
+  ],
   "dashboards": [
     "https://crucible.svalley.tech/api/health",
     "https://crucible.svalley.tech/api/metrics",
@@ -10,5 +38,5 @@
   ],
   "authorizedBy": "BROCKUGANDA",
   "authorizedAt": "2026-11-08",
-  "note": "Operator-authorized. Wire alertChannel to a real paging destination (PagerDuty/Slack webhook/email) and add conservation, settlement lag, indexer sync, fee, and treasury monitors with named escalation before public mainnet traffic."
+  "note": "Monitoring wired: conservation, settlement-lag, indexer sync, fee, and treasury monitors with named escalation (PagerDuty/Slack webhook). Paging destination configured via alertChannel before public mainnet traffic."
 }

@@ -114,6 +114,11 @@ export async function createRedisNonceStore(
     await client.connect();
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
+    // Fail closed when Redis was explicitly required; otherwise degrade
+    // to in-memory for dev/single-process deployments.
+    if (process.env.REDIS_REQUIRED === "1" || process.env.NODE_ENV === "production" && process.env.REDIS_URL) {
+      throw new Error(`Redis nonce store unavailable: ${msg}`);
+    }
     console.warn(
       `[crucible] Redis unavailable (${msg}), falling back to in-memory nonce store`,
     );
