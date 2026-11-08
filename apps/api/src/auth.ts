@@ -316,31 +316,40 @@ export function verifySessionToken(
 }
 
 function sessionCookie(token: string): string {
+  const secure = process.env.NODE_ENV === "production";
   const parts = [
-    `${COOKIE_NAME}=${token}`,
+    `__Host-${COOKIE_NAME}=${token}`,
     "HttpOnly",
-    "SameSite=Lax",
+    secure ? "Secure" : "",
+    secure ? "SameSite=None" : "SameSite=Lax",
     "Path=/",
     `Max-Age=${SESSION_TTL_SECONDS}`,
-  ];
-  if (process.env.NODE_ENV === "production") parts.push("Secure");
+  ].filter(Boolean);
   return parts.join("; ");
 }
 
 function clearedCookie(): string {
-  const parts = [`${COOKIE_NAME}=`, "HttpOnly", "SameSite=Lax", "Path=/", "Max-Age=0"];
-  // The same attributes the cookie was set with, so a browser matches it and
-  // actually deletes it.
-  if (process.env.NODE_ENV === "production") parts.push("Secure");
+  const secure = process.env.NODE_ENV === "production";
+  const parts = [
+    `__Host-${COOKIE_NAME}=`,
+    "HttpOnly",
+    secure ? "Secure" : "",
+    secure ? "SameSite=None" : "SameSite=Lax",
+    "Path=/",
+    "Max-Age=0",
+  ].filter(Boolean);
   return parts.join("; ");
 }
 
 function cookieOf(c: Context, name: string): string | null {
   const header = c.req.header("cookie");
   if (!header) return null;
+  const hostPrefixed = `__Host-${name}`;
   for (const part of header.split(";")) {
     const [k, ...v] = part.trim().split("=");
-    if (k === name) return v.join("=");
+    // __Host- prefixed cookies cannot be shadowed by cookie tossing: browsers
+    // require Secure + Path=/ and no Domain, and never send them cross-domain.
+    if (k === hostPrefixed || k === name) return v.join("=");
   }
   return null;
 }
