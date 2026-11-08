@@ -41,9 +41,30 @@ import { createMcpHandler, type TrialLimits } from "./mcp.js";
 import { rateLimit } from "./rate-limit.js";
 import { dlq } from "./dlq.js";
 import { TickPump } from "./tick-pump.js";
-import { authRoutes } from "./auth.js";
-import { isBlocked, status as killSwitchStatus } from "@crucible/agent-security";
+import { authRoutes, configuredChainId, verifiedSessionFromContext, identityStateMiddleware } from "./auth.js";
+import { buildOrganisationPrincipal, isBlocked, status as killSwitchStatus } from "@crucible/agent-security";
+import {
+  createTrial,
+  getTrial,
+  listTrials,
+  listTrialsBySponsor,
+  markRunStarted,
+  persistTrial,
+  resetStoreForTests,
+  syncChainStatus,
+  applyTransition,
+  type TrialLifeStatus,
+  type TransitionContext,
+  type TransitionDecision,
+  validateRevisionEdit,
+  validateTransition,
+} from "./trial-lifecycle.js";
 import { createForgeRoutes } from "./forge.js";
+import { createSafetyRoutes, resolveSafetyConfig, type SafetyConfig } from "./safety.js";
+import { createOrgRoutes } from "./orgs.js";
+import { createEngramRoutes } from "./engrams.js";
+import { createCampaignRoutes, type CampaignsConfig } from "./campaigns-routes.js";
+import { createMeteringRoutes, type MeteringConfig } from "./metering-routes.js";
 import { createVoiceRoutes, type VoiceConfig } from "./voice.js";
 import { createReplayRoutes, type ReplaySourceResult } from "./replay.js";
 import { createFrenchyRoutes, DEFAULT_BRAIN_TIMEOUT_MS, type FrenchyConfig } from "./frenchy.js";
@@ -62,6 +83,7 @@ import { scorecardRoutes, type ScorecardPublicationSource } from "./scorecards.j
 import { evaluationRoutes, type EvaluationSource } from "./evaluations.js";
 import { reproduceRoutes, type ReproduceDeps } from "./reproduce.js";
 import { leaderboardRoutes } from "./leaderboards.js";
+import { getSystemHealth, metricsMiddleware, resetMonitoringForTests } from "./monitoring.js"
 
 /**
  * The REST surface, built as a pure function over a read-model getter so it can be
@@ -432,6 +454,12 @@ export interface ApiOptions {
    */
   frenchy?: FrenchyConfig | null;
   /**
+   * The safety screening configuration (Qwen3Guard via the OVH endpoint).
+   * Absent means the env is resolved at createApp time; a missing key makes
+   * the moderation surface answer `unconfigured` — fail closed, never safe.
+   */
+  safety?: SafetyConfig;
+  /**
    * The voice route spends a provider credit per call, so it gets its own bucket
    * rather than sharing the 60/min read allowance. `false` disables it for tests.
    */
@@ -453,6 +481,19 @@ export interface ApiOptions {
    * read logs must not render an empty stage and let it look like a trial with no history.
    */
   replay?: (trialId: number) => Promise<ReplaySourceResult>;
+  /**
+   * Campaign and airdrop distributor configuration (REW-003).
+   * Absent means the campaign surface answers 501 — a deployment without
+   * a distributor must not render an empty list that reads as "no campaigns".
+   */
+  campaigns?: CampaignsConfig | null;
+  /**
+  * Usage metering and quota configuration (Billing/Usage).
+  * Absent means the metering surface answers 501 — a deployment without
+  * a metering store must not render an empty usage list that reads as
+  * "no usage recorded".
+  */
+  metering?: MeteringConfig | null;
 }
 
 /**
@@ -693,6 +734,40 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
   app.use("*", corsPolicy(security));
   if (security.enforceHttps) app.use("*", enforceHttps(security));
 
+  /** Resolve the caller's seven-state identity on every request. */
+  app.use("*", identityStateMiddleware());
+
+  /**
+   * Tag every response with the truth domain it primarily serves, so the
+   * three truths are never conflated:
+   *
+   *   evaluation — what happened during a trial, backed by reproducible evidence
+   *   commercial — who sponsored it, what it cost, what was earned, what is payable
+   *   chain — what was actually finalized on the configured blockchain
+   *
+   * Mixed routes (trials, agents, standing) name both domains; the header
+   * names the primary one and the body says more where needed.
+   */
+  app.use("*", async (c, next) => {
+    const path = c.req.path;
+    let domain: "evaluation" | "commercial" | "chain" | "mixed" = "mixed";
+    if (path === "/evaluations" || path.startsWith("/evaluations/")) domain = "evaluation";
+    else if (path === "/scorecards" || path.startsWith("/scorecards/")) domain = "evaluation";
+    else if (path === "/leaderboards" || path.startsWith("/leaderboards/")) domain = "evaluation";
+    else if (path === "/escrow" || path.startsWith("/escrow/")) domain = "commercial";
+    else if (path === "/faucet" || path.startsWith("/faucet/")) domain = "commercial";
+    else if (path === "/sponsorship" || path.startsWith("/sponsorship/")) domain = "commercial";
+    else if (path === "/trials" || path.startsWith("/trials/")) domain = "mixed";
+    else if (path === "/agents" || path.startsWith("/agents/")) domain = "mixed";
+    else if (path === "/standing" || path.startsWith("/standing/")) domain = "mixed";
+    else if (path === "/hall" || path.startsWith("/hall/")) domain = "evaluation";
+    else if (path === "/arena" || path.startsWith("/arena/")) domain = "evaluation";
+    else if (path === "/health" || path === "/healthz" || path === "/ready" || path === "/readyz")
+      domain = "chain";
+    c.header("X-Crucible-Truth-Domain", domain);
+    await next();
+  });
+
   if (opts.rateLimit !== false) {
     const limits: { limit: number; windowMs: number; burst?: number; trustProxy?: boolean } =
       opts.rateLimit ?? DEFAULT_RATE_LIMIT;
@@ -765,22 +840,34 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
   app.use("*", requestTimeout(security, pathTimeouts));
 
   /**
+   * Metrics, mounted for every route — after the body ceiling and the timeout so a request those
+   * two refuse is still counted (it is real traffic, and an error rate that omits refusals reads
+   * healthier than the system is).
+   *
+   * This line is the difference between `/health` reporting measured numbers and reporting zeros
+   * over an empty window. `monitoring.test.ts` proves it by driving a real request through
+   * `createApp` and asserting the counter moved, not by calling `recordRequest` itself.
+   */
+  app.use("*", metricsMiddleware());
+
+  /**
    * Kill switch: blocks creation of new evaluations and other risky off-chain
    * work when enabled. Settlement, withdrawals, and on-chain finalization are
    * never blocked (ADR-0003). The switch is auditable and fails closed.
+   *
+   * Scoped to evaluation-related paths so auth, faucet, voice and other writes
+   * keep working during an incident.
    */
+  const EVAL_PATH_PREFIXES = ["/evaluations", "/scorecards", "/leaderboards"];
   app.use("*", async (c, next) => {
-    const method = c.req.method;
-    if (method === "POST" || method === "PUT" || method === "PATCH" || method === "DELETE") {
-      if (isBlocked("new_evaluation")) {
-        const kstatus = killSwitchStatus();
-        return c.json({
-          error: "kill_switch_enabled",
-          reason: "New evaluations and risky off-chain work are blocked.",
-          enabledAt: kstatus.enabledAt,
-          reasonText: kstatus.reason ?? null,
-        }, 503);
-      }
+    if (isBlocked("new_evaluation") && EVAL_PATH_PREFIXES.some((p) => c.req.path.startsWith(p))) {
+      const kstatus = killSwitchStatus();
+      return c.json({
+        error: "kill_switch_enabled",
+        reason: "New evaluations and risky off-chain work are blocked.",
+        enabledAt: kstatus.enabledAt,
+        reasonText: kstatus.reason ?? null,
+      }, 503);
     }
     await next();
   });
@@ -806,7 +893,11 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
       trustProxy: opts.trustProxy ?? false,
       ...opts.voiceRateLimit,
     });
-    app.use("/voice/*", voiceLimiter);
+    app.use("/voice/*", async (c, next) => {
+      // /voice/agent-session has its own tighter mint bucket; don't double-charge.
+      if (c.req.path === "/voice/agent-session") return next();
+      return voiceLimiter(c, next);
+    });
     /**
      * A conversation mint is the one voice route that hands out a credential rather than
      * bytes, and every mint spends account minutes on a live channel. Its own, much smaller
@@ -841,6 +932,23 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
   app.route("/frenchy", createFrenchyRoutes(opts.frenchy ?? null, { getModel: deps.getModel }));
 
   /**
+   * Safety screening (Qwen3Guard). The policy and benchmark catalogue are
+   * public disclosures; moderate/health/benchmark-run spend inference credits
+   * or report host state, so they get their own bucket — an evaluation spike
+   * must not starve, or be starved by, the reads that matter.
+   */
+  {
+    const safetyLimiter = rateLimit({
+      limit: 30,
+      windowMs: 60_000,
+      burst: 10,
+      trustProxy: opts.trustProxy ?? false,
+    });
+    app.use("/safety/*", safetyLimiter);
+  }
+  app.route("/safety", createSafetyRoutes({ config: opts.safety ?? resolveSafetyConfig() }));
+
+  /**
    * Frenchy, spoken: the speech-to-speech host.
    *
    * Two buckets, because the host serves two very different requests:
@@ -867,12 +975,16 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
   if (opts.stsRateLimit !== false) {
     app.use(
       "/sts/*",
-      rateLimit({
-        limit: 120,
-        windowMs: 60_000,
-        burst: 20,
-        trustProxy: opts.trustProxy ?? false,
-      }),
+      async (c, next) => {
+        // /sts/turn has its own tighter turn bucket; don't double-charge.
+        if (c.req.path === "/sts/turn") return next();
+        return rateLimit({
+          limit: 120,
+          windowMs: 60_000,
+          burst: 20,
+          trustProxy: opts.trustProxy ?? false,
+        })(c, next);
+      },
     );
   }
   app.route("/sts", createStsRoutes(opts.sts ?? null, { getModel: deps.getModel }));
@@ -922,31 +1034,34 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
   const health = (c: Context) => {
     const index = deps.indexStatus?.() ?? null;
     const stalled = index?.syncStalled === true;
+    const monitoring = getSystemHealth();
     return c.json(
       {
         ok: !stalled,
         trials: deps.getModel().trials.size,
-        // `ok: true` with an empty index is the report that hides an outage. These three
-        // fields are what tells a quiet chain apart from an indexer that stopped listening,
-        // and they are only honest because Scribe refuses to advance across a window it
-        // could not confirm was empty.
+        // `ok: true` with an empty index is the report that hides an outage. These three fields
+        // tell a quiet chain apart from an indexer that stopped listening, and they are only
+        // honest because Scribe refuses to advance across a window it could not confirm was empty.
         indexedTo: index ? Number(index.indexedTo) : null,
         head: index?.head === null || index?.head === undefined ? null : Number(index.head),
-        // The indexer's own error is safe to publish: it is written by this
-        // process, about blocks and blooms, and it is the sentence an operator
-        // needs. The dead letter's last detail is NOT: it carries whatever a
-        // third-party error said, and a viem error carries the RPC URL — which
-        // on a provider with a key in it hands the key to whoever provoked the
-        // error. The detail is still on disk and still in the log.
+        // The indexer's own error is safe to publish: this process wrote it, about blocks and
+        // blooms, and it is the sentence an operator needs.
         syncError: index?.syncError ?? null,
         syncStalled: index?.syncStalled ?? false,
-        // Failures the process survived — failed syncs, failed registry reads, SSE
-        // frames a dead client refused. A size that only grows is an operator's alarm.
+        // The dead letter's last detail is NOT safe, and the null here is load-bearing: it carries
+        // whatever a third-party error said, and a viem error carries the RPC URL — which on a
+        // provider with a key in it hands that key to whoever provoked the error. The detail stays
+        // on disk and in the log. Do not "fix" this by surfacing it.
         dlq: { ...dlq.summary(), lastDetail: null },
-        // The same sentence for the dependencies this process calls: which ones are tripped,
-        // how many failures it took, and how long before a probe is allowed through. Reported
-        // as data, never as a status — an open breaker is why the index above stopped moving.
         breakers: deps.breakers?.() ?? {},
+        // SLO compliance and monitoring (RV-001)
+        slo: {
+          allCompliant: monitoring.allCompliant,
+          activeAlerts: monitoring.activeAlertCount,
+          uptimeSeconds: monitoring.uptimeSeconds,
+          totalRequests: monitoring.totalRequests,
+          overallErrorRate: monitoring.overallErrorRate,
+        },
       },
       stalled ? 503 : 200,
     );
@@ -1014,6 +1129,21 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
   app.get("/ready", readiness);
   app.get("/readyz", readiness);
 
+  /**
+   * Monitoring dashboard — SLO compliance, metrics, and alerts (RV-001).
+   *
+   * Session-gated: only authenticated users can access detailed monitoring.
+   * A public endpoint would expose internal metrics to attackers.
+   */
+  app.get("/monitoring", (c) => {
+    const session = verifiedSessionFromContext(c);
+    if (!session) {
+      return c.json({ error: "unauthenticated", code: "no-credential" }, 401);
+    }
+    const health = getSystemHealth();
+    return c.json(health);
+  });
+
   /** One payload the whole UI can render from. */
   app.get("/snapshot", (c) => {
     // The same cached payload the stream serves. Every route used to build its own
@@ -1026,6 +1156,11 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
 
   app.get("/trials", (c) => {
     const status = c.req.query("status");
+    const sponsor = c.req.query("sponsor");
+    const minReward = c.req.query("minRewardWei");
+    const maxReward = c.req.query("maxRewardWei");
+    const chain = c.req.query("chain");
+    const eligible = c.req.query("eligibleOnly");
     const page = parsePage(c.req.query());
     if (page.error) return c.json({ error: page.error }, 400);
     const snap = sharedTick().snapshot;
@@ -1035,7 +1170,32 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
         400,
       );
     }
-    const list = status ? snap.trials.filter((t) => t.status === status) : snap.trials;
+    let minRewardWei: bigint | null = null;
+    let maxRewardWei: bigint | null = null;
+    if (minReward !== undefined && minReward !== "") {
+      const v = BigInt(minReward);
+      if (v < 0n) return c.json({ error: "minRewardWei must be non-negative" }, 400);
+      minRewardWei = v;
+    }
+    if (maxReward !== undefined && maxReward !== "") {
+      const v = BigInt(maxReward);
+      if (v < 0n) return c.json({ error: "maxRewardWei must be non-negative" }, 400);
+      maxRewardWei = v;
+    }
+    if (minRewardWei !== null && maxRewardWei !== null && minRewardWei > maxRewardWei) {
+      return c.json({ error: "minRewardWei must not exceed maxRewardWei" }, 400);
+    }
+    const list = snap.trials.filter((t) => {
+      if (status && t.status !== status) return false;
+      if (sponsor && t.sponsor.toLowerCase() !== sponsor.toLowerCase()) return false;
+      const reward = BigInt(t.rewardEth);
+      if (minRewardWei !== null && reward < minRewardWei) return false;
+      if (maxRewardWei !== null && reward > maxRewardWei) return false;
+      if (eligible === "1" || eligible === "true") {
+        if (t.status !== "settled" || t.verdict === "none") return false;
+      }
+      return true;
+    });
     const paged = paginate(list, (t) => t.id, page);
     return c.json({ trials: paged.items, counts: snap.counts, page: paged.page });
   });
@@ -1072,6 +1232,236 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
     }
     return c.json({ trial, runs });
   });
+
+  /* ------------------------------------------------------------------ */
+  /* Trial lifecycle state machine (blueprint §3–§4)                    */
+  /* ------------------------------------------------------------------ */
+
+  /**
+   * `POST /trials` — create a DRAFT trial.
+   *
+   * Requires SIWE authentication. The caller becomes the recorded sponsor.
+   * Organization membership is resolved server-side from the session; a
+   * client-supplied orgId is never trusted.
+   *
+   * The body holds the sponsor-editable spec. A DRAFT has no on-chain
+   * presence yet; `chainStatus` is null until `createTrial` is broadcast.
+   */
+  app.post("/trials", async (c) => {
+    const session = verifiedSessionFromContext(c);
+    if (!session) {
+      return c.json({ error: "unauthenticated", code: "no-credential" }, 401);
+    }
+    const sponsor = session.payload.address;
+
+    let body: { orgId?: string; spec?: unknown } = {};
+    try {
+      body = (await c.req.json()) as typeof body;
+    } catch {
+      return c.json({ error: "invalid body", code: "bad-request" }, 400);
+    }
+
+    const orgId = body.orgId ? String(body.orgId) : null;
+    const spec = body.spec;
+    if (
+      !spec ||
+      typeof spec !== "object" ||
+      typeof (spec as Record<string, unknown>).title !== "string" ||
+      typeof (spec as Record<string, unknown>).objective !== "string" ||
+      typeof (spec as Record<string, unknown>).rewardWei !== "string"
+    ) {
+      return c.json(
+        { error: "spec.title, spec.objective and spec.rewardWei are required", code: "bad-request" },
+        400,
+      );
+    }
+
+    const trial = createTrial({ sponsor, orgId, spec: spec as import("./trial-lifecycle.js").TrialSpec });
+    return c.json({ trial }, 201);
+  });
+
+  /**
+   * `POST /trials/:id/transition` — advance the trial lifecycle.
+   *
+   * Validates the requested transition against the state machine and the
+   * caller's authorization before mutating the record. Returns the updated
+   * record or a structured rejection.
+   */
+  app.post("/trials/:id/transition", async (c) => {
+    const id = positiveId(c.req.param("id"));
+    if (id === null) {
+      return c.json({ error: "trial id must be a positive integer", code: "bad-request" }, 400);
+    }
+
+    const trial = getTrial(id);
+    if (!trial) {
+      return c.json({ error: `trial ${id} not found`, code: "not-found" }, 404);
+    }
+
+    const session = verifiedSessionFromContext(c);
+    const wallet = c.req.header("x-crucible-wallet");
+
+    let body: { to?: unknown; sponsor?: unknown } = {};
+    try {
+      body = (await c.req.json()) as typeof body;
+    } catch {
+      return c.json({ error: "invalid body", code: "bad-request" }, 400);
+    }
+
+    const to = typeof body.to === "string" ? body.to : undefined;
+    const sponsor = typeof body.sponsor === "string" ? body.sponsor : null;
+
+    const validStatuses: TrialLifeStatus[] = [
+      "DRAFT", "REVIEW", "APPROVED", "SCHEDULED", "ACTIVE", "PAUSED",
+      "COMPLETED", "VERIFIED", "SETTLED", "ARCHIVED", "DISPUTED", "CANCELLED",
+    ];
+    if (!to || !validStatuses.includes(to as TrialLifeStatus)) {
+      return c.json(
+        { error: `valid 'to' is required: [${validStatuses.join(", ")}]`, code: "bad-request" },
+        400,
+      );
+    }
+
+    // Sponsor-gated transitions require a valid SIWE session.
+    // An expired or missing session is 401, not 403.
+    if (!session && (to === "CANCELLED" || to === "DRAFT")) {
+      return c.json({ error: "unauthenticated", code: "no-credential" }, 401);
+    }
+
+    const ctx: TransitionContext = {
+      principal: session
+        ? buildOrganisationPrincipal({
+            address: session.payload.address,
+            id: `eip155:${configuredChainId()}:${session.payload.address.toLowerCase()}`,
+            sessionId: session.sessionId,
+            authenticated: true,
+          })
+        : null,
+      walletAddress: wallet && /^0x[0-9a-fA-F]{40}$/.test(wallet) ? wallet : null,
+      sponsor,
+    };
+
+    const decision = validateTransition(trial, to as TrialLifeStatus, ctx);
+    if (!decision.allowed) {
+      return c.json({ error: decision.reason, code: decision.code }, 403);
+    }
+
+    const updated = applyTransition(trial, decision);
+    return c.json({ trial: updated, transition: { from: trial.status, to: updated.status } });
+  });
+
+  /**
+   * `POST /trials/:id/revision` — edit a published trial's spec.
+   *
+   * Published trial edits create a new revision; they cannot retroactively
+   * change started runs. Run-affecting fields (rewardWei, bondBps, deadlineSec,
+   * breakWindowSec) are immutable once a run has started.
+   */
+  app.post("/trials/:id/revision", async (c) => {
+    const id = positiveId(c.req.param("id"));
+    if (id === null) {
+      return c.json({ error: "trial id must be a positive integer", code: "bad-request" }, 400);
+    }
+
+    const trial = getTrial(id);
+    if (!trial) {
+      return c.json({ error: `trial ${id} not found`, code: "not-found" }, 404);
+    }
+
+    const session = verifiedSessionFromContext(c);
+    if (!session) {
+      return c.json({ error: "unauthenticated", code: "no-credential" }, 401);
+    }
+    const sponsor = session.payload.address;
+    if (trial.sponsor.toLowerCase() !== sponsor.toLowerCase()) {
+      return c.json(
+        { error: "only the trial sponsor may edit the spec", code: "not-sponsor" },
+        403,
+      );
+    }
+
+    let body: { spec?: unknown } = {};
+    try {
+      body = (await c.req.json()) as typeof body;
+    } catch {
+      return c.json({ error: "invalid body", code: "bad-request" }, 400);
+    }
+
+    const proposed = body.spec;
+    if (!proposed || typeof proposed !== "object") {
+      return c.json({ error: "spec is required", code: "bad-request" }, 400);
+    }
+
+    const decision = validateRevisionEdit(trial, proposed as Record<string, unknown>);
+    if (!decision.allowed) {
+      return c.json({ error: decision.reason, code: decision.code }, 403);
+    }
+
+    // Build the new spec: current revision spec overlaid with editable fields.
+    const currentSpec = trial.currentRevision?.spec ?? {
+      title: "",
+      objective: "",
+      rewardWei: "0",
+      bondBps: 0,
+      deadlineSec: 0,
+      breakWindowSec: 0,
+      specCID: null,
+      testsCID: null,
+    };
+    const nextSpec: import("./trial-lifecycle.js").TrialSpec = {
+      ...currentSpec,
+    };
+    for (const field of decision.editable) {
+      const value = (proposed as Record<string, unknown>)[field];
+      if (value !== undefined) {
+        switch (field) {
+          case "title":
+            nextSpec.title = value as string;
+            break;
+          case "objective":
+            nextSpec.objective = value as string;
+            break;
+          case "rewardWei":
+            nextSpec.rewardWei = value as string;
+            break;
+          case "bondBps":
+            nextSpec.bondBps = value as number;
+            break;
+          case "deadlineSec":
+            nextSpec.deadlineSec = value as number;
+            break;
+          case "breakWindowSec":
+            nextSpec.breakWindowSec = value as number;
+            break;
+          case "specCID":
+            nextSpec.specCID = (value as string) ?? null;
+            break;
+          case "testsCID":
+            nextSpec.testsCID = (value as string) ?? null;
+            break;
+          case "eligibility":
+            nextSpec.eligibility = value as string;
+            break;
+        }
+      }
+    }
+
+    const now = Date.now();
+    const revision: import("./trial-lifecycle.js").TrialRevision = {
+      revision: (trial.currentRevision?.revision ?? 0) + 1,
+      status: trial.status,
+      publishedAt: now,
+      spec: nextSpec,
+    };
+    trial.revisions.push(revision);
+    trial.currentRevision = revision;
+    trial.updatedAt = now;
+    persistTrial(trial);
+
+    return c.json({ trial, revision });
+  });
+
+  /* ------------------------------------------------------------------ */
 
   /**
    * The standing of one agent, in the caller's one call.
@@ -1810,11 +2200,8 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
    * gets nothing, and gets a 403 that says why rather than an empty list that
    * would read as "nobody has applied".
    *
-   * The address in `wallet` is *claimed*, not proved - see `OwnerGate`. The
-   * queue holds applicant addresses and amounts, which the applicants can see
-   * for themselves, so the exposure is a list of who else asked rather than a
-   * secret; the production gate is a signature, and this route says so rather
-   * than implying a protection it does not have.
+   * The wallet principal is derived from a server-verified SIWE session. A
+   * query-string wallet is never authority for this private owner view.
    */
   app.get("/faucet/applications", (c) => {
     const sponsorship = deps.sponsorship;
@@ -1825,8 +2212,9 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
       );
     }
 
-    const wallet = (c.req.query("wallet") ?? "").trim();
-    if (!sponsorship.owners.isOwner(wallet)) {
+    const session = verifiedSessionFromContext(c);
+    const wallet = session?.payload.address ?? "";
+    if (!wallet || !sponsorship.owners.isOwner(wallet)) {
       c.header("Cache-Control", "no-store");
       return c.json(
         {
@@ -1862,8 +2250,9 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
       return c.json({ error: "this host keeps no sponsorship queue", allocations: null }, 501);
     }
 
-    const wallet = (c.req.query("wallet") ?? "").trim();
-    if (!sponsorship.owners.isOwner(wallet)) {
+    const session = verifiedSessionFromContext(c);
+    const wallet = session?.payload.address ?? "";
+    if (!wallet || !sponsorship.owners.isOwner(wallet)) {
       c.header("Cache-Control", "no-store");
       return c.json(
         {
@@ -2081,7 +2470,7 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
                 at: log.blockTimestamp
                   ? new Date(Number(log.blockTimestamp) * 1000).toISOString()
                   : new Date().toISOString(),
-                chainRef: { caip2: "eip155:31337", tx: log.transactionHash, slotOrBlock: Number(log.blockNumber), commitment: "confirmed" },
+                chainRef: { caip2: `eip155:${configuredChainId()}`, tx: log.transactionHash, slotOrBlock: Number(log.blockNumber), commitment: "confirmed" },
               });
             }
           }
@@ -2108,6 +2497,44 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
    * no chain keys held by the API.
    */
   app.route("/forge", createForgeRoutes());
+
+  /**
+   * Organisation (tenancy) read routes — list/read the organisations a signed-in
+   * wallet belongs to. Membership is resolved server-side per request.
+   */
+  app.route("/orgs", createOrgRoutes());
+
+  /**
+   * Engram achievement + rewards routes (REW-001..003).
+   */
+  app.route("/engrams", createEngramRoutes());
+
+  /**
+   * Campaign and airdrop distributor routes (REW-003).
+   * Absent means the campaign surface answers 501 — a deployment without
+   * a distributor must not render an empty list that reads as "no campaigns".
+   */
+  if (opts.campaigns !== undefined && opts.campaigns !== null) {
+    app.route("/campaigns", createCampaignRoutes(opts.campaigns));
+  } else {
+    app.all("/campaigns/*", (c) =>
+      c.json({ error: "campaigns not configured on this host", code: "not-implemented" }, 501),
+    );
+  }
+
+  /**
+   * Usage metering and quota routes (Billing/Usage).
+   * Absent means the metering surface answers 501 — a deployment without
+   * a metering store must not render an empty usage list that reads as
+   * "no usage recorded".
+   */
+  if (opts.metering !== undefined && opts.metering !== null) {
+    app.route("/metering", createMeteringRoutes(opts.metering));
+  } else {
+    app.all("/metering/*", (c) =>
+      c.json({ error: "metering not configured on this host", code: "not-implemented" }, 501),
+    );
+  }
 
   app.notFound((c) => c.json({ error: "Lost slag. This page never left the crucible." }, 404));
 

@@ -8,7 +8,7 @@ import { WalletButton, WrongNetworkNotice } from "@/components/Wallet";
 import { EMPTY_WIZARD, validateWizard, type WizardValues } from "@/lib/wizard";
 import { buildCreateTrial, useTx } from "@/lib/useTx";
 import { useSnapshot } from "@/lib/useSnapshot";
-import { activeChain, deployment } from "@/lib/wagmi";
+import { activeChain, useDeployment } from "@/lib/wagmi";
 import { parseEth } from "@/lib/eth";
 import { OnrampButton } from "@/components/OnrampButton";
 import { SigningNotice } from "@/components/SigningNotice";
@@ -31,7 +31,7 @@ export default function NewTrialPage() {
   const { isConnected } = useAccount();
   // Read only for the chain clock the deadline is anchored on; the page renders nothing from it.
   const { chainNowMs } = useSnapshot();
-  const dep = deployment();
+  const dep = useDeployment();
   const tx = useTx();
 
   const set = (k: keyof WizardValues, v: string) => setValues((s) => ({ ...s, [k]: v }));

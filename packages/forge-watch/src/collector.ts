@@ -14,7 +14,7 @@
  */
 
 import type { ForgeWatchEvent } from "./events.js";
-import { RunSequencer, defaultSequencer, sequenceEvent } from "./sequencer.js";
+import { RunSequencer, defaultSequencer } from "./sequencer.js";
 
 /** A finding raised while an event passed through the collector. */
 export interface CollectorFinding {
@@ -40,7 +40,9 @@ export interface CollectorStats {
  * PostgreSQL outbox implementation keeps this exact interface.
  */
 export interface EventStore {
-  append(event: ForgeWatchEvent): Promise<void>;
+  /** Returns true for a new insert and false for an identical redelivery. */
+  append(event: ForgeWatchEvent): Promise<boolean>;
+  find(eventId: string): Promise<ForgeWatchEvent | null>;
   get(runId: string, sequence: number): Promise<ForgeWatchEvent | null>;
   list(runId: string): Promise<ForgeWatchEvent[]>;
 }
@@ -62,11 +64,27 @@ export interface CollectorOptions {
  */
 export class InMemoryEventStore implements EventStore {
   private readonly byRun = new Map<string, ForgeWatchEvent[]>();
+  private readonly byEventId = new Map<string, ForgeWatchEvent>();
 
-  async append(event: ForgeWatchEvent): Promise<void> {
+  async append(event: ForgeWatchEvent): Promise<boolean> {
+    const existing = this.byEventId.get(event.eventId);
+    if (existing) {
+      if (sameEvent(existing, event)) return false;
+      throw new Error(`event id conflict: ${event.eventId}`);
+    }
+
     const list = this.byRun.get(event.runId) ?? [];
+    if (list.some((stored) => stored.sequence === event.sequence)) {
+      throw new Error(`run sequence conflict: ${event.runId}:${event.sequence}`);
+    }
     list.push(event);
     this.byRun.set(event.runId, list);
+    this.byEventId.set(event.eventId, event);
+    return true;
+  }
+
+  async find(eventId: string): Promise<ForgeWatchEvent | null> {
+    return this.byEventId.get(eventId) ?? null;
   }
 
   async get(runId: string, sequence: number): Promise<ForgeWatchEvent | null> {
@@ -89,7 +107,6 @@ export class TelemetryCollector {
   private readonly onFinding?: (finding: CollectorFinding) => void;
   private accepted = 0;
   private rejected = 0;
-  private seenEventIds = new Set<string>();
 
   constructor(opts: CollectorOptions) {
     this.store = opts.store;
@@ -112,36 +129,53 @@ export class TelemetryCollector {
    * must already be validated by `parseForgeWatchEvent`; the collector re-validates
    * here because the boundary is where trust starts and ends.
    *
-   * Returns the assigned sequence. On a duplicate eventId the event is rejected
-   * (envelope uniqueness enforced downstream by PostgreSQL unique constraint;
-   * here by the seen set).
+   * Returns the assigned sequence. An identical redelivery is a no-op; reuse
+   * of an eventId with different canonical bytes is rejected as an integrity finding.
    */
   async accept(event: ForgeWatchEvent): Promise<number> {
-    if (this.seenEventIds.has(event.eventId)) {
+    const existing = await this.store.find(event.eventId);
+    if (existing) {
+      if (sameEvent(existing, event)) return existing.sequence;
       this.rejected += 1;
       this.recordFinding({
         kind: "duplicate",
         runId: event.runId,
         sequence: event.sequence,
         at: event.timestamp,
-        detail: `duplicate eventId ${event.eventId} for run ${event.runId}`,
+        detail: `event id ${event.eventId} was replayed with a different payload`,
       });
-      throw new Error(`duplicate eventId: ${event.eventId}`);
+      throw new Error(`event id conflict: ${event.eventId}`);
     }
 
-    const sequenced = sequenceEvent(event, this.sequencer);
-    this.seenEventIds.add(sequenced.eventId);
+    // The store must commit before the in-process cursor moves. Otherwise a
+    // database outage followed by a retry would be misclassified as a sequence
+    // regression even though the first delivery was never durable.
+    const inserted = await this.store.append(event);
+    if (!inserted) {
+      // Another request may have inserted this exact event between find() and
+      // append(). EventStore implementations enforce identity atomically.
+      return event.sequence;
+    }
 
-    // Record any gap/regression the sequencer found.
-    const before = this.sequencer.findingsSnapshot.length;
-    await this.store.append(sequenced);
     this.accepted += 1;
-
-    // Re-derive findings added by sequenceEvent above this instance's own
-    // tracking by diffing is not available here; sequenceEvent records on the
-    // shared sequencer. Surface them via onFinding on the next tick if the
-    // caller supplied one.
-    return sequenced.sequence;
+    const priorFindings = this.sequencer.findingsSnapshot.length;
+    const assigned = this.sequencer.next(event.runId, event.sequence);
+    const newFindings = this.sequencer.findingsSnapshot.slice(priorFindings);
+    for (const finding of newFindings) {
+      this.recordFinding({
+        kind: finding.kind,
+        runId: finding.runId,
+        sequence: "observed" in finding ? finding.observed : undefined,
+        expected: "expected" in finding ? finding.expected : undefined,
+        observed: finding.observed,
+        at: finding.at,
+        detail:
+          finding.kind === "gap"
+            ? `sequence gap: expected ${finding.expected}, observed ${finding.observed}`
+            : `sequence regression: previous ${finding.previous}, observed ${finding.observed}`,
+      });
+    }
+    return assigned;
   }
 
   /** Retrieve one event by run + sequence. */
@@ -161,16 +195,24 @@ export class TelemetryCollector {
     }
   }
 
-  /** Reset in-memory state (test/teardown only). */
+  /** Reset counters (test/teardown only). */
   __resetForTests(): void {
-    this.seenEventIds.clear();
     this.accepted = 0;
     this.rejected = 0;
-    if (this.store instanceof InMemoryEventStore) {
-      // nothing to clear: tests use a fresh store
-    }
   }
 }
 
 export const defaultStore = new InMemoryEventStore();
 export const defaultCollector = new TelemetryCollector({ store: defaultStore });
+
+
+/** Canonical equality for the flat, versioned telemetry envelope. */
+function sameEvent(a: ForgeWatchEvent, b: ForgeWatchEvent): boolean {
+  const canonical = (value: ForgeWatchEvent): string =>
+    JSON.stringify(
+      Object.fromEntries(
+        Object.entries(value).sort(([left], [right]) => left.localeCompare(right)),
+      ),
+    );
+  return canonical(a) === canonical(b);
+}

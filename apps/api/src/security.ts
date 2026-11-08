@@ -451,34 +451,113 @@ export function pathCeiling(path: string, ceilings: Record<string, number>): num
  * case; this is defence in depth for the case the server can see. The speech route
  * therefore checks the bytes it actually received as well.
  */
+/**
+ * Drain a chunked (no Content-Length) request body up to `ceiling` bytes.
+ *
+ * Returns the buffered bytes when the body fits, or null when it exceeds the ceiling.
+ * The stream is cancelled as soon as the ceiling is passed, so an oversized body
+ * never fully lands in memory.
+ */
+async function drainChunkedBody(
+  c: Context,
+  ceiling: number,
+): Promise<{ ok: true; bytes: Uint8Array } | { ok: false; size: number }> {
+  const body = c.req.raw.body;
+  if (!body) return { ok: true, bytes: new Uint8Array(0) };
+
+  const reader = body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+      total += value.byteLength;
+      if (total > ceiling) {
+        await reader.cancel();
+        return { ok: false, size: total };
+      }
+      chunks.push(value);
+    }
+  } catch {
+    return { ok: false, size: total };
+  }
+  return { ok: true, bytes: new Uint8Array(Buffer.concat(chunks.map((c) => Buffer.from(c)))) };
+}
+
 export function bodyLimit(
   cfg: Pick<SecurityConfig, "maxBodyBytes">,
   pathCeilings: Record<string, number> = {},
 ): MiddlewareHandler {
   return async function limit(c: Context, next: Next) {
     const announced = c.req.header("content-length");
-    if (!announced) return next();
+    const ceiling = pathCeiling(c.req.path, pathCeilings) ?? cfg.maxBodyBytes;
 
-    const size = Number(announced);
-    if (!Number.isFinite(size) || size < 0) {
-      return c.json({ error: "malformed Content-Length" }, 400);
+    if (announced) {
+      const size = Number(announced);
+      if (!Number.isFinite(size) || size < 0) {
+        return c.json({ error: "malformed Content-Length" }, 400);
+      }
+      if (size > ceiling) {
+        return c.json(
+          {
+            error: `request body too large: ${size} bytes exceeds the ${ceiling} byte limit`,
+            maxBytes: ceiling,
+          },
+          413,
+        );
+      }
+      const isRead = c.req.method === "GET" || c.req.method === "HEAD";
+      if (isRead && size > 0) {
+        return c.json(
+          {
+            error: `a read request must not carry a body (${size} bytes announced; the limit for GET and HEAD is 0)`,
+          },
+          413,
+        );
+      }
+      return next();
     }
 
-    const ceiling = pathCeiling(c.req.path, pathCeilings) ?? cfg.maxBodyBytes;
-    if (size > ceiling) {
+    // No Content-Length: chunked or streaming body. Consume and bound it so an
+    // announceless body cannot bypass the ceiling and exhaust memory. Buffer the
+    // bytes and re-present them as the request body so downstream handlers still
+    // see the same payload (c.req.json() works unchanged).
+    const drained = await drainChunkedBody(c, ceiling);
+    if (!drained.ok) {
       return c.json(
-        { error: `request body too large: ${size} bytes exceeds the ${ceiling} byte limit`, maxBytes: ceiling },
+        {
+          error: `request body too large: exceeds the ${ceiling} byte limit`,
+          maxBytes: ceiling,
+        },
         413,
       );
     }
 
     const isRead = c.req.method === "GET" || c.req.method === "HEAD";
-    if (isRead && size > 0) {
+    if (isRead && drained.bytes.length > 0) {
       return c.json(
-        { error: `a read request must not carry a body (${size} bytes announced; the limit for GET and HEAD is 0)` },
+        {
+          error: `a read request must not carry a body (${drained.bytes.length} bytes; the limit for GET and HEAD is 0)`,
+        },
         413,
       );
     }
+
+    // Replace the request so downstream c.req.json() reads from the buffered body
+    // instead of re-consuming the already-drained stream. Preserve the original
+    // signal so Hono can still detect client disconnects (SSE streaming depends on it).
+    const url = c.req.url;
+    const headers = new Headers(c.req.header());
+    headers.delete("content-length");
+    headers.set("content-length", String(drained.bytes.length));
+    c.req.raw = new Request(url, {
+      method: c.req.method,
+      headers,
+      body: drained.bytes.length ? drained.bytes : null,
+      signal: c.req.raw.signal,
+    });
 
     return next();
   };

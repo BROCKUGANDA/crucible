@@ -563,6 +563,19 @@ jobs:
             fail=1
           fi
 
+          # The served bundle: a fresh provision that baked a developer's .env points every
+          # visitor's browser at their own localhost. The probe walks every _next chunk and
+          # fails if any of the loopback defaults from .env.example are inlined, and asserts
+          # /api/stream arrives as text/event-stream rather than text/html.
+          if probe_out=$(node deploy/edge/public-origin/probe.mjs --url https://crucible.svalley.tech 2>&1); then
+            echo "$probe_out"
+            echo "  ok    the public bundle carries no laptop origin and /api/stream is a stream"
+          else
+            echo "$probe_out"
+            echo "  FAIL  the public bundle was built for a laptop, not for the public origin"
+            fail=1
+          fi
+
           if [ "$fail" != "0" ]; then
             echo "::error::the public surface is not what the deployment claims"
             exit 1

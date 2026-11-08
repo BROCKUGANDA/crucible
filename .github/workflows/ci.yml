@@ -308,7 +308,7 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
 
       - run: npm ci
@@ -394,10 +394,25 @@ jobs:
             --workspace @crucible/web \
             --workspace @crucible/datasets \
             --workspace @crucible/eval \
+            --workspace @crucible/engrams \
             --workspace @crucible/registry \
             --workspace @crucible/site-index \
             --workspace @crucible/funder \
             --workspace @crucible/fork-host
+
+      - name: start ephemeral redis + postgres for server-backed tests
+        run: |
+          set -euo pipefail
+          docker rm -f crucible-ci-redis crucible-ci-pg >/dev/null 2>&1 || true
+          docker run -d --name crucible-ci-redis -p 127.0.0.1:16379:6379 redis:7-alpine >/dev/null
+          docker run -d --name crucible-ci-pg -e POSTGRES_PASSWORD=ci -e POSTGRES_DB=crucible -p 127.0.0.1:15432:5432 postgres:16-alpine >/dev/null
+          for _ in $(seq 1 30); do
+            if docker exec crucible-ci-redis redis-cli ping >/dev/null 2>&1 && docker exec crucible-ci-pg pg_isready -U postgres >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+          echo "REDIS_URL=redis://127.0.0.1:16379" >> "$GITHUB_ENV"
+          echo "DATABASE_URL=postgres://postgres:ci@127.0.0.1:15432/crucible" >> "$GITHUB_ENV"
+          echo "started redis + postgres"
 
       - name: test (every workspace)
         run: |
@@ -421,6 +436,7 @@ jobs:
             --workspace @crucible/web \
             --workspace @crucible/datasets \
             --workspace @crucible/eval \
+            --workspace @crucible/engrams \
             --workspace @crucible/registry \
             --workspace @crucible/site-index \
             --workspace @crucible/funder \
@@ -432,6 +448,11 @@ jobs:
       # node, which is the failure this step exists to make impossible: it runs the refusal
       # tests AND the provision/Caddyfile/compose wiring tests that read the executed
       # statements in deploy/edge/provision.sh.
+      - name: cleanup ephemeral redis + postgres
+        if: always()
+        run: |
+          docker rm -f crucible-ci-redis crucible-ci-pg >/dev/null 2>&1 || true
+
       - name: edge (rpc gate refusal + deployment wiring)
         run: npm run test:edge
 
@@ -456,7 +477,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
       - run: npm ci
       - run: npm run build:libs

@@ -1,4 +1,5 @@
 import { SITE_NAME, SITE_URL } from "@/lib/site";
+import { activeChain, CHAIN_IDS, ZERO_ADDRESS, deployment } from "@/lib/networks";
 
 /**
  * The published list of addresses CRUCIBLE's own records come from.
@@ -16,22 +17,25 @@ import { SITE_NAME, SITE_URL } from "@/lib/site";
  * valid address is how an allowlist silently becomes a denylist.
  */
 
-const ADDRESS = /^0x[0-9a-fA-F]{40}$/;
-
-function published(value: string | undefined): string | null {
-  return value && ADDRESS.test(value.trim()) ? value.trim() : null;
-}
-
 export function GET() {
-  const trials = published(process.env.NEXT_PUBLIC_TRIALS_ADDRESS);
-  const alloy = published(process.env.NEXT_PUBLIC_ALLOY_ADDRESS);
+  /**
+   * Resolved through `deployment()` so this record reads the same per-network addresses
+   * the wallet signs with — a mainnet build that publishes its generic fallback address
+   * here while the site signs against `NEXT_PUBLIC_MAINNET_*` would publish an allowlist
+   * for contracts that never emitted a record. Zero address means unset or malformed;
+   * both publish as `null` (see the comment above).
+   */
+  const dep = deployment();
+  const trials = dep.trials === ZERO_ADDRESS ? null : dep.trials;
+  const alloy = dep.alloy === ZERO_ADDRESS ? null : dep.alloy;
+  const chain = activeChain();
 
   const body = {
     product: SITE_NAME,
     site: SITE_URL,
     chain: {
-      name: process.env.NEXT_PUBLIC_CHAIN ?? "foundry",
-      chainId: Number(process.env.NEXT_PUBLIC_CHAIN_ID ?? 31337),
+      name: chain,
+      chainId: CHAIN_IDS[chain],
     },
     contracts: {
       trials,
@@ -50,7 +54,12 @@ export function GET() {
       receipt: `VerificationReceiptMinted from the trials contract above; the receipt contract is trials.verificationReceipt()`,
     },
     caveats: [
-      "This is a demonstration deployment on a local Anvil chain (id 31337). Nothing here is a financial or regulatory control.",
+      /** The money sentence is network-honest: a mainnet record must not call itself a demo. */
+      chain === "foundry"
+        ? "This is a demonstration deployment on a local chain run by this deployment. The ETH there is worth nothing, and nothing here is a financial or regulatory control."
+        : chain === "mainnet"
+          ? "This deployment runs on Ethereum mainnet. Transactions move real value; nothing here is a financial or regulatory control."
+          : "This deployment runs on the Sepolia test network. The ETH there is test ETH worth nothing, and nothing here is a financial or regulatory control.",
       "The addresses are baked at build time, so a redeploy to a new chain changes them; this file is regenerated with the deployment.",
       "A credential is one per agent and never moves. Its tier, wins, survivals and slashes are the CURRENT identity epoch's: when the ERC-8004 identity behind an agent is observed in new hands the window starts again (ADR-0012), while epoch, lifetimeWins and lifetimeSlashes do not — all four are in the credential's own tokenURI, so a reset reads as a reset without trusting this API.",
       "Standing also fades on the chain's clock: it loses half its weight after 45 days without work (standing_half_life_days: 45 in params/crucible.params.json), with the two operands this deployment does not measure (suite difficulty, sponsor independence) reported as assumptions rather than folded in.",

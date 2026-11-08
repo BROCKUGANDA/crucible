@@ -560,6 +560,89 @@
   background: var(--bg2);
 }
 
+/* ── network switcher ───────────────────────────────────────── */
+
+/* The header's environment chip is the summary of a disclosure, and the panel lists the
+   networks the wallet can move to. Same disclosure mechanics as chrome__more: one
+   keyboard stop, closes on outside click, closes after a successful switch. */
+.chrome__net {
+  position: relative;
+}
+
+.chrome__net-summary {
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+  display: inline-flex;
+}
+
+.chrome__net-summary::-webkit-details-marker {
+  display: none;
+}
+
+.chrome__net-summary:hover .chrome__env,
+.chrome__net[open] .chrome__env {
+  color: var(--text);
+  border-color: var(--gold);
+}
+
+.chrome__net-panel {
+  position: absolute;
+  top: calc(100% + 10px);
+  left: 0;
+  z-index: 70;
+  /* Wide enough for "Ethereum Mainnet" beside "Reads only" without wrapping or clipping. */
+  min-width: 250px;
+  display: grid;
+  gap: 2px;
+  padding: 8px;
+  background: var(--bg0);
+  border: 1px solid var(--bg2);
+  border-radius: 12px;
+  box-shadow: 0 18px 40px rgb(0 0 0 / 45%);
+}
+
+.chrome__net-item {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 12px;
+  border-radius: 8px;
+  color: var(--dim);
+  text-align: left;
+}
+
+.chrome__net-item:hover {
+  color: var(--text);
+  background: var(--bg2);
+}
+
+.chrome__net-item[aria-current="true"] {
+  color: var(--text);
+  background: var(--bg2);
+}
+
+.chrome__net-item:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.chrome__net-name {
+  white-space: nowrap;
+}
+
+.chrome__net-status {
+  font-size: 0.72rem;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.chrome__net-failure {
+  margin: 4px 4px 0;
+  font-size: 0.75rem;
+}
+
 /* ── menu button (mobile) ───────────────────────────────────── */
 
 /* The menu button and the inline nav are the same control at two widths. On desktop

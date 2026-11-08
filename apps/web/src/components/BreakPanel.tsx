@@ -8,7 +8,7 @@ import { formatWei, parseEth } from "@/lib/eth";
 import { WrongNetworkNotice, WalletButton } from "@/components/Wallet";
 import { PourConfirm } from "@/components/Modal";
 import { TxStates } from "@/components/Chrome";
-import { deployment } from "@/lib/wagmi";
+import { useDeployment } from "@/lib/wagmi";
 import { guardPastedText } from "@/lib/safety";
 
 /**
@@ -39,7 +39,7 @@ export function BreakPanel({
   /** ETH-denimited bond, for showing what is at stake */
   bondEth: string;
 }) {
-  const dep = deployment();
+  const dep = useDeployment();
   const { isConnected } = useAccount();
   const tx = useTx();
 

@@ -11,7 +11,9 @@ import { FrenchyWidget } from "@/components/FrenchyWidget";
 import { SeedPhrasePromise } from "@/components/SeedPhrasePromise";
 import { SponsorshipBadge } from "@/components/SponsorshipBadge";
 import { Modal } from "@/components/Modal";
-import { environmentBadge, explorerTxUrl, activeChain } from "@/lib/wagmi";
+import { activeChain, activeChainDef, chainFromId, chainLabel, CHAIN_IDS, explorerTxUrl } from "@/lib/wagmi";
+import { NetworkMenu } from "@/components/NetworkMenu";
+import { useAuthSession } from "@/lib/auth-session";
 
 interface NavItem {
   href: string;
@@ -52,9 +54,8 @@ export function Chrome({ children }: { children: ReactNode }) {
   const [sheet, setSheet] = useState(false);
   const moreRef = useRef<HTMLDetailsElement | null>(null);
   const pathname = usePathname();
-  const env = environmentBadge();
-  const { address } = useAccount();
-  const isConnected = Boolean(address);
+  const auth = useAuthSession();
+  const canUsePrivateNavigation = auth.canUsePrivateResources;
 
   // A route change is an answer to the question the menu was asked. Leaving it open would
   // strand the next page behind a scrim, or leave a dropdown hanging over the new page.
@@ -63,9 +64,10 @@ export function Chrome({ children }: { children: ReactNode }) {
     if (moreRef.current) moreRef.current.open = false;
   }, [pathname]);
 
-  // Auth-gated nav items: only show when connected
-  const visiblePrimary = NAV_PRIMARY.filter((item) => !item.auth || isConnected);
-  const visibleMore = NAV_MORE.filter((item) => !item.auth || isConnected);
+  // Protected navigation follows a server-verified SIWE session, not wagmi connection state.
+  // Wallet-bound writes still require the connected wallet to match the session principal.
+  const visiblePrimary = NAV_PRIMARY.filter((item) => !item.auth || canUsePrivateNavigation);
+  const visibleMore = NAV_MORE.filter((item) => !item.auth || canUsePrivateNavigation);
   const visibleNav = [...visiblePrimary, ...visibleMore];
 
   return (
@@ -79,14 +81,12 @@ export function Chrome({ children }: { children: ReactNode }) {
           <Link href="/" aria-label="Crucible — home" className="wordmark chrome__mark">
             CRUCIBLE
           </Link>
-          {/* Which money this is, said before the user has to ask. A demo that cannot name its
-              own network is a demo the judge has to audit. */}
-          <span className="chip chrome__env chrome__env--wide" title={env.title}>
-            {env.label}
-          </span>
-          <span className="chip chrome__env chrome__env--compact" title={env.title}>
-            {env.compact}
-          </span>
+          {/* Which money this is, said before the user has to ask — and now also the way
+              to change it. The chip follows the connected wallet's network at runtime; the
+              menu switches it through the wallet itself. A demo that cannot name its own
+              network is a demo the judge has to audit; one that cannot leave the wrong
+              network strands the user there. */}
+          <NetworkMenu />
         </div>
          <nav aria-label="Primary" className="chrome__nav">
            <div className="chrome__nav-track">
@@ -240,14 +240,23 @@ export function TxStates({
  * that does not have one.
  */
 export function TxLink({ hash }: { hash: string }) {
-  const url = explorerTxUrl(hash);
+  // The explorer named must be the one the transaction actually landed on — the wallet's
+  // chain, not the build default. A Sepolia link on a mainnet hash is worse than none:
+  // it looks like verification (see explorerTxUrl).
+  const { chainId } = useAccount();
+  const network = chainId === undefined ? activeChain() : chainFromId(chainId);
+  const url = network ? explorerTxUrl(hash, activeChainDef(network)) : null;
   const label = `${hash.slice(0, 10)}…${hash.slice(-6)}`;
 
   if (!url) {
     return (
       <span className="mono tx-link">
         {label}{" "}
-        <span className="tx-link__note">({activeChain()} chain — no explorer)</span>
+        <span className="tx-link__note">
+          {network
+            ? `(${chainLabel(CHAIN_IDS[network])} chain — no explorer)`
+            : "(no explorer for this network)"}
+        </span>
       </span>
     );
   }

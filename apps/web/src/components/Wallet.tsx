@@ -6,8 +6,8 @@ import { useEffect, useState } from "react";
 import {
   activeChain,
   binanceProvider,
-  CHAIN_IDS,
   chainForWallets,
+  chainLabel,
   deployment,
   rainbowKitProjectId,
   shortAddress,
@@ -187,12 +187,7 @@ export function WrongNetworkNotice({ requiredChainId }: { requiredChainId: numbe
   // Nothing to check until a wallet is connected.
   if (chainId === undefined || chainId === requiredChainId) return null;
 
-  const name =
-    requiredChainId === CHAIN_IDS.sepolia
-      ? "Sepolia"
-      : requiredChainId === CHAIN_IDS.foundry
-        ? "Anvil"
-        : `chain ${requiredChainId}`;
+  const name = chainLabel(requiredChainId);
 
   return (
     <div role="alert" className="surface net-alert">

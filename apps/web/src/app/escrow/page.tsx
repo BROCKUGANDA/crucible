@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Chrome } from "@/components/Chrome";
 import { checkAddressTarget } from "@/lib/safety";
-import { deployment } from "@/lib/wagmi";
+import { useDeployment } from "@/lib/wagmi";
 import { useAccount } from "wagmi";
 
 /**
@@ -19,7 +19,7 @@ import { useAccount } from "wagmi";
 export default function EscrowLandingPage() {
   const router = useRouter();
   const { address, isConnected, chainId } = useAccount();
-  const dep = deployment();
+  const dep = useDeployment();
   const [value, setValue] = useState("");
   const [touched, setTouched] = useState(false);
 

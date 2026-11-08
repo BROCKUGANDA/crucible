@@ -13,6 +13,28 @@ const base = {
 } as const;
 
 describe("per-run sequence integrity", () => {
+  it("fills an observed gap without rewinding the contiguous cursor", () => {
+    const seq = new RunSequencer();
+
+    expect(seq.next("run-order", 1)).toBe(1);
+    expect(seq.next("run-order", 3)).toBe(3);
+    expect(seq.next("run-order", 2)).toBe(2);
+    expect(seq.next("run-order", 4)).toBe(4);
+
+    expect(seq.findingsSnapshot.filter((finding) => finding.kind === "gap")).toHaveLength(1);
+    expect(seq.findingsSnapshot.filter((finding) => finding.kind === "regression")).toHaveLength(0);
+  });
+
+  it("records a regression without moving the cursor backwards", () => {
+    const seq = new RunSequencer();
+
+    expect(seq.next("run-regression", 1)).toBe(1);
+    expect(seq.next("run-regression", 1)).toBe(1);
+    expect(seq.next("run-regression", 2)).toBe(2);
+
+    expect(seq.findingsSnapshot.filter((finding) => finding.kind === "regression")).toHaveLength(1);
+    expect(seq.findingsSnapshot.filter((finding) => finding.kind === "gap")).toHaveLength(0);
+  });
   it("assigns monotonic sequences starting at 1", () => {
     const seq = new RunSequencer();
     const a = sequenceEvent({ ...base, sequence: 1 }, seq);

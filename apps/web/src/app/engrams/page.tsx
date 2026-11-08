@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { Chrome } from "@/components/Chrome";
 import { EngramGlyph } from "@/components/Glyphs";
 import { useSnapshot } from "@/lib/useSnapshot";
+import { API_BASE } from "@/lib/apiBase";
+import { useAccount } from "wagmi";
 
 const COMMON = ["Forgeborn", "Quenched", "Tempered", "Anvil-marked"];
 const RARE = ["Slag-walker", "Heat-keeper", "Cold-forged", "Ember-touched"];
@@ -59,32 +61,33 @@ function formatMs(ms: number): string {
   return h > 0 ? `${h}h ${m}m` : `${m}m`;
 }
 
-// Not a credential: this is the localStorage slot the vault reads and writes. The name is
-// `..._ID` rather than `..._KEY` because gitleaks' generic-api-key rule matches a
-// `*_KEY = "<entropy>"` assignment, and this literal is published in commit 75c4643 - so
-// the history scan reddened every branch until it was named in .gitleaks.toml.
-const VAULT_STORAGE_ID = "crucible.engram.vault.v1";
-
-interface VaultState {
-  opened: number[];
-  streak: number;
-  pity: number; // opens since last legendary
-  held: number[]; // engrams held (not yet opened)
+interface Entitlement {
+  entitlementId: string;
+  recipient: string;
+  ruleId: string;
+  ruleVersion: number;
+  tokenId: number;
+  amount: number;
+  eventId: string;
+  evidenceRef: string;
+  issuedAt: number;
 }
 
-function loadVault(): VaultState {
+const VAULT_STORAGE_ID = "crucible.engram.vault.v1";
+
+function loadOpened(): number[] {
   try {
     const raw = localStorage.getItem(VAULT_STORAGE_ID);
-    if (raw) return JSON.parse(raw) as VaultState;
+    if (raw) return (JSON.parse(raw) as { opened: number[] }).opened ?? [];
   } catch {
     /* ignore */
   }
-  return { opened: [], streak: 0, pity: 0, held: [] };
+  return [];
 }
 
-function saveVault(v: VaultState) {
+function saveOpened(opened: number[]) {
   try {
-    localStorage.setItem(VAULT_STORAGE_ID, JSON.stringify(v));
+    localStorage.setItem(VAULT_STORAGE_ID, JSON.stringify({ opened }));
   } catch {
     /* ignore */
   }
@@ -104,8 +107,11 @@ function saveVault(v: VaultState) {
  */
 export default function EngramsPage() {
   const snapshot = useSnapshot();
+  const { address } = useAccount();
   const [now, setNow] = useState(() => Date.now());
-  const [vault, setVault] = useState<VaultState>(() => loadVault());
+  const [entitlements, setEntitlements] = useState<Entitlement[]>([]);
+  const [opened, setOpened] = useState<number[]>(() => loadOpened());
+  const [apiError, setApiError] = useState<string | null>(null);
   const [justOpened, setJustOpened] = useState<number | null>(null);
 
   useEffect(() => {
@@ -114,48 +120,64 @@ export default function EngramsPage() {
   }, []);
 
   useEffect(() => {
-    saveVault(vault);
-  }, [vault]);
+    saveOpened(opened);
+  }, [opened]);
+
+  useEffect(() => {
+    if (!address) {
+      setEntitlements([]);
+      setApiError(null);
+      return;
+    }
+    let cancelled = false;
+    fetch(`${API_BASE}/engrams/${encodeURIComponent(address)}`, {
+      credentials: "omit",
+      headers: { Accept: "application/json" },
+    })
+      .then(async (res) => {
+        if (!res.ok) throw new Error(`API ${res.status}`);
+        return (await res.json()) as { entitlements?: Entitlement[] };
+      })
+      .then((data) => {
+        if (!cancelled) setEntitlements(data.entitlements ?? []);
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setApiError(err.message);
+          setEntitlements([]);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [address]);
 
   const ev = eventState(now);
   const settled = (snapshot.data?.trials ?? []).filter((t: any) => t.status === "settled");
-
-  // Mint engrams for newly settled trials the visitor hasn't seen.
-  const knownIds = new Set([...vault.opened, ...vault.held]);
-  const newEngrams = settled.filter((t: any) => !knownIds.has(t.id));
+  const knownTokenIds = new Set(entitlements.map((e) => e.tokenId));
+  const newEngrams = settled.filter((t: any) => !knownTokenIds.has(t.id));
   if (newEngrams.length > 0 && typeof window !== "undefined") {
-    // Defer state update to avoid render-phase setState warning.
     setTimeout(() => {
-      setVault((prev) => {
-        const held = [...prev.held];
+      setOpened((prev) => {
+        const held = [...prev];
         for (const t of newEngrams) if (!held.includes(t.id)) held.push(t.id);
-        return { ...prev, held };
+        return held;
       });
     }, 0);
   }
 
+  const ownedIds = [...new Set([...entitlements.map((e) => e.tokenId), ...opened])];
+  const heldEngrams = ownedIds
+    .filter((id) => !opened.includes(id))
+    .map((id) => classify(id, ev.active));
+  const openedEngrams = opened.map((id) => classify(id, false));
+
   function openEngram(id: number) {
-    const eng = classify(id, ev.active);
-    setVault((prev) => {
-      const opened = prev.opened.includes(id) ? prev.opened : [...prev.opened, id];
-      const held = prev.held.filter((x) => x !== id);
-      const streak = prev.streak + 1;
-      const pity = eng.rarity === "legendary" ? 0 : prev.pity + 1;
-      return { opened, streak, pity, held };
-    });
+    if (opened.includes(id)) return;
+    setOpened((prev) => [...prev, id]);
     setJustOpened(id);
     setTimeout(() => setJustOpened(null), 1200);
   }
-
-  function holdEngram(id: number) {
-    setVault((prev) => {
-      if (prev.held.includes(id)) return prev;
-      return { ...prev, held: [...prev.held, id] };
-    });
-  }
-
-  const heldEngrams = vault.held.map((id) => classify(id, ev.active));
-  const openedEngrams = vault.opened.map((id) => classify(id, false));
 
   return (
     <Chrome>
@@ -175,26 +197,24 @@ export default function EngramsPage() {
         </p>
       </div>
 
-      {/* Stats */}
       <div className="surface detail-panel">
         <p className="hint">
-          Streak: <strong>{vault.streak}</strong> · Pity counter:{" "}
-          <strong>{vault.pity}</strong> opens since last legendary · Held:{" "}
-          <strong>{vault.held.length}</strong> · Opened:{" "}
-          <strong>{vault.opened.length}</strong>
+          Held: <strong>{heldEngrams.length}</strong> · Opened:{" "}
+          <strong>{openedEngrams.length}</strong> · Entitlements:{" "}
+          <strong>{entitlements.length}</strong>
         </p>
-        {vault.pity >= 3 && (
-          <p className="hint" data-tone="gold">
-            Pity ready — your next open is guaranteed rare or better.
-          </p>
-        )}
       </div>
+
+      {!address ? (
+        <p className="hint hint--block">Connect a wallet to see your on-chain entitlements.</p>
+      ) : apiError ? (
+        <p className="hint hint--block">Entitlements unavailable ({apiError}). Showing local vault only.</p>
+      ) : null}
 
       <p className="hint hint--block">
         Settled trials mint a sealed engram. Open now for the base roll, or hold
-        for a Surge upgrade. No money moves here — the engram is a souvenir of a
-        verdict that already paid out, and every roll is deterministic from the
-        trial id, so two holders never disagree.
+        for a Surge upgrade. Ownership comes from the API (verified
+        entitlements); open/hold state is kept locally.
       </p>
 
       {snapshot.loading ? (
@@ -227,14 +247,6 @@ export default function EngramsPage() {
                         onClick={() => openEngram(eng.id)}
                       >
                         {justOpened === eng.id ? "Decrypting…" : "Open"}
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn-ghost"
-                        onClick={() => holdEngram(eng.id)}
-                        disabled
-                      >
-                        Held
                       </button>
                     </div>
                   </li>

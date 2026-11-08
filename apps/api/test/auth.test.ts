@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { Hono } from "hono";
 import { privateKeyToAccount } from "viem/accounts";
 import { keccak256, toBytes } from "viem";
 import { createApp } from "../src/app.js";
+import { requireIdentityState, type IdentityState } from "../src/auth.js";
 
 /**
  * The auth surface, exercised end to end through `app.request` — the same way the
@@ -103,7 +105,7 @@ describe("auth: nonce issuance", () => {
       // @ts-expect-error — a stream body is exactly what is being tested.
       duplex: "half",
     });
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(413);
   });
 });
 
@@ -261,5 +263,148 @@ describe("auth: session lifecycle", () => {
     const logout = await app.request("/auth/logout", { method: "POST" });
     expect(logout.status).toBe(200);
     expect(logout.headers.get("Set-Cookie")).toContain("Max-Age=0");
+  });
+});
+
+describe("identity: seven-state model", () => {
+  it("resolves ANONYMOUS when no session and no wallet header", async () => {
+    const res = await app.request("/snapshot");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("X-Crucible-Identity-State")).toBe("ANONYMOUS");
+  });
+
+  it("resolves WALLET_CONNECTED when a wallet header is present without a session", async () => {
+    const res = await app.request("/snapshot", {
+      headers: { "x-crucible-wallet": `0x${"aa".repeat(20)}` },
+    });
+    expect(res.status).toBe(200);
+    expect(res.headers.get("X-Crucible-Identity-State")).toBe("WALLET_CONNECTED");
+  });
+
+  it("rejects a malformed wallet header and falls back to ANONYMOUS", async () => {
+    const res = await app.request("/snapshot", {
+      headers: { "x-crucible-wallet": "0x1234" },
+    });
+    expect(res.status).toBe(200);
+    expect(res.headers.get("X-Crucible-Identity-State")).toBe("ANONYMOUS");
+  });
+
+  it("resolves SIWE_AUTHENTICATED when a valid session cookie is present", async () => {
+    const { message, nonce, cookie } = await issueNonce(ADDRESS);
+    const signature = await account.signMessage({ message });
+    const verified = await app.request("/auth/verify", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ address: ADDRESS, nonce, signature }),
+    });
+    expect(verified.status).toBe(200);
+    const session = verified.headers.get("Set-Cookie")!.split(";")[0];
+
+    const res = await app.request("/snapshot", { headers: { cookie: session } });
+    expect(res.status).toBe(200);
+    expect(res.headers.get("X-Crucible-Identity-State")).toBe("SIWE_AUTHENTICATED");
+  });
+
+  it("SIWE session beats wallet header — the session is the stronger state", async () => {
+    const { message, nonce, cookie } = await issueNonce(ADDRESS);
+    const signature = await account.signMessage({ message });
+    const verified = await app.request("/auth/verify", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ address: ADDRESS, nonce, signature }),
+    });
+    expect(verified.status).toBe(200);
+    const session = verified.headers.get("Set-Cookie")!.split(";")[0];
+
+    const res = await app.request("/snapshot", {
+      headers: {
+        cookie: session,
+        "x-crucible-wallet": `0x${"bb".repeat(20)}`,
+      },
+    });
+    expect(res.status).toBe(200);
+    expect(res.headers.get("X-Crucible-Identity-State")).toBe("SIWE_AUTHENTICATED");
+  });
+});
+
+describe("identity: requireIdentityState middleware", () => {
+  it("permits callers at or above the required state", async () => {
+    const app = new Hono();
+    app.use("*", requireIdentityState("SIWE_AUTHENTICATED"));
+    app.get("/", (c) => c.json({ ok: true }));
+
+    const res = await app.request("/", {
+      headers: { cookie: "crucible_session=invalid.token" },
+    });
+    // An unverifiable cookie resolves to ANONYMOUS, which is below SIWE_AUTHENTICATED.
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.error).toBe("insufficient_identity_state");
+    expect(body.required).toBe("SIWE_AUTHENTICATED");
+    expect(body.current).toBe("ANONYMOUS");
+  });
+
+  it("permits ANONYMOUS when no minimum is required", async () => {
+    const app = new Hono();
+    app.use("*", requireIdentityState("ANONYMOUS"));
+    app.get("/", (c) => c.json({ ok: true }));
+
+    const res = await app.request("/");
+    expect(res.status).toBe(200);
+  });
+});
+
+/**
+ * The race the async nonce store reopened, and the atomic consume that closes it.
+ *
+ * The route reads the challenge, awaits signature recovery (real crypto, real milliseconds), then
+ * marks it consumed. With a process-local Map the mark was synchronous and could not interleave;
+ * with Redis it became get → check → set across two round trips, so two concurrent requests carrying
+ * one captured `{address, nonce, signature}` both read an unconsumed record and both minted a
+ * session. That is the replay the store exists to prevent.
+ *
+ * The assertion is on the *count of sessions*, not on a status code: a fix that returned 401 for
+ * both requests would pass a weaker test and break sign-in entirely.
+ */
+describe("auth: one signature, one session, even concurrently", () => {
+  it("mints exactly one session when the same verify arrives twice at once", async () => {
+    const { message, nonce, cookie } = await issueNonce(ADDRESS);
+    const signature = await account.signMessage({ message });
+    const request = () =>
+      app.request("/auth/verify", {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie },
+        body: JSON.stringify({ address: ADDRESS, nonce, signature }),
+      });
+
+    const [a, b] = await Promise.all([request(), request()]);
+    const bodies = await Promise.all([a.json(), b.json()]);
+    const minted = [a, b].filter((res, i) => res.status === 200 && (bodies[i] as { replayed?: boolean }).replayed === false);
+    const refused = [a, b].filter((res) => res.status === 401);
+
+    expect(minted).toHaveLength(1);
+    expect(refused).toHaveLength(1);
+    // And the refusal names the reason rather than looking like a bad signature.
+    const refusedBody = bodies[[a, b].findIndex((res) => res.status === 401)] as { error: string };
+    expect(refusedBody.error).toBe("challenge_used");
+  });
+
+  it("still replays a sequential retry with the original cookie", async () => {
+    const { message, nonce, cookie } = await issueNonce(ADDRESS);
+    const signature = await account.signMessage({ message });
+    const request = () =>
+      app.request("/auth/verify", {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie },
+        body: JSON.stringify({ address: ADDRESS, nonce, signature }),
+      });
+
+    const first = await request();
+    const second = await request();
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    expect((await second.json()).replayed).toBe(true);
+    // Byte-identical: a replay must not mint a second credential with a different expiry.
+    expect(second.headers.get("Set-Cookie")).toBe(first.headers.get("Set-Cookie"));
   });
 });

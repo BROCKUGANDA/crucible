@@ -91,9 +91,9 @@ export function isUniqueViolation(err: unknown): boolean {
 export class PgEventStore implements EventStore {
   constructor(private readonly exec: PgExecutor) {}
 
-  async append(event: ForgeWatchEvent): Promise<void> {
+  async append(event: ForgeWatchEvent): Promise<boolean> {
     try {
-      await this.exec(
+      const inserted = await this.exec<{ event_id: string }>(
         `INSERT INTO forge_watch_events (
           event_id, schema_version, timestamp_ms, run_id, trial_id, agent_id, tenant_id,
           parent_run_id, sequence, event_type, source, provider_id, model_id, tool_id,
@@ -101,7 +101,9 @@ export class PgEventStore implements EventStore {
           context_digest, correlation_id, envelope
         ) VALUES (
           $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22::jsonb
-        )`,
+        )
+        ON CONFLICT (event_id) DO NOTHING
+        RETURNING event_id`,
         [
           event.eventId,
           event.schemaVersion,
@@ -127,12 +129,30 @@ export class PgEventStore implements EventStore {
           JSON.stringify(event),
         ],
       );
+      if (inserted.rows.length > 0) return true;
+
+      const existing = await this.find(event.eventId);
+      if (existing && sameEvent(existing, event)) return false;
+      throw new Error(`event id conflict: ${event.eventId}`);
     } catch (err) {
       if (isUniqueViolation(err)) {
-        throw new Error(`duplicate forge-watch event: ${event.eventId}`);
+        const existing = await this.find(event.eventId);
+        if (existing && sameEvent(existing, event)) return false;
+        throw new Error(
+          `run sequence conflict: ${event.runId}:${event.sequence}`,
+        );
       }
       throw err;
     }
+  }
+
+  async find(eventId: string): Promise<ForgeWatchEvent | null> {
+    const res = await this.exec<ForgeWatchEventRow>(
+      `SELECT * FROM forge_watch_events WHERE event_id = $1`,
+      [eventId],
+    );
+    const row = res.rows[0];
+    return row ? rowToEvent(row) : null;
   }
 
   async get(runId: string, sequence: number): Promise<ForgeWatchEvent | null> {
@@ -205,4 +225,15 @@ export class PgEventStore implements EventStore {
 /** Create a PgEventStore from an executor (e.g. agent-security's `query`). */
 export function createPgEventStore(exec: PgExecutor): PgEventStore {
   return new PgEventStore(exec);
+}
+
+
+function sameEvent(a: ForgeWatchEvent, b: ForgeWatchEvent): boolean {
+  const canonical = (value: ForgeWatchEvent): string =>
+    JSON.stringify(
+      Object.fromEntries(
+        Object.entries(value).sort(([left], [right]) => left.localeCompare(right)),
+      ),
+    );
+  return canonical(a) === canonical(b);
 }

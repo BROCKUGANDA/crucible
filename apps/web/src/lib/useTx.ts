@@ -9,7 +9,7 @@ import {
 } from "wagmi";
 import { encodeFunctionData, type Address, type Hex } from "viem";
 import { Crucible, TRIALS_ABI } from "@crucible/smith";
-import { assertConfigured, deployment, rpcUrl, ZERO_ADDRESS } from "@/lib/wagmi";
+import { assertConfigured, chainFromId, deployment, rpcUrl, ZERO_ADDRESS } from "@/lib/wagmi";
 import { ERROR_COPY } from "@/lib/forge";
 import { holdInteraction, releaseInteraction } from "@/lib/interaction";
 
@@ -57,7 +57,7 @@ export function useTx(): UseTxResult {
   const [gasUsed, setGasUsed] = useState<bigint | null>(null);
   const [gasWei, setGasWei] = useState<bigint | null>(null);
 
-  const { address } = useAccount();
+  const { address, chainId } = useAccount();
   const { sendTransactionAsync } = useSendTransaction();
 
   // A transaction belongs to the account that sent it. On a shared browser, an
@@ -168,11 +168,12 @@ export function useTx(): UseTxResult {
         return;
       }
 
-      // Refuse here, not at import time — see wagmi.ts. If there is no deployment
-      // behind this app, saying so at the moment of signing is far more useful than
-      // sending value into the zero address.
+      // Refuse here, not at import time — see wagmi.ts. The deployment checked is the
+      // connected wallet's chain, not the build default: a user on a network without
+      // Crucible contracts is told exactly that, at the moment of signing, instead of
+      // having value sent into the zero address.
       try {
-        assertConfigured();
+        assertConfigured(chainId);
       } catch (err) {
         setState("doused");
         setError(err instanceof Error ? err.message : String(err));
@@ -182,7 +183,7 @@ export function useTx(): UseTxResult {
       const { data, value } =
         typeof request === "string" ? { data: request, value: undefined } : request;
 
-      const dep = deployment();
+      const dep = deployment(chainId);
       inFlight.current = true;
       takeInteraction();
       setState("heating");
@@ -205,7 +206,7 @@ export function useTx(): UseTxResult {
           setState("doused");
         });
     },
-    [sendTransactionAsync, address, takeInteraction, dropInteraction],
+    [sendTransactionAsync, address, chainId, takeInteraction, dropInteraction],
   );
 
   return {
@@ -343,30 +344,33 @@ export function buildSubmitRun(args: {
 // ── read helpers ────────────────────────────────────────────────────────
 
 /**
- * A Crucible client bound to the active deployment, for reads.
+ * A Crucible client bound to the connected wallet's deployment, for reads.
  *
  * Returns null — never a client pointed at the zero address — so a read can tell
- * "nothing is deployed here" apart from "the chain returned nothing".
- *
- * This is a hook: it reads the connected chain to avoid handing the UI a client
- * bound to a network the wallet is not on.
+ * "nothing is deployed on this chain" apart from "the chain returned nothing". The
+ * chain followed is the wallet's: a disconnected spectator reads the build default,
+ * a connected user reads whichever network their wallet sits on, and a wallet on an
+ * unknown chain gets null (an unconfigured deployment) rather than another network's
+ * contracts.
  */
 export function useCrucibleClient(): Crucible | null {
   const config = useConfig();
-  const dep = deployment();
   const { chainId } = useAccount();
+  const dep = deployment(chainId);
 
   if (!dep.configured) return null;
-  if (chainId !== undefined && chainId !== dep.chainId) return null;
   if (dep.trials === ZERO_ADDRESS || dep.alloy === ZERO_ADDRESS) return null;
 
   const chain = config.chains.find((c) => c.id === dep.chainId);
   if (!chain) return null;
 
+  const network = chainFromId(dep.chainId);
+  if (network === null) return null;
+
   return new Crucible({
     trialsAddress: dep.trials,
     alloyAddress: dep.alloy,
     chain,
-    rpcUrl: rpcUrl(),
+    rpcUrl: rpcUrl(network),
   });
 }

@@ -6,7 +6,7 @@ import { Chrome, TxStates } from "@/components/Chrome";
 import { PourConfirm } from "@/components/Modal";
 import { WrongNetworkNotice, WalletButton } from "@/components/Wallet";
 import { buildClaimTrial, buildRegisterAgent, useTx } from "@/lib/useTx";
-import { deployment } from "@/lib/wagmi";
+import { useDeployment } from "@/lib/wagmi";
 import { parseEth } from "@/lib/eth";
 import { checkAddressTarget, guardPastedText } from "@/lib/safety";
 import { SigningNotice } from "@/components/SigningNotice";
@@ -27,7 +27,7 @@ import { SigningNotice } from "@/components/SigningNotice";
 const RUNNER_HINT = "0x…";
 
 export default function ForgePage() {
-  const dep = deployment();
+  const dep = useDeployment();
   const { isConnected, chainId: accountChainId } = useAccount();
   const tx = useTx();
 

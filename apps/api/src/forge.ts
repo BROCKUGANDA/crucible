@@ -15,6 +15,7 @@
  */
 
 import { Hono, type Context } from "hono";
+import { configuredChainId } from "./auth.js";
 import {
   authorize,
   resolvePrincipal,
@@ -98,7 +99,7 @@ export function createForgeRoutes(): Hono {
     const auth = {
       walletAddress: null as string | null,
       sessionId: null as string | null,
-      chainId: "31337",
+      chainId: configuredChainId(),
     };
     const cookie = c.req.header("cookie");
     if (cookie) {
@@ -125,7 +126,7 @@ export function createForgeRoutes(): Hono {
     const principal = buildOrganisationPrincipal(
       {
         address: auth.walletAddress,
-        id: `eip155:31337:${auth.walletAddress.toLowerCase()}`,
+        id: `eip155:${configuredChainId()}:${auth.walletAddress.toLowerCase()}`,
         sessionId: auth.sessionId,
         authenticated: true,
       },
@@ -428,7 +429,7 @@ export function createForgeRoutes(): Hono {
     const rec = computeBountyRecommendation(
       briefId,
       body.nativeAsset ?? "ETH",
-      body.network ?? "31337",
+      body.network ?? configuredChainId(),
       {
         executionCost: toBigInt(body.executionCost),
         specialistEffortValue: toBigInt(body.specialistEffortValue),
@@ -522,7 +523,7 @@ export function createForgeRoutes(): Hono {
       body.sponsor ?? principalAddress,
       body.title,
       body.nativeAsset ?? "ETH",
-      body.network ?? "31337",
+      body.network ?? configuredChainId(),
     );
     if (body.description) campaign.description = body.description;
     if (body.domain) campaign.domain = body.domain;

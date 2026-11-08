@@ -28,6 +28,13 @@ import { Hono } from "hono";
 import type { Context } from "hono";
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { keccak256, recoverAddress, recoverMessageAddress, toBytes } from "viem";
+import {
+  buildOrganisationPrincipal,
+  type OrganisationPrincipal,
+  createNonceStore,
+  type NonceStore,
+  type StoredChallenge,
+} from "@crucible/agent-security";
 
 const CHALLENGE_TTL_MS = 5 * 60_000;
 const CONSUMED_TTL_MS = 10 * 60_000;
@@ -58,42 +65,39 @@ export type SessionPayload = {
   aud: string;
 };
 
-type Challenge = {
-  nonce: string;
-  message: string;
-  /** the address the challenge was issued for */
-  address: string;
-  issuedAt: number;
-  expiresAt: number;
-  signature?: string;
-  sessionToken?: string;
-};
+/**
+ * The nonce store, initialised once at module load.
+ *
+ * In production this connects to Redis so multiple API instances share the
+ * same challenge map. In development and tests it falls back to an in-memory
+ * Map that survives hot-reloads via globalThis.
+ *
+ * The store is lazy: `initNonceStore()` runs once when the first auth route
+ * fires, so a process that never serves auth traffic does not waste a Redis
+ * connection.
+ */
+let nonceStore: NonceStore | null = null;
+let nonceStoreInit: Promise<NonceStore> | null = null;
+
+async function getNonceStore(): Promise<NonceStore> {
+  if (nonceStore) return nonceStore;
+  if (nonceStoreInit) return nonceStoreInit;
+  nonceStoreInit = createNonceStore().then((store) => {
+    nonceStore = store;
+    return store;
+  });
+  return nonceStoreInit;
+}
 
 /**
- * Process memory, keyed on globalThis so a dev-server hot reload does not empty the
- * store mid-flow. A single-instance deployment is the documented shape — the contract
- * of this module is "one process owns the challenges", which a real deployment would
- * move to Redis without changing a route.
+ * Prune expired entries from the store.
+ *
+ * For the in-memory store this is a lazy sweep on every write.
+ * For Redis this is a no-op (TTL is native).
  */
-const STATE_KEY = "__crucible_auth_nonces__";
-const globalScope = globalThis as unknown as Record<string, unknown>;
-const state: { entries: Map<string, Challenge> } =
-  (globalScope[STATE_KEY] as { entries: Map<string, Challenge> } | undefined) ?? {
-    entries: new Map<string, Challenge>(),
-  };
-globalScope[STATE_KEY] = state;
-
-function prune(now: number): void {
-  for (const [key, record] of state.entries) {
-    const ttl = record.signature ? CONSUMED_TTL_MS : CHALLENGE_TTL_MS;
-    if (record.issuedAt + ttl <= now) state.entries.delete(key);
-  }
-  if (state.entries.size > MAX_ENTRIES) {
-    for (const key of state.entries.keys()) {
-      if (state.entries.size <= MAX_ENTRIES - 1) break;
-      state.entries.delete(key);
-    }
-  }
+async function prune(maxEntries: number = MAX_ENTRIES): Promise<void> {
+  const store = await getNonceStore();
+  await store.prune(maxEntries);
 }
 
 /**
@@ -129,8 +133,15 @@ function configuredOrigin(): string | null {
   return "http://localhost:3000";
 }
 
-/** The chain the session is for. EIP-4361 requires it in the message. */
-function configuredChainId(): string {
+/**
+ * The chain this deployment is for, from `CHAIN_ID` — Anvil's 31337 only when unset.
+ *
+ * Exported because the session's chain must be the deployment's chain everywhere: the
+ * SIWE message here, the wallet principal built in `forge.ts`, and the `caip2` refs on
+ * streamed events. A testnet deployment that set `CHAIN_ID=11155111` but still issued
+ * `eip155:31337` principals would bind sessions to a chain its own contracts are not on.
+ */
+export function configuredChainId(): string {
   const raw = process.env.CHAIN_ID?.trim();
   if (raw && /^\d+$/.test(raw)) return raw;
   return "31337";
@@ -176,25 +187,26 @@ export function buildSignInMessage(
  * for an address, or by watching a victim's request — can complete it from a
  * different browser, and the session it mints lands there.
  */
-export function issueChallenge(address: string, origin: string): {
+export async function issueChallenge(address: string, origin: string): Promise<{
   challengeId: string;
   nonce: string;
   message: string;
   expiresAt: number;
   replayed: boolean;
-} {
+}> {
+  const store = await getNonceStore();
+  await prune();
   const now = Date.now();
-  prune(now);
   const challengeId = randomBytes(16).toString("hex");
   const nonce = randomBytes(16).toString("hex");
-  const record: Challenge = {
+  const record: StoredChallenge = {
     nonce,
     message: buildSignInMessage(address, nonce, origin, now),
     address: address.toLowerCase(),
     issuedAt: now,
     expiresAt: now + CHALLENGE_TTL_MS,
   };
-  state.entries.set(challengeId, record);
+  await store.set(challengeId, record, CHALLENGE_TTL_MS);
   return {
     challengeId,
     nonce: record.nonce,
@@ -205,25 +217,36 @@ export function issueChallenge(address: string, origin: string): {
 }
 
 /** Returns the live challenge for a session (consumed ones included, for replay). */
-function peekChallenge(challengeId: string): Challenge | null {
-  const record = state.entries.get(challengeId);
+async function peekChallenge(challengeId: string): Promise<StoredChallenge | null> {
+  const store = await getNonceStore();
+  const record = await store.get(challengeId);
   if (!record) return null;
   const ttl = record.signature ? CONSUMED_TTL_MS : CHALLENGE_TTL_MS;
   if (record.issuedAt + ttl <= Date.now()) return null;
   return record;
 }
 
-function markConsumed(challengeId: string, nonce: string, signature: string): void {
-  const record = state.entries.get(challengeId);
-  if (record && record.nonce === nonce && !record.signature) {
-    record.signature = signature;
-    record.expiresAt = Date.now() + CONSUMED_TTL_MS;
-  }
+/**
+ * Atomically consume the challenge, and report whether this caller won.
+ *
+ * The boolean is the point. Reading the record, checking `!record.signature` and writing it back
+ * is three steps with awaits between them, and two concurrent requests carrying the same captured
+ * `{address, nonce, signature}` both pass that check and both mint a session — which is the replay
+ * the store exists to prevent, reintroduced by making the store async. `consume` is one operation
+ * on both backends, so exactly one caller can win.
+ */
+async function markConsumed(challengeId: string, nonce: string, signature: string): Promise<boolean> {
+  const store = await getNonceStore();
+  return store.consume(challengeId, nonce, signature, CONSUMED_TTL_MS);
 }
 
-function rememberSessionToken(challengeId: string, nonce: string, sessionToken: string): void {
-  const record = state.entries.get(challengeId);
-  if (record && record.nonce === nonce) record.sessionToken = sessionToken;
+async function rememberSessionToken(challengeId: string, nonce: string, sessionToken: string): Promise<void> {
+  const store = await getNonceStore();
+  const record = await store.get(challengeId);
+  if (record && record.nonce === nonce) {
+    record.sessionToken = sessionToken;
+    await store.set(challengeId, record, CONSUMED_TTL_MS);
+  }
 }
 
 /**
@@ -293,33 +316,63 @@ export function verifySessionToken(
 }
 
 function sessionCookie(token: string): string {
+  const secure = process.env.NODE_ENV === "production";
   const parts = [
-    `${COOKIE_NAME}=${token}`,
+    `__Host-${COOKIE_NAME}=${token}`,
     "HttpOnly",
-    "SameSite=Lax",
+    secure ? "Secure" : "",
+    secure ? "SameSite=None" : "SameSite=Lax",
     "Path=/",
     `Max-Age=${SESSION_TTL_SECONDS}`,
-  ];
-  if (process.env.NODE_ENV === "production") parts.push("Secure");
+  ].filter(Boolean);
   return parts.join("; ");
 }
 
 function clearedCookie(): string {
-  const parts = [`${COOKIE_NAME}=`, "HttpOnly", "SameSite=Lax", "Path=/", "Max-Age=0"];
-  // The same attributes the cookie was set with, so a browser matches it and
-  // actually deletes it.
-  if (process.env.NODE_ENV === "production") parts.push("Secure");
+  const secure = process.env.NODE_ENV === "production";
+  const parts = [
+    `__Host-${COOKIE_NAME}=`,
+    "HttpOnly",
+    secure ? "Secure" : "",
+    secure ? "SameSite=None" : "SameSite=Lax",
+    "Path=/",
+    "Max-Age=0",
+  ].filter(Boolean);
   return parts.join("; ");
 }
 
 function cookieOf(c: Context, name: string): string | null {
   const header = c.req.header("cookie");
   if (!header) return null;
+  const hostPrefixed = `__Host-${name}`;
   for (const part of header.split(";")) {
     const [k, ...v] = part.trim().split("=");
-    if (k === name) return v.join("=");
+    // __Host- prefixed cookies cannot be shadowed by cookie tossing: browsers
+    // require Secure + Path=/ and no Domain, and never send them cross-domain.
+    if (k === hostPrefixed || k === name) return v.join("=");
   }
   return null;
+}
+
+/**
+ * Resolve a cookie into a trusted SIWE principal.
+ *
+ * Never decode the JWT-like payload and trust its address: the HMAC, expiry
+ * and deployment audience are the authentication boundary. All API routers
+ * that need a wallet principal must call this helper instead of parsing the
+ * cookie themselves.
+ */
+export function verifiedSessionFromContext(
+  c: Context,
+): { sessionId: string; payload: SessionPayload } | null {
+  const key = secret();
+  const audience = configuredOrigin();
+  if (!key || !audience) return null;
+  const token = cookieOf(c, COOKIE_NAME);
+  if (!token) return null;
+  const payload = verifySessionToken(token, key, audience);
+  if (!payload) return null;
+  return { sessionId: token, payload };
 }
 
 /**
@@ -450,7 +503,7 @@ export function authRoutes(maxBodyBytes = 16 * 1024): Hono {
     }
     const address = typeof body.address === "string" ? body.address : "";
     if (!ADDRESS_RE.test(address)) return c.json({ error: "invalid_address" }, 400);
-    const challenge = issueChallenge(address, origin);
+    const challenge = await issueChallenge(address, origin);
     // The challenge id goes back as an HttpOnly cookie, not in the body: the
     // client has no business choosing which challenge it completes.
     c.header("Set-Cookie", challengeCookie(challenge.challengeId));
@@ -496,7 +549,7 @@ export function authRoutes(maxBodyBytes = 16 * 1024): Hono {
     // anyone who learns a nonce could complete it from a different browser,
     // and the session it mints would land there.
     const challengeId = cookieOf(c, CHALLENGE_COOKIE);
-    const challenge = challengeId ? peekChallenge(challengeId) : null;
+    const challenge = challengeId ? await peekChallenge(challengeId) : null;
     if (!challenge) {
       return c.json({ error: "challenge_expired", message: "Request a new nonce and sign again." }, 401);
     }
@@ -531,10 +584,17 @@ export function authRoutes(maxBodyBytes = 16 * 1024): Hono {
       return c.json({ error: "bad_signature", message: "Signature does not match the address." }, 401);
     }
 
-    markConsumed(challengeId!, nonce, sig);
+    // Whoever loses this race does not get a session. The sequential replay case is already
+    // handled above (the consumed challenge hands back its original token); this is the concurrent
+    // one, where a second request read the challenge before the first finished consuming it. A 401
+    // here is safe and honest — the client can retry and will land on the replay path once the
+    // winner's token is remembered. Minting anyway would hand out two sessions for one signature.
+    if (!(await markConsumed(challengeId!, nonce, sig))) {
+      return c.json({ error: "challenge_used", message: "This nonce was already used." }, 401);
+    }
     const minted = createSessionToken(address, key, origin);
     c.header("Set-Cookie", sessionCookie(minted.token));
-    rememberSessionToken(challengeId!, nonce, minted.token);
+    await rememberSessionToken(challengeId!, nonce, minted.token);
 
     return c.json({
       address: minted.payload.address,
@@ -559,4 +619,123 @@ export function authRoutes(maxBodyBytes = 16 * 1024): Hono {
   });
 
   return app;
+}
+
+/* ------------------------------------------------------------------ */
+/* Seven-state identity model (blueprint §2)                          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The seven distinct identity states a caller can hold.
+ *
+ * States 1–3 are request-level: resolvable from the HTTP request alone.
+ * States 4–5 require organisation context (route-specific orgId).
+ * States 6–7 require run/action context (not login roles).
+ *
+ * Order matters: `requireIdentityState(min)` grants the state and every
+ * state above it.
+ */
+export type IdentityState =
+  | "ANONYMOUS"
+  | "WALLET_CONNECTED"
+  | "SIWE_AUTHENTICATED"
+  | "TENANT_MEMBER"
+  | "ROLE_AUTHORIZED"
+  | "TRANSACTION_AUTHORIZED"
+  | "RUNTIME_VERIFIED";
+
+export const IDENTITY_STATE_ORDER: Record<IdentityState, number> = {
+  ANONYMOUS: 0,
+  WALLET_CONNECTED: 1,
+  SIWE_AUTHENTICATED: 2,
+  TENANT_MEMBER: 3,
+  ROLE_AUTHORIZED: 4,
+  TRANSACTION_AUTHORIZED: 5,
+  RUNTIME_VERIFIED: 6,
+} as const;
+
+const WALLET_HEADER = "x-crucible-wallet";
+const WALLET_RE = /^0x[0-9a-fA-F]{40}$/;
+
+/**
+ * The caller's identity state for this request.
+ *
+ * Resolves states 1–3 from the request alone: a valid SIWE session is
+ * `SIWE_AUTHENTICATED`; a well-formed connected-wallet header without a
+ * session is `WALLET_CONNECTED`; neither is `ANONYMOUS`.
+ *
+ * States 4–5 (TENANT_MEMBER, ROLE_AUTHORIZED) are not resolved here: they
+ * require an orgId that only the route knows, and are resolved by the
+ * organisation-authorisation middleware instead. Callers that need them pass
+ * the resolved org principal through `c.set("orgPrincipal", ...)`.
+ */
+export function resolveIdentityState(c: Context): IdentityState {
+  const session = verifiedSessionFromContext(c);
+  if (session) return "SIWE_AUTHENTICATED";
+
+  const wallet = c.req.header(WALLET_HEADER);
+  if (wallet && WALLET_RE.test(wallet)) return "WALLET_CONNECTED";
+
+  return "ANONYMOUS";
+}
+
+/**
+ * Hono middleware: attaches the caller's identity state to the context and
+ * echoes it back as a response header so clients (and audit logs) can see
+ * which tier was applied.
+ *
+ * Mounted globally so every route observes the same state resolution.
+ */
+export function identityStateMiddleware() {
+  return async (c: Context, next: () => Promise<void>): Promise<void | Response> => {
+    const state = resolveIdentityState(c);
+    c.set("identityState", state);
+    c.header("X-Crucible-Identity-State", state);
+    await next();
+  };
+}
+
+/**
+ * Middleware factory: reject callers below a minimum identity state.
+ *
+ * `requireIdentityState("SIWE_AUTHENTICATED")` permits authenticated,
+ * tenant-member, role-authorized, transaction-authorized and
+ * runtime-verified callers, but rejects anonymous and wallet-connected ones.
+ */
+export function requireIdentityState(minState: IdentityState) {
+  const minLevel = IDENTITY_STATE_ORDER[minState];
+  return async (c: Context, next: () => Promise<void>): Promise<void | Response> => {
+    const state = (c.get("identityState") as IdentityState) ?? resolveIdentityState(c);
+    const level = IDENTITY_STATE_ORDER[state];
+    if (level < minLevel) {
+      c.header("X-Crucible-Identity-State", state);
+      return c.json(
+        {
+          error: "insufficient_identity_state",
+          required: minState,
+          current: state,
+        },
+        403,
+      );
+    }
+    await next();
+  };
+}
+
+/**
+ * Build an OrganisationPrincipal from the request's verified session, for use
+ * by org-scoped routes that need TENANT_MEMBER or ROLE_AUTHORIZED states.
+ *
+ * Returns null when the caller is not SIWE-authenticated.
+ */
+export function sessionPrincipal(c: Context, chainId?: string): OrganisationPrincipal | null {
+  const session = verifiedSessionFromContext(c);
+  if (!session) return null;
+  const address = session.payload.address;
+  return buildOrganisationPrincipal({
+    address,
+    id: `eip155:${chainId ?? configuredChainId()}:${address.toLowerCase()}`,
+    sessionId: session.sessionId,
+    authenticated: true,
+  });
 }

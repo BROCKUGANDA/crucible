@@ -108,3 +108,9 @@ crucible-contracts/foundry.lock
 # datasets is a tracked workspace — un-ignored so CI can typecheck it
 !packages/datasets/
 
+# Deploy snapshots are artifacts, and this one was 848 MB carrying .env, apps/web/.env.local
+# and integrations/alchemy/.env inside it. The deploy rsync excludes .env precisely so a
+# developer's secrets cannot reach the host; a tarball of the tree defeats that exclusion by
+# carrying them in one file. No tarball is tracked here, so the pattern retires nothing.
+*.tar.gz
+

@@ -1,5 +1,5 @@
-import { createConfig, http, cookieStorage, createStorage } from "wagmi";
-import { foundry, sepolia } from "wagmi/chains";
+import { createConfig, http, cookieStorage, createStorage, useAccount } from "wagmi";
+import { foundry, mainnet, sepolia } from "wagmi/chains";
 import { coinbaseWallet, walletConnect, injected as injectedConnector } from "wagmi/connectors";
 import { getDefaultConfig } from "@rainbow-me/rainbowkit";
 import {
@@ -12,7 +12,6 @@ import {
   walletConnectWallet,
 } from "@rainbow-me/rainbowkit/wallets";
 import { bitgetConnector } from "./bitget";
-import type { Address, Transport } from "viem";
 import type { Chain } from "viem/chains";
 import type { ChainDescription } from "./chainSwitch";
 
@@ -25,6 +24,12 @@ import type { ChainDescription } from "./chainSwitch";
  * so that integration is not available to this project. The Phantom *browser extension*
  * still works through the injected connector, because it is EIP-6963 compliant.
  *
+ * The network layer itself — chain ids, per-network deployment addresses, RPC, the
+ * environment badge — lives in `./networks`, which carries no wallet dependencies. This
+ * module is the wallet half and re-exports the network half, so callers keep one import
+ * path; server code that only needs network identity imports `./networks` directly and
+ * does not pay for the connector graph.
+ *
  * ── Why nothing here throws ──────────────────────────────────────────────────────────
  * These values are read at module scope during prerender. If a missing address threw,
  * `next build` would fail on a fresh clone — and a build that needs secrets before it
@@ -36,94 +41,70 @@ import type { ChainDescription } from "./chainSwitch";
  * signature is actually being requested — where a clear message can do some good.
  */
 
-export const ZERO_ADDRESS: Address = "0x0000000000000000000000000000000000000000";
+export {
+  activeChain,
+  chainFromId,
+  chainLabel,
+  chainConfigured,
+  CHAIN_IDS,
+  deployment,
+  environmentBadge,
+  gateMoneyNotice,
+  rpcUrl,
+  ZERO_ADDRESS,
+  type SupportedChain,
+} from "./networks";
 
-export const CHAIN_IDS = {
-  sepolia: sepolia.id,
-  foundry: foundry.id,
-} as const;
-
-export type SupportedChain = keyof typeof CHAIN_IDS;
-
-export function activeChain(): SupportedChain {
-  return (process.env.NEXT_PUBLIC_CHAIN as SupportedChain) ?? "sepolia";
-}
-
-export function activeChainDef(): Chain {
-  return activeChain() === "foundry" ? foundry : sepolia;
-}
-
-/**
- * The header's environment chip. Neither arm of this deployment moves value, and a visitor
- * should not have to read a chain id to learn that.
- */
-export function environmentBadge(): { label: string; compact: string; title: string } {
-  return activeChain() === "foundry"
-    ? {
-        label: "LOCAL FORGE",
-        compact: "ANVIL",
-        title: "Anvil: a local chain run by this deployment. The ETH here has no value.",
-      }
-    : {
-        label: "TESTNET",
-        compact: "TESTNET",
-        title: "Sepolia: test network ETH. No mainnet funds move here.",
-      };
-}
+import {
+  activeChain,
+  chainFromId,
+  deployment,
+  rpcUrl,
+  type Deployment,
+  type SupportedChain,
+} from "./networks";
 
 /**
- * The explorer URL for a transaction on the active chain, or null when that chain has no
- * explorer to name.
- *
- * Derived from the chain definition rather than written out per call site, because the
- * first version of this hardcoded Sepolia and pointed Anvil hashes at it — a link that
- * opens a page saying the transaction never happened. That is worse than no link: it looks
- * like verification. A null is honest, and the caller renders "no explorer".
+ * The chain definition for a network, or for the build default when none is given.
+ * Lives here rather than in `networks.ts` because it needs the real chain objects —
+ * explorers, native currency — and those come from the `viem/chains` barrel, whose
+ * import cost is already paid by every page that mounts the wallet stack. A JSON route
+ * that only wants a chain id must not pay it.
  */
-export function explorerTxUrl(hash: string, chain: Chain = activeChainDef()): string | null {
-  const base = chain.blockExplorers?.default?.url;
-  if (!base || !/^0x[0-9a-fA-F]{64}$/.test(hash)) return null;
-  return `${base.replace(/\/$/, "")}/tx/${hash}`;
-}
-
-export interface Deployment {
-  chainId: number;
-  trials: Address;
-  alloy: Address;
-  /** false when the addresses are absent — reads still work, writes do not. */
-  configured: boolean;
-}
-
-/**
- * Resolve an address, or the zero address. Never throws; validation is `configured`.
- *
- * `value` is passed in rather than looked up as `process.env[name]`. Webpack inlines only
- * *statically analyzable* member expressions into the client bundle, so a dynamic index is
- * left as a real object access — and `process.env` does not exist in a browser. Every
- * address therefore resolved to zero on the client while resolving correctly on the server,
- * which meant the documented setup (copy `.env.example` to `.env.local`, fill in the two
- * addresses) could never enable signing in the UI, and the "Signing is disabled" notice
- * disagreed with the server's own render of the same page.
- */
-function address(name: string, value: string | undefined): Address {
-  if (!value) return ZERO_ADDRESS;
-  if (!/^0x[a-fA-F0-9]{40}$/.test(value)) {
-    // A malformed address is a configuration bug worth shouting about, but only when it
-    // is used — not during a build that never signs anything.
-    console.warn(`[crucible] ${name} is not a valid address and was ignored.`);
-    return ZERO_ADDRESS;
+export function activeChainDef(chain?: SupportedChain): Chain {
+  switch (chain ?? activeChain()) {
+    case "mainnet":
+      return mainnet;
+    case "foundry":
+      return foundry;
+    default:
+      return sepolia;
   }
-  return value as Address;
 }
 
-export function deployment(): Deployment {
-  const trials = address("NEXT_PUBLIC_TRIALS_ADDRESS", process.env.NEXT_PUBLIC_TRIALS_ADDRESS);
-  const alloy = address("NEXT_PUBLIC_ALLOY_ADDRESS", process.env.NEXT_PUBLIC_ALLOY_ADDRESS);
+/**
+ * The deployment the app should act on right now: the connected wallet's network when a
+ * wallet is connected, the build's default network when not.
+ *
+ * Every page reads its contracts through this hook, which is what makes the network a
+ * runtime choice instead of a build-time constant — switch the wallet's network and the
+ * contracts, the reads and the signed transactions all follow, without a redeploy.
+ */
+export function useDeployment(): Deployment {
+  const { chainId } = useAccount();
+  return deployment(chainId);
+}
+
+/** The chain a wallet should be landed on — the build default, or an explicitly chosen one. */
+export function chainForWallets(chain?: SupportedChain): ChainDescription {
+  const def: Chain = activeChainDef(chain);
+  const explorer = def.blockExplorers?.default?.url;
   return {
-    chainId: CHAIN_IDS[activeChain()],
-    trials,
-    alloy,
-    configured: trials !== ZERO_ADDRESS && alloy !== ZERO_ADDRESS,
+    chainId: def.id,
+    name: (chain ?? activeChain()) === "foundry" ? "Anvil" : def.name,
+    rpcUrl: rpcUrl(chain ?? activeChain()),
+    nativeCurrency: def.nativeCurrency,
+    ...(explorer ? { explorerUrl: explorer } : {}),
   };
 }
 
@@ -143,45 +124,22 @@ export function binanceProvider(): unknown {
 }
 
 /**
- * The chain, described the way a wallet needs to hear it before it can sign here.
+ * The explorer URL for a transaction on the active chain, or null when that chain has no
+ * explorer to name.
  *
- * No consumer wallet knows chain 31337, so the app has to be able to *add* it, and the RPC it
- * registers must be the deployed one — `127.0.0.1` would point a remote visitor's wallet at
- * their own machine, producing an empty account that looks like a broken site.
+ * Derived from the chain definition rather than written out per call site, because the
+ * first version of this hardcoded Sepolia and pointed Anvil hashes at it — a link that
+ * opens a page saying the transaction never happened. That is worse than no link: it looks
+ * like verification. A null is honest, and the caller renders "no explorer".
  */
-export function chainForWallets(): ChainDescription {
-  const chain = activeChainDef();
-  const explorer = chain.blockExplorers?.default?.url;
-  return {
-    chainId: chain.id,
-    name: activeChain() === "foundry" ? "Anvil" : chain.name,
-    rpcUrl: rpcUrl(),
-    nativeCurrency: chain.nativeCurrency,
-    ...(explorer ? { explorerUrl: explorer } : {}),
-  };
+export function explorerTxUrl(hash: string, chain: Chain = activeChainDef()): string | null {
+  const base = chain.blockExplorers?.default?.url;
+  if (!base || !/^0x[0-9a-fA-F]{64}$/.test(hash)) return null;
+  return `${base.replace(/\/$/, "")}/tx/${hash}`;
 }
 
 export function walletConnectEnabled(): boolean {
   return rainbowKitProjectId().length > 0;
-}
-
-/** Public fallbacks so a fresh clone renders and can even read a live chain. */
-const FALLBACK_RPC: Record<number, string> = {
-  [sepolia.id]: "https://ethereum-sepolia-rpc.publicnode.com",
-  [foundry.id]: "http://127.0.0.1:8545",
-};
-
-export function rpcUrl(): string {
-  const chainId = CHAIN_IDS[activeChain()];
-  const configured =
-    activeChain() === "foundry"
-      ? process.env.NEXT_PUBLIC_ANVIL_RPC
-      : process.env.NEXT_PUBLIC_SEPOLIA_RPC;
-  return configured || FALLBACK_RPC[chainId]!;
-}
-
-export function transportFor(): Transport {
-  return http(rpcUrl());
 }
 
 /**
@@ -211,17 +169,40 @@ export function rainbowWalletGroups() {
   ];
 }
 
+/**
+ * Every network the app can talk to, registered with the wallet so the *user* chooses
+ * between them — mainnet to earn, Sepolia to test, the local forge to develop.
+ *
+ * The build default (`NEXT_PUBLIC_CHAIN`) is still what a disconnected spectator reads,
+ * but a connected wallet is followed, not overridden: the wallet's chain decides which
+ * deployment the app acts on. Testnet is listed first on purpose — the audience this
+ * order nudges is a first-time visitor deciding where to try the platform.
+ */
+const CHAINS = [sepolia, mainnet, foundry] as const;
+
 export function buildConfig() {
-  const chain = activeChainDef();
   const projectId = rainbowKitProjectId();
+
+  /** One transport per registered chain — each network is reached on its own RPC. */
+  const transports = Object.fromEntries(
+    CHAINS.map((chain) => {
+      const network = chainFromId(chain.id);
+      if (network === null) {
+        // A chain in CHAINS that networks.ts does not know would read contracts from
+        // nowhere; refuse at startup rather than at the first signature.
+        throw new Error(`chain ${chain.id} is registered with the wallet but has no network record`);
+      }
+      return [chain.id, http(rpcUrl(network))];
+    }),
+  ) as Record<1 | 11155111 | 31337, ReturnType<typeof http>>;
 
   if (projectId) {
     // Add Bitget explicitly while retaining Safe, popular wallets and injected fallback.
     return getDefaultConfig({
       appName: "Crucible",
       projectId,
-      chains: [chain],
-      transports: { [chain.id]: transportFor() },
+      chains: [...CHAINS],
+      transports,
       wallets: rainbowWalletGroups(),
       ssr: true,
     });
@@ -230,7 +211,7 @@ export function buildConfig() {
   // No project id: injected wallets still work and the app degrades to a plain button
   // rather than failing to load. Cookie storage keeps the session across SSR passes.
   return createConfig({
-    chains: [chain],
+    chains: [...CHAINS],
     connectors: [
       injectedConnector({ shimDisconnect: true }),
       // Binance Wallet is named explicitly because it does not reliably answer through
@@ -252,7 +233,7 @@ export function buildConfig() {
       coinbaseWallet({ appName: "Crucible", preference: "all" }),
       ...(projectId ? [walletConnect({ projectId })] : []),
     ],
-    transports: { [chain.id]: transportFor() },
+    transports,
     ssr: true,
     storage: createStorage({ storage: cookieStorage }),
   });
@@ -271,14 +252,18 @@ export function wagmiConfig() {
 }
 
 /**
- * Refuse to pretend a signature is possible when there is no deployment behind it.
- * Called by `useTx.send`, which is the only place that actually needs a live address.
+ * Refuse to pretend a signature is possible when there is no deployment behind *this*
+ * chain — the wallet may be on a network (or a chain the app does not know at all) that
+ * has no Crucible contracts, and the refusal has to name that network's situation, not
+ * the build default's. Called by `useTx.send`, the only place that needs a live address.
  */
-export function assertConfigured(): void {
-  if (deployment().configured) return;
+export function assertConfigured(chainId?: number): void {
+  if (deployment(chainId).configured) return;
   throw new Error(
-    "Crucible is not deployed in this environment. Set NEXT_PUBLIC_TRIALS_ADDRESS and " +
-      "NEXT_PUBLIC_ALLOY_ADDRESS in apps/web/.env.local (see .env.example).",
+    "Crucible is not deployed on this network. Set the per-network addresses " +
+      "(NEXT_PUBLIC_MAINNET_TRIALS_ADDRESS, NEXT_PUBLIC_SEPOLIA_TRIALS_ADDRESS, " +
+      "NEXT_PUBLIC_ANVIL_TRIALS_ADDRESS — or the generic NEXT_PUBLIC_TRIALS_ADDRESS) " +
+      "and the matching alloy addresses in apps/web/.env.local (see .env.example).",
   );
 }
 
@@ -287,5 +272,3 @@ export function shortAddress(address: string | undefined): string {
   if (!address) return "";
   return `${address.slice(0, 6)}…${address.slice(-4)}`;
 }
-
-export { sepolia, foundry };

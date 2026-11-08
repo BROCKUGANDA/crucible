@@ -428,7 +428,7 @@ describe("useTx multi-user guards", () => {
 
   it("refuses a send with no wallet connected, before deployment checks", () => {
     const guardAt = code.indexOf("if (!address)");
-    const configAt = code.indexOf("assertConfigured()");
+    const configAt = code.indexOf("assertConfigured(chainId)");
     expect(guardAt, "the !address guard exists").toBeGreaterThan(-1);
     expect(configAt, "assertConfigured is still called").toBeGreaterThan(-1);
     expect(guardAt, "wallet check precedes the deployment check").toBeLessThan(configAt);
