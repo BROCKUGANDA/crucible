@@ -302,6 +302,61 @@ const sts = (() => {
 
 const publicClient = createPublicClient({ chain: foundry, transport: http(rpcUrl) });
 
+/**
+ * Fail closed on chain mismatch before anything touches the RPC.
+ *
+ * The blueprint requires: never infer mainnet from missing variables or the
+ * currently selected wallet chain, and validate the configured address against
+ * chain ID at startup and before sensitive writes. Hardcoding `chain: foundry`
+ * above means this process *believes* it is on Anvil/31337 regardless of what
+ * RPC_URL actually points at — so we prove it. If eth_chainId disagrees with
+ * CHAIN_ID (default 31337), or the trials contract has no bytecode at the
+ * configured address, the boot fails before the server binds a port rather than
+ * serving reads against the wrong network.
+ */
+function requiredChainId(): number {
+  const raw = (process.env.CHAIN_ID ?? "31337").trim();
+  if (!/^\d+$/.test(raw)) {
+    throw new Error(`CHAIN_ID must be a decimal chain id; got "${raw}"`);
+  }
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < 1) {
+    throw new Error(`CHAIN_ID must be a positive whole number; got "${raw}"`);
+  }
+  return value;
+}
+
+const configuredChainId = requiredChainId();
+const configuredTrialsAddress = trialsAddress;
+
+async function verifyChainAtBoot(): Promise<void> {
+  let liveChainId: number;
+  try {
+    liveChainId = await publicClient.getChainId();
+  } catch (err) {
+    throw new Error(
+      `cannot reach RPC at ${rpcUrl}: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+  if (liveChainId !== configuredChainId) {
+    throw new Error(
+      `RPC chain id ${liveChainId} does not match CHAIN_ID ${configuredChainId}; refusing to start on the wrong chain`,
+    );
+  }
+  // A zero-length bytecode ("0x") means nothing is deployed at the address.
+  const bytecode = await publicClient.getBytecode({ address: configuredTrialsAddress });
+  if (!bytecode || bytecode === "0x" || bytecode.length <= 2) {
+    throw new Error(
+      `no contract bytecode at TRIALS_ADDRESS ${configuredTrialsAddress} on chain ${configuredChainId}; address is not deployed`,
+    );
+  }
+}
+
+await verifyChainAtBoot();
+console.log(
+  `[crucible] chain verified: id ${configuredChainId}, trials at ${configuredTrialsAddress}`,
+);
+
 const scribe = new Scribe({
   source: { ...TRIALS_SOURCE, address: trialsAddress },
   alloyAddress,
