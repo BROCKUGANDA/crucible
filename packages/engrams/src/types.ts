@@ -89,6 +89,7 @@ export function newInMemoryEntitlementStore(): EntitlementStore {
 
 export function newAchievementRule(partial: Partial<AchievementRule> & Pick<AchievementRule, "id" | "version" | "name" | "qualifyingEvents" | "tokenId">): AchievementRule {
   return {
+    ...partial,
     description: partial.description ?? "",
     rarity: partial.rarity ?? "common",
     requiredEvidence: partial.requiredEvidence ?? [],
@@ -96,6 +97,5 @@ export function newAchievementRule(partial: Partial<AchievementRule> & Pick<Achi
     metadataDigest: partial.metadataDigest ?? "",
     chainId: partial.chainId ?? 1,
     revocationPolicy: partial.revocationPolicy ?? "on-disqualification",
-    ...partial,
   } as AchievementRule;
 }

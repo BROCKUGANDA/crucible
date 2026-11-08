@@ -41,13 +41,19 @@ jobs:
   promote:
     # A hung wait must not sit forever; the longest legitimate path is two chained gates.
     timeout-minutes: 120
-    runs-on: ubuntu-latest
-    # GitHub-hosted, deliberately. This job is git merges and API calls: it needs no secret
-    # and nothing on the VPS. On the crucible runners it held one while "gh run watch"-ing
-    # the next gate — a job waiting on a ci run that was itself queued behind waiting jobs.
-    # Two promote chains plus a deploy held all four runners and the ladder locked. Moving
-    # promotion off the box removes the cycle; the runners are left to the workloads that
-    # actually need the machine: ci's docker builds and the deploy.
+    runs-on: [self-hosted, linux, X64, crucible]
+    # Self-hosted again (2026-11-08): GitHub-hosted runners are unusable while the
+    # account carries a billing lock — every promote job died in ~2s with zero steps
+    # and "The job was not started because your account is locked due to a billing
+    # issue." This job is git merges and API calls: it needs no secret and nothing
+    # on the VPS.
+    #
+    # The deadlock that sent it to ubuntu-latest in the first place (2026-10-25: a
+    # promote holding one of two slots while gh-run-watching a gate that was itself
+    # queued behind slots the same pool held) is mitigated, not gone: there are four
+    # runners now, ci runs with cancel-in-progress, and this job cannot hold a slot
+    # past its 120-minute timeout. If the billing lock clears, moving this job back
+    # to ubuntu-latest removes the contention entirely.
     # No `permissions:` block on this job — against the rule the earlier version
     # of this comment stated, and here is why. The promotion push writes files
     # under .github/workflows, and `workflows` is the one scope GitHub will not

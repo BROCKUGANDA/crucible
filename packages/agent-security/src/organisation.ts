@@ -314,6 +314,64 @@ export interface OrgDecision {
   resource?: ResourceId;
 }
 
+/**
+ * Identity-state-based public permissions. Visitor and wallet-connected
+ * tiers are not organisation roles; they apply to public resources and
+ * chain reads that require no SIWE session at all. They are resolved from
+ * the seven-state identity model (apps/api/src/auth.ts) rather than the
+ * org store.
+ */
+export type IdentityState =
+  | "ANONYMOUS"
+  | "WALLET_CONNECTED"
+  | "SIWE_AUTHENTICATED"
+  | "TENANT_MEMBER"
+  | "ROLE_AUTHORIZED"
+  | "TRANSACTION_AUTHORIZED"
+  | "RUNTIME_VERIFIED";
+
+/** Permissions granted to a caller in a given identity state. */
+export function identityStatePermissions(state: IdentityState): readonly string[] {
+  switch (state) {
+    case "ANONYMOUS":
+      return [
+        "trials:read:public",
+        "agents:read:public",
+        "scorecards:read:public",
+        "leaderboards:read:public",
+        "hall:read:public",
+        "engrams:read:public",
+        "docs:read",
+      ];
+    case "WALLET_CONNECTED":
+      return [
+        ...identityStatePermissions("ANONYMOUS"),
+        "chain:read:public",
+        "transaction:prepare",
+      ];
+    case "SIWE_AUTHENTICATED":
+      return [...identityStatePermissions("WALLET_CONNECTED"), "workspace:read:own"];
+    case "TENANT_MEMBER":
+      return [...identityStatePermissions("SIWE_AUTHENTICATED"), "org:read"];
+    case "ROLE_AUTHORIZED":
+      return [...identityStatePermissions("TENANT_MEMBER")];
+    case "TRANSACTION_AUTHORIZED":
+      return [...identityStatePermissions("ROLE_AUTHORIZED")];
+    case "RUNTIME_VERIFIED":
+      return [...identityStatePermissions("TRANSACTION_AUTHORIZED")];
+    default:
+      return identityStatePermissions("ANONYMOUS");
+  }
+}
+
+/**
+ * Whether a given identity state holds a permission, without requiring
+ * organisation membership. Used for public and wallet-aware routes.
+ */
+export function identityStateAllows(state: IdentityState, permission: string): boolean {
+  return identityStatePermissions(state).includes(permission);
+}
+
 /* ------------------------------------------------------------------ */
 /* OrgRole permission derivation                                      */
 /* ------------------------------------------------------------------ */
