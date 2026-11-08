@@ -3,7 +3,7 @@
  * merkle-campaign.mjs — Off-chain Merkle proof generator for Engram campaigns.
  *
  * Input: a JSON file with shape:
- *   { "campaignId": "0", "leaves": [ { "recipient": "0x...", "amount": "1" }, ... ] }
+ *   { "campaignId": "0", "chainId": "31337", "leaves": [ { "recipient": "0x...", "amount": "1", "tokenId": "1001" }, ... ] }
  *
  * Output: writes <out>.json with { root, leaves, proofs: { leaf: [proof,...] } }.
  *
@@ -29,14 +29,20 @@ if (!inFile) {
 const { buildMerkleTree } = await import('../packages/engrams/dist/merkle.js');
 
 const raw = JSON.parse(readFileSync(resolve(inFile), 'utf8'));
+if (!raw.chainId) {
+  console.error('campaign.json must carry chainId (the leaf binds to one chain)');
+  process.exit(2);
+}
 const campaignId = BigInt(raw.campaignId ?? 0);
+const chainId = BigInt(raw.chainId);
 const leaves = (raw.leaves ?? []).map((l) => ({
   recipient: l.recipient,
   amount: BigInt(l.amount ?? 1),
   campaignId,
+  tokenId: BigInt(l.tokenId ?? 0),
 }));
 
-const tree = buildMerkleTree(leaves);
+const tree = buildMerkleTree(leaves, chainId);
 const proofs = {};
 for (const [leaf, proof] of tree.proofs.entries()) {
   proofs[leaf] = proof;

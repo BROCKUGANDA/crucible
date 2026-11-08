@@ -2,7 +2,10 @@
  * @file merkle.ts — Off-chain Merkle tree builder for Engram campaigns.
  *
  * Produces a root + per-recipient proofs matching EngramDistributor's _verify,
- * which hashes sorted pairs (smaller first). Leaf = keccak256(encodePacked(recipient, amount, campaignId)).
+ * which hashes sorted pairs (smaller first). Leaf =
+ * keccak256(encodePacked(chainId, recipient, amount, campaignId, tokenId)).
+ * The chain id and token id bind the leaf to one chain and one asset, so a
+ * root published for one chain or token cannot be replayed on another.
  */
 
 import { keccak256, encodePacked, type Hex } from "viem";
@@ -11,6 +14,7 @@ export interface MerkleLeaf {
   recipient: `0x${string}`;
   amount: bigint;
   campaignId: bigint;
+  tokenId: bigint;
 }
 
 export interface MerkleTree {
@@ -19,8 +23,13 @@ export interface MerkleTree {
   proofs: Map<Hex, Hex[]>;
 }
 
-function leafHash(leaf: MerkleLeaf): Hex {
-  return keccak256(encodePacked(["address", "uint256", "uint256"], [leaf.recipient, leaf.amount, leaf.campaignId]));
+function leafHash(leaf: MerkleLeaf, chainId: bigint): Hex {
+  return keccak256(
+    encodePacked(
+      ["uint256", "address", "uint256", "uint256", "uint256"],
+      [chainId, leaf.recipient, leaf.amount, leaf.campaignId, leaf.tokenId],
+    ),
+  );
 }
 
 function hashPair(a: Hex, b: Hex): Hex {
@@ -29,8 +38,8 @@ function hashPair(a: Hex, b: Hex): Hex {
     : keccak256(encodePacked(["bytes32", "bytes32"], [b, a]))) as Hex;
 }
 
-export function buildMerkleTree(leaves: MerkleLeaf[]): MerkleTree {
-  const leafHashes: Hex[] = leaves.map(leafHash);
+export function buildMerkleTree(leaves: MerkleLeaf[], chainId: bigint): MerkleTree {
+  const leafHashes: Hex[] = leaves.map((leaf) => leafHash(leaf, chainId));
   const proofs = new Map<Hex, Hex[]>();
 
   if (leafHashes.length === 0) {

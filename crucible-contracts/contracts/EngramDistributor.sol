@@ -1,12 +1,22 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
+interface IEngram1155 {
+    function mint(address to, uint256 tokenId, uint256 amount, bytes32 evidenceRef) external;
+}
+
 /// @title EngramDistributor — Merkle-based claim distributor (REW-003).
 /// @notice Campaigns are funded with token inventory; recipients claim via
 ///         Merkle proof. Each campaign has a root, budget, and claim window.
+///         The leaf binds chain id + recipient + amount + campaign id +
+///         token id, so a root published on one chain (or for one token)
+///         cannot be replayed on another. A claim mints through the
+///         ERC-1155 collection, so the on-chain balance — not an event —
+///         is the record of the distribution. With `engram == address(0)`
+///         the distributor is a pure Merkle verifier (tests, dry runs).
 contract EngramDistributor {
     address public immutable admin;
-    address public immutable engram; // EngramERC1155 address (informational)
+    address public immutable engram; // EngramERC1155 address; zero = no mint leg
 
     struct Campaign {
         bytes32 merkleRoot;
@@ -71,11 +81,19 @@ contract EngramDistributor {
         if (hasClaimed[campaignId][msg.sender]) revert AlreadyClaimed();
         if (c.claimed + amount > c.budget) revert BudgetExhausted();
 
-        bytes32 leaf = keccak256(abi.encodePacked(msg.sender, amount, campaignId));
+        bytes32 leaf = keccak256(abi.encodePacked(block.chainid, msg.sender, amount, campaignId, c.tokenId));
         if (!_verify(proof, c.merkleRoot, leaf)) revert InvalidProof();
 
+        // State first, external call last: the claim is recorded before any
+        // mint, so a receiver that could reenter would find it spent.
         hasClaimed[campaignId][msg.sender] = true;
         c.claimed += amount;
+
+        if (engram != address(0)) {
+            // The leaf is the evidence reference: it binds who was approved,
+            // for what, on which chain, for which token and campaign.
+            IEngram1155(engram).mint(msg.sender, c.tokenId, amount, leaf);
+        }
         emit Claimed(campaignId, msg.sender, amount);
     }
 
