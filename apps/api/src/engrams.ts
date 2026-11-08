@@ -9,7 +9,7 @@ import {
   buildMerkleTree,
   type VerifiedEvent,
 } from "@crucible/engrams";
-import { verifiedSessionFromContext } from "./auth.js";
+import { verifiedSessionFromContext, configuredChainId } from "./auth.js";
 
 const engine = new AchievementEngine();
 
@@ -93,25 +93,27 @@ export function createEngramRoutes(): Hono {
     if (!session) {
       return c.json({ error: "unauthenticated", code: "no-credential" }, 401);
     }
-    let body: { leaves?: { recipient: string; amount: string; campaignId: string }[] } = {};
+    let body: { leaves?: { recipient: string; amount: string; campaignId: string; tokenId: string }[] } = {};
     try {
       body = (await c.req.json()) as typeof body;
     } catch {
       return c.json({ error: "invalid body", code: "bad-request" }, 400);
     }
-    const leaves: { recipient: `0x${string}`; amount: bigint; campaignId: bigint }[] = [];
+    const leaves: { recipient: `0x${string}`; amount: bigint; campaignId: bigint; tokenId: bigint }[] = [];
     for (const l of body.leaves ?? []) {
       let amount: bigint;
       let campaignId: bigint;
+      let tokenId: bigint;
       try {
         amount = BigInt(l.amount);
         campaignId = BigInt(l.campaignId);
+        tokenId = BigInt(l.tokenId);
       } catch {
-        return c.json({ error: "amount and campaignId must be whole numbers", code: "bad-request" }, 400);
+        return c.json({ error: "amount, campaignId and tokenId must be whole numbers", code: "bad-request" }, 400);
       }
-      leaves.push({ recipient: l.recipient as `0x${string}`, amount, campaignId });
+      leaves.push({ recipient: l.recipient as `0x${string}`, amount, campaignId, tokenId });
     }
-    const tree = buildMerkleTree(leaves);
+    const tree = buildMerkleTree(leaves, BigInt(configuredChainId()));
     const proofs: Record<string, string[]> = {};
     for (const [leaf, proof] of tree.proofs.entries()) {
       proofs[leaf] = proof;
