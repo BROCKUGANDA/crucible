@@ -397,7 +397,13 @@ class MetricsStore {
 
       // Check if we already have an active alert for this group+metric
       for (const breach of compliance.breaches) {
-        const metric = breach.split(" ")[0]!; // e.g., "P95", "P99", "Error", "Availability"
+        // Derive the metric key from the breach message prefix, robust to the
+        // rest of the message changing (e.g. reworded thresholds).
+        const metric = breach.startsWith("P95") ? "P95"
+          : breach.startsWith("P99") ? "P99"
+          : breach.startsWith("Error") ? "errorRate"
+          : breach.startsWith("Availability") ? "availability"
+          : breach;
         const existing = this.alerts.find(
           (a) =>
             a.group === group &&
@@ -562,6 +568,7 @@ export function getSloCompliance(): SloCompliance[] {
  */
 export function getSystemHealth(): SystemHealth {
   const store = getMetricsStore();
+  store.prune(); // evict samples older than the default 10-minute window; unbounded growth is a leak
   const newAlerts = store.checkAllAndAlert();
   if (newAlerts.length > 0 && alertNotifier) {
     try {

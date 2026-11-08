@@ -105,7 +105,7 @@ describe("auth: nonce issuance", () => {
       // @ts-expect-error — a stream body is exactly what is being tested.
       duplex: "half",
     });
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(413);
   });
 });
 

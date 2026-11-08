@@ -178,8 +178,17 @@ export function createCampaignRoutes(config: CampaignsConfig = {}): Hono {
       );
     }
 
-    const totalBudget = BigInt(body.totalBudget);
-    const perClaimAmount = BigInt(body.perClaimAmount);
+    let totalBudget: bigint;
+    let perClaimAmount: bigint;
+    try {
+      totalBudget = BigInt(body.totalBudget);
+      perClaimAmount = BigInt(body.perClaimAmount);
+    } catch {
+      return c.json(
+        { error: "totalBudget and perClaimAmount must be whole numbers", code: "bad-request" },
+        400,
+      );
+    }
 
     // Max budget check
     if (config.maxBudgetWei && totalBudget > config.maxBudgetWei) {

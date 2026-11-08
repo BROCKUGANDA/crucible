@@ -89,25 +89,6 @@ export interface NonceStore {
 
 const KEY_PREFIX = "crucible:auth:";
 
-/**
- * Consume-if-unconsumed, as Redis runs it: read, compare, write, all without yielding.
- *
- * Returns 1 only when the entry exists, its nonce matches, and no signature is recorded yet.
- * Anything else returns 0 and writes nothing — a failed consumption must not extend the TTL of a
- * challenge somebody else is completing, or a replay would keep the window open by retrying.
- */
-const CONSUME_SCRIPT = `
-local raw = redis.call('GET', KEYS[1])
-if not raw then return 0 end
-local ok, record = pcall(cjson.decode, raw)
-if not ok or type(record) ~= 'table' then return 0 end
-if record.nonce ~= ARGV[1] then return 0 end
-if record.signature ~= nil and record.signature ~= cjson.null then return 0 end
-record.signature = ARGV[2]
-redis.call('SET', KEYS[1], cjson.encode(record), 'EX', tonumber(ARGV[3]))
-return 1
-`;
-
 function key(challengeId: string): string {
   return `${KEY_PREFIX}${challengeId}`;
 }

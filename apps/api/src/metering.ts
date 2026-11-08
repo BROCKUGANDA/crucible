@@ -73,6 +73,13 @@ export interface MeteringStore {
   setQuota(quota: Quota): void;
   listQuotas(tenantId: string): Quota[];
   reset(): void;
+  /**
+   * Atomically record an event only if quota allows. Returns the event when
+   * recorded, null when any configured quota would be exceeded (nothing
+   * written). The in-memory store is single-threaded so check+record is one
+   * JavaScript turn; an async store must hold a lock around the same sequence.
+   */
+  recordEventIfAllowed(event: UsageEvent, quantity: number): UsageEvent | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -154,6 +161,19 @@ export function createMeteringStore(): MeteringStore {
       state.events.length = 0;
       state.quotas.clear();
     },
+    recordEventIfAllowed(event: UsageEvent, quantity: number): UsageEvent | null {
+      const quotas = state.quotas;
+      for (const q of quotas.values()) {
+        if (q.tenantId !== event.tenantId || q.metric !== event.metric) continue;
+        const { start, end } = periodBounds(q.period, Date.now());
+        const used = state.events
+          .filter((e) => e.tenantId === event.tenantId && e.metric === event.metric && e.recordedAt >= start && e.recordedAt < end)
+          .reduce((sum, e) => sum + e.quantity, 0);
+        if (q.limit - used < quantity) return null;
+      }
+      state.events.push(event);
+      return event;
+    },
   };
 }
 
@@ -192,6 +212,81 @@ export class MeteringService {
     return event;
   }
 
+  /**
+   * Record usage only if quota allows — atomic check+record so concurrent
+   * requests cannot both pass and exceed the limit (TOCTOU fix).
+   */
+  recordUsageIfAllowed(
+    tenantId: string,
+    metric: string,
+    quantity: number = 1,
+    metadata?: Record<string, unknown>,
+  ): { event: UsageEvent | null; check: QuotaCheckResult } {
+    if (!tenantId || !metric) throw new Error("tenantId and metric are required");
+    if (!Number.isFinite(quantity) || quantity <= 0) throw new Error("quantity must be positive");
+
+    const quotas = this.store.listQuotas(tenantId).filter((q) => q.metric === metric);
+    if (quotas.length === 0) {
+      const event = this.recordUsage(tenantId, metric, quantity, metadata);
+      return { event, check: { allowed: true, remaining: Infinity, used: 0, limit: Infinity } };
+    }
+
+    const now = Date.now();
+    let tightestRemaining: number | null = null;
+    let tightestUsed = 0;
+    let tightestLimit = Infinity;
+    for (const q of quotas) {
+      const live = this.store.getQuota(tenantId, metric, q.period);
+      if (!live) continue;
+      const rem = live.limit - live.used;
+      if (rem < quantity) {
+        return {
+          event: null,
+          check: {
+            allowed: false,
+            remaining: Math.max(0, rem),
+            used: live.used,
+            limit: live.limit,
+            reason: `Quota exceeded for ${metric} (${q.period}): ${live.used}/${live.limit}`,
+          },
+        };
+      }
+      if (tightestRemaining === null || rem < tightestRemaining) {
+        tightestRemaining = rem;
+        tightestUsed = live.used;
+        tightestLimit = live.limit;
+      }
+    }
+
+    const event = this.store.recordEventIfAllowed(
+      { eventId: `evt-${randomBytes(8).toString("hex")}`, tenantId, metric, quantity, recordedAt: now, metadata },
+      quantity,
+    );
+
+    if (!event) {
+      return {
+        event: null,
+        check: {
+          allowed: false,
+          remaining: tightestRemaining != null ? Math.max(0, tightestRemaining - quantity) : 0,
+          used: tightestUsed,
+          limit: tightestLimit,
+          reason: `Quota exceeded for ${metric}: concurrent claim`,
+        },
+      };
+    }
+
+    return {
+      event,
+      check: {
+        allowed: true,
+        remaining: tightestRemaining != null ? Math.max(0, tightestRemaining - quantity) : Infinity,
+        used: tightestUsed + quantity,
+        limit: tightestLimit,
+      },
+    };
+  }
+
   getUsage(tenantId: string, metric?: string, from?: number, to?: number): UsageSummary[] {
     const events = this.store.listEvents(tenantId, metric, from, to);
     const grouped = new Map<string, { total: number; count: number }>();
@@ -209,7 +304,7 @@ export class MeteringService {
         metric: m,
         total: g.total,
         eventCount: g.count,
-        from: from ?? (events.length ? Math.min(...events.map((e) => e.recordedAt)) : now),
+        from: from ?? (events.length ? events.reduce((min, e) => Math.min(min, e.recordedAt), Infinity) : now),
         to: to ?? now,
       });
     }

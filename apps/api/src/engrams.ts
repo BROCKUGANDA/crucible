@@ -40,26 +40,6 @@ engine.registerRule(
   }),
 );
 
-function resolveRecipient(c: Context): string | null {
-  const cookie = c.req.header("cookie");
-  if (!cookie) return null;
-  for (const part of cookie.split(";")) {
-    const [k, ...v] = part.trim().split("=");
-    if (k === "crucible_session") {
-      try {
-        const encoded = v.join("=").split(".")[0];
-        if (encoded) {
-          const payload = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8")) as { address?: string };
-          if (payload.address) return payload.address;
-        }
-      } catch {
-        // malformed
-      }
-    }
-  }
-  return null;
-}
-
 export function createEngramRoutes(): Hono {
   const app = new Hono();
 
@@ -83,10 +63,11 @@ export function createEngramRoutes(): Hono {
   });
 
   app.post("/evaluate", async (c) => {
-    const recipient = resolveRecipient(c);
-    if (!recipient) {
+    const session = verifiedSessionFromContext(c);
+    if (!session) {
       return c.json({ error: "unauthenticated", code: "no-credential" }, 401);
     }
+    const recipient = session.payload.address;
     let body: { event?: VerifiedEvent } = {};
     try {
       body = (await c.req.json()) as typeof body;
@@ -118,11 +99,18 @@ export function createEngramRoutes(): Hono {
     } catch {
       return c.json({ error: "invalid body", code: "bad-request" }, 400);
     }
-    const leaves = (body.leaves ?? []).map((l) => ({
-      recipient: l.recipient as `0x${string}`,
-      amount: BigInt(l.amount),
-      campaignId: BigInt(l.campaignId),
-    }));
+    const leaves: { recipient: `0x${string}`; amount: bigint; campaignId: bigint }[] = [];
+    for (const l of body.leaves ?? []) {
+      let amount: bigint;
+      let campaignId: bigint;
+      try {
+        amount = BigInt(l.amount);
+        campaignId = BigInt(l.campaignId);
+      } catch {
+        return c.json({ error: "amount and campaignId must be whole numbers", code: "bad-request" }, 400);
+      }
+      leaves.push({ recipient: l.recipient as `0x${string}`, amount, campaignId });
+    }
     const tree = buildMerkleTree(leaves);
     const proofs: Record<string, string[]> = {};
     for (const [leaf, proof] of tree.proofs.entries()) {

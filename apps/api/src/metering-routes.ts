@@ -38,14 +38,12 @@ export function createMeteringRoutes(config: MeteringConfig = {}): Hono {
       return c.json({ error: "tenantId and metric are required", code: "bad-request" }, 400);
     }
 
-    // Quota check before recording
-    const check: QuotaCheckResult = service.checkQuota(tenantId, metric, body.quantity ?? 1);
-    if (!check.allowed) {
-      return c.json({ error: "quota_exceeded", ...check }, 429);
+    // Atomic quota check + record: concurrent requests cannot both pass and exceed the limit.
+    const result = service.recordUsageIfAllowed(tenantId, metric, body.quantity ?? 1, body.metadata);
+    if (!result.event) {
+      return c.json({ error: "quota_exceeded", ...result.check }, 429);
     }
-
-    const event = service.recordUsage(tenantId, metric, body.quantity ?? 1, body.metadata);
-    return c.json({ event, quota: check }, 201);
+    return c.json({ event: result.event, quota: result.check }, 201);
   });
 
   app.get("/usage/:tenantId", async (c) => {
@@ -108,11 +106,15 @@ export function createMeteringRoutes(config: MeteringConfig = {}): Hono {
 
     const tenantId = body.tenantId?.trim();
     const metric = body.metric?.trim();
+    const quantity = body.quantity ?? 1;
     if (!tenantId || !metric) {
       return c.json({ error: "tenantId and metric are required", code: "bad-request" }, 400);
     }
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      return c.json({ error: "quantity must be a positive number", code: "bad-request" }, 400);
+    }
 
-    const result = service.checkQuota(tenantId, metric, body.quantity ?? 1);
+    const result = service.checkQuota(tenantId, metric, quantity);
     return c.json(result);
   });
 

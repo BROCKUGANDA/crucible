@@ -206,6 +206,12 @@ export function createCampaignStore(): CampaignStore {
         );
       }
 
+      // Activating an already-expired campaign would mislead: claims would be
+      // rejected by the window check while the campaign reads as "active".
+      if (status === "active" && Date.now() > campaign.endsAt) {
+        throw new Error("cannot activate a campaign whose claim window has already closed");
+      }
+
       const updated: Campaign = {
         ...campaign,
         status,
@@ -367,6 +373,29 @@ export function createCampaign(params: {
   }
   if (params.endsAt <= now) {
     throw new Error("claim window end must be in the future");
+  }
+
+  // Validate criterion values up front so a malformed criterion cannot silently
+  // fail every eligibility check later with an opaque "Failed eligibility" message.
+  for (const criterion of params.eligibility || []) {
+    const value = criterion.value;
+    switch (criterion.operator) {
+      case "gte":
+      case "lte":
+      case "eq":
+        if (typeof value !== "number" || !Number.isFinite(value)) {
+          throw new Error(`criterion ${criterion.type} ${criterion.operator} requires a numeric value`);
+        }
+        break;
+      case "in":
+      case "not_in":
+        if (!Array.isArray(value) || value.some((v) => typeof v !== "number" || !Number.isFinite(v))) {
+          throw new Error(`criterion ${criterion.type} ${criterion.operator} requires an array of numbers`);
+        }
+        break;
+      default:
+        throw new Error(`unknown criterion operator: ${criterion.operator}`);
+    }
   }
 
   return {
@@ -535,6 +564,9 @@ function evaluateCriterion(
   }
 
   const value = Number(criterion.value);
+  if (!Number.isFinite(value)) {
+    throw new Error(`criterion ${criterion.type} ${criterion.operator} has a non-numeric value`);
+  }
   switch (criterion.operator) {
     case "gte":
       return actual >= value;

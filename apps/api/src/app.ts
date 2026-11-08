@@ -854,19 +854,20 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
    * Kill switch: blocks creation of new evaluations and other risky off-chain
    * work when enabled. Settlement, withdrawals, and on-chain finalization are
    * never blocked (ADR-0003). The switch is auditable and fails closed.
+   *
+   * Scoped to evaluation-related paths so auth, faucet, voice and other writes
+   * keep working during an incident.
    */
+  const EVAL_PATH_PREFIXES = ["/evaluations", "/scorecards", "/leaderboards"];
   app.use("*", async (c, next) => {
-    const method = c.req.method;
-    if (method === "POST" || method === "PUT" || method === "PATCH" || method === "DELETE") {
-      if (isBlocked("new_evaluation")) {
-        const kstatus = killSwitchStatus();
-        return c.json({
-          error: "kill_switch_enabled",
-          reason: "New evaluations and risky off-chain work are blocked.",
-          enabledAt: kstatus.enabledAt,
-          reasonText: kstatus.reason ?? null,
-        }, 503);
-      }
+    if (isBlocked("new_evaluation") && EVAL_PATH_PREFIXES.some((p) => c.req.path.startsWith(p))) {
+      const kstatus = killSwitchStatus();
+      return c.json({
+        error: "kill_switch_enabled",
+        reason: "New evaluations and risky off-chain work are blocked.",
+        enabledAt: kstatus.enabledAt,
+        reasonText: kstatus.reason ?? null,
+      }, 503);
     }
     await next();
   });
@@ -892,7 +893,11 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
       trustProxy: opts.trustProxy ?? false,
       ...opts.voiceRateLimit,
     });
-    app.use("/voice/*", voiceLimiter);
+    app.use("/voice/*", async (c, next) => {
+      // /voice/agent-session has its own tighter mint bucket; don't double-charge.
+      if (c.req.path === "/voice/agent-session") return next();
+      return voiceLimiter(c, next);
+    });
     /**
      * A conversation mint is the one voice route that hands out a credential rather than
      * bytes, and every mint spends account minutes on a live channel. Its own, much smaller
@@ -970,12 +975,16 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
   if (opts.stsRateLimit !== false) {
     app.use(
       "/sts/*",
-      rateLimit({
-        limit: 120,
-        windowMs: 60_000,
-        burst: 20,
-        trustProxy: opts.trustProxy ?? false,
-      }),
+      async (c, next) => {
+        // /sts/turn has its own tighter turn bucket; don't double-charge.
+        if (c.req.path === "/sts/turn") return next();
+        return rateLimit({
+          limit: 120,
+          windowMs: 60_000,
+          burst: 20,
+          trustProxy: opts.trustProxy ?? false,
+        })(c, next);
+      },
     );
   }
   app.route("/sts", createStsRoutes(opts.sts ?? null, { getModel: deps.getModel }));
@@ -2502,16 +2511,29 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
 
   /**
    * Campaign and airdrop distributor routes (REW-003).
+   * Absent means the campaign surface answers 501 — a deployment without
+   * a distributor must not render an empty list that reads as "no campaigns".
    */
   if (opts.campaigns !== undefined && opts.campaigns !== null) {
     app.route("/campaigns", createCampaignRoutes(opts.campaigns));
+  } else {
+    app.all("/campaigns/*", (c) =>
+      c.json({ error: "campaigns not configured on this host", code: "not-implemented" }, 501),
+    );
   }
 
   /**
    * Usage metering and quota routes (Billing/Usage).
+   * Absent means the metering surface answers 501 — a deployment without
+   * a metering store must not render an empty usage list that reads as
+   * "no usage recorded".
    */
   if (opts.metering !== undefined && opts.metering !== null) {
     app.route("/metering", createMeteringRoutes(opts.metering));
+  } else {
+    app.all("/metering/*", (c) =>
+      c.json({ error: "metering not configured on this host", code: "not-implemented" }, 501),
+    );
   }
 
   app.notFound((c) => c.json({ error: "Lost slag. This page never left the crucible." }, 404));
