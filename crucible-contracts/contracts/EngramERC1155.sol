@@ -45,10 +45,7 @@ contract EngramERC1155 is ERC1155, AccessControl {
         _setURI(newUri);
     }
 
-    function mint(address to, uint256 tokenId, uint256 amount, bytes32 evidenceRef)
-        external
-        onlyRole(MINTER_ROLE)
-    {
+    function mint(address to, uint256 tokenId, uint256 amount, bytes32 evidenceRef) external onlyRole(MINTER_ROLE) {
         if (amount == 0) revert AmountZero();
         uint256 newTotal = totalMinted[tokenId] + amount;
         if (cap[tokenId] != 0 && newTotal > cap[tokenId]) revert CapExceeded();
@@ -76,24 +73,14 @@ contract EngramERC1155 is ERC1155, AccessControl {
         _mintBatch(to, tokenIds, amounts, "");
     }
 
-    function _update(
-        address from,
-        address to,
-        uint256[] memory ids,
-        uint256[] memory values
-    ) internal override {
+    function _update(address from, address to, uint256[] memory ids, uint256[] memory values) internal override {
         for (uint256 i = 0; i < ids.length; i++) {
             if (ids[i] < 2000 && from != address(0)) revert Soulbound();
         }
         super._update(from, to, ids, values);
     }
 
-    function supportsInterface(bytes4 interfaceId)
-        public
-        view
-        override(ERC1155, AccessControl)
-        returns (bool)
-    {
+    function supportsInterface(bytes4 interfaceId) public view override(ERC1155, AccessControl) returns (bool) {
         return super.supportsInterface(interfaceId);
     }
 }

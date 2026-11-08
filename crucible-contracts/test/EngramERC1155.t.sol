@@ -69,9 +69,12 @@ contract EngramERC1155Test is Test {
         uint256[] memory ids = new uint256[](2);
         uint256[] memory amts = new uint256[](2);
         bytes32[] memory refs = new bytes32[](2);
-        ids[0] = 1001; ids[1] = 2000;
-        amts[0] = 1; amts[1] = 1;
-        refs[0] = bytes32(uint256(1)); refs[1] = bytes32(uint256(2));
+        ids[0] = 1001;
+        ids[1] = 2000;
+        amts[0] = 1;
+        amts[1] = 1;
+        refs[0] = bytes32(uint256(1));
+        refs[1] = bytes32(uint256(2));
         vm.prank(minter);
         e.mintBatch(user, ids, amts, refs);
         assertEq(e.balanceOf(user, 1001), 1);
