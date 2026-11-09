@@ -1,11 +1,13 @@
 import { createServer, type Server } from "node:http";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_GROQ_MODEL,
   DEFAULT_NIM_MODEL,
+  DEFAULT_TOKENXYZ_MODEL,
   groqClient,
   nimClient,
   promptGuard,
+  tokenxyzClient,
 } from "../src/providers";
 
 /**
@@ -310,5 +312,45 @@ describe("promptGuard", () => {
     const guard = promptGuard({ apiKey: bearerSentinel, baseUrl: baseUrl(), shape: "verdict" });
 
     expect(await guard.score("anything")).toBeNull();
+  });
+});
+
+describe("tokenxyzClient", () => {
+  it("defaults to the token.xyz exchange and its code model", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string | URL, init?: RequestInit) => {
+        calls.push({ url: String(url), init });
+        return new Response(JSON.stringify({ choices: [{ message: { content: "ok" } }] }), {
+          status: 200,
+        });
+      }),
+    );
+
+    const client = tokenxyzClient({ apiKey: bearerSentinel });
+    await client.complete({ system: "s", prompt: "p" });
+
+    expect(calls[0]!.url).toBe("https://token.xyz/v1/chat/completions");
+    const headers = calls[0]!.init!.headers as Record<string, string>;
+    expect(headers.authorization).toBe(`Bearer ${bearerSentinel}`);
+    const body = JSON.parse(String(calls[0]!.init!.body));
+    expect(body.model).toBe(DEFAULT_TOKENXYZ_MODEL);
+    expect(DEFAULT_TOKENXYZ_MODEL).toBe("z-ai/glm-5.3-flash");
+    vi.unstubAllGlobals();
+  });
+
+  it("names token.xyz in a provider error, not groq", async () => {
+    // A 401 that says "groq responded 401" sends the next reader to the wrong console.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("bad key", { status: 401 })),
+    );
+    const client = tokenxyzClient({ apiKey: "bad", retryOnRateLimit: false });
+
+    await expect(client.complete({ system: "s", prompt: "p" })).rejects.toThrow(
+      /token\.xyz responded 401/,
+    );
+    vi.unstubAllGlobals();
   });
 });

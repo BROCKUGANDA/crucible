@@ -301,8 +301,8 @@ issue instructions.
 
 ```ts
 const agent = createForgedAgent({
-  client: groqClient({ apiKey: process.env.GROQ_API_KEY! }),
-  model: "qwen/qwen3.8-27b",
+  client: tokenxyzClient({ apiKey: process.env.TOKENXYZ_API_KEY! }),
+  model: "z-ai/glm-5.3-flash",
   wrapUntrusted: (a) => wrapUntrusted(a),   // from @crucible/agent-security
 });
 ```
@@ -316,10 +316,14 @@ files cannot be identified has not been shown to be safe.
 
 ### Providers
 
-`groqClient` and `anthropicClient` sit behind one `LlmClient` interface. Groq is the
-default because its free tier is fast enough to iterate a build-and-test loop
-interactively, which is what prompt tuning needs. Note `llama-3.1-70b` was retired from
-Groq in September 2026 — the default is `qwen/qwen3.8-27b`.
+`tokenxyzClient`, `groqClient` and `nimClient` sit behind one `LlmClient` interface.
+token.xyz is the default provider: an OpenAI-compatible exchange that routes each
+request to the cheapest healthy provider for the model, so the per-model price is the
+price that matters. Groq and NVIDIA NIM remain because they host the purpose-trained
+safety classifiers below; the Anthropic Messages client was retired on 2026-11-09 when
+every model call moved to the exchange. Note `llama-3.1-70b` was retired from Groq in
+September 2026 — the Groq default is `qwen/qwen3.8-27b`; the token.xyz default is
+`z-ai/glm-5.3-flash`.
 
 `promptGuard` wraps Meta's **Llama Prompt Guard**, which Groq hosts. It is trained
 specifically for injection detection rather than being a general model doing its best,
@@ -548,10 +552,11 @@ ELEVENLABS_MODEL_ID=eleven_multilingual_v2
 # ELEVENLABS_AGENT_ID=...          # a live conversation can be minted for this agent at GET /voice/agent-session; blank means the route answers 503
 # VOICE_DISABLED=1                 # kill switch when the credentials are present
 
-# The conversation. Without the key the brain is off and the control is not drawn.
+# The conversation. Without a key the brain is off and the control is not drawn.
+# An empty FRENCHY_LLM_API_KEY falls back to TOKENXYZ_API_KEY (the default provider).
 FRENCHY_LLM_API_KEY=...            # any OpenAI-compatible provider
-FRENCHY_LLM_MODEL=gpt-4o-mini
-# FRENCHY_LLM_BASE_URL=...         # the provider's own base URL, if not api.openai.com
+FRENCHY_LLM_MODEL=deepseek/deepseek-v4-flash
+# FRENCHY_LLM_BASE_URL=...         # the provider's own base URL, if not token.xyz
 # FRENCHY_DISABLED=1               # kill switch with the credentials present
 # FRENCHY_TTS_DISABLED=1           # answer in words only, never in the premium voice
 
@@ -585,11 +590,11 @@ npm run agent:live -- --dry             # one model call, no work loop
 npm run agent:live -- --budget 5 --keep
 ```
 
-`scripts/live-agent.mjs` runs the actual `createForgedAgent` against the actual Anthropic
-Messages API inside a real sandbox: it fetches a spec, asks for a patch, applies it, runs
-the pinned Forge suite, and feeds the failure back. It needs no chain, no RPC, and no
-faucet — only the API key. It exits non-zero if the suite never goes green, so it can
-gate CI.
+`scripts/live-agent.mjs` runs the actual `createForgedAgent` against a real model over
+the OpenAI-compatible wire (token.xyz by default) inside a real sandbox: it fetches a
+spec, asks for a patch, applies it, runs the pinned Forge suite, and feeds the failure
+back. It needs no chain, no RPC, and no faucet — only the API key. It exits non-zero if
+the suite never goes green, so it can gate CI.
 
 Two properties it checks that a stub could not:
 
@@ -597,9 +602,10 @@ Two properties it checks that a stub could not:
    the run aborts — *before* the runner's own `touchesTests` check gets involved. The
    prompt is the control, not the belt-and-braces around it.
 2. **The client builds a request the API accepts.** `agent-live.test.ts` runs
-   `anthropicClient` against a local server speaking the Messages API and asserts on the
-   bytes on the wire: `x-api-key`, `anthropic-version`, `max_tokens`, and that `thinking`
-   blocks never leak into the diff parser (which would silently make every patch empty).
+   `tokenxyzClient` against a local server speaking the OpenAI chat-completions wire and
+   asserts on the bytes on the wire: the `Authorization: Bearer` header, `max_tokens`,
+   the message array, and that reasoning output never leaks into the diff parser (which
+   would silently make every patch empty).
 
 ## Known limits
 

@@ -219,8 +219,9 @@ const voice = (() => {
  */
 const frenchy = (() => {
   if (process.env.FRENCHY_DISABLED === "1") return null;
-  const llmApiKey = process.env.FRENCHY_LLM_API_KEY?.trim();
-  const llmModel = process.env.FRENCHY_LLM_MODEL?.trim() || "gpt-4o-mini";
+  const llmApiKey =
+    process.env.FRENCHY_LLM_API_KEY?.trim() || process.env.TOKENXYZ_API_KEY?.trim();
+  const llmModel = process.env.FRENCHY_LLM_MODEL?.trim() || "deepseek/deepseek-v4-flash";
   const llmBaseUrl = process.env.FRENCHY_LLM_BASE_URL?.trim() || undefined;
   // How long the brain may take. A provider that is slow is slow, not broken,
   // and the browser says "Thinking..." the whole time - so this is a budget

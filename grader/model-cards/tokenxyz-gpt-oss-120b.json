@@ -1,0 +1,16 @@
+{
+  "id": "openai/gpt-oss-120b",
+  "dialect": "openai-compat",
+  "snapshot": "openai/gpt-oss-120b",
+  "pinnedAt": "2026-11-09",
+  "roles": ["judge"],
+  "retention": {
+    "retention": "api-logs-retained",
+    "reviewedAt": "2026-11-09",
+    "source": "ASSUMED CONSERVATIVE: token.xyz's terms could not be reviewed on 2026-11-09 (the site refuses automated fetches), so the posture is recorded as api-logs-retained until their terms state otherwise. The exchange also routes each request to a third-party provider, which widens the retention surface. Re-review before grading any corpus carrying real sponsor data."
+  },
+  "budgetUsd": { "stage": 2, "day": 10 },
+  "costPerCallUsd": 0,
+  "maxCallsPerStage": 64,
+  "latencyP95Ms": 20000
+}

@@ -205,6 +205,20 @@ services:
       STAMP_MODE: ${STAMP_MODE:-disabled}
       # Solana asset intelligence (Tokens API, server-only). Empty = adapter refuses.
       TOKENS_API_KEY: ${TOKENS_API_KEY:-}
+      # token.xyz — the OpenAI-compatible exchange that serves Frenchy's brain and the
+      # speech-to-speech host (server-only; the browser never sees it). Empty = the
+      # brain is off and the voice routes answer 503, exactly as before.
+      TOKENXYZ_API_KEY: ${TOKENXYZ_API_KEY:-}
+      # Safety moderation is fail-closed: an empty key produces "unconfigured" verdicts,
+      # never "safe". The MODEL_REGISTRY in apps/api/src/safety.ts gates the model ids.
+      # These were read by the API but passed to no container until 2026-11-09, so a
+      # deployed API could never configure moderation at all.
+      SAFETY_LLM_API_KEY: ${SAFETY_LLM_API_KEY:-}
+      SAFETY_LLM_BASE_URL: ${SAFETY_LLM_BASE_URL:-}
+      SAFETY_LLM_MODEL: ${SAFETY_LLM_MODEL:-}
+      SAFETY_LLM_TIMEOUT_MS: ${SAFETY_LLM_TIMEOUT_MS:-}
+      SAFETY_LLM_RETRIES: ${SAFETY_LLM_RETRIES:-}
+      SAFETY_MODEL_REVISION: ${SAFETY_MODEL_REVISION:-}
     ports:
       - "${API_HOST_PORT:-8787}:8787"
     volumes:

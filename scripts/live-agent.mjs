@@ -10,14 +10,14 @@
  * a patch, apply it, run the pinned suite, feed the failure back — so it needs nothing
  * but a provider key. That keeps it runnable in the thirty seconds before a demo.
  *
- *   npm run agent:live                          # Groq; reads GROQ_API_KEY
- *   npm run agent:live -- --provider anthropic  # reads ANTHROPIC_API_KEY
+ *   npm run agent:live                          # token.xyz; reads TOKENXYZ_API_KEY
  *   npm run agent:live -- --provider nvidia     # reads NVIDIA_API_KEY
+ *   npm run agent:live -- --provider groq       # reads GROQ_API_KEY
  *
  * Options:
- *   --provider <p>    groq (default), nvidia (NIM), or anthropic
- *   --model <id>      default qwen/qwen3.8-27b on Groq, z-ai/glm-5.3-flash on NIM,
- *                     claude-sonnet-4-5 on Anthropic
+ *   --provider <p>    token.xyz (default), nvidia (NIM), or groq
+ *   --model <id>      default z-ai/glm-5.3-flash on token.xyz and NIM,
+ *                     qwen/qwen3.8-27b on Groq
  *   --guard-model <id> override the injection classifier for this provider
  *   --budget <n>      iterations, default 3
  *   --task <file>     a spec to solve, default the fixture below
@@ -44,7 +44,7 @@ function arg(name, fallback = null) {
 }
 const flag = (name) => process.argv.includes(`--${name}`);
 
-const PROVIDER = String(arg("provider", "groq"));
+const PROVIDER = String(arg("provider", "tokenxyz"));
 const BUDGET = Number(arg("budget", "3"));
 const DRY = flag("dry");
 const KEEP = flag("keep");
@@ -144,10 +144,40 @@ function specFor(label) {
 // ── provider wiring ──────────────────────────────────────────────────────
 
 function resolveProvider() {
+  if (PROVIDER === "tokenxyz" || PROVIDER === "token.xyz") {
+    const apiKey = process.env.TOKENXYZ_API_KEY;
+    if (!apiKey) {
+      fail(
+        "TOKENXYZ_API_KEY is not set.\n\n" +
+          "  PowerShell:\n" +
+          "    $env:TOKENXYZ_API_KEY = 'sk-tok-...'\n\n" +
+          "  token.xyz is the default provider; create a key at https://token.xyz/app/keys\n" +
+          "  if you do not have one, and check credits at https://token.xyz/app/credits.\n" +
+          "  The injection guard screens with NVIDIA NIM's content-safety classifier, so\n" +
+          "  set NVIDIA_API_KEY as well — or run with --no-guard and say so out loud.",
+      );
+    }
+    const guardKey = process.env.NVIDIA_API_KEY ?? process.env.NIM_API_KEY;
+    return {
+      apiKey,
+      model: String(arg("model", process.env.TOKENXYZ_MODEL ?? "z-ai/glm-5.3-flash")),
+      guard: guardKey
+        ? {
+            apiKey: guardKey,
+            shape: "verdict",
+            model: arg("guard-model") ?? "nvidia/nemotron-3.5-content-safety",
+          }
+        : null,
+      kind: "tokenxyz",
+    };
+  }
+
   if (PROVIDER === "anthropic") {
-    const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (!apiKey) fail("ANTHROPIC_API_KEY is not set");
-    return { apiKey, model: String(arg("model", "claude-sonnet-4-5")), kind: "anthropic" };
+    fail(
+      "the anthropic provider was retired on 2026-11-09: its Messages-API client is gone\n" +
+        "  and every model call now goes through the OpenAI-compatible exchange. Use the\n" +
+        "  default token.xyz provider, or --provider groq / --provider nvidia.",
+    );
   }
 
   if (PROVIDER === "nvidia" || PROVIDER === "nim") {
@@ -164,10 +194,19 @@ function resolveProvider() {
     return {
       apiKey,
       model: String(arg("model", "z-ai/glm-5.3-flash")),
-      guardModel: arg("guard-model") ?? "nvidia/nemotron-3.5-content-safety",
-      guardShape: "verdict",
+      guard: {
+        apiKey,
+        shape: "verdict",
+        model: arg("guard-model") ?? "nvidia/nemotron-3.5-content-safety",
+      },
       kind: "nvidia",
     };
+  }
+
+  if (PROVIDER !== "groq") {
+    fail(
+      `unknown provider "${PROVIDER}". Use token.xyz (the default), nvidia (NIM), or groq.`,
+    );
   }
 
   const apiKey = process.env.GROQ_API_KEY;
@@ -176,7 +215,7 @@ function resolveProvider() {
       "GROQ_API_KEY is not set.\n\n" +
         "  PowerShell:\n" +
         "    $env:GROQ_API_KEY = 'gsk_...'\n\n" +
-        "  Or run against NVIDIA NIM instead with --provider nvidia and NVIDIA_API_KEY.\n\n" +
+        "  Or run against token.xyz (the default) or NVIDIA NIM with --provider nvidia.\n\n" +
         "  This script calls a real model on purpose — the prompt has never been run\n" +
         "  against one, and an untested prompt is a demo-day surprise.",
     );
@@ -184,8 +223,7 @@ function resolveProvider() {
   return {
     apiKey,
     model: String(arg("model", "qwen/qwen3.8-27b")),
-    guardModel: arg("guard-model"),
-    guardShape: "float",
+    guard: { apiKey, shape: "float", model: arg("guard-model") },
     kind: "groq",
   };
 }
@@ -232,15 +270,15 @@ async function main() {
   const {
     createForgedAgent,
     createModelGuard,
-    anthropicClient,
+    tokenxyzClient,
     groqClient,
     nimClient,
     promptGuard,
     Sandbox,
     DEFAULT_SANDBOX,
+    TOKENXYZ_BASE,
     GROQ_BASE,
     NIM_BASE,
-    ANTHROPIC_BASE,
     touchesTests,
     filesTouched,
   } = await loadForgeRunner();
@@ -252,23 +290,24 @@ async function main() {
    * open internet cannot break into anything that happens to be listening on it.
    */
   const PROVIDER_HOSTS = {
+    tokenxyz: new URL(TOKENXYZ_BASE).host,
     groq: new URL(GROQ_BASE).host,
     nvidia: new URL(NIM_BASE).host,
-    anthropic: new URL(ANTHROPIC_BASE).host,
   };
-  const egressAllowlist = [
-    ...new Set([
-      PROVIDER_HOSTS[provider.kind],
-      PROVIDER_HOSTS[provider.guardShape === "verdict" ? "nvidia" : "groq"],
-    ]),
-  ];
+  const egressHosts = [PROVIDER_HOSTS[provider.kind]];
+  if (provider.guard) {
+    egressHosts.push(
+      provider.guard.shape === "verdict" ? PROVIDER_HOSTS.nvidia : PROVIDER_HOSTS.groq,
+    );
+  }
+  const egressAllowlist = [...new Set(egressHosts)];
 
   const client =
-    provider.kind === "groq"
-      ? groqClient({ apiKey: provider.apiKey, model: provider.model, egressAllowlist })
+    provider.kind === "tokenxyz"
+      ? tokenxyzClient({ apiKey: provider.apiKey, model: provider.model, egressAllowlist })
       : provider.kind === "nvidia"
         ? nimClient({ apiKey: provider.apiKey, model: provider.model, egressAllowlist })
-        : anthropicClient({ apiKey: provider.apiKey, model: provider.model, egressAllowlist });
+        : groqClient({ apiKey: provider.apiKey, model: provider.model, egressAllowlist });
 
   const ceiling = DRY ? 1 : BUDGET;
 
@@ -281,26 +320,36 @@ async function main() {
   // ── the injection scan, before the model sees anything ──────────────────
   //
   // The order matters and is the whole point: the guard runs first, so a hostile spec
-  // never reaches a model at all.
-  if (GUARD && (provider.kind === "groq" || provider.kind === "nvidia")) {
-    const guard = promptGuard({
-      apiKey: provider.apiKey,
-      shape: provider.guardShape,
-      ...(provider.guardModel ? { model: provider.guardModel } : {}),
-      egressAllowlist,
-    });
-    const score = await guard.score(spec);
-    if (score === null) {
-      console.log("  guard     no verdict (provider unreachable) — continuing unassisted");
+  // never reaches a model at all. token.xyz hosts no purpose-trained injection
+  // classifier (its catalog is general chat models), so the guard keeps riding NIM's
+  // content-safety model even on a token.xyz run — and says so loudly when the
+  // classifier key is absent rather than silently screening nothing.
+  if (GUARD) {
+    if (!provider.guard) {
+      console.log(
+        "  guard     SKIPPED — NVIDIA_API_KEY is not set, so no injection classifier is\n" +
+          "            available. This run is unscreened; that is a decision, not an oversight.\n",
+      );
     } else {
-      const verdict = score > 0.5 ? "INJECTION" : "clean";
-      console.log(`  guard     ${score.toFixed(4)} — ${verdict}`);
-      if (score > 0.5) {
-        console.log(
-          "\n  the spec tried to issue instructions. Refusing to send it to the model.\n" +
-            "  this is the control working, not a failure.\n",
-        );
-        process.exit(0);
+      const guard = promptGuard({
+        apiKey: provider.guard.apiKey,
+        shape: provider.guard.shape,
+        ...(provider.guard.model ? { model: provider.guard.model } : {}),
+        egressAllowlist,
+      });
+      const score = await guard.score(spec);
+      if (score === null) {
+        console.log("  guard     no verdict (provider unreachable) — continuing unassisted");
+      } else {
+        const verdict = score > 0.5 ? "INJECTION" : "clean";
+        console.log(`  guard     ${score.toFixed(4)} — ${verdict}`);
+        if (score > 0.5) {
+          console.log(
+            "\n  the spec tried to issue instructions. Refusing to send it to the model.\n" +
+              "  this is the control working, not a failure.\n",
+          );
+          process.exit(0);
+        }
       }
     }
   }

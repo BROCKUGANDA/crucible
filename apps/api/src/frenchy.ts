@@ -210,7 +210,7 @@ async function askProvider(
   history: { role: "user" | "assistant"; content: string }[],
   signal?: AbortSignal,
 ): Promise<string> {
-  const baseUrl = (config.baseUrl ?? "https://api.openai.com/v1").replace(/\/+$/, "");
+  const baseUrl = (config.baseUrl ?? "https://token.xyz/v1").replace(/\/+$/, "");
   const url = `${baseUrl}/chat/completions`;
 
   const messages = [

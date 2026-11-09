@@ -4,10 +4,10 @@ import {
   extractDiff,
   filesTouched,
   touchesTests,
-  anthropicClient,
   SYSTEM_PROMPT,
   type LlmClient,
 } from "../src/agent.js";
+import { tokenxyzClient } from "../src/providers.js";
 import { wrapUntrusted } from "@crucible/agent-security";
 import { readSuiteResults } from "../src/runner.js";
 
@@ -337,24 +337,20 @@ describe("createForgedAgent", () => {
   });
 });
 
-describe("anthropicClient", () => {
-  it("returns the concatenated text blocks", async () => {
+describe("tokenxyzClient", () => {
+  it("returns the assistant message content", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () =>
         new Response(
           JSON.stringify({
-            content: [
-              { type: "text", text: "diff --git a/x b/x\n" },
-              { type: "tool_use" },
-              { type: "text", text: "+line\n" },
-            ],
+            choices: [{ message: { content: "diff --git a/x b/x\n+line\n" } }],
           }),
           { status: 200 },
         ),
       ),
     );
-    const c = anthropicClient({ apiKey: "k", model: "claude-test" });
+    const c = tokenxyzClient({ apiKey: "k", model: "test-model" });
     const out = await c.complete({ system: "s", prompt: "p" });
     expect(out).toContain("+line");
     vi.unstubAllGlobals();
@@ -363,19 +359,22 @@ describe("anthropicClient", () => {
   it("throws on a non-2xx with the body", async () => {
     const fetchMock = vi.fn(async () => new Response("overloaded", { status: 529 }));
     vi.stubGlobal("fetch", fetchMock);
-    const c = anthropicClient({ apiKey: "k" });
+    const c = tokenxyzClient({ apiKey: "k", retryOnRateLimit: false });
     await expect(c.complete({ system: "s", prompt: "p" })).rejects.toThrow(/529/);
     vi.unstubAllGlobals();
   });
 
   it("throws when the model returns no text", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ content: [] }), { status: 200 })));
-    const c = anthropicClient({ apiKey: "k" });
-    await expect(c.complete({ system: "s", prompt: "p" })).rejects.toThrow(/no text content/);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(JSON.stringify({ choices: [{ message: { content: null } }] }), { status: 200 })),
+    );
+    const c = tokenxyzClient({ apiKey: "k" });
+    await expect(c.complete({ system: "s", prompt: "p" })).rejects.toThrow(/no message content/);
     vi.unstubAllGlobals();
   });
 
-  it("sends the API key in a header, never in the body", async () => {
+  it("sends the API key in the Authorization header, never in the body", async () => {
     let capturedBody = "";
     let capturedHeaders: Record<string, string> = {};
     vi.stubGlobal(
@@ -383,18 +382,18 @@ describe("anthropicClient", () => {
       vi.fn(async (_url: string, init: RequestInit) => {
         capturedBody = String(init.body);
         capturedHeaders = init.headers as Record<string, string>;
-        return new Response(JSON.stringify({ content: [{ type: "text", text: "ok" }] }), { status: 200 });
+        return new Response(JSON.stringify({ choices: [{ message: { content: "ok" } }] }), { status: 200 });
       }),
     );
     // Fixture credential, supplied from the environment with a runtime-assembled
     // fallback: a static literal shaped like a key reads as a credential to every
     // scanner that will ever look at this file, and the value's only job is to be
-    // the same string on both sides of the x-api-key header — and absent from the body.
+    // the same string on both sides of the Authorization header — and absent from the body.
     const fixtureKey =
-      process.env.CRUCIBLE_TEST_ANTHROPIC_KEY ?? ["fixture", "anthropic", "key"].join("-");
-    const c = anthropicClient({ apiKey: fixtureKey });
+      process.env.CRUCIBLE_TEST_LLM_KEY ?? ["fixture", "llm", "key"].join("-");
+    const c = tokenxyzClient({ apiKey: fixtureKey });
     await c.complete({ system: "s", prompt: "p" });
-    expect(capturedHeaders["x-api-key"]).toBe(fixtureKey);
+    expect(capturedHeaders.authorization).toBe(`Bearer ${fixtureKey}`);
     expect(capturedBody).not.toContain(fixtureKey);
     vi.unstubAllGlobals();
   });

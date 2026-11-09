@@ -133,7 +133,7 @@ function fail(message) {
   process.exit(1);
 }
 
-const PROVIDER = String(arg("provider", "nim")).toLowerCase();
+const PROVIDER = String(arg("provider", "tokenxyz")).toLowerCase();
 const SUITE = String(arg("suite", "graded"));
 const SCOPE = String(arg("scope", "smoke"));
 const RETESTS = Number(arg("retests", "1"));
@@ -316,6 +316,33 @@ function resolveProvider() {
         "provider, and it must not be published as though it did.",
     };
   }
+  if (PROVIDER === "tokenxyz" || PROVIDER === "token.xyz") {
+    const apiKey = process.env.TOKENXYZ_API_KEY;
+    if (!apiKey) {
+      fail(
+        "no TOKENXYZ_API_KEY in the environment, so there is no model to grade.\n" +
+          "  Create a key at https://token.xyz/app/keys (and check credits at\n" +
+          "  https://token.xyz/app/credits), or use --provider stub for a keyless run\n" +
+          "  of the arena's own logic — and read that scorecard as a test of the\n" +
+          "  harness, not of a model.",
+      );
+    }
+
+    const { card, cardPath } = loadCard(
+      arg("card", path.join(ROOT, "grader", "model-cards", "tokenxyz-gpt-oss-120b.json")),
+    );
+
+    return {
+      kind: "openai-compat",
+      modelId: card.id,
+      model: card.snapshot,
+      baseUrl: "https://token.xyz/v1",
+      apiKey,
+      card,
+      cardPath,
+    };
+  }
+
   if (PROVIDER === "openai-compat") {
     if (!BASE_URL) {
       fail(
@@ -357,8 +384,8 @@ function resolveProvider() {
 
   if (PROVIDER !== "nim" && PROVIDER !== "nvidia") {
     fail(
-      `unknown provider "${PROVIDER}". Use nim (NVIDIA NIM), openai-compat (with --base-url, ` +
-        "--model, --card and a key), or stub.",
+      `unknown provider "${PROVIDER}". Use tokenxyz (the default), nim (NVIDIA NIM), ` +
+        "openai-compat (with --base-url, --model, --card and a key), or stub.",
     );
   }
 
