@@ -125,7 +125,7 @@ export default function EngramsPage() {
       return;
     }
     let cancelled = false;
-    fetch(`${API_BASE}/engrams/me`, {
+    fetch(`${API_BASE}/engrams/${encodeURIComponent(address)}`, {
       credentials: "include",
       headers: { Accept: "application/json" },
     })
