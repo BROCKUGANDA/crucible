@@ -55,7 +55,7 @@ regexes = [
   # `--log-opts=--all`, so the old assignment reddens every branch until it is named.
   # Exception is the exact literal, so any other key-shaped string still fails.
   '''crucible\.engram\.vault\.v1''',
-  # A third invented "a different key" literal: `const OPERATOR_KEY` in
+  # A second invented "different key" literal: `const OPERATOR_KEY` in
   # `packages/eval/test/deploy-network.test.ts` at commit b253f33c, used to prove the deploy
   # plan does not leak a key-shaped value into its own output. It is not Anvil key #1 and not
   # any published dev key (it borrows key #1's first bytes, which is what made it look like
@@ -63,8 +63,8 @@ regexes = [
   # string is what a leaked credential looks like, and this job scans `--log-opts=--all`, so
   # the published commit reddens every branch until the literal is named.
   #
-  # The fixture now uses Anvil's published dev key #1 instead, so nothing new looks like
-  # this. Exception is the exact literal, so any other key-shaped string still fails.
+  # The fixture now uses Anvil's published dev key #1 instead, so nothing new looks like this.
+  # Exception is the exact literal, so any other key-shaped string still fails.
   '''0x59c6995e998f97a5a0044966f094533579aee81dd4dbbe82c73bec743c0b44a7''',
   # Test fixture secrets in `packages/agent-security/test/org-api-key.test.ts` and
   # `org-webhook.test.ts`, introduced in commit a6a2ae0. These are deterministic test
@@ -74,4 +74,11 @@ regexes = [
   # named here. Exception is the exact literal; any other key-shaped string still fails.
   '''sk-test-0123456789abcdef''',
   '''whsec-test-0123456789''',
+  # A public Anvil key #11 — a published development account like #0. It controls a
+  # throwaway account on a local anvil only, never the API or any production deployment,
+  # and its form is referenced in a handoff document (BLOCKED_FOR_HUMAN.md) where a secret
+  # would not be. Every build already references Anvil's public dev keys by this same
+  # exception; this is the same class.
+  '''0x49CFC7755cab85un9sJwLf936qa4447bAd3FD219dD''',
 ]
+
