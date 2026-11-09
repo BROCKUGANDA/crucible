@@ -1603,6 +1603,29 @@ guards is the decoration it exists to detect.
   their ids — now authorizes against the resource's owning org, with 404 (not 403) for
   non-members so a foreign id confirms nothing about existence (`0c442ff`).
 
+- **2026-11-09 (cont.) — Audit slices C–F.** Claim completion and rejection routes now exist
+  (sponsor-gated, tx-hash-validated; previously every claim reserved budget forever —
+  `e9869c4`), campaign creation got a default 10 ETH ceiling, and `maxClaimsPerWallet` is a
+  positive integer. A CSRF middleware rejects state-changing cookie-bearing requests whose
+  Origin is present and not configured (the production cookie is `SameSite=None` and
+  `csrfOriginCheck` had never been called); `/monitoring` is owner-only; org budget/API-key
+  actions go through the role matrix (`org:budget:set` / `org:manage`) instead of membership
+  (`df2bdf9`). The funder's cap accounting now holds room on an unrecognised transfer status
+  instead of freeing it, and records a grant whose reservation expired mid-flight (`0273061`);
+  `REDIS_URL` is actually parsed into the connection (ioredis ignored `{ url }`),
+  `DATABASE_URL` no longer defaults to `crucible:crucible` in production, `live-agent` runs
+  every migration, the outbox fallback warns, the funder entrypoint honours
+  `CDP_ALLOW_PLAINTEXT_SECRETS`, and the deploy rsync excludes the untracked credential-bearing
+  scripts (`0273061`). L0 judges real events (sequence coverage, denied egress/tool, test
+  modification) instead of dead branches (`b31ea96`); Forge Watch is durable whenever a PG
+  executor is wired (`7c8db34`). The keeper now feeds `/engrams/evaluate` from each finalized
+  trial with a deterministic event id (`fb56eee`). `/staking` advertises the wrong-network
+  guard every other money page had, and the CSP names the Scribe WebSocket host (`69a838c`;
+  staking's browser verification is still pending). **Left open, named:** the outbox relay
+  (`forge_watch_outbox` is still insert-only), the DLQ mechanism, metering's tenant binding
+  (surface unmounted), the `/trials/:id/events` stream ceiling, STAMP reviewer roles, the
+  global-error wallet-graph import, and the fork-test advisory gate.
+
 ## Unresolved from the 2026-10-27 pass (continues the open list)
 
 23. **`apps/api` reported one failing test once, inside a saturated fan-out, and it has not been
