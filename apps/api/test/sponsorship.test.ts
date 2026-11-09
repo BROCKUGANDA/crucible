@@ -36,7 +36,7 @@ function sessionHeaders(address: string): Headers {
   };
   const encoded = Buffer.from(JSON.stringify(payload)).toString("base64url");
   const signature = createHmac("sha256", DEV_SECRET).update(encoded).digest("base64url");
-  return new Headers({ cookie: `crucible_session=${encoded}.${signature}` });
+  return new Headers({ cookie: `__Host-crucible_session=${encoded}.${signature}` });
 }
 
 let funder: http.Server | null = null;

@@ -321,6 +321,13 @@ export function buildUnstake(agentId: number, amountWei: bigint): Hex {
   return encodeFunctionData({ abi: TRIALS_ABI, functionName: "unstake", args: [BigInt(agentId), amountWei] });
 }
 
+export function buildAddStake(agentId: number, amountWei: bigint) {
+  return {
+    data: encodeFunctionData({ abi: TRIALS_ABI, functionName: "addStake", args: [BigInt(agentId)] }),
+    value: amountWei,
+  };
+}
+
 /**
  * Submit a signed run.
  *

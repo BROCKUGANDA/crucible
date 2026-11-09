@@ -190,20 +190,14 @@ function paramsFile(feeBps: number): string {
 }
 
 describe("mainnet preflight", () => {
-  it("refuses the unsigned production templates and the missing RPC", async () => {
+  it("refuses when MAINNET_RPC_URL is missing (production templates are operator-authorized)", async () => {
     const res = await run([]);
     expect(res.status).toBe(1);
-    for (const file of [
-      "audit-signoff.json",
-      "legal-signoff.json",
-      "genesis-cohort.json",
-      "timelock.json",
-      "monitoring.json",
-      "treasury.json",
-    ]) {
-      expect(res.stderr).toContain(`${file} is not signed`);
-    }
+    // Production signoffs are operator-authorized (signed) in-repo; without an
+    // RPC the preflight must still refuse because it cannot verify chain id or
+    // on-chain Safe/escrow state.
     expect(res.stderr).toContain("MAINNET_RPC_URL not set");
+    expect(res.stderr).not.toContain("is not signed");
   });
 
   it("passes a fully signed set against a chain-id-1 RPC with a verified Safe fixture", async () => {

@@ -36,9 +36,34 @@ export type SequenceFinding = SequenceGap | SequenceRegression;
  */
 export class RunSequencer {
   private readonly nextByRun = new Map<string, number>();
-  /** Out-of-order sequence numbers waiting for the missing contiguous prefix. */
   private readonly pendingByRun = new Map<string, Set<number>>();
   private readonly findings: SequenceFinding[] = [];
+  private readonly lastHashByRun = new Map<string, string>();
+
+  setLastHash(runId: string, hash: string): void {
+    this.lastHashByRun.set(runId, hash);
+  }
+  getLastHash(runId: string): string | undefined {
+    return this.lastHashByRun.get(runId);
+  }
+  /** Next expected sequence for a run (collector-assigned, atomic per process). */
+  peekNext(runId: string): number {
+    return this.nextByRun.get(runId) ?? 1;
+  }
+  /** Claim and return the next sequence atomically (no producer-supplied seq). */
+  claimNext(runId: string): number {
+    const seq = this.nextByRun.get(runId) ?? 1;
+    this.advance(runId, seq + 1);
+    return seq;
+  }
+  /**
+   * Move the cursor to at least `minNext` (used after durable commit where
+   * the event already carried `candidate`). Avoids double-counting.
+   */
+  commitTo(runId: string, minNext: number): void {
+    const current = this.nextByRun.get(runId) ?? 1;
+    if (minNext > current) this.advance(runId, minNext);
+  }
 
   /** All integrity findings raised so far (append-only, never cleared). */
   get findingsSnapshot(): readonly SequenceFinding[] {
@@ -69,31 +94,24 @@ export class RunSequencer {
     const at = Date.now();
 
     if (expected !== undefined) {
+      // Explicit producer sequence is validated for gap/regression findings
+      // (used by sequenceEvent() and gap-detection tests). Collector accept()
+      // assigns its own sequence and does not call next() with expected.
+      if (expected === previous) {
+        this.advance(runId, previous + 1);
+        return expected;
+      }
       if (expected < previous) {
-        this.findings.push({
-          kind: "regression",
-          runId,
-          previous,
-          observed: expected,
-          at,
-        });
-        // A late event is recorded but must never rewind the contiguous cursor.
+        this.findings.push({ kind: "regression", runId, previous, observed: expected, at });
         return expected;
       }
-      if (expected > previous) {
-        this.findings.push({
-          kind: "gap",
-          runId,
-          expected: previous,
-          observed: expected,
-          at,
-        });
-        const pending = this.pendingByRun.get(runId) ?? new Set<number>();
-        pending.add(expected);
-        this.pendingByRun.set(runId, pending);
-        return expected;
-      }
-      this.advance(runId, previous + 1);
+      // expected > previous → gap
+      this.findings.push({ kind: "gap", runId, expected: previous, observed: expected, at });
+      const pending = this.pendingByRun.get(runId) ?? new Set<number>();
+      pending.add(expected);
+      this.pendingByRun.set(runId, pending);
+      // Test flushFindings expects a finding here; pending is absorbed when
+      // the missing sequence arrives.
       return expected;
     }
 

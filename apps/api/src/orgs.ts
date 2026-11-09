@@ -266,7 +266,7 @@ export function createOrgRoutes(): Hono {
       return c.json({ error: "forbidden", code: "not-a-member" }, 403);
     }
     const keyId = c.req.param("keyId");
-    const ok = revokeApiKey(keyId);
+    const ok = revokeApiKey(keyId, id);
     if (!ok) {
       return c.json({ error: "not found", code: "no-such-key" }, 404);
     }

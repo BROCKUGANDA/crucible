@@ -41,6 +41,32 @@ export function createCampaignRoutes(config: CampaignsConfig = {}): Hono {
   const app = new Hono();
 
   /**
+   * Get claims for the authenticated wallet. Session-gated, self-only.
+   * Hono matches in registration order — this MUST come before
+   * /:campaignId so "my" is never read as a campaign ID.
+   */
+  app.get("/my/claims", (c) => {
+    const mySession = verifiedSessionFromContext(c);
+    if (!mySession) {
+      return c.json({ error: "unauthenticated", code: "no-credential" }, 401);
+    }
+
+    const myClaims = distributor.listClaimsByWallet(mySession.payload.address);
+    return c.json({
+      claims: myClaims.map((claim) => ({
+        claimId: claim.claimId,
+        campaignId: claim.campaignId,
+        amount: claim.amount.toString(),
+        status: claim.status,
+        txHash: claim.txHash,
+        createdAt: claim.createdAt,
+        claimedAt: claim.claimedAt,
+        completedAt: claim.completedAt,
+      })),
+    });
+  });
+
+  /**
    * List campaigns.
    *
    * Public endpoint: anyone can browse available campaigns.
@@ -56,6 +82,8 @@ export function createCampaignRoutes(config: CampaignsConfig = {}): Hono {
         description: camp.description,
         sponsor: camp.sponsor,
         assetType: camp.assetType,
+        chain: camp.chain,
+        cluster: camp.cluster,
         assetSymbol: camp.assetSymbol,
         status: camp.status,
         totalBudget: camp.totalBudget.toString(),
@@ -88,6 +116,8 @@ export function createCampaignRoutes(config: CampaignsConfig = {}): Hono {
         description: campaign.description,
         sponsor: campaign.sponsor,
         assetType: campaign.assetType,
+        chain: campaign.chain,
+        cluster: campaign.cluster,
         assetSymbol: campaign.assetSymbol,
         assetContract: campaign.assetContract,
         status: campaign.status,
@@ -143,6 +173,8 @@ export function createCampaignRoutes(config: CampaignsConfig = {}): Hono {
       name?: string;
       description?: string;
       assetType?: CampaignAssetType;
+      chain?: "evm" | "solana";
+      cluster?: string;
       assetSymbol?: string;
       assetContract?: string;
       totalBudget?: string;
@@ -214,6 +246,8 @@ export function createCampaignRoutes(config: CampaignsConfig = {}): Hono {
         description: body.description?.trim() || "",
         sponsor: session.payload.address,
         assetType: body.assetType,
+        chain: body.chain,
+        cluster: body.cluster,
         assetSymbol: body.assetSymbol,
         assetContract: body.assetContract,
         totalBudget,
@@ -236,6 +270,8 @@ export function createCampaignRoutes(config: CampaignsConfig = {}): Hono {
             name: campaign.name,
             status: campaign.status,
             sponsor: campaign.sponsor,
+            chain: campaign.chain,
+            cluster: campaign.cluster,
             createdAt: campaign.createdAt,
           },
         },
@@ -451,32 +487,6 @@ export function createCampaignRoutes(config: CampaignsConfig = {}): Hono {
       claims: claims.map((claim) => ({
         claimId: claim.claimId,
         recipient: claim.recipient,
-        amount: claim.amount.toString(),
-        status: claim.status,
-        txHash: claim.txHash,
-        createdAt: claim.createdAt,
-        claimedAt: claim.claimedAt,
-        completedAt: claim.completedAt,
-      })),
-    });
-  });
-
-  /**
-   * Get claims for the authenticated wallet.
-   *
-   * Session-gated: each wallet can see only its own claims.
-   */
-  app.get("/my/claims", (c) => {
-    const session = verifiedSessionFromContext(c);
-    if (!session) {
-      return c.json({ error: "unauthenticated", code: "no-credential" }, 401);
-    }
-
-    const claims = distributor.listClaimsByWallet(session.payload.address);
-    return c.json({
-      claims: claims.map((claim) => ({
-        claimId: claim.claimId,
-        campaignId: claim.campaignId,
         amount: claim.amount.toString(),
         status: claim.status,
         txHash: claim.txHash,

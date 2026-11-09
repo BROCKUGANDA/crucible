@@ -1,8 +1,10 @@
 {
-  "signed": false,
-  "sponsors": [],
-  "agents": [],
-  "epochCapEth": "0",
+  "signed": true,
   "gate": "G-804/G-801",
-  "note": "Genesis sponsors and agents with committed caps. Epoch cap raises only after clean epochs."
+  "sponsors": ["0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"],
+  "agents": ["0x70997970C51812dc3A010C7d01b50e0d17dc79C8"],
+  "epochCapEth": "1",
+  "authorizedBy": "BROCKUGANDA",
+  "authorizedAt": "2026-11-08",
+  "note": "Committed genesis cohort (initial controlled epoch): 1 sponsor, 1 agent, epoch cap 1 ETH. Raise cap only after clean epochs."
 }

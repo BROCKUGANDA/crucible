@@ -15,11 +15,9 @@
  */
 
 import { Hono, type Context } from "hono";
-import { configuredChainId } from "./auth.js";
+import { configuredChainId, sessionPrincipal } from "./auth.js";
 import {
   authorize,
-  resolvePrincipal,
-  buildOrganisationPrincipal,
   type OrganisationPrincipal,
 } from "@crucible/agent-security";
 import {
@@ -92,46 +90,12 @@ export function createForgeRoutes(): Hono {
   /* ------------------------------------------------------------------ */
 
   /**
-   * Extract the wallet principal from the SIWE session cookie.
-   * Returns null when unauthenticated.
+   * Resolve the wallet principal from the verified SIWE session cookie.
+   * HMAC/audience/expiry verified by `sessionPrincipal()` — never decode
+   * the payload and trust its address (forged-cookie fix, CRU-BASE-000).
    */
   function resolveWalletPrincipal(c: Context): OrganisationPrincipal | null {
-    const auth = {
-      walletAddress: null as string | null,
-      sessionId: null as string | null,
-      chainId: configuredChainId(),
-    };
-    const cookie = c.req.header("cookie");
-    if (cookie) {
-      for (const part of cookie.split(";")) {
-        const [k, ...v] = part.trim().split("=");
-        if (k === "crucible_session") {
-          auth.sessionId = v.join("=");
-          try {
-            const encoded = auth.sessionId.split(".")[0];
-            if (encoded) {
-              const payload = JSON.parse(
-                Buffer.from(encoded, "base64url").toString("utf8"),
-              ) as { address?: string };
-              if (payload.address) auth.walletAddress = payload.address;
-            }
-          } catch {
-            // malformed session cookie
-          }
-          break;
-        }
-      }
-    }
-    if (!auth.walletAddress || !auth.sessionId) return null;
-    const principal = buildOrganisationPrincipal(
-      {
-        address: auth.walletAddress,
-        id: `eip155:${configuredChainId()}:${auth.walletAddress.toLowerCase()}`,
-        sessionId: auth.sessionId,
-        authenticated: true,
-      },
-    );
-    return principal;
+    return sessionPrincipal(c, configuredChainId());
   }
 
   /**

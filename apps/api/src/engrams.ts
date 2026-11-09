@@ -63,12 +63,14 @@ export function createEngramRoutes(): Hono {
   });
 
   app.post("/evaluate", async (c) => {
-    const session = verifiedSessionFromContext(c);
-    if (!session) {
-      return c.json({ error: "unauthenticated", code: "no-credential" }, 401);
+    // Trusted worker only: requires keeper/warden bearer, never a user session.
+    // A caller-supplied VerifiedEvent with verified:true is not authority (REW-001).
+    const keeperKey = process.env.KEEPER_API_KEY ?? "";
+    const auth = c.req.header("authorization") ?? "";
+    if (!keeperKey || auth !== `Bearer ${keeperKey}`) {
+      return c.json({ error: "forbidden: trusted worker required", code: "not-a-worker" }, 403);
     }
-    const recipient = session.payload.address;
-    let body: { event?: VerifiedEvent } = {};
+    let body: { event?: VerifiedEvent; recipient?: string } = {};
     try {
       body = (await c.req.json()) as typeof body;
     } catch {
@@ -76,6 +78,12 @@ export function createEngramRoutes(): Hono {
     }
     if (!body.event) {
       return c.json({ error: "event is required", code: "bad-request" }, 400);
+    }
+    // Recipient is frozen from the verified event's agent/operator record,
+    // never an arbitrary caller-supplied address. The worker supplies it.
+    const recipient = body.recipient ?? body.event.recipient ?? "";
+    if (!/^0x[0-9a-fA-F]{40}$/.test(recipient)) {
+      return c.json({ error: "recipient address required", code: "bad-request" }, 400);
     }
     const result = engine.evaluate(body.event, recipient);
     return c.json(result, 201);

@@ -59,6 +59,13 @@ export const TRIALS_ABI = [
   },
   {
     type: "function",
+    name: "addStake",
+    stateMutability: "payable",
+    inputs: [{ name: "agentId", type: "uint256" }],
+    outputs: [],
+  },
+  {
+    type: "function",
     name: "submitRun",
     stateMutability: "nonpayable",
     inputs: [
@@ -533,6 +540,15 @@ export const TRIALS_ABI = [
     inputs: [
       { indexed: true, name: "agentId", type: "uint256" },
       { indexed: true, name: "to", type: "address" },
+      { indexed: false, name: "amount", type: "uint256" },
+    ],
+  },
+  {
+    type: "event",
+    name: "StakeAdded",
+    inputs: [
+      { indexed: true, name: "agentId", type: "uint256" },
+      { indexed: true, name: "operator", type: "address" },
       { indexed: false, name: "amount", type: "uint256" },
     ],
   },

@@ -45,6 +45,11 @@ abstract contract DevKeyScript is Script {
      * from in here".
      */
     function signerKey() internal returns (uint256 pk) {
+        // Deploy wrapper resolves DEPLOYER_PRIVATE_KEY first, falls back to PRIVATE_KEY.
+        pk = vm.envOr("DEPLOYER_PRIVATE_KEY", uint256(0));
+        if (pk != 0) {
+            return pk;
+        }
         pk = vm.envOr("PRIVATE_KEY", uint256(0));
         if (pk != 0) {
             return pk;

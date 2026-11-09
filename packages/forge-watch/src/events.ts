@@ -109,6 +109,8 @@ export const ForgeWatchEventSchema = z.object({
   policyDigest: z.string().min(1).optional(),
   contextDigest: z.string().min(1).optional(),
   correlationId: z.string().min(1).optional(),
+  eventHash: z.string().min(1).optional(),
+  previousEventHash: z.string().min(1).optional(),
 });
 
 export type ForgeWatchEvent = z.infer<typeof ForgeWatchEventSchema>;

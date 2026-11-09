@@ -210,7 +210,7 @@ describe("classify", () => {
 });
 
 describe("ForgeRunner runtime telemetry", () => {
-  it("uses one unique run id and a monotonic sequence for every event", async () => {
+  it("uses one unique run id; producer sends placeholder sequence (collector assigns)", async () => {
     const events: ForgeWatchEvent[] = [];
     const deps = harness();
     deps.emitEvent = async (event) => {
@@ -223,9 +223,8 @@ describe("ForgeRunner runtime telemetry", () => {
     expect(events.length).toBeGreaterThan(0);
     expect(new Set(events.map((event) => event.runId)).size).toBe(1);
     expect(events[0]!.runId).not.toBe(String(request().trialId));
-    expect(events.map((event) => event.sequence)).toEqual(
-      events.map((_, index) => index + 1),
-    );
+    // Placeholder 0 on every event; canonical 1..N assigned collector-side.
+    expect(events.every((event) => event.sequence === 0)).toBe(true);
     expect(events.every((event) => event.trialId === String(request().trialId))).toBe(true);
     expect(outcome.runId).toBe(events[0]!.runId);
     expect(outcome.telemetry.status).toBe("complete");

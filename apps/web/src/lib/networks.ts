@@ -46,6 +46,38 @@ const _chainIdsMatchViem: ChainIdsMatchViem = true;
 void _chainIdsMatchViem;
 
 export type SupportedChain = keyof typeof CHAIN_IDS;
+export type SolanaCluster = "devnet" | "mainnet-beta";
+
+export const SOLANA_CLUSTERS: Record<SolanaCluster, string> = {
+  devnet: "https://api.devnet.solana.com",
+  "mainnet-beta": "https://api.mainnet-beta.solana.com",
+};
+
+export function solanaCluster(): SolanaCluster {
+  const raw = process.env.NEXT_PUBLIC_SOLANA_CLUSTER as SolanaCluster | undefined;
+  if (raw === "mainnet-beta") return "mainnet-beta";
+  return "devnet";
+}
+
+export function solanaRpcUrl(cluster: SolanaCluster = solanaCluster()): string {
+  if (cluster === "mainnet-beta") {
+    return process.env.NEXT_PUBLIC_SOLANA_MAINNET_RPC || SOLANA_CLUSTERS["mainnet-beta"];
+  }
+  return process.env.NEXT_PUBLIC_SOLANA_DEVNET_RPC || SOLANA_CLUSTERS.devnet;
+}
+
+export function solanaMoneyNotice(cluster: SolanaCluster): { lead: string; body: string } {
+  if (cluster === "mainnet-beta") {
+    return {
+      lead: "This is the real Solana network.",
+      body: "Devnet is for rehearsal. Real SOL and real token value move only after counsel + MetaDAO approval, verified mint, and the signed mainnet manifest. This console never auto-executes.",
+    };
+  }
+  return {
+    lead: "This is a Solana sandbox.",
+    body: "Devnet assets are worthless. Payment proofs here are fixtures for review — no legal or financial effect, no delivery, no token issuance.",
+  };
+}
 
 /** The network a wallet chain id belongs to, or null when the wallet is somewhere else. */
 export function chainFromId(chainId: number): SupportedChain | null {

@@ -163,10 +163,12 @@ export function validateApiKey(
   return { valid: true, key };
 }
 
-export function revokeApiKey(id: string): boolean {
+export function revokeApiKey(id: string, orgId?: OrganisationId): boolean {
   const store = getStore();
   const k = store.keys.get(id);
   if (!k) return false;
+  // Scope guard: a caller revoking within one org must not revoke another org's key (CRU-IAM-002).
+  if (orgId && k.orgId !== orgId) return false;
   k.revokedAt = Date.now();
   store.keys.set(id, k);
   return true;
