@@ -1576,6 +1576,16 @@ guards is the decoration it exists to detect.
   cancel returned 200) before the fix and green after; full API suite 592 passed, typecheck
   clean. Fixed in `56cb6fa`.
 
+- **2026-11-09 — Campaign eligibility signals were client-attested.** `/campaigns/:id/eligibility`
+  and `/:id/claim` took `walletAge`/`trialCount`/`reputation` from the request body and the
+  distributor enforced criteria against them — a caller could assert any signal. The routes now
+  take every signal from a configured provider; the default wiring derives them in `app.ts` from
+  the same on-chain evidence the identity score reads (settled trials as agent operator,
+  paid-verdict count, wallet age on the chain clock) plus the Passport source, which no route had
+  ever supplied to `requirePassport` campaigns. No provider means signal-dependent criteria fail
+  closed. **Mutation-proven:** reintroducing body-derived signals turns the regression red
+  (asserted `trialCount: 99` yields a 201 claim). `5eb5242`.
+
 ## Unresolved from the 2026-10-27 pass (continues the open list)
 
 23. **`apps/api` reported one failing test once, inside a saturated fan-out, and it has not been

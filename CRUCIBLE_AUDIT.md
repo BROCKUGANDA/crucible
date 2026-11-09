@@ -132,3 +132,64 @@ Preserved invariants: non-custodial model, native ETH escrow, 5% fee, pull-based
 ## Remaining (beyond P0-P2)
 
 - Mainnet sign-off population (treasury.json, audit-signoff.json are unsigned templates by design)
+
+---
+
+# 2026-11-09 deep audit addendum (authz / money / web / runtime)
+
+Four parallel code-read audits: API authorization matrix, money integrity, web access-state/XSS,
+runtime+keys+infrastructure. Severity as filed at audit time; status updated as slices land.
+
+## Verified-safe at audit time
+
+Contract conservation traced across every mutating path (`Δbalance == Δ(totalStakes+pending+escrowed)`);
+fee `FEE_BPS=500` charged once, agent payout only; API money paths all-bigint; web six-state model
+holds end-to-end (private data decided by the SIWE cookie, never wagmi connection; no XSS sinks;
+no security-relevant localStorage); session HMAC verify + nonce consumption strong; keeper/funder
+key custody clean and ADR-0006 holds (no chain key in `apps/api/src/**`); CI's enforced-gate list
+includes coverage floors, gitleaks full history, Trivy exit-code gates, and deploy-time edge probes.
+
+## Register
+
+| ID | Sev | Finding | Where | Status |
+|---|---|---|---|---|
+| AUTHZ-F1 | CRITICAL | `POST /forge/__reset` wipes all org briefs/campaigns with no credential | `apps/api/src/forge.ts:688` | Open |
+| AUTHZ-F2 | CRITICAL | `GET /v1/runs/:runId` serves private run records with no session; ID is ~31 bits + timestamp | `apps/api/src/workloads.ts:92` | Open |
+| AUTHZ-F3 | HIGH | Forge authorizes against the request's `orgId`, never the resource's owning org — cross-tenant read and `fund`/`settle` | `apps/api/src/forge.ts:120-145,591-650` | Open |
+| AUTHZ-F4 | HIGH | Metering reads/writes any `tenantId` with session only; `POST /quota` unbounded (latent: surface not mounted) | `apps/api/src/metering-routes.ts:24-94` | Open |
+| AUTHZ-F5 | HIGH | Production CSRF: `SameSite=None` session cookie; `csrfOriginCheck()` exported but never called | `apps/api/src/auth.ts:61,352` | Open |
+| AUTHZ-F6 | HIGH | Keeper bearer compared with `!==`, no key-length floor | `apps/api/src/engrams.ts:68` | Open |
+| AUTHZ-F7 | MEDIUM | Transition sponsor gate covers 2 of 12 targets; any session can walk a stranger's trial through off-chain states | `apps/api/src/trial-lifecycle.ts:277` | Open |
+| AUTHZ-F8 | MEDIUM | `/trials/:id/events` SSE: no stream ceiling, per-connection RPC | `apps/api/src/app.ts:2426` | Open |
+| AUTHZ-F9 | MEDIUM | Org budgets/api-keys gated by mere membership; scopes client-chosen | `apps/api/src/orgs.ts:164-274` | Open |
+| AUTHZ-F10 | MEDIUM | `GET /monitoring`: any session reads host SLO/error internals | `apps/api/src/app.ts:1142` | Open |
+| AUTHZ-F11 | LOW | STAMP admin routes session-only in sandbox/manual-review modes (production fail-closes) | `apps/api/src/stamp.ts:116` | Open |
+| MONEY-H1 | HIGH | `GET /trials` 500s on any fractional `rewardEth` (`BigInt("0.1")` throws; wizard default is 0.1); query `BigInt()` unguarded | `apps/api/src/app.ts:1180-1195` | Open |
+| MONEY-H3 | HIGH | Funder cap: non-`settled` transfer frees reserved room; expired reservation drops the grant record | `apps/funder/src/server.ts:172`, `cap.ts:196` | Open |
+| MONEY-M1 | MEDIUM | Forge brief budget computed `parseFloat(eth) * 1e18` — the exact float the repo bans | `apps/web/src/app/forge/brief/page.tsx:98` | Open |
+| MONEY-M2 | MEDIUM | Faucet "one allocation per 24h" reason describes a control nothing enforces | `apps/api/src/identity.ts:372` | Open |
+| MONEY-M3 | MEDIUM | Claims can never complete or reject — no HTTP route (`completeClaim` test-only) | `apps/api/src/campaigns.ts:762` | Open |
+| MONEY-M5 | MEDIUM | Campaign creation open to any session with an unlimited advertised budget | `apps/api/src/server.ts:1104` | Open |
+| MONEY-L* | LOW | Store `updateClaimStatus` unguarded; metering `quantity` 500s; `Infinity`→`null`; local-midnight periods; `maxClaimsPerWallet` accepts floats; BreakPanel says forfeited stake is "burned" (goes to treasury); `Number()` display in trials/new | various | Open |
+| WEB-M1 | MEDIUM | CSP `connect-src` omits `wss://api.elevenlabs.io` — production Scribe realtime silently dead | `apps/web/next.config.mjs:217` | Open |
+| WEB-M2 | MEDIUM | `/staking` shows API-chain balances while signing on the connected chain; no `WrongNetworkNotice` | `apps/web/src/app/staking/page.tsx` | Open |
+| WEB-M3 | MEDIUM | `global-error.tsx` imports `Chrome.tsx` — crash page bundles the wallet graph (constraint drift) | `apps/web/src/app/global-error.tsx:3` | Open |
+| WEB-L* | LOW | JSON-LD `</script>` breakout hygiene; wallet address in URLs; escrow param unencoded; stale `OwnerGate` comment | various | Open |
+| RUN-H1 | HIGH | `forge_watch_outbox` is insert-only: no relay, no consumer; dispatch never happens | `packages/forge-watch/src/pg-store.ts:134` | Open |
+| RUN-H2 | HIGH | `REDIS_URL` silently ignored: ioredis never parses `{ url }` — BullMQ always targets localhost | `packages/agent-security/src/queue.ts:18` | Open |
+| RUN-M1 | MEDIUM | L0 worker checks read fields that cannot exist on `MonitorJobPayload`; always returns pass | `packages/agent-security/src/forge-watch-workers.ts:50` | Open |
+| RUN-M2 | MEDIUM | `appendWithOutbox` silently degrades without the outbox table; `live-agent.mjs` runs only migration 0001 | `packages/forge-watch/src/pg-store.ts:140` | Open |
+| RUN-M3 | MEDIUM | Forge Watch DLQ is a queue-name constant, not a mechanism | `packages/agent-security/src/queue.ts:126` | Open |
+| RUN-M4 | MEDIUM | `DATABASE_URL` defaults to `crucible:crucible@localhost` in source | `packages/agent-security/src/database.ts:20` | Open |
+| RUN-M5 | MEDIUM | Funder entrypoint writes the CDP secret plaintext unconditionally (`CDP_ALLOW_PLAINTEXT_SECRETS` ignored) | `apps/funder/docker-entrypoint.sh:33` | Open |
+| RUN-M6 | MEDIUM | Fork-test gate is advisory-only green when the secret is missing | `.github/workflows/ci.yml:242` | Open |
+| RUN-M7 | MEDIUM | Untracked root scripts holding credential material are rsynced to the prod VPS on every deploy | `.github/workflows/deploy.yml:66` | Open |
+| RUN-L* | LOW | API lacks graceful shutdown/rejection handlers; API binds all interfaces (demo intent); migration-runner "in a transaction" comment false; fork-host children on 0.0.0.0; VPS IP committed; `.env.mainnet.example` gitignored | various | Open |
+
+## Earlier fix on this branch (pre-audit)
+
+- `56cb6fa` — sponsor-gated transitions authorized against the request body instead of the
+  session (`body.sponsor`); fixed and mutation-proven, recorded in HARDENING.md.
+- `5eb5242` — campaign eligibility signals were client-attested (`walletAge`/`trialCount`/
+  `reputation` from the body); now derived server-side, fail-closed without a provider,
+  passport signal wired; mutation-proven.
