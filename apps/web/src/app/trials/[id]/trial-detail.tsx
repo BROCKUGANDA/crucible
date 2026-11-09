@@ -20,6 +20,8 @@ import { BreakPanel } from "@/components/BreakPanel";
 import { TrialEconomics } from "@/components/arena/TrialEconomics";
 import { MoneyTreesChip } from "@/components/MoneyTreesChip";
 import { useSnapshot } from "@/lib/useSnapshot";
+import { formatWhen } from "@/lib/clock";
+import type { ApiTrial } from "@crucible/indexer";
 import {
   formatDuration,
   formatEth,
@@ -259,10 +261,13 @@ export function TrialDetail({ id }: { id: number }) {
           {trial.status === "judging" ? (
             <BreakPanel trialId={trial.id} rewardEth={trial.rewardEth} bondEth={trial.bondEth} />
           ) : trial.breakSkeptic ? (
-            <div className="surface detail-panel">
-              <Field label="Skeptic" value={trial.breakSkeptic} mono />
-              <Field label="Stake" value={formatEth(trial.breakStakeEth)} mono />
-            </div>
+            <>
+              <div className="surface detail-panel">
+                <Field label="Skeptic" value={trial.breakSkeptic} mono />
+                <Field label="Stake" value={formatEth(trial.breakStakeEth)} mono />
+              </div>
+              <CommitteeClock trial={trial} />
+            </>
           ) : (
             <p className="hint hint--block">
               No breaks filed. Skeptics can strike only while the trial is being judged.
@@ -331,6 +336,103 @@ export function TrialDetail({ id }: { id: number }) {
         </div>
       ) : null}
     </Chrome>
+  );
+}
+
+/**
+ * The committee's clock — what the vote logs published, in the order it happened.
+ *
+ * Only renders once a break was filed (the parent gates on `breakSkeptic`), because
+ * there is no committee without a break. Seats are named by the `VoteCommitted` /
+ * `VoteRevealed` logs themselves — the chain published them, so this index can quote
+ * them; nothing here invents a seat, a tally, or a timestamp. What this page cannot
+ * know, it does not print: the seal's bytes, the vote, who a seat is beyond the address
+ * the log carried.
+ *
+ * A juror's own view — which seat you are, whether you may reveal yet — is deliberately
+ * absent: it does not exist until the reviewer endpoints land. Never vote from this page;
+ * the Argus app carries the signing flow.
+ */
+function CommitteeClock({ trial }: { trial: ApiTrial }) {
+  const committed = trial.dispute?.committed ?? [];
+  const revealed = trial.dispute?.revealed ?? [];
+  const settled = trial.verdict !== "none";
+  const verdict = verdictMeta(trial.verdict);
+
+  return (
+    <div
+      className="surface detail-panel tribunal-clock"
+      role="status"
+      aria-label="The committee's clock — what the vote logs published, in order"
+    >
+      <p className="kicker">The committee's clock</p>
+      <ol className="tribunal-clock__steps">
+        <li className="tribunal-clock__step" data-done>
+          <span className="tribunal-clock__title">Break filed</span>
+          <span className="tribunal-clock__note">
+            A skeptic staked
+            {trial.breakStakeEth !== null ? ` ${formatEth(trial.breakStakeEth)} ETH` : ""} on the claim being broken
+            {trial.disputeOpenedAt !== null ? (
+              <> · {formatWhen(trial.disputeOpenedAt * 1000)}</>
+            ) : null}
+          </span>
+        </li>
+        <li className="tribunal-clock__step" data-done={committed.length > 0 || undefined}>
+          <span className="tribunal-clock__title">
+            Seats sealed — {committed.length}
+          </span>
+          <span className="tribunal-clock__note">
+            Two of the three seats decide; each seals before anyone reveals.
+            {committed.length === 0 ? (
+              " No seal yet."
+            ) : (
+              <>
+                {" "}
+                {committed.length} sealed.
+                <span className="mono tribunal-clock__seats">
+                  {committed.map((s) => shortHash(s)).join(" · ")}
+                </span>
+              </>
+            )}
+          </span>
+        </li>
+        <li className="tribunal-clock__step" data-done={revealed.length > 0 || undefined}>
+          <span className="tribunal-clock__title">
+            Seats unsealed — {revealed.length}
+          </span>
+          <span className="tribunal-clock__note">
+            A seat opens its seal to count toward the two.
+            {revealed.length === 0 ? (
+              " Nothing unsealed yet."
+            ) : (
+              <>
+                {" "}
+                {revealed.length} unsealed.
+                <span className="mono tribunal-clock__seats">
+                  {revealed.map((s) => shortHash(s)).join(" · ")}
+                </span>
+              </>
+            )}
+          </span>
+        </li>
+        <li className="tribunal-clock__step" data-done={settled || undefined}>
+          <span className="tribunal-clock__title">The quench</span>
+          <span className="tribunal-clock__note">
+            {settled ? (
+              <>Verdict landed — {verdict.label}.</>
+            ) : (
+              "Open — the committee has not ruled, or the timeout has not run."
+            )}
+          </span>
+        </li>
+      </ol>
+      <p className="hint">
+        Seats are named by the vote logs themselves. The juror&apos;s own view — which
+        seat you hold, whether you may reveal yet — does not exist on this page; it
+        waits on the reviewer endpoints. Never vote from here; the Argus app carries
+        the signing flow.
+      </p>
+    </div>
   );
 }
 
