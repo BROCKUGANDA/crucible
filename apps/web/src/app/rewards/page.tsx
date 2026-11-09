@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Chrome } from "@/components/Chrome";
+import { Chrome, Quenching } from "@/components/Chrome";
+import { Payload } from "@/components/Payload";
 import { API_BASE } from "@/lib/apiBase";
 
 interface Campaign {
@@ -22,15 +23,18 @@ export default function RewardsPage() {
   const [detail, setDetail] = useState<unknown>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   async function load() {
     setError(null);
+    setLoading(true);
     try {
       const res = await fetch(`${API_BASE}/campaigns`);
       if (!res.ok) throw new Error(`campaigns ${res.status}`);
       const body = await res.json();
       setCampaigns(body.campaigns ?? []);
     } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
+    finally { setLoading(false); }
   }
 
   useEffect(() => { load(); }, []);
@@ -64,6 +68,10 @@ export default function RewardsPage() {
         on-chain transfer and indexer reconciliation.
       </p>
       {error && <p className="hint" role="alert">{error}</p>}
+      {loading ? <Quenching label="reading campaigns" /> : null}
+      {!loading && !error && campaigns.length === 0 ? (
+        <p className="hint">No campaigns are published on this host yet.</p>
+      ) : null}
       <ul className="stack">
         {campaigns.map((c) => (
           <li key={c.campaignId} className="surface">
@@ -77,7 +85,7 @@ export default function RewardsPage() {
       </ul>
       {claimId && <p className="hint" data-tone="quench" role="status">Reserved claim {claimId} (pending — not paid).</p>}
       {detail !== null && detail !== undefined && (
-        <pre className="code">{JSON.stringify(detail as Record<string, unknown>, null, 2)}</pre>
+        <Payload value={detail} title="Claim reservation" />
       )}
     </Chrome>
   );

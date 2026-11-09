@@ -167,7 +167,7 @@ export default function NewTrialPage() {
         </button>
         {step === 2 ? (
           <span className="mono" data-tone="faint">
-            {Number(values.rewardEth)} ETH escrowed on {activeChain()}
+            {values.rewardEth} ETH escrowed on {activeChain()}
           </span>
         ) : null}
         {!isConnected ? (

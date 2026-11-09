@@ -1029,6 +1029,14 @@
 .metric-card__value--neutral { color:var(--text); }
 .metric-card__value--pending { color:var(--faint); }
 .metric-card__hint { font-size:var(--fs-small); color:var(--dim); }
+/* Structured API payloads (the console pages): label/value rows, raw JSON behind a
+   toggle. A payload dump was the one surface on the site that printed `null`. */
+.payload { display:grid; gap:2px; margin:var(--s-2) 0; }
+.payload__row { display:flex; gap:12px; justify-content:space-between; padding:4px 0; border-bottom:1px solid var(--bg1); }
+.payload__row dt { flex:0 0 auto; }
+.payload__row dd { margin:0; text-align:right; overflow-wrap:anywhere; }
+.payload__raw { margin-top:var(--s-3); }
+.payload__raw > summary { cursor:pointer; }
 .empty-state { padding:var(--s-6); text-align:center; border:1px dashed var(--ash); border-radius:var(--radius); }
 .empty-state__title { font-size:var(--fs-sub); margin-bottom:var(--s-2); }
 .empty-state__body { color:var(--dim); font-size:var(--fs-small); }

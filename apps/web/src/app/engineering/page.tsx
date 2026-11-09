@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Chrome } from "@/components/Chrome";
+import { Payload } from "@/components/Payload";
 import { API_BASE } from "@/lib/apiBase";
 
 export default function EngineeringPage() {
@@ -53,8 +54,8 @@ export default function EngineeringPage() {
       <p className="hint hint--block">Baseline fails before the patch; accepted patch passes public + hidden regression; tampering is policy violation, infrastructure failure is rerun.</p>
       <button className="btn" onClick={submitRun} disabled={loading}>{loading ? "Running…" : "Run demo regression repair"}</button>
       {error && <p className="hint" role="alert">{error} (sign in with SIWE first)</p>}
-      {run !== null && run !== undefined && <pre className="code">{JSON.stringify(run as Record<string, unknown>, null, 2)}</pre>}
-      {workloads !== null && workloads !== undefined && <pre className="code">{JSON.stringify(workloads as Record<string, unknown>, null, 2)}</pre>}
+      {run !== null && run !== undefined && <Payload value={run} title="Run result" />}
+      {workloads !== null && workloads !== undefined && <Payload value={workloads} title="Advertised workloads" />}
     </Chrome>
   );
 }
