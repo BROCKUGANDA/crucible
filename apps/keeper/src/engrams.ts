@@ -15,7 +15,7 @@ import type { ReadModel } from "@crucible/indexer";
 import type { VerifiedEvent } from "@crucible/engrams";
 
 export interface EngramsSyncOptions {
-  /** Full endpoint, e.g. `http://api:8787/engrams/evaluate`. */
+  /** Full endpoint, e.g. the `/engrams/evaluate` route on the sibling API service. */
   url: string;
   /** `KEEPER_API_KEY` — the same bearer `/engrams/evaluate` verifies. */
   bearer: string;

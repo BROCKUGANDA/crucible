@@ -228,7 +228,10 @@ describe("the verifier has a production caller", () => {
       .filter((l) => l !== "" && !l.startsWith("#"));
 
     const tagAt = deploy.findIndex((l) => l.includes('docker tag "crucible-$s:latest" "crucible-$s:$stamp"'));
-    const buildAt = deploy.findIndex((l) => l.includes("build web api keeper seed"));
+    // "seed funder" is mentioned by other steps before this one, so the anchor is the
+    // compose build invocation itself; the juror joined the build in 2026-11 (b64c07a)
+    // without changing the ordering this test guards.
+    const buildAt = deploy.findIndex((l) => l.includes("docker compose") && l.includes("build web api keeper") && l.includes("seed funder"));
     const restoreAt = deploy.findIndex((l) => l.includes('docker tag "crucible-$s:$stamp" "crucible-$s:latest"'));
 
     expect(tagAt, "the deploy no longer keeps the images it is about to overwrite — there is nothing to roll back to").toBeGreaterThanOrEqual(0);
