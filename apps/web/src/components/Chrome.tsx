@@ -21,34 +21,48 @@ interface NavItem {
   auth?: boolean;
 }
 
+/**
+ * Primary nav, grouped by the question a visitor is asking — dispute a claim,
+ * check a balance, earn something — instead of by internal ownership, which is
+ * how every generic header reads. The "More" disclosure holds the destinations
+ * outside that journey; the auth rows land there, and the trial-creation call
+ * to action is always one click away.
+ */
 const NAV_PRIMARY: NavItem[] = [
   { href: "/home", label: "Workspace" },
   { href: "/trials", label: "Trials" },
   { href: "/arena", label: "Arena" },
-  { href: "/verticals", label: "Verticals" },
-  { href: "/agents", label: "Agents" },
   { href: "/hall", label: "Hall" },
   { href: "/escrow", label: "Escrow" },
 ];
 
-const NAV_MORE: NavItem[] = [
+/**
+ * "What I can do today": the destinations behind the SIWE session. They stay
+ * inside the nav so a signed-in wallet's options are one step, not a hunt.
+ */
+const NAV_ACTIONS: NavItem[] = [
   { href: "/forge", label: "Register", auth: true },
+  { href: "/forge/brief", label: "Forge Brief", auth: true },
+  { href: "/faucet", label: "Sponsorship", auth: true },
+  { href: "/staking", label: "Staking", auth: true },
+  { href: "/treasury", label: "Treasury", auth: true },
+  { href: "/teams", label: "Teams", auth: true },
+];
+
+const NAV_MORE: NavItem[] = [
+  { href: "/agents", label: "Agents" },
+  { href: "/verticals", label: "Verticals" },
   { href: "/engineering", label: "Engineering" },
   { href: "/data", label: "Data & ETL" },
   { href: "/finance", label: "Finance" },
   { href: "/solana", label: "Solana" },
-  { href: "/forge/brief", label: "Forge Brief", auth: true },
   { href: "/forge/bounty", label: "Bounty Calculator", auth: true },
   { href: "/bounties", label: "Challenges" },
   { href: "/clock", label: "How it settles" },
   { href: "/assay", label: "Status" },
-  { href: "/teams", label: "Teams", auth: true },
-  { href: "/faucet", label: "Sponsorship", auth: true },
   { href: "/voice", label: "Voice room" },
   { href: "/airdrops", label: "Test ETH Faucet", auth: true },
   { href: "/rewards", label: "Rewards" },
-  { href: "/staking", label: "Staking", auth: true },
-  { href: "/treasury", label: "Treasury", auth: true },
   { href: "/engrams", label: "Engrams" },
   { href: "/tour", label: "Tour" },
   { href: "/docs", label: "Docs" },
@@ -74,8 +88,9 @@ export function Chrome({ children }: { children: ReactNode }) {
   // Protected navigation follows a server-verified SIWE session, not wagmi connection state.
   // Wallet-bound writes still require the connected wallet to match the session principal.
   const visiblePrimary = NAV_PRIMARY.filter((item) => !item.auth || canUsePrivateNavigation);
+  const visibleActions = NAV_ACTIONS.filter((item) => !item.auth || canUsePrivateNavigation);
   const visibleMore = NAV_MORE.filter((item) => !item.auth || canUsePrivateNavigation);
-  const visibleNav = [...visiblePrimary, ...visibleMore];
+  const visibleNav = [...visiblePrimary, ...visibleActions, ...visibleMore];
 
   return (
     <div className="shell">
@@ -84,46 +99,65 @@ export function Chrome({ children }: { children: ReactNode }) {
       </a>
 
       <header className="chrome">
-        <div className="chrome__brand">
-          <Link href="/" aria-label="Crucible — home" className="wordmark chrome__mark">
-            CRUCIBLE
-          </Link>
-          {/* Which money this is, said before the user has to ask — and now also the way
-              to change it. The chip follows the connected wallet's network at runtime; the
-              menu switches it through the wallet itself. A demo that cannot name its own
-              network is a demo the judge has to audit; one that cannot leave the wrong
-              network strands the user there. */}
-          <NetworkMenu />
-        </div>
-         <nav aria-label="Primary" className="chrome__nav">
-           <div className="chrome__nav-track">
-             {visiblePrimary.map((item) => (
-               <Link
-                 key={item.href}
-                 href={item.href}
-                 aria-current={pathname.startsWith(item.href) ? "page" : undefined}
-               >
-                 {item.label}
-               </Link>
-             ))}
-           </div>
-         </nav>
+        <div className="chrome__row">
+          <div className="chrome__brand">
+            <Link href="/" aria-label="Crucible — home" className="wordmark chrome__mark">
+              CRUCIBLE
+            </Link>
+            {/* Which money this is, said before the user has to ask — and now also the way
+                to change it. The chip follows the connected wallet's network at runtime; the
+                menu switches it through the wallet itself. A demo that cannot name its own
+                network is a demo the judge has to audit; one that cannot leave the wrong
+                network strands the user there. */}
+            <NetworkMenu />
+          </div>
 
-        <div className="chrome__actions">
-          {/* Secondary routes stay reachable without making every label fight for the
-              same row. A disclosure is one keyboard stop, and it closes on navigation.
-              The voice and sound switches live here too: they are settings, not
-              destinations, and they were half the controls on one bar. */}
-          <details className="chrome__more" ref={moreRef}>
-            <summary className="chrome__more-summary">
-              More <span aria-hidden="true">▾</span>
-            </summary>
-            <div className="chrome__more-panel">
-              <div className="chrome__more-controls">
-                <VoiceControl />
-                <PayoffSound />
+          <div className="chrome__actions">
+            {/* Secondary routes stay reachable without making every label fight for the
+                same row. A disclosure is one keyboard stop, and it closes on navigation.
+                The voice and sound switches live here too: they are settings, not
+                destinations, and they were half the controls on one bar. */}
+            <details className="chrome__more" ref={moreRef}>
+              <summary className="chrome__more-summary">
+                More <span aria-hidden="true">▾</span>
+              </summary>
+              <div className="chrome__more-panel">
+                <div className="chrome__more-controls">
+                  <VoiceControl />
+                  <PayoffSound />
+                </div>
+                {visibleMore.map((item) => (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    aria-current={pathname.startsWith(item.href) ? "page" : undefined}
+                  >
+                    {item.label}
+                  </Link>
+                ))}
               </div>
-              {visibleMore.map((item) => (
+            </details>
+
+            <button
+              type="button"
+              className="chrome__menu-btn"
+              aria-label="Open navigation menu"
+              aria-expanded={sheet}
+              aria-controls="forge-nav-sheet"
+              onClick={() => setSheet(true)}
+            >
+              <span aria-hidden="true">☰</span>
+            </button>
+
+            <SponsorshipBadge />
+            <WalletButton />
+          </div>
+        </div>
+
+        <nav aria-label="Primary" className="chrome__nav">
+          <div className="chrome__nav-row">
+            <div className="chrome__nav-track">
+              {visiblePrimary.map((item) => (
                 <Link
                   key={item.href}
                   href={item.href}
@@ -133,22 +167,17 @@ export function Chrome({ children }: { children: ReactNode }) {
                 </Link>
               ))}
             </div>
-          </details>
-
-          <button
-            type="button"
-            className="chrome__menu-btn"
-            aria-label="Open navigation menu"
-            aria-expanded={sheet}
-            aria-controls="forge-nav-sheet"
-            onClick={() => setSheet(true)}
-          >
-            <span aria-hidden="true">☰</span>
-          </button>
-
-          <SponsorshipBadge />
-          <WalletButton />
-        </div>
+            {visibleActions.length > 0 ? (
+              <Link
+                href="/forge"
+                className="chrome__nav-cta"
+                aria-current={pathname.startsWith("/forge") ? "page" : undefined}
+              >
+                Register
+              </Link>
+            ) : null}
+          </div>
+        </nav>
       </header>
 
       {/* Frenchy is deliberately NOT a header child. The header carries a backdrop-filter,
@@ -181,15 +210,36 @@ export function Chrome({ children }: { children: ReactNode }) {
       </main>
 
       <footer className="chrome__foot">
-        <span>Forged at the Colosseum Crypto World&apos;s Fair.</span>
-        <span>Alloy is non-transferable. Trust should be too: reputation you can only earn.</span>
-        {/* Kept here, not in the hero: /claims is where a reader checks a promise against what
-            enforces it, and it must stay reachable now that the hero speaks in plain words.
-            /verify keeps its own door here too — route-coverage.test.ts asserts it. Every
-            other door moved into the More menu: eight footer links was a sitemap, not a footer. */}
-        <Link href="/claims">What is enforced, promise by promise</Link>
-        <Link href="/verify">Check a receipt yourself</Link>
+        <div className="chrome__foot-row chrome__foot-row--proofs">
+          <span className="chrome__foot-verdict">Forged at the Colosseum Crypto World&apos;s Fair.</span>
+          <span>Alloy is non-transferable. Trust should be too: reputation you can only earn.</span>
+          <Link href="/claims" className="chrome__foot-proof">
+            What is enforced, promise by promise
+          </Link>
+          <Link href="/verify" className="chrome__foot-proof">
+            Check a receipt yourself
+          </Link>
+        </div>
+        <div className="chrome__foot-row chrome__foot-row--links">
+          {/* Kept here, not in the hero: /claims is where a reader checks a promise against what
+              enforces it, and it must stay reachable now that the hero speaks in plain words.
+              /verify keeps its own door here too — route-coverage.test.ts asserts it. Every
+              other door moved into the More menu: eight footer links was a sitemap, not a footer. */}
+          <span className="chrome__foot-group">Rewards</span>
+          <Link href="/rewards">Rewards</Link>
+          <Link href="/engrams">Engrams</Link>
+          <span className="chrome__foot-group">Operate</span>
+          <Link href="/faucet">Sponsorship</Link>
+          <Link href="/staking">Staking</Link>
+          <span className="chrome__foot-group">Prove</span>
+          <Link href="/hall">Hall</Link>
+          <Link href="/scorecards">Scorecards</Link>
+          <span className="chrome__foot-group">Learn</span>
+          <Link href="/tour">Tour</Link>
+          <Link href="/docs">Docs</Link>
+        </div>
         <SeedPhrasePromise />
+        <span>© {new Date().getFullYear()} Crucible — alloy is non-transferable, reputation is earned.</span>
       </footer>
     </div>
   );

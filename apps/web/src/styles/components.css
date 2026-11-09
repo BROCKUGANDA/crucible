@@ -763,6 +763,98 @@
   color: var(--faint);
 }
 
+/* ── two-tier header + grouped footer ──────────────────────────── */
+
+/* The header reads as one block with a rail: brand top-left, the dispute
+   journey (dispute a claim / check a balance / earn something) across the
+   top-right, proven rows warm down the bottom instead of a single pill. */
+.chrome__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+/* The journey rail: the primary track sits beside one warm reserved link. */
+.chrome__nav-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.chrome__nav-cta {
+  flex: none;
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--ember) 55%, transparent);
+  color: var(--gold);
+  transition: background var(--t-state) var(--ease-ignite), color var(--t-state) var(--ease-ignite);
+}
+
+.chrome__nav-cta:hover,
+.chrome__nav-cta[aria-current="page"] {
+  background: color-mix(in srgb, var(--ember) 22%, transparent);
+  color: var(--hot);
+}
+
+/* Footer in two proven rows: the Colosseum verdict (proofs a stranger can
+   check) above grouped columns that answer where money lives, who operates
+   it, what proves it, and where to learn it. */
+.chrome__foot-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px 14px;
+  padding: 8px 0;
+}
+
+.chrome__foot-row--proofs {
+  width: 100%;
+  border-bottom: 1px dashed color-mix(in srgb, var(--bg2) 70%, transparent);
+  padding-bottom: 12px;
+}
+
+.chrome__foot-row--links {
+  width: 100%;
+  align-items: center;
+}
+
+.chrome__foot-verdict {
+  color: var(--dim);
+}
+
+.chrome__foot-proof {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: color-mix(in srgb, var(--gold) 40%, transparent);
+}
+
+.chrome__foot-proof:hover {
+  color: var(--text);
+}
+
+.chrome__foot-group {
+  flex-basis: 100%;
+  font-size: 0.62rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--faint) 80%, transparent);
+  margin-top: 2px;
+}
+
+@media (min-width: 900px) {
+  .chrome__foot-row--links .chrome__foot-group {
+    flex-basis: auto;
+    margin-left: 18px;
+  }
+
+  .chrome__foot-row--links .chrome__foot-group:first-of-type {
+    margin-left: 0;
+  }
+}
+
 .sheet-link {
   display: flex;
   align-items: baseline;
