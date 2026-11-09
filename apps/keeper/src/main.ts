@@ -11,6 +11,7 @@ import { TraceLog, type TraceSpan } from "@crucible/smith/trace";
 import { Warden } from "@crucible/warden";
 import { createSweepLoop, envKillSwitches } from "./sweep-loop.js";
 import { createArenaCrank } from "./arena.js";
+import { createEngramsSync } from "./engrams.js";
 import { createGasLedger, parseBalanceFloor } from "./gas-ledger.js";
 import { resolveNotifier } from "./notify.js";
 import { createWriteQueue } from "./write-queue.js";
@@ -243,6 +244,29 @@ async function boot(): Promise<void> {
   });
 
   /**
+   * Settlement -> achievement evaluation, when asked for out loud.
+   *
+   * The achievement engine is keeper-gated and nothing in the tree called it, so
+   * entitlements could never be issued. Off unless both the endpoint and the
+   * bearer are configured — an unconfigured keeper must not guess at an API.
+   */
+  const engramsUrl = process.env.ENGRAMS_EVALUATE_URL?.trim();
+  const keeperApiKey = process.env.KEEPER_API_KEY?.trim();
+  const engrams =
+    engramsUrl && keeperApiKey
+      ? createEngramsSync({
+          url: engramsUrl,
+          bearer: keeperApiKey,
+          onLog: (line) => console.log(`[engrams] ${line}`),
+        })
+      : null;
+  if (engramsUrl && !keeperApiKey) {
+    console.log(
+      "[keeper] ENGRAMS_EVALUATE_URL set but KEEPER_API_KEY missing; achievement evaluation is off",
+    );
+  }
+
+  /**
    * Two guards on the one hop, in the order that matters: the switch first, so an operator's
    * halt is never mistaken for an outage, then the breaker, so a node that stops answering gets
    * refused rather than retried until the process is a queue of dead calls. Three failed passes
@@ -348,6 +372,19 @@ async function boot(): Promise<void> {
       // separate from the await chain above.
       for (const a of result.acted) if (a.txHash) gas.observe(a.txHash as `0x${string}`);
       void gas.refreshBalance();
+
+      // Achievement evaluation follows the settlement that justifies it. Only a trial this
+      // sweep actually finalized (a tx, no error) is a verified event; a skip is someone
+      // else's settlement and their sweep reports it through the same path.
+      if (engrams) {
+        const settledTrialIds = result.acted
+          .filter((a) => a.decision.action === "finalize" && a.txHash !== null && a.error === null)
+          .map((a) => a.decision.trialId);
+        if (settledTrialIds.length > 0) {
+          const evaluated = await engrams.afterSettlements(scribe.state, settledTrialIds);
+          if (evaluated > 0) console.log(`[engrams] evaluated ${evaluated} settled trial(s)`);
+        }
+      }
       return result;
     },
     onLog: (line) => console.log(`[keeper] ${line}`),
