@@ -92,7 +92,7 @@ CREATE INDEX IF NOT EXISTS resources_visibility_idx ON resources (visibility);
 
 -- ------------------------------------------------------------------
 -- Row Level Security: every tenant-owned row carries org_id and every
--- query is tenant-scoped. RLS is the second boundary; service-layer
+-- query is tenant-scoped. RLS is the second boundary, service-layer
 -- scoping is the first. Policies are permissive-by-default only when
 -- a session's org_id matches the row's org_id.
 -- ------------------------------------------------------------------
@@ -126,7 +126,7 @@ CREATE POLICY IF NOT EXISTS organisations_owner_write
     owner_id = current_setting('crucible.current_principal_id', true)
   );
 
--- Workspaces: readable by org members; writable by org owners/admins.
+-- Workspaces: readable by org members, writable by org owners/admins.
 CREATE POLICY IF NOT EXISTS workspaces_member_read
   ON workspaces FOR SELECT
   USING (
@@ -162,7 +162,7 @@ CREATE POLICY IF NOT EXISTS workspaces_admin_write
     )
   );
 
--- Memberships: readable by org members; writable by org owners.
+-- Memberships: readable by org members, writable by org owners.
 CREATE POLICY IF NOT EXISTS memberships_member_read
   ON memberships FOR SELECT
   USING (
@@ -198,7 +198,7 @@ CREATE POLICY IF NOT EXISTS memberships_owner_write
     )
   );
 
--- Invitations: readable by org members; writable by org owners.
+-- Invitations: readable by org members, writable by org owners.
 CREATE POLICY IF NOT EXISTS invitations_member_read
   ON invitations FOR SELECT
   USING (
@@ -234,7 +234,7 @@ CREATE POLICY IF NOT EXISTS invitations_owner_write
     )
   );
 
--- Resources: public resources readable by all; org/private resources restricted.
+-- Resources: public resources readable by all, org/private resources restricted.
 CREATE POLICY IF NOT EXISTS resources_public_read
   ON resources FOR SELECT
   USING (visibility = 'public');

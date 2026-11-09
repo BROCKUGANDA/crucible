@@ -1,8 +1,8 @@
 -- Forge Watch telemetry outbox (WFW-003 / ADR-0025, ADR-0023).
 -- Idempotent: runMigrations executes all .sql files in order without a tracking table.
 -- Canonical envelope stored as JSONB plus indexed identity columns. The collector is the
--- single writer of (run_id, sequence); the database enforces uniqueness so a duplicate
--- delivery or a bypass cannot silently create a second version of the same event.
+-- single writer of (run_id, sequence) the database enforces uniqueness so a duplicate
+-- delivery or bypass cannot silently create a second version of the same event.
 
 CREATE TABLE IF NOT EXISTS forge_watch_events (
   event_id        TEXT PRIMARY KEY,
