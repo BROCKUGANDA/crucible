@@ -12,6 +12,8 @@ survived an attack.
 [contract specification](crucible-contracts/docs/contract-spec.md), ADRs, runbooks,
 wallet options, key inventory and deployment history.
 
+[<img src="https://lounge.ai/api/badge/brockuganda" alt="Okot Aaron on AI Lounge" height="28">](https://lounge.ai/@brockuganda)
+
 ```
 Open ──claim──> Assigned ──submitRun──> Judging ──fileBreak──> Challenged ──> Settled
                     │                       │                        │
