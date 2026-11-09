@@ -165,10 +165,10 @@ export const CLAIMS: Claim[] = [
   },
   {
     id: "III-1",
-    copy: "the run executes in a sealed sandbox",
+    copy: "the run executes in a sandboxed environment",
     status: "partial",
     enforcedBy: ["packages/forge-runner/src/sandbox.ts"],
-    note: "Docker with `--network=none`, a pinned verifier image digest and memory and CPU ceilings. The three agreeing replays the v2 copy describes are not run: one execution, one hash.",
+    note: "Docker with `--network=none`, a pinned verifier image digest and memory and CPU ceilings. The three agreeing replays the v2 copy describes are not run: one execution, one hash. The copy names the limit: isolation is strong, not certified hostile-code containment.",
   },
   {
     id: "I-4",

@@ -109,6 +109,26 @@
   --info: #4fbfae;
   --pending: #9e9078;
 
+  /* Arena semantic layer (Arena Edition naming): one indirection that maps the world's
+     vocabulary onto the material palette above, so a themed surface asks for
+     `--arena-surface-raised` instead of guessing which stone it means. Every alias points
+     at an existing token — new colour values would fork the palette, and the palette is
+     the authority. Pages may adopt these incrementally; nothing else changes. */
+  --arena-background: var(--bg0);
+  --arena-surface: var(--bg1);
+  --arena-surface-raised: var(--bg2);
+  --arena-stone: var(--bg2);
+  --arena-marble: var(--marble);
+  --arena-bronze: var(--bronze);
+  --arena-gold: var(--gold);
+  --arena-ember: var(--ember);
+  --arena-success: var(--success);
+  --arena-warning: var(--warning);
+  --arena-danger: var(--error);
+  --arena-muted: var(--dim);
+  --arena-border: var(--bg2);
+  --arena-focus: var(--ring);
+
   /* Stacking order, named so an overlay is not `z-index: 9999` in four different files. */
   --z-base: 0;
   --z-raised: 10;
