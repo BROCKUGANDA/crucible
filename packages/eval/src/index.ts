@@ -21,11 +21,23 @@ export {
 export {
   validateMandate,
   riskCheck,
+  dvpCheck,
+  stablecoinPegCheck,
+  quantChecks,
   AutonomousFinanceAdapter,
   autonomousFinanceAdapter,
   FINANCE_RUBRIC,
 } from "./workload-finance.js";
+export {
+  validateSolanaTask,
+  anchorAuditChecks,
+  SolanaEngineeringAdapter,
+  solanaEngineeringAdapter,
+  SOLANA_RUBRIC,
+  ANCHOR_VULN_CLASSES,
+} from "./workload-solana.js";
 export { getAdapter, listAdapters } from "./workload.js";
+export type { WorkloadKind } from "./workload.js";
 export {
   trajectoryFromResult,
   trajectoryToJsonl,
@@ -93,6 +105,7 @@ export type {
   AutonomyLevel,
   FinanceMandate,
   OrderProposal,
+  DvpLegs,
 } from "./workload-finance.js";
 export type { ProbeRecord, SplitResult } from "./splits.js";
 export type { TrajectoryRecord } from "./trajectories.js";

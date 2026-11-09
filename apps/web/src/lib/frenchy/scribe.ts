@@ -95,11 +95,17 @@ export function openScribeSession(url: string, callbacks: ScribeCallbacks): Scri
   };
 
   ws.onerror = () => {
-    callbacks.onError?.(new Error("scribe websocket error"));
+    // Network-level socket failure: surface a retryable error and let the
+    // caller fall back to browser SpeechRecognition or typed input.
+    callbacks.onError?.(new Error("scribe websocket error: connection lost — retry or type instead"));
   };
 
-  ws.onclose = () => {
+  ws.onclose = (event) => {
     ready = false;
+    // Abnormal closures (1006) are network drops; normal close is teardown.
+    if (!event.wasClean && event.code !== 1000 && event.code !== 1005) {
+      callbacks.onError?.(new Error(`scribe connection closed unexpectedly (code ${event.code}) — retry or type instead`));
+    }
     callbacks.onClose?.();
   };
 

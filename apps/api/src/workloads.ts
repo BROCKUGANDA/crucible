@@ -16,8 +16,7 @@ import {
   type WorkloadProfile,
   type RunContext,
 } from "@crucible/eval";
-import { verifiedSessionFromContext, configuredChainId } from "./auth.js";
-
+import { verifiedSessionFromContext } from "./auth.js";
 // In-memory run registry (ADR-0008; PG migration 0003 provides durable tables).
 type RunRecord = {
   runId: string;
@@ -121,6 +120,35 @@ export function createWorkloadRoutes(): Hono {
       positionPct: body.positionPct ?? 0,
     });
     return c.json({ checks, allowed: checks.every((x) => x.passed) });
+  });
+
+  // Asset intelligence: canonical mint resolution (registered assets only).
+  app.get("/assets/resolve", async (c) => {
+    const session = verifiedSessionFromContext(c);
+    if (!session) return c.json({ error: "unauthenticated", code: "no-credential" }, 401);
+    const mint = c.req.query("mint") ?? "";
+    if (!mint) return c.json({ error: "mint required", code: "bad-request" }, 400);
+    try {
+      const { resolveMint } = await import("./assets/solana-registry.js");
+      return c.json({ asset: await resolveMint(mint) });
+    } catch (err) {
+      const code = (err as { code?: string })?.code;
+      if (code === "asset_not_registered") return c.json({ error: "asset_not_registered", code }, 404);
+      return c.json({ error: (err as Error).message, code: "provider_error" }, 502);
+    }
+  });
+
+  app.get("/assets/search", async (c) => {
+    const session = verifiedSessionFromContext(c);
+    if (!session) return c.json({ error: "unauthenticated", code: "no-credential" }, 401);
+    const q = c.req.query("q") ?? "";
+    if (!q) return c.json({ error: "q required", code: "bad-request" }, 400);
+    try {
+      const { searchAssets } = await import("./assets/solana-registry.js");
+      return c.json({ assets: await searchAssets(q) });
+    } catch (err) {
+      return c.json({ error: (err as Error).message, code: "provider_error" }, 502);
+    }
   });
 
   return app;

@@ -432,11 +432,17 @@ export function FrenchyProvider({ children }: { children: ReactNode }) {
       if (event.error === "no-speech" || event.error === "audio-capture") {
         // A silent timeout is not a failure; the microphone simply heard nothing.
         setState("granted");
-      } else if (event.error === "not-allowed") {
+      } else if (event.error === "not-allowed" || event.error === "service-not-allowed") {
         setState("denied");
-        setError("Microphone access denied. Enable it in your browser settings.");
+        setError("Microphone access denied. Enable it in your browser settings, or type instead.");
+      } else if (event.error === "network") {
+        // Realtime network drop (offline, proxy, or recognizer service unreachable):
+        // keep the session alive, surface a retryable copy, and stay in a
+        // state that can listen again without a page reload.
+        setError("Voice service lost connection — check your network and press Listen to retry, or type instead.");
+        setState("granted");
       } else {
-        setError(`Speech recognition error: ${event.error}`);
+        setError(`Speech recognition error: ${event.error}. Press Listen to retry, or type instead.`);
         setState("granted");
       }
       setTranscript("");
@@ -497,8 +503,13 @@ export function FrenchyProvider({ children }: { children: ReactNode }) {
           void handleTranscript(t.trim());
         },
         onError: (err) => {
-          setError(`Transcription error: ${err.message}`);
+          // Scribe realtime drop: fall back to browser recognition so the
+          // conversation survives a websocket/network failure.
+          setError(`${err.message}. Falling back to browser voice…`);
+          try { scribeRef.current?.stop(); } catch { /* ignore */ }
+          scribeRef.current = null;
           setState("granted");
+          startListening();
         },
         onClose: () => {
           if (scribeRef.current) {

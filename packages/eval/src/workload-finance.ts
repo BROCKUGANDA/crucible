@@ -1,8 +1,13 @@
 /**
- * @file workload-finance.ts — Phase 3 Autonomous Finance adapter (WP8-WP9).
+ * @file workload-finance.ts — Phase 3 Autonomous Finance adapter (WP8-WP9 +
+ * Colosseum tokenized-asset extension).
  * F0 Historical → F1 Read-only → F2 Shadow → F3 Paper → F4 Human-approved.
  * F5 delegated execution is NOT enabled here. Independent deterministic risk
  * engine; agent cannot edit mandate/limits or approve own actions.
+ *
+ * Tokenized-asset operations: quant strategy evaluation, stablecoin workflows,
+ * procurement, bounded treasury ops, delivery-versus-payment (DvP) assurance.
+ * DvP rule: both legs verified or neither settles.
  */
 
 import type {
@@ -115,6 +120,55 @@ export function riskCheck(mandate: FinanceMandate, proposal: OrderProposal, opts
     detail: mandate.permissions.execute.length === 0 ? "no direct execute permission (propose-only)" : "execute permission present — requires kill switch + approval",
   });
   return checks;
+}
+
+/** DvP assurance: both legs (delivery + payment) verified, or neither settles. */
+export interface DvpLegs {
+  deliveryVerified: boolean;
+  paymentVerified: boolean;
+  deliveryRef?: string;
+  paymentRef?: string;
+}
+
+export function dvpCheck(legs: DvpLegs): CheckResult {
+  const passed = legs.deliveryVerified && legs.paymentVerified;
+  return {
+    id: "dvp_both_legs_verified",
+    passed,
+    required: true,
+    detail: passed
+      ? `delivery ${legs.deliveryRef ?? "?"} + payment ${legs.paymentRef ?? "?"} both verified`
+      : `DvP blocked: delivery=${legs.deliveryVerified} payment=${legs.paymentVerified}`,
+  };
+}
+
+/** Stablecoin peg check: |price - 1| within tolerance (basis points). */
+export function stablecoinPegCheck(price: number, toleranceBps = 50): CheckResult {
+  const devBps = Math.abs(price - 1) * 10000;
+  return {
+    id: "stablecoin_peg",
+    passed: devBps <= toleranceBps,
+    required: true,
+    detail: `deviation ${devBps.toFixed(1)} bps vs tolerance ${toleranceBps} bps`,
+  };
+}
+
+/** Quant strategy: no look-ahead (as-of dates <= decision time), drawdown within cap. */
+export function quantChecks(opts: { maxAsOf: number; decisionAt: number; drawdownPct: number; maxDrawdownPct: number }): CheckResult[] {
+  return [
+    {
+      id: "no_lookahead",
+      passed: opts.maxAsOf <= opts.decisionAt,
+      required: true,
+      detail: opts.maxAsOf <= opts.decisionAt ? "no future data used" : "look-ahead bias: future data used",
+    },
+    {
+      id: "drawdown_within_cap",
+      passed: opts.drawdownPct <= opts.maxDrawdownPct,
+      required: true,
+      detail: `drawdown ${opts.drawdownPct}% <= ${opts.maxDrawdownPct}%`,
+    },
+  ];
 }
 
 export class AutonomousFinanceAdapter implements WorkloadAdapter<FinanceMandate, OrderProposal> {
