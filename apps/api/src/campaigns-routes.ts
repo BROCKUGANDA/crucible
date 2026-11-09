@@ -19,6 +19,7 @@ import {
 } from "./campaigns.js";
 import type { PassportSignal } from "./identity.js";
 import { verifiedSessionFromContext } from "./auth.js";
+import { paginateByKey, parseKeyPage } from "./pagination.js";
 
 // ---------------------------------------------------------------------------
 // Config
@@ -72,18 +73,20 @@ export function createCampaignRoutes(config: CampaignsConfig = {}): Hono {
     }
 
     const myClaims = distributor.listClaimsByWallet(mySession.payload.address);
-    return c.json({
-      claims: myClaims.map((claim) => ({
-        claimId: claim.claimId,
-        campaignId: claim.campaignId,
-        amount: claim.amount.toString(),
-        status: claim.status,
-        txHash: claim.txHash,
-        createdAt: claim.createdAt,
-        claimedAt: claim.claimedAt,
-        completedAt: claim.completedAt,
-      })),
-    });
+    const page = parseKeyPage(c.req.query());
+    if (page.error) return c.json({ error: page.error, code: "bad-request" }, 400);
+    const rows = myClaims.map((claim) => ({
+      claimId: claim.claimId,
+      campaignId: claim.campaignId,
+      amount: claim.amount.toString(),
+      status: claim.status,
+      txHash: claim.txHash,
+      createdAt: claim.createdAt,
+      claimedAt: claim.claimedAt,
+      completedAt: claim.completedAt,
+    }));
+    const paged = paginateByKey(rows, (claim) => claim.claimId, page);
+    return c.json({ claims: paged.items, page: paged.page });
   });
 
   /**
@@ -94,26 +97,28 @@ export function createCampaignRoutes(config: CampaignsConfig = {}): Hono {
    */
   app.get("/", (c) => {
     const status = c.req.query("status") as CampaignStatus | undefined;
+    const page = parseKeyPage(c.req.query());
+    if (page.error) return c.json({ error: page.error, code: "bad-request" }, 400);
     const campaigns = distributor.listCampaigns(status);
-    return c.json({
-      campaigns: campaigns.map((camp) => ({
-        campaignId: camp.campaignId,
-        name: camp.name,
-        description: camp.description,
-        sponsor: camp.sponsor,
-        assetType: camp.assetType,
-        chain: camp.chain,
-        cluster: camp.cluster,
-        assetSymbol: camp.assetSymbol,
-        status: camp.status,
-        totalBudget: camp.totalBudget.toString(),
-        perClaimAmount: camp.perClaimAmount.toString(),
-        maxClaimsPerWallet: camp.maxClaimsPerWallet,
-        startsAt: camp.startsAt,
-        endsAt: camp.endsAt,
-        createdAt: camp.createdAt,
-      })),
-    });
+    const rows = campaigns.map((camp) => ({
+      campaignId: camp.campaignId,
+      name: camp.name,
+      description: camp.description,
+      sponsor: camp.sponsor,
+      assetType: camp.assetType,
+      chain: camp.chain,
+      cluster: camp.cluster,
+      assetSymbol: camp.assetSymbol,
+      status: camp.status,
+      totalBudget: camp.totalBudget.toString(),
+      perClaimAmount: camp.perClaimAmount.toString(),
+      maxClaimsPerWallet: camp.maxClaimsPerWallet,
+      startsAt: camp.startsAt,
+      endsAt: camp.endsAt,
+      createdAt: camp.createdAt,
+    }));
+    const paged = paginateByKey(rows, (camp) => camp.campaignId, page);
+    return c.json({ campaigns: paged.items, page: paged.page });
   });
 
   /**
@@ -590,18 +595,20 @@ export function createCampaignRoutes(config: CampaignsConfig = {}): Hono {
     }
 
     const claims = distributor.listClaims(campaignId);
-    return c.json({
-      claims: claims.map((claim) => ({
-        claimId: claim.claimId,
-        recipient: claim.recipient,
-        amount: claim.amount.toString(),
-        status: claim.status,
-        txHash: claim.txHash,
-        createdAt: claim.createdAt,
-        claimedAt: claim.claimedAt,
-        completedAt: claim.completedAt,
-      })),
-    });
+    const page = parseKeyPage(c.req.query());
+    if (page.error) return c.json({ error: page.error, code: "bad-request" }, 400);
+    const rows = claims.map((claim) => ({
+      claimId: claim.claimId,
+      recipient: claim.recipient,
+      amount: claim.amount.toString(),
+      status: claim.status,
+      txHash: claim.txHash,
+      createdAt: claim.createdAt,
+      claimedAt: claim.claimedAt,
+      completedAt: claim.completedAt,
+    }));
+    const paged = paginateByKey(rows, (claim) => claim.claimId, page);
+    return c.json({ claims: paged.items, page: paged.page });
   });
 
   return app;

@@ -2277,8 +2277,18 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
       );
     }
 
+    const page = parsePage(c.req.query());
+    if (page.error) return c.json({ error: page.error }, 400);
+
+    // The rows are the funder's records; `id` is the allocation sequence it assigns, so
+    // the owner can page a long ledger without the cursor shifting under new rows.
+    const paged = paginate(
+      json.allocations as { id: number }[],
+      (allocation) => allocation.id,
+      page,
+    );
     c.header("Cache-Control", "no-store");
-    return c.json({ owner: true, configured: true, allocations: json.allocations });
+    return c.json({ owner: true, configured: true, allocations: paged.items, page: paged.page });
   });
 
   /**
@@ -2398,82 +2408,108 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
   // for one trial. Transport scaffold: heartbeats + a snapshot event. The full room
   // renderer subscribes via EventSource on the client.
   app.get("/trials/:id/events", (c) => {
+    // The same ceiling /stream keeps, for the same reason: each connection here holds a
+    // socket, a one-second timer and a per-connect chain read for up to ten minutes, and
+    // the rate limiter cannot see any of that. An uncounted per-trial room stream was the
+    // /stream failure walking back in through a second door.
+    if (openStreams >= maxStreams) {
+      c.header("Retry-After", "5");
+      return c.json({ error: "too many live streams", maxStreams }, 503);
+    }
+    openStreams += 1;
+    let released = false;
+    const release = (): void => {
+      if (released) return;
+      released = true;
+      openStreams -= 1;
+    };
     const trialId = c.req.param("id");
-    return streamSSE(c, async (stream) => {
-      let running = true;
-      const signal = c.req.raw.signal;
-      signal.addEventListener("abort", () => { running = false; }, { once: true });
-      stream.onAbort(() => { running = false; });
-
-      let lastWriteAt = 0;
-      const HEARTBEAT_MS = 15_000;
-      const maxMs = 10 * 60 * 1000;
-      const started = Date.now();
-
-      const buildEvents = async (): Promise<unknown[]> => {
-        const model = deps.getModel();
-        const trial = model.trials.get(Number(trialId));
-        const out: unknown[] = [];
-        if (trial) {
-          const stageMap: Record<string, string> = { open: "I", assigned: "II", judging: "III", challenged: "V", settled: "VII" };
-          const stage = stageMap[trial.status] ?? "I";
-          out.push({
-            v: 1,
-            id: `trial-${trial.id}-posted`,
-            mode: "showcase",
-            trial: String(trial.id),
-            stage,
-            kind: "trial.posted",
-            payload: { sponsor: trial.sponsor, rewardWei: trial.rewardWei.toString(), status: trial.status },
-            at: new Date((trial.createdAt || 0) * 1000).toISOString(),
-          });
-        }
+    try {
+      return streamSSE(c, async (stream) => {
         try {
-          const mod = await import("@crucible/indexer");
-          const rpcUrl = process.env.RPC_URL ?? "http://127.0.0.1:8545";
-          const trialsAddress = process.env.TRIALS_ADDRESS;
-          if (trialsAddress) {
-            const logs = await mod.fetchTrialEvents({ rpcUrl, address: trialsAddress as `0x${string}`, trialId: Number(trialId) });
-            const stageFor = (name: string): string => {
-              if (name.includes("Settled") || name.includes("Verdict")) return "VII";
-              if (name.includes("Break") || name.includes("Window")) return "IV";
-              if (name.includes("Run") || name.includes("Claim")) return "III";
-              return "I";
-            };
-            for (const log of logs) {
+          let running = true;
+          const signal = c.req.raw.signal;
+          signal.addEventListener("abort", () => { running = false; }, { once: true });
+          stream.onAbort(() => { running = false; });
+
+          let lastWriteAt = 0;
+          const HEARTBEAT_MS = 15_000;
+          const maxMs = 10 * 60 * 1000;
+          const started = Date.now();
+
+          const buildEvents = async (): Promise<unknown[]> => {
+            const model = deps.getModel();
+            const trial = model.trials.get(Number(trialId));
+            const out: unknown[] = [];
+            if (trial) {
+              const stageMap: Record<string, string> = { open: "I", assigned: "II", judging: "III", challenged: "V", settled: "VII" };
+              const stage = stageMap[trial.status] ?? "I";
               out.push({
                 v: 1,
-                id: `${log.transactionHash}-${log.logIndex}`,
+                id: `trial-${trial.id}-posted`,
                 mode: "showcase",
-                trial: String(trialId),
-                stage: stageFor(log.eventName),
-                kind: log.eventName,
-                payload: log.args,
-                // The chain's own block time when the chain answered; the observed
-                // time only when it did not — an event is never stamped with a
-                // moment it did not happen at.
-                at: log.blockTimestamp
-                  ? new Date(Number(log.blockTimestamp) * 1000).toISOString()
-                  : new Date().toISOString(),
-                chainRef: { caip2: `eip155:${configuredChainId()}`, tx: log.transactionHash, slotOrBlock: Number(log.blockNumber), commitment: "confirmed" },
+                trial: String(trial.id),
+                stage,
+                kind: "trial.posted",
+                payload: { sponsor: trial.sponsor, rewardWei: trial.rewardWei.toString(), status: trial.status },
+                at: new Date((trial.createdAt || 0) * 1000).toISOString(),
               });
             }
-          }
-        } catch { /* indexer optional */ }
-        return out;
-      };
-      const events = await buildEvents();
-      await stream.writeSSE({ event: "snapshot", data: JSON.stringify({ trial: trialId, events }) });
+            try {
+              const mod = await import("@crucible/indexer");
+              const rpcUrl = process.env.RPC_URL ?? "http://127.0.0.1:8545";
+              const trialsAddress = process.env.TRIALS_ADDRESS;
+              if (trialsAddress) {
+                const logs = await mod.fetchTrialEvents({ rpcUrl, address: trialsAddress as `0x${string}`, trialId: Number(trialId) });
+                const stageFor = (name: string): string => {
+                  if (name.includes("Settled") || name.includes("Verdict")) return "VII";
+                  if (name.includes("Break") || name.includes("Window")) return "IV";
+                  if (name.includes("Run") || name.includes("Claim")) return "III";
+                  return "I";
+                };
+                for (const log of logs) {
+                  out.push({
+                    v: 1,
+                    id: `${log.transactionHash}-${log.logIndex}`,
+                    mode: "showcase",
+                    trial: String(trialId),
+                    stage: stageFor(log.eventName),
+                    kind: log.eventName,
+                    payload: log.args,
+                    // The chain's own block time when the chain answered; the observed
+                    // time only when it did not — an event is never stamped with a
+                    // moment it did not happen at.
+                    at: log.blockTimestamp
+                      ? new Date(Number(log.blockTimestamp) * 1000).toISOString()
+                      : new Date().toISOString(),
+                    chainRef: { caip2: `eip155:${configuredChainId()}`, tx: log.transactionHash, slotOrBlock: Number(log.blockNumber), commitment: "confirmed" },
+                  });
+                }
+              }
+            } catch { /* indexer optional */ }
+            return out;
+          };
+          const events = await buildEvents();
+          await stream.writeSSE({ event: "snapshot", data: JSON.stringify({ trial: trialId, events }) });
 
-      while (running && Date.now() - started < maxMs) {
-        if (Date.now() - lastWriteAt >= HEARTBEAT_MS) {
-          await stream.writeSSE({ event: "heartbeat", data: JSON.stringify({ trial: trialId }) });
-          lastWriteAt = Date.now();
+          while (running && Date.now() - started < maxMs) {
+            if (Date.now() - lastWriteAt >= HEARTBEAT_MS) {
+              await stream.writeSSE({ event: "heartbeat", data: JSON.stringify({ trial: trialId }) });
+              lastWriteAt = Date.now();
+            }
+            await new Promise((r) => setTimeout(r, 1000));
+            if (signal.aborted) running = false;
+          }
+        } finally {
+          // The slot comes back however the stream ended, not only on the happy path.
+          release();
         }
-        await new Promise((r) => setTimeout(r, 1000));
-        if (signal.aborted) running = false;
-      }
-    });
+      });
+    } catch (err) {
+      // `streamSSE` builds the response before the callback can release the slot.
+      release();
+      throw err;
+    }
   });
 
   /**

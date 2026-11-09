@@ -12,6 +12,7 @@ import { isCid } from "@crucible/cidstore";
 import { isAddress, isHex, verifyTypedData, type Address, type Hex } from "viem";
 import type { ReadModel } from "@crucible/indexer";
 import type { ContentLookup, ContentRead } from "./content.js";
+import { paginateByKey, parseKeyPage } from "./pagination.js";
 
 export interface StoredScorecardPublication {
   fileId: string;
@@ -336,7 +337,18 @@ export function scorecardRoutes(deps: ScorecardRouteDeps): Hono {
         .filter((entry) => cohort === undefined || entry.publication.message.cohort === cohort)
         .filter((entry) => agentId === undefined || entry.publication.message.agentId === agentId)
         .map((entry) => ({ ...entry.publication, scorecard: entry.scorecard }));
-      return c.json({ configured: true, count: publications.length, cohorts, publications });
+      const page = parseKeyPage(c.req.query());
+      if (page.error) return c.json({ error: page.error }, 400);
+      // The cursor is the publication id (a 32-byte hash): stable, and already unique —
+      // two publications of the same cohort differ by it, so it pages a cohort too.
+      const paged = paginateByKey(publications, (publication) => publication.id, page);
+      return c.json({
+        configured: true,
+        count: publications.length,
+        cohorts,
+        publications: paged.items,
+        page: paged.page,
+      });
     } catch (error) {
       const reason = error instanceof PublicationError ? error.message : "publication source could not be read";
       return c.json({ error: "A stored scorecard failed verification", reason }, 500);

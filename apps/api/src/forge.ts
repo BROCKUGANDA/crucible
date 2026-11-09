@@ -16,6 +16,7 @@
 
 import { Hono, type Context } from "hono";
 import { configuredChainId, sessionPrincipal } from "./auth.js";
+import { paginateByKey, parseKeyPage } from "./pagination.js";
 import {
   authorize,
   type OrganisationPrincipal,
@@ -689,7 +690,11 @@ export function createForgeRoutes(): Hono {
     if (!orgId) {
       return c.json({ error: "org_id is required" }, 400);
     }
-    return jsonWithBigInt(c, { campaigns: listCampaigns(orgId) });
+    const page = parseKeyPage(c.req.query());
+    if (page.error) return c.json({ error: page.error }, 400);
+    const campaigns = listCampaigns(orgId);
+    const paged = paginateByKey(campaigns, (campaign) => campaign.campaignId, page);
+    return jsonWithBigInt(c, { campaigns: paged.items, page: paged.page });
   });
 
   return app;
