@@ -178,6 +178,36 @@ function splitSqlStatements(sql: string): string[] {
     const ch = sql[i];
     const next = sql[i + 1];
 
+    // Comments are not statements. A `;` inside a `--` line comment or a `/* */` block comment
+    // must not split: doing so leaves the tail of the comment as a bogus "statement" that begins
+    // with an English word, and Postgres rejects it with `syntax error at or near "the"`. That is
+    // exactly how the deployed API crash-looped once the pool stopped throwing at import — the
+    // next thing boot does is run migrations, and 0002 has a semicolon inside a comment. The comment
+    // text is kept (Postgres ignores it) but its semicolons are inert.
+    if (!inSingleQuote && !inDollarQuote) {
+      if (ch === '-' && next === '-') {
+        while (i < sql.length && sql[i] !== '\n') {
+          current += sql[i];
+          i++;
+        }
+        if (i < sql.length) current += '\n';
+        continue;
+      }
+      if (ch === '/' && next === '*') {
+        current += '/*';
+        i += 2;
+        while (i < sql.length && !(sql[i] === '*' && sql[i + 1] === '/')) {
+          current += sql[i];
+          i++;
+        }
+        if (i < sql.length) {
+          current += '*/';
+          i++;
+        }
+        continue;
+      }
+    }
+
     if (inDollarQuote) {
       current += ch;
       if (dollarTag && sql.startsWith('$' + dollarTag + '$', i)) {

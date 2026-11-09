@@ -11,28 +11,31 @@ import { Chrome } from "@/components/Chrome";
 export default function OpsPage() {
   return (
     <Chrome>
-      <p className="kicker">Ops — pilot profile and proofs</p>
-      <h1 className="page-title">This deployment, named</h1>
+      <p className="kicker">For operators — about this deployment</p>
+      <h1 className="page-title">This site, in plain words</h1>
       <p className="hint hint--block">
-        Profile: <span className="mono">demo</span> — the demo escrow holds test
-        ETH worth nothing on a local development chain. Preview and production
-        refuse to boot until their own gates exist; that refusal is the security
-        control, not a workaround.
+        You are looking at the <strong>public demo</strong>. The money here is
+        fake test money with no real-world value. The versions that handle
+        real money stay switched off until every safety check passes — and
+        staying off is the safety feature.
       </p>
 
       <div className="metric-grid">
         <p className="surface detail-panel">
-          <strong>Chain.</strong> The demo runs <span className="mono">31337</span> — the
-          local Anvil chain. The chain ID is proven against the RPC server-side,
-          not trusted from browser config.
+          <strong>Which network?</strong> A private test network set up just
+          for this demo — it is not connected to any public blockchain, and the
+          servers double-check that rather than taking the browser&apos;s word
+          for it.
         </p>
         <p className="surface detail-panel">
-          <strong>Real value?</strong> <span className="mono">REAL_VALUE_OPERATIONS=0</span>.
-          No real-value transaction path is reachable from this profile.
+          <strong>Is anything real money?</strong> No. Every amount you see is
+          simulated. There is no way to send or receive real funds from this
+          demo.
         </p>
         <p className="surface detail-panel">
-          <strong>Who operates it?</strong> The named operator signs the
-          go/no-go record. This page is never a substitute for that signature.
+          <strong>Who runs it?</strong> A named operator signs off before
+          anything is launched. This page is the summary; the signed record is
+          the authority.
         </p>
       </div>
 

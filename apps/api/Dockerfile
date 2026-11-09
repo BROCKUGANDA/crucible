@@ -55,6 +55,8 @@ ENV NODE_ENV=production \
 COPY --from=build /repo/package.json ./package.json
 COPY --from=build /repo/node_modules ./node_modules
 COPY --from=build /repo/packages ./packages
+# SQL migrations are read by the API at boot (see @crucible/agent-security database.ts).
+COPY --from=build /repo/migrations ./migrations
 COPY --from=build /repo/apps/api/package.json ./apps/api/package.json
 COPY --from=build /repo/apps/api/dist ./apps/api/dist
 COPY apps/api/docker-entrypoint.sh /usr/local/bin/crucible-api-entrypoint.sh
