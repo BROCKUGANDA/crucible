@@ -80,5 +80,17 @@ regexes = [
   # would not be. Every build already references Anvil's public dev keys by this same
   # exception; this is the same class.
   '''0x49CFC7755cab85un9sJwLf936qa4447bAd3FD219dD''',
+  # `http://api:8787/engrams/evaluate` in `apps/keeper/src/engrams.ts`, introduced in commit
+  # fb56eeef. It is an internal service endpoint, not a credential — the actual bearer token
+  # is passed at runtime via KEEPER_API_KEY. Gitleaks' generic-api-key rule scores the
+  # entropy of the path segment rather than what it is for, so it tripped on the URL.
+  # The exception is the exact path segment; any other key-shaped string still fails.
+  '''8787/engrams/evaluate''',
+  # `keeper-key-0123456789abcdef0123456789abcdef` in `apps/api/test/engrams-routes.test.ts`,
+  # introduced in commit 5541acb. A deterministic test fixture that seeds an in-memory store
+  # controlling nothing and signing nothing — not a credential. Gitleaks scans
+  # `--log-opts=--all`, so the published commit reddens every branch until the literal is
+  # named here. Exception is the exact literal; any other key-shaped string still fails.
+  '''keeper-key-0123456789abcdef0123456789abcdef''',
 ]
 

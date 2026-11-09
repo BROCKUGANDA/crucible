@@ -73,8 +73,16 @@ contract Deploy is DevKeyScript {
     error TreasuryMustBeContract(address treasury);
     error OwnerMustBeContract(address ownerSafe);
 
-    function run() external returns (CrucibleTrials trials, AlloyRegistry alloy, VerificationReceipt receipt,
-        EngramERC1155 engram, EngramDistributor distributor) {
+    function run()
+        external
+        returns (
+            CrucibleTrials trials,
+            AlloyRegistry alloy,
+            VerificationReceipt receipt,
+            EngramERC1155 engram,
+            EngramDistributor distributor
+        )
+    {
         uint256 pk = signerKey();
         address treasury = vm.envAddress("TREASURY_ADDRESS");
         address ownerSafe = vm.envAddress("OWNER_SAFE_ADDRESS");
