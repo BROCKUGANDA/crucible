@@ -439,6 +439,9 @@ async function main() {
             pathToFileURL(path.join(ROOT, "packages/agent-security/dist/index.js")).href
           );
           const l0 = as.getQueue("forge-watch-l0");
+          // The consumer half: without a worker on forge-watch-l0, enqueued monitor jobs
+          // are never inspected. Default processors (L0 probes) only.
+          as.registerForgeWatchWorkers();
           const relay = fw.createOutboxRelay({
             pgExecutor: async (sql, params) => {
               const result = await watchPool.query(sql, params);
