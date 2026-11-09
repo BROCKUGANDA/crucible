@@ -55,11 +55,31 @@ else
 fi
 
 # ── 3. the application stack ──────────────────────────────────────────────────
-# The vps overlay publishes no host port: only the edge can reach these services. A full
-# `up` is correct on a fresh box — compose starts anvil, runs the one-shot seed, and only
-# then starts the services that depend on them.
-say "building the application images"
-docker compose -f compose.yaml -f compose.vps.yaml build web api keeper juror seed funder
+# The vps overlay publishes no host port: only the edge can reach these services. The seed
+# runs once, before the build (below), so the later full `up` finds it already satisfied.
+# The web bundle inlines TRIALS_ADDRESS / ALLOY_ADDRESS at build time, so the chain must be
+# deployed BEFORE web is built. Order: build seed -> run seed (anvil starts as its dependency)
+# -> read the addresses it published -> build the rest -> up.
+say "building the seed image"
+docker compose -f compose.yaml -f compose.vps.yaml build seed
+
+say "deploying the chain (anvil + one-shot seed) so the addresses exist before the web build"
+docker compose -f compose.yaml -f compose.vps.yaml run --rm -T seed
+
+say "reading the deployed addresses from the seed volume"
+deployed_env="$(docker compose -f compose.yaml -f compose.vps.yaml run --rm -T --no-deps \
+  --entrypoint cat seed /run/crucible/deployed.env)" ||
+  die "could not read /run/crucible/deployed.env from the seed volume."
+TRIALS_ADDRESS="$(printf '%s\n' "$deployed_env" | sed -n 's/^TRIALS_ADDRESS=//p' | tail -n 1)"
+ALLOY_ADDRESS="$(printf '%s\n' "$deployed_env" | sed -n 's/^ALLOY_ADDRESS=//p' | tail -n 1)"
+[ -n "$TRIALS_ADDRESS" ] && [ -n "$ALLOY_ADDRESS" ] ||
+  die "the seed did not publish TRIALS_ADDRESS and ALLOY_ADDRESS."
+# Exported so compose interpolates them into the web build args and into the seed's EXPECTED_*
+# guard: the later `up` then keeps the deployed chain instead of re-broadcasting the demo.
+export TRIALS_ADDRESS ALLOY_ADDRESS
+
+say "building the application images (web bakes the addresses above)"
+docker compose -f compose.yaml -f compose.vps.yaml build web api keeper juror funder
 
 say "starting the stack (anvil -> seed -> api/keeper/funder; origin ports unpublished)"
 docker compose -f compose.yaml -f compose.vps.yaml up -d
