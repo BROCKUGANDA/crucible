@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Chrome } from "@/components/Chrome";
+import { Chrome, Quenching } from "@/components/Chrome";
+import { Payload } from "@/components/Payload";
 import { API_BASE } from "@/lib/apiBase";
 import { solanaCluster, solanaMoneyNotice } from "@/lib/wagmi";
 
@@ -32,14 +33,24 @@ export default function SolanaPage() {
   const [sol, setSol] = useState<SolanaState>({ address: null, cluster: "devnet", connected: false });
   const [error, setError] = useState<string | null>(null);
   const [ownership, setOwnership] = useState<unknown>(null);
+  const [ownershipState, setOwnershipState] = useState<"loading" | "ready" | "unavailable">("loading");
   const notice = solanaMoneyNotice(sol.cluster as "devnet" | "mainnet-beta");
 
   useEffect(() => {
     setSol(readSolana());
     fetch(`${API_BASE}/stamp/protocol/ownership`)
       .then((r) => r.json().then((b) => ({ ok: r.ok, body: b })))
-      .then(({ ok, body }) => { if (ok) setOwnership(body); })
-      .catch(() => {});
+      .then(({ ok, body }) => {
+        if (!ok) {
+          // A host with the STAMP domain disabled answers 404: "not offered here", which
+          // is a different sentence from "zero ownership".
+          setOwnershipState("unavailable");
+          return;
+        }
+        setOwnership(body);
+        setOwnershipState("ready");
+      })
+      .catch(() => setOwnershipState("unavailable"));
   }, []);
 
   async function connect() {
@@ -89,8 +100,12 @@ export default function SolanaPage() {
           <li>2. STAMP legal entitlements (if Path A approved) are tracked off-chain + devnet fixtures — <span className="mono">/stamp</span> routes, manual review only.</li>
           <li>3. Token delivery/vesting happens only through the MetaDAO-approved path after counsel sign-off — never from this console.</li>
         </ol>
-        {ownership !== null && ownership !== undefined && (
-          <pre className="code">{JSON.stringify(ownership as Record<string, unknown>, null, 2)}</pre>
+        {ownershipState === "loading" ? <Quenching label="reading protocol ownership" /> : null}
+        {ownershipState === "unavailable" ? (
+          <p className="hint">This host did not answer the ownership read.</p>
+        ) : null}
+        {ownershipState === "ready" && ownership !== null && ownership !== undefined && (
+          <Payload value={ownership} title="Protocol ownership" />
         )}
       </div>
     </Chrome>

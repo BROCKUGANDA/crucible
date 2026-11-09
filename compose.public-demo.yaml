@@ -1,0 +1,23 @@
+# Public-demo profile: the same services as compose.yaml, reachable only through the
+# edge (deploy/edge). This is the "Stage A" deployment the infrastructure runbook
+# describes: valueless chain, seeded trials, public guests read-only.
+#
+# It deliberately touches ONLY the published ports — restart policies, logging and
+# environment are inherited from compose.yaml, exactly as in compose.vps.yaml.
+#
+#   docker compose --project-name crucible-demo \
+#     --env-file /etc/crucible/demo.env \
+#     -f compose.yaml -f compose.public-demo.yaml up -d --build
+#
+# `!reset []` replaces compose.yaml's ports lists instead of merging (compose 2.24+).
+# An origin answering on :3000/:8787/:8555 is reachable by anyone who finds the IP and
+# bypasses every control the edge applies; nothing but the edge publishes a port.
+services:
+  anvil:
+    ports: !reset []
+
+  api:
+    ports: !reset []
+
+  web:
+    ports: !reset []

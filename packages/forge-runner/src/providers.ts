@@ -9,22 +9,26 @@
  * The loop is interactive: it asks for a patch, runs a suite, and feeds the failure
  * back. Prompt tuning therefore needs a model that answers fast enough to iterate, so
  * the default is whichever hosted model is reachable from the machine running it.
- * Anthropic is kept because it is the stronger model for hard work, but it needs a
- * paid key; NVIDIA NIM is kept because it hosts code models *and* a purpose-trained
- * safety classifier, which is the pair this repo actually needs.
+ * token.xyz is the default provider: an OpenAI-compatible exchange that routes each
+ * request to the cheapest healthy provider for the model, so the per-model price is
+ * the price that matters. Groq and NVIDIA NIM are kept because they host the
+ * purpose-trained safety classifiers `promptGuard` screens with, which a general chat
+ * exchange does not carry.
  *
- * Groq and NIM are both OpenAI-compatible, so they share `openAiCompatibleClient`. It
- * deliberately does not pull in an SDK: the wire format is small, the failure modes are
- * worth being able to read, and a provider client should not be able to break the build.
+ * token.xyz, Groq and NIM are all OpenAI-compatible, so they share
+ * `openAiCompatibleClient`. It deliberately does not pull in an SDK: the wire format is
+ * small, the failure modes are worth being able to read, and a provider client should
+ * not be able to break the build.
  */
 
 import type { LlmClient } from "./agent.js";
 import { withBackoff } from "@crucible/smith";
 import { assertEgressAllowed } from "./egress.js";
 
+export const TOKENXYZ_BASE = "https://token.xyz/v1";
+// Legacy escape hatches, kept because they host the classifiers `promptGuard` uses.
 export const GROQ_BASE = "https://api.groq.com/openai/v1";
 export const NIM_BASE = "https://integrate.api.nvidia.com/v1";
-export const ANTHROPIC_BASE = "https://api.anthropic.com";
 
 export interface CompatibleOptions {
   apiKey: string;
@@ -59,6 +63,14 @@ export const DEFAULT_GROQ_MODEL = "qwen/qwen3.8-27b";
  * returns a bare unified diff without needing to be coaxed out of prose.
  */
 export const DEFAULT_NIM_MODEL = "z-ai/glm-5.3-flash";
+
+/**
+ * token.xyz's default agent model: the same `z-ai/glm-5.3-flash` code model the NIM
+ * default used — on token.xyz's routable catalog it is priced $0.075/$0.25 per Mtok
+ * (verified 2026-11-09), answers in seconds, and returns a bare unified diff without
+ * being coaxed out of prose.
+ */
+export const DEFAULT_TOKENXYZ_MODEL = "z-ai/glm-5.3-flash";
 
 /**
  * A provider endpoint is configured, not user input — but a misconfigured one
@@ -167,6 +179,15 @@ export function nimClient(opts: CompatibleOptions): LlmClient {
     baseUrl: opts.baseUrl ?? NIM_BASE,
     defaultModel: opts.defaultModel ?? DEFAULT_NIM_MODEL,
     name: "nim",
+  });
+}
+
+export function tokenxyzClient(opts: CompatibleOptions): LlmClient {
+  return openAiCompatibleClient({
+    ...opts,
+    baseUrl: opts.baseUrl ?? TOKENXYZ_BASE,
+    defaultModel: opts.defaultModel ?? DEFAULT_TOKENXYZ_MODEL,
+    name: "token.xyz",
   });
 }
 

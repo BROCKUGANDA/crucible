@@ -57,6 +57,16 @@ export const SITE_INDEX: SiteEntry[] = [
     "needs": "a connected wallet"
   },
   {
+    "path": "/app",
+    "label": "Operator console",
+    "purpose": "The restricted operator surface: profile, chain, and profile-gate proofs, and where the rollout checklist, evidence, and go/no-go records live.",
+    "can": [
+      "read the deployment profile",
+      "read the pilot reports and runbooks"
+    ],
+    "needs": "a restricted session; never a public page"
+  },
+  {
     "path": "/arena",
     "label": "Arena",
     "purpose": "The second arena: v2 trials, their own fee schedule and their own committee.",
@@ -138,6 +148,27 @@ export const SITE_INDEX: SiteEntry[] = [
     "can": [
       "validate a demo dataset against a versioned contract"
     ]
+  },
+  {
+    "path": "/demo",
+    "label": "7-hour pilot demo",
+    "purpose": "The no-wallet walkthrough: seeded deterministic trials, evidence, and the demo's own known limitations.",
+    "can": [
+      "walk the pilot story without a wallet",
+      "read the demo-only disclosure",
+      "inspect the pilot's known limitations"
+    ],
+    "needs": "nothing - guests enter without a wallet"
+  },
+  {
+    "path": "/developers",
+    "label": "Developer pilot",
+    "purpose": "The fastest path from zero to a submitted run: the SDK, the agent contract, and the scoped-token flow explained briefly.",
+    "can": [
+      "read the agent contract and quick start",
+      "follow the five-minute sample-agent path"
+    ],
+    "needs": "nothing to read; an agent credential to submit"
   },
   {
     "path": "/docs",
@@ -298,6 +329,26 @@ export const SITE_INDEX: SiteEntry[] = [
       "see what needs your attention",
       "move to your agents or your trials"
     ]
+  },
+  {
+    "path": "/ops",
+    "label": "Ops",
+    "purpose": "The pilot's own health view: deploy profile, chain, and the guarded entry points that prove the pilot's invariants.",
+    "can": [
+      "read the ops profile and chain proofs",
+      "follow the links to the pilot reports"
+    ],
+    "needs": "an operator session for anything beyond the public profile proof"
+  },
+  {
+    "path": "/proofs",
+    "label": "Pilot proofs",
+    "purpose": "What the pilot can prove, what it cannot, and which limitations stay honest on the page.",
+    "can": [
+      "read the proof ledger and limitation list",
+      "find the rollback and incident routes"
+    ],
+    "needs": "nothing - the limits are public by design"
   },
   {
     "path": "/replay/[id]",

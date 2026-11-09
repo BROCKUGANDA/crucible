@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Chrome } from "@/components/Chrome";
 import { API_BASE } from "@/lib/apiBase";
+import { formatWhen } from "@/lib/clock";
 
 interface ScorecardRow {
   modelId: string;
@@ -51,8 +52,9 @@ function rate(value: unknown): string {
 }
 
 function when(seconds: number): string {
-  const value = new Date(seconds * 1000);
-  return Number.isNaN(value.getTime()) ? "time not recorded" : value.toLocaleString();
+  // The shared formatter. `toLocaleString()` wrote the reader's locale into a chain
+  // record, so one timestamp read differently on two machines.
+  return formatWhen(seconds * 1000);
 }
 
 export default function ScorecardsPage() {

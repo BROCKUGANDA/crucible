@@ -5,6 +5,7 @@ import { Chrome } from "@/components/Chrome";
 import { Modal } from "@/components/Modal";
 import { AirdropGlyph } from "@/components/Glyphs";
 import { API_BASE } from "@/lib/apiBase";
+import { formatEth } from "@/lib/forge";
 import { useAccount } from "wagmi";
 
 /**
@@ -41,7 +42,7 @@ export default function AirdropsPage() {
       if (res.ok && body?.ok) {
         setResult(
           body.grantedEth
-            ? `Airdropped ${body.grantedEth} ETH to ${address}.`
+            ? `Airdropped ${formatEth(body.grantedEth)} to ${address}.`
             : "Claim accepted.",
         );
       } else {

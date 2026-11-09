@@ -5,8 +5,14 @@
  * never touch on-chain financial outcomes, verdicts, payouts, or bonds (ADR-0025).
  */
 
-import type { Job, WorkerOptions } from "bullmq";
-import { createWorker, QUEUE_NAMES, FORGE_WATCH_JOB_DEFAULTS } from "./queue.js";
+import type { Job, Worker, WorkerOptions } from "bullmq";
+import {
+  createWorker,
+  QUEUE_NAMES,
+  FORGE_WATCH_JOB_DEFAULTS,
+  isFinalFailure,
+  routeToDeadLetter,
+} from "./queue.js";
 
 export interface ForgeWatchMonitorJob {
   schemaVersion: number;
@@ -16,6 +22,16 @@ export interface ForgeWatchMonitorJob {
   eventIds?: string[];
   phase: string;
   enqueuedAt: number;
+  /** The events this job inspects, in producer order (see dispatch.ts). */
+  events?: {
+    eventId: string;
+    sequence: number;
+    eventType: string;
+    source: string;
+    authorizationDecision?: "allowed" | "denied" | "pending";
+    toolId?: string;
+    permission?: string;
+  }[];
 }
 
 export interface MonitorProcessorResult {
@@ -45,17 +61,52 @@ export function idempotentMonitorProcessor(
   };
 }
 
-/** L0 deterministic probes: sequence coverage, forbidden egress/tool, sandbox escape signals. */
+/**
+ * L0 deterministic probes, judged from the events carried in the job.
+ *
+ * Each check is a property of the envelope itself, so the worker needs no
+ * store and no network:
+ *   - sequence coverage: within one dispatch, sequences must be strictly
+ *     increasing with no gap (a repeat is a replay; a jump is a lost event —
+ *     both are telemetry-integrity findings);
+ *   - forbidden egress/tool: an `egress.decision` that recorded `denied`, or a
+ *     `tool.call.deny`, is a refused call the operator must see;
+ *   - sandbox tamper signal: `test.modification` (the runner refuses
+ *     test-touching patches, so its presence anywhere is a finding).
+ * A job with no events is reported skipped, not passed.
+ */
 export const l0Processor: MonitorProcessor = async (job) => {
-  const data = job.data as ForgeWatchMonitorJob & { eventType?: string; source?: string };
-  // Idempotency: skip if this exact job was already processed — BullMQ jobId
-  // dedupe happens at enqueue; here we record the decision in the result.
-  const forbidden = data.eventType === "network.connect" && data.source === "agent";
-  if (forbidden) {
-    return { ok: true, reason: "l0:forbidden-egress-finding" };
+  const events = job.data.events ?? [];
+  if (events.length === 0) {
+    return { ok: true, skipped: true, reason: "l0:no-events" };
   }
-  if (data.eventType === "test.modification") {
-    return { ok: true, reason: "l0:test-modification-finding" };
+
+  const findings: string[] = [];
+
+  for (let i = 1; i < events.length; i += 1) {
+    const previous = events[i - 1]!.sequence;
+    const next = events[i]!.sequence;
+    if (next <= previous) {
+      findings.push(`l0:sequence-regression:${previous}->${next}`);
+    } else if (next > previous + 1) {
+      findings.push(`l0:sequence-gap:${previous}->${next}`);
+    }
+  }
+
+  for (const event of events) {
+    if (event.eventType === "egress.decision" && event.authorizationDecision === "denied") {
+      findings.push(`l0:forbidden-egress:${event.eventId}`);
+    }
+    if (event.eventType === "tool.call.deny") {
+      findings.push(`l0:forbidden-tool:${event.eventId}`);
+    }
+    if (event.eventType === "test.modification") {
+      findings.push(`l0:test-modification:${event.eventId}`);
+    }
+  }
+
+  if (findings.length > 0) {
+    return { ok: true, skipped: false, reason: findings.join(",") };
   }
   return { ok: true, skipped: false, reason: "l0:passed" };
 };
@@ -102,6 +153,20 @@ export function registerForgeWatchWorkers(opts?: {
         wopts(1),
       ),
     );
+  }
+
+  // A job that exhausts its retry budget was deleted by `removeOnFail` and was
+  // nowhere queryable. On the final failure, its payload goes to the DLQ.
+  for (const worker of workers as Worker[]) {
+    worker.on("failed", (job, err) => {
+      if (!job) return;
+      const attempts = (job.opts?.attempts ?? FORGE_WATCH_JOB_DEFAULTS.attempts) as number;
+      if (!isFinalFailure(job.attemptsMade, attempts)) return;
+      void routeToDeadLetter("forge-watch", job, err).catch(() => {
+        // The failure that brought us here is already logged by the worker; a
+        // dead letter that cannot be written must not throw from a listener.
+      });
+    });
   }
   return workers;
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { Crack } from "@/components/Chrome";
+import { Crack } from "@/components/Crack";
 
 /**
  * The boundary nothing else can be the boundary for.

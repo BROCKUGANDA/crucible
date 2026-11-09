@@ -406,10 +406,22 @@ jobs:
           docker rm -f crucible-ci-redis crucible-ci-pg >/dev/null 2>&1 || true
           docker run -d --name crucible-ci-redis -p 127.0.0.1:16379:6379 redis:7-alpine >/dev/null
           docker run -d --name crucible-ci-pg -e POSTGRES_PASSWORD=ci -e POSTGRES_DB=crucible -p 127.0.0.1:15432:5432 postgres:16-alpine >/dev/null
-          for _ in $(seq 1 30); do
+          for _ in $(seq 1 60); do
             if docker exec crucible-ci-redis redis-cli ping >/dev/null 2>&1 && docker exec crucible-ci-pg pg_isready -U postgres >/dev/null 2>&1; then break; fi
             sleep 1
           done
+          # Fail the job if either daemon never came up. Without this the loop times out, the URLs
+          # are still exported, the probes refuse, and the server-backed cases report SKIPPED — a
+          # green CI run that quietly stopped testing the real Redis/Postgres paths. "No skips" has
+          # to mean the gate can fail, not that the skip banner is reassuring.
+          if ! docker exec crucible-ci-redis redis-cli ping >/dev/null 2>&1; then
+            echo "::error::ephemeral redis did not become ready; refusing to run server-backed tests as skips" >&2
+            exit 1
+          fi
+          if ! docker exec crucible-ci-pg pg_isready -U postgres >/dev/null 2>&1; then
+            echo "::error::ephemeral postgres did not become ready; refusing to run server-backed tests as skips" >&2
+            exit 1
+          fi
           echo "REDIS_URL=redis://127.0.0.1:16379" >> "$GITHUB_ENV"
           echo "DATABASE_URL=postgres://postgres:ci@127.0.0.1:15432/crucible" >> "$GITHUB_ENV"
           echo "started redis + postgres"

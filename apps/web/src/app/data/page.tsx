@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Chrome } from "@/components/Chrome";
+import { Payload } from "@/components/Payload";
 import { API_BASE } from "@/lib/apiBase";
 
 const CONTRACT = {
@@ -46,7 +47,7 @@ export default function DataPage() {
       <p className="hint hint--block">Demo ships duplicate keys on purpose: uniqueness check fails, PII policy passes, reconciliation reports row counts.</p>
       <button className="btn" onClick={validate} disabled={loading}>{loading ? "Checking…" : "Validate demo dataset"}</button>
       {error && <p className="hint" role="alert">{error} (sign in with SIWE first)</p>}
-      {result !== null && result !== undefined && <pre className="code">{JSON.stringify(result as Record<string, unknown>, null, 2)}</pre>}
+      {result !== null && result !== undefined && <Payload value={result} title="Validation result" />}
     </Chrome>
   );
 }

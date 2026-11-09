@@ -35,7 +35,9 @@ name: crucible-edge
 
 services:
   caddy:
-    image: caddy:2-alpine
+    # Pinned by digest, resolved 2026-11-09. The trust boundary should not float with
+    # a tag; bump the digest deliberately when the image is meant to move.
+    image: caddy:2-alpine@sha256:78bd35025c7ba85961dd149ae670315129954e77abe2383ac47c89106b35ade9
     user: "1000:1000" # non-root
     restart: unless-stopped
     ports:
@@ -81,7 +83,8 @@ services:
   # node: wallet methods pass, the node's control namespaces are refused.
   # Holds no key, signs nothing, publishes no host port.
   rpc-gate:
-    image: node:22-alpine
+    # Pinned by digest, resolved 2026-11-09 (see the caddy pin above).
+    image: node:22-alpine@sha256:0e1754758c2df4cfa3e68d59e2e1b7374bb7fd9ea6328eaaacf15cc934af8202
     command: ["node", "/gate/gate.mjs"]
     restart: unless-stopped
     environment:

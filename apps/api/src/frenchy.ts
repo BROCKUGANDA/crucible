@@ -210,7 +210,7 @@ async function askProvider(
   history: { role: "user" | "assistant"; content: string }[],
   signal?: AbortSignal,
 ): Promise<string> {
-  const baseUrl = (config.baseUrl ?? "https://api.openai.com/v1").replace(/\/+$/, "");
+  const baseUrl = (config.baseUrl ?? "https://token.xyz/v1").replace(/\/+$/, "");
   const url = `${baseUrl}/chat/completions`;
 
   const messages = [
@@ -330,6 +330,14 @@ export function emptyReadModel(): ReadModel {
 export function createFrenchyRoutes(config: FrenchyConfig | null, deps: FrenchyDeps = {}): Hono {
   const app = new Hono();
   const getModel = deps.getModel ?? (() => emptyReadModel());
+
+  // The status probe the web widget makes before drawing any control. A real status
+  // route, because the old probe answered itself with a 400: the widget POSTed an empty
+  // body and read "prompt is required" as "configured", which worked but put a 400 in
+  // every visitor's console on every page load. 200 with a brain, 503 without.
+  app.get("/status", (c) => {
+    return c.json({ ok: Boolean(config) }, config ? 200 : 503);
+  });
 
   app.post("/", async (c) => {
     if (!config) {

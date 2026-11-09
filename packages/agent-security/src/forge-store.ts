@@ -78,6 +78,14 @@ export function getForgeBrief(briefId: string): ForgeBrief | null {
   return getStore().briefs.get(briefId) ?? null;
 }
 
+/** The org that owns a brief, or null when the id is unknown. */
+export function orgOfBrief(briefId: string): string | null {
+  for (const [orgId, ids] of getStore().briefsByOrg) {
+    if (ids.has(briefId)) return orgId;
+  }
+  return null;
+}
+
 export function listForgeBriefs(orgId: string): ForgeBrief[] {
   const store = getStore();
   const ids = store.briefsByOrg.get(orgId);
@@ -213,6 +221,14 @@ export function createCampaign(campaign: ForgeCampaign, orgId: string): void {
 
 export function getCampaign(campaignId: string): ForgeCampaign | null {
   return getStore().campaigns.get(campaignId) ?? null;
+}
+
+/** The org that owns a campaign, or null when the id is unknown. */
+export function orgOfCampaign(campaignId: string): string | null {
+  for (const [orgId, ids] of getStore().campaignsByOrg) {
+    if (ids.has(campaignId)) return orgId;
+  }
+  return null;
 }
 
 export function listCampaigns(orgId: string): ForgeCampaign[] {

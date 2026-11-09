@@ -241,6 +241,18 @@ describe("an application reaches the owner", () => {
       const body = await (await app.request(`/faucet/applications?wallet=${OWNER}`, { headers: sessionHeaders(OWNER) })).json();
       expect(body.applications).toHaveLength(2);
       expect(body.applications[0].id).toBeGreaterThan(body.applications[1].id);
+
+      // Pagination is opt-in and honest: a limit returns a page plus the cursor that
+      // continues it, and following the cursor returns the rest.
+      const firstPage = await (await app.request(`/faucet/applications?wallet=${OWNER}&limit=1`, { headers: sessionHeaders(OWNER) })).json();
+      expect(firstPage.applications).toHaveLength(1);
+      expect(firstPage.page).toMatchObject({ total: 2, returned: 1, truncated: true });
+      const next = firstPage.page.nextCursor;
+      expect(next).toBe(firstPage.applications[0].id);
+      const secondPage = await (await app.request(`/faucet/applications?wallet=${OWNER}&limit=1&after=${next}`, { headers: sessionHeaders(OWNER) })).json();
+      expect(secondPage.applications).toHaveLength(1);
+      expect(secondPage.applications[0].id).toBeLessThan(firstPage.applications[0].id);
+      expect(secondPage.page.truncated).toBe(false);
     } finally {
       await f.close();
       funder = null;

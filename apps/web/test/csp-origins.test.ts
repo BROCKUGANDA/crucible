@@ -116,7 +116,12 @@ describe("connect-src origins, by what the build was configured to reach", () =>
       NEXT_PUBLIC_API_URL: "https://crucible.svalley.tech",
     });
     const connect = directive(publicHeaders["Content-Security-Policy"] ?? "", "connect-src") ?? "";
-    for (const host of ["wss://relay.walletconnect.com", "https://bridge.walletconnect.org"]) {
+    for (const host of [
+      "wss://relay.walletconnect.com",
+      "https://bridge.walletconnect.org",
+      // Scribe Realtime is a browser WebSocket; a policy without it kills voice silently.
+      "wss://api.elevenlabs.io",
+    ]) {
       expect(connect).toContain(host);
     }
   });

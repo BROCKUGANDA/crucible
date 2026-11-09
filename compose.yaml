@@ -10,7 +10,10 @@ name: crucible
 
 services:
   anvil:
-    image: ghcr.io/foundry-rs/foundry:latest
+    # Pinned by digest, resolved from the registry on 2026-11-09. `:latest` at the chain
+    # boundary is a floating tag: an `up` on a box that pulled yesterday can start a
+    # different anvil than the one the seed asserted. Bump the digest deliberately.
+    image: ghcr.io/foundry-rs/foundry:latest@sha256:3a392c18f9b16e665e932de159fb6fa9ed972c4b4352f2f76a1a8c7ca9b57d39
     entrypoint: ["anvil"]
     # The block cadence is one knob, and it is the args — not a mode name. anvil reads its
     # command line and nothing else, so an ANVIL_MODE variable passed to the container would be
@@ -120,6 +123,14 @@ services:
       # sign-in message. Both are configuration rather than something the
       # request may say.
       CHAIN_ID: ${CHAIN_ID:-31337}
+      # Deployment profile (docs/runbooks/profiles.md). Env-only on purpose: the value is
+      # passed ONLY when the host explicitly sets it. A static `${VAR:-demo}` would read a
+      # default that shadows a missing host value, and a gate that rejects a container whose
+      # host simply never set the variable is a crash-loop, not a gate. Unset therefore
+      # means "no opinion", and the API absolves it (the old code path). preview/production
+      # still refuse to boot when set.
+      CRUCIBLE_PROFILE: ${CRUCIBLE_PROFILE:-}
+      REAL_VALUE_OPERATIONS: ${REAL_VALUE_OPERATIONS:-}
       AUTH_ORIGIN: ${AUTH_ORIGIN:-}
       # The secret itself is NOT set here: a deployment that has not been
       # given one must get a 503 from the auth routes, not a session signed
@@ -203,8 +214,25 @@ services:
       DATABASE_URL: ${DATABASE_URL:-}
       # STAMP protocol-ownership domain: disabled unless explicitly enabled.
       STAMP_MODE: ${STAMP_MODE:-disabled}
+      # Comma-separated wallets allowed to operate the STAMP manual-review queue.
+      # Empty closes the queue; a signed-in wallet is not a reviewer.
+      CRUCIBLE_STAMP_REVIEWERS: ${CRUCIBLE_STAMP_REVIEWERS:-}
       # Solana asset intelligence (Tokens API, server-only). Empty = adapter refuses.
       TOKENS_API_KEY: ${TOKENS_API_KEY:-}
+      # token.xyz — the OpenAI-compatible exchange that serves Frenchy's brain and the
+      # speech-to-speech host (server-only; the browser never sees it). Empty = the
+      # brain is off and the voice routes answer 503, exactly as before.
+      TOKENXYZ_API_KEY: ${TOKENXYZ_API_KEY:-}
+      # Safety moderation is fail-closed: an empty key produces "unconfigured" verdicts,
+      # never "safe". The MODEL_REGISTRY in apps/api/src/safety.ts gates the model ids.
+      # These were read by the API but passed to no container until 2026-11-09, so a
+      # deployed API could never configure moderation at all.
+      SAFETY_LLM_API_KEY: ${SAFETY_LLM_API_KEY:-}
+      SAFETY_LLM_BASE_URL: ${SAFETY_LLM_BASE_URL:-}
+      SAFETY_LLM_MODEL: ${SAFETY_LLM_MODEL:-}
+      SAFETY_LLM_TIMEOUT_MS: ${SAFETY_LLM_TIMEOUT_MS:-}
+      SAFETY_LLM_RETRIES: ${SAFETY_LLM_RETRIES:-}
+      SAFETY_MODEL_REVISION: ${SAFETY_MODEL_REVISION:-}
     ports:
       - "${API_HOST_PORT:-8787}:8787"
     volumes:

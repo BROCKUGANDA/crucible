@@ -160,10 +160,11 @@ describe("muting an answer in flight", () => {
 /**
  * The probe that decides whether the control exists at all.
  *
- * `POST /frenchy` reads its configuration before it reads its body, so an empty body answers
- * 503 on a host with no brain and 400 on a host with one. That is the only reason this can be
- * asked without paying for it, and the assertions below are what stop the probe drifting into
- * a request that does reach the provider: the body must stay empty of a prompt.
+ * `GET /frenchy/status` answers 200 with a brain and 503 without, and neither path reaches a
+ * provider, so the question is free. (It used to probe by POSTing an empty body to
+ * `/frenchy` and reading the 400 "prompt is required" as "configured" — same answer, but a
+ * 400 in every visitor's console on every page load.) The assertions below are what stop the
+ * probe drifting into a request that does reach the provider: a GET, no body, no prompt.
  */
 describe("the brain probe", () => {
   const original = globalThis.fetch;
@@ -191,16 +192,16 @@ describe("the brain probe", () => {
     body: string | null;
   }
 
-  it("reads 503 as no brain, and 400 as one", async () => {
+  it("reads 503 as no brain, and 200 as one", async () => {
     await withFetch(
-      (async () => new Response(JSON.stringify({ error: "Frenchy's brain is not configured" }), { status: 503 })) as typeof fetch,
+      (async () => new Response(JSON.stringify({ ok: false }), { status: 503 })) as typeof fetch,
       async () => {
         expect(await fetchFrenchyBrainStatus()).toBe(false);
       },
     );
 
     await withFetch(
-      (async () => new Response(JSON.stringify({ error: "prompt is required" }), { status: 400 })) as typeof fetch,
+      (async () => new Response(JSON.stringify({ ok: true }), { status: 200 })) as typeof fetch,
       async () => {
         expect(await fetchFrenchyBrainStatus()).toBe(true);
       },
@@ -230,23 +231,23 @@ describe("the brain probe", () => {
   /**
    * The request shape is the reason this is free.
    *
-   * A `prompt` in the body would reach the LLM and spend a provider credit on a status check,
-   * which is the mistake this test exists to prevent. And the path has to be the API's own:
-   * this app serves no `/api/frenchy`, so a relative path would 404 against Next and every host
-   * would read as brainless.
+   * A body, or a POST to the chat route, could reach the LLM and spend a provider credit on a
+   * status check, which is the mistake this test exists to prevent. And the path has to be
+   * the API's own status route: a relative path would 404 against Next and every host would
+   * read as brainless.
    */
-  it("asks on the API origin with no prompt", async () => {
+  it("asks the status route on the API origin, with no body", async () => {
     await withFetch(
-      (async () => new Response("{}", { status: 400 })) as typeof fetch,
+      (async () => new Response("{}", { status: 200 })) as typeof fetch,
       async (calls) => {
         await fetchFrenchyBrainStatus();
         expect(calls).toHaveLength(1);
         const only = calls[0];
         if (!only) throw new Error("the probe made no request at all");
-        expect(only.url).toBe(`${API_BASE}/frenchy`);
+        expect(only.url).toBe(`${API_BASE}/frenchy/status`);
         expect(only.url).not.toContain("/api/");
-        expect(only.method).toBe("POST");
-        expect(JSON.parse(only.body ?? "{}")).not.toHaveProperty("prompt");
+        expect(only.method).toBe("GET");
+        expect(only.body).toBeNull();
       },
     );
   });

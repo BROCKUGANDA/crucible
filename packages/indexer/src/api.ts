@@ -36,6 +36,8 @@ export interface ApiTrial {
   specDigest: string;
   testsDigest: string;
   rewardEth: string;
+  /** exact wei the display string above truncates from; the filter path compares this */
+  rewardWei: string;
   bondEth: string;
   createdAt: number;
   deadline: number;
@@ -175,6 +177,7 @@ export function toApiTrial(row: TrialRow, model: ReadModel): ApiTrial {
     specDigest: row.specDigest,
     testsDigest: row.testsDigest,
     rewardEth: weiToEth(row.rewardWei),
+    rewardWei: row.rewardWei.toString(),
     bondEth: weiToEth(row.bondWei),
     createdAt: row.createdAt,
     deadline: row.deadline,

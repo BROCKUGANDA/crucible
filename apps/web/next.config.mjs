@@ -186,6 +186,10 @@ const THIRD_PARTY = [
   "https://relay.walletconnect.com",
   "https://bridge.walletconnect.org",
   "https://pulse.walletconnect.com",
+  // Frenchy's Scribe realtime transcription opens a WebSocket from the browser to this
+  // host (the API only mints the signed URL). Without it named here, a production build
+  // blocks the socket and voice silently falls back to the browser's own recognizer.
+  "wss://api.elevenlabs.io",
 ];
 
 const connectOrigins = new Set(

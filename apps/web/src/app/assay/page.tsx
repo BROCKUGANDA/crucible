@@ -1,7 +1,8 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { Crack, Chrome, SignalLost } from "@/components/Chrome";
+import { Chrome, SignalLost } from "@/components/Chrome";
+import { Crack } from "@/components/Crack";
 import { useOps, useSnapshot, type Probe } from "@/lib/useSnapshot";
 import { deriveOps } from "@/lib/ops";
 import type { Tone } from "@/lib/forge";

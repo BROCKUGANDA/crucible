@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { use, useEffect, useState } from "react";
 import Link from "next/link";
 import { Chrome } from "@/components/Chrome";
 import { API_BASE } from "@/lib/apiBase";
-import { formatEth } from "@/lib/forge";
+import { formatWei } from "@/lib/eth";
 
 interface ForgeBrief {
   briefId: string;
@@ -143,8 +143,12 @@ interface ReadinessReport {
  * Forge Brief view — shows the brief, difficulty assessment, and bounty
  * recommendation. Three tabs: Brief, Heat Assessment, Bounty Calculator.
  */
-export default function ForgeBriefViewPage({ params }: { params: { id: string } }) {
-  const orgId = "";
+export default function ForgeBriefViewPage({ params }: { params: Promise<{ id: string }> }) {
+  // Next 15 hands route params to client components as a Promise; reading `params.id`
+  // directly type-checks under tsc and fails `next build` (see agents/[id]).
+  const { id } = use(params);
+  // The API binds forge authorization to the brief's owning org (requireBriefAccess),
+  // so the client never names an org: the resource does.
   const [brief, setBrief] = useState<ForgeBrief | null>(null);
   const [difficulty, setDifficulty] = useState<DifficultyProfile | null>(null);
   const [bounty, setBounty] = useState<BountyRecommendation | null>(null);
@@ -155,12 +159,12 @@ export default function ForgeBriefViewPage({ params }: { params: { id: string } 
 
   useEffect(() => {
     loadBrief();
-  }, [params.id]);
+  }, [id]);
 
   async function loadBrief() {
     try {
       setLoading(true);
-      const res = await fetch(`${API_BASE}/forge/brief/${params.id}?orgId=${orgId}`, {
+      const res = await fetch(`${API_BASE}/forge/brief/${id}`, {
         method: "GET",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -190,12 +194,11 @@ export default function ForgeBriefViewPage({ params }: { params: { id: string } 
     if (!brief) return;
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/forge/difficulty/${params.id}`, {
+      const res = await fetch(`${API_BASE}/forge/difficulty/${id}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
-          orgId,
           domain: brief.objective.domain,
         }),
       });
@@ -217,12 +220,11 @@ export default function ForgeBriefViewPage({ params }: { params: { id: string } 
     if (!brief) return;
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/forge/bounty/${params.id}`, {
+      const res = await fetch(`${API_BASE}/forge/bounty/${id}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
-          orgId,
           nativeAsset: "ETH",
           network: "31337",
           executionCost: "100000000000000000",
@@ -253,11 +255,11 @@ export default function ForgeBriefViewPage({ params }: { params: { id: string } 
     if (!brief) return;
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/forge/brief/${params.id}/validate`, {
+      const res = await fetch(`${API_BASE}/forge/brief/${id}/validate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ orgId }),
+        body: JSON.stringify({}),
       });
 
       if (!res.ok) {
@@ -276,7 +278,9 @@ export default function ForgeBriefViewPage({ params }: { params: { id: string } 
   if (error) {
     return (
       <Chrome>
-        <h1 className="page-title">Brief not found</h1>
+        {/* A load can fail for a 404, a 403, a dead API or a malformed id; the heading
+            says which answer the page actually has — the error line below it. */}
+        <h1 className="page-title">Couldn&apos;t open that brief</h1>
         <p className="mono" data-tone="sear" role="alert">{error}</p>
         <Link className="btn btn-primary" href="/forge/brief">
           Create a brief
@@ -301,25 +305,30 @@ export default function ForgeBriefViewPage({ params }: { params: { id: string } 
       <header className="brief-head">
         <h1 className="page-title">Forge Brief</h1>
         <p className="mono break-card__id">ID {brief.briefId}</p>
-        <div className="brief-tabs">
-          <button
-            className={`tab-btn ${tab === "brief" ? "tab-btn--active" : ""}`}
-            onClick={() => setTab("brief")}
-          >
-            Brief
-          </button>
-          <button
-            className={`tab-btn ${tab === "difficulty" ? "tab-btn--active" : ""}`}
-            onClick={() => setTab("difficulty")}
-          >
-            Heat Assessment
-          </button>
-          <button
-            className={`tab-btn ${tab === "bounty" ? "tab-btn--active" : ""}`}
-            onClick={() => setTab("bounty")}
-          >
-            Bounty Calculator
-          </button>
+        {/* The same tab pattern trial detail uses (role=tablist/tab + .trial-tabs).
+            `.tab-btn` existed in no stylesheet, so these rendered as three unstyled
+            buttons and the active state was a class nothing could paint. */}
+        <div role="tablist" aria-label="Brief sections" className="trial-tabs">
+          {(
+            [
+              ["brief", "Brief"],
+              ["difficulty", "Heat Assessment"],
+              ["bounty", "Bounty Calculator"],
+            ] as const
+          ).map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              role="tab"
+              aria-selected={tab === key}
+              tabIndex={tab === key ? 0 : -1}
+              className="trial-tabs__tab"
+              data-active={tab === key || undefined}
+              onClick={() => setTab(key)}
+            >
+              {label}
+            </button>
+          ))}
         </div>
       </header>
 
@@ -356,13 +365,14 @@ export default function ForgeBriefViewPage({ params }: { params: { id: string } 
                 <p className="mono">
                   Status:{" "}
                   <span
-                    className={`mono ${
+                    className="mono"
+                    data-tone={
                       readiness.status === "ready_to_fund"
-                        ? "data-tone-quench"
+                        ? "quench"
                         : readiness.status === "awaiting_review"
-                          ? "data-tone-ember"
-                          : "data-tone-sear"
-                    }`}
+                          ? "ember"
+                          : "sear"
+                    }
                   >
                     {readiness.status}
                   </span>
@@ -459,27 +469,27 @@ export default function ForgeBriefViewPage({ params }: { params: { id: string } 
                 <div className="bounty-grid">
                   <div className="metric-card">
                     <p className="mono faint">Minimum recommended</p>
-                    <p className="mono">{formatEth(bounty.minimumRecommended)} ETH</p>
+                    <p className="mono">{formatWei(BigInt(bounty.minimumRecommended))} ETH</p>
                   </div>
                   <div className="metric-card">
                     <p className="mono faint">Competitive bounty</p>
-                    <p className="mono">{formatEth(bounty.competitiveBounty)} ETH</p>
+                    <p className="mono">{formatWei(BigInt(bounty.competitiveBounty))} ETH</p>
                   </div>
                   <div className="metric-card">
                     <p className="mono faint">Premium bounty</p>
-                    <p className="mono">{formatEth(bounty.premiumBounty)} ETH</p>
+                    <p className="mono">{formatWei(BigInt(bounty.premiumBounty))} ETH</p>
                   </div>
                   <div className="metric-card">
                     <p className="mono faint">Required bond</p>
-                    <p className="mono">{formatEth(bounty.requiredBondWei)} ETH</p>
+                    <p className="mono">{formatWei(BigInt(bounty.requiredBondWei))} ETH</p>
                   </div>
                   <div className="metric-card">
                     <p className="mono faint">Protocol fee (5%)</p>
-                    <p className="mono">{formatEth(bounty.protocolFeeWei)} ETH</p>
+                    <p className="mono">{formatWei(BigInt(bounty.protocolFeeWei))} ETH</p>
                   </div>
                   <div className="metric-card">
                     <p className="mono faint">Expected net payout</p>
-                    <p className="mono">{formatEth(bounty.expectedNetAgentPayoutWei)} ETH</p>
+                    <p className="mono">{formatWei(BigInt(bounty.expectedNetAgentPayoutWei))} ETH</p>
                   </div>
                 </div>
 

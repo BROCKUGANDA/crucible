@@ -11,13 +11,29 @@
  */
 
 import { Queue, Worker, type Job, type QueueOptions, type WorkerOptions } from 'bullmq';
-import { Redis } from 'ioredis';
+import { type RedisOptions } from 'ioredis';
 
 const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
 
-const redisConnection = {
-  url: REDIS_URL,
-};
+/**
+ * ioredis parses a URL only when it is passed as a string or as `host`/`port`
+ * options — `{ url }` is silently ignored and the client dials 127.0.0.1 no
+ * matter what REDIS_URL says. Parse it here so the configured instance is the
+ * one BullMQ connects to.
+ */
+export function redisOptionsFromUrl(raw: string): RedisOptions {
+  const url = new URL(raw);
+  const db = url.pathname && url.pathname !== '/' ? Number(url.pathname.slice(1)) : undefined;
+  return {
+    host: url.hostname || 'localhost',
+    port: url.port ? Number(url.port) : 6379,
+    ...(url.username ? { username: decodeURIComponent(url.username) } : {}),
+    ...(url.password ? { password: decodeURIComponent(url.password) } : {}),
+    ...(db !== undefined && Number.isInteger(db) ? { db } : {}),
+  };
+}
+
+const redisConnection: RedisOptions = redisOptionsFromUrl(REDIS_URL);
 
 const queueOptions: QueueOptions = {
   connection: redisConnection,
@@ -135,3 +151,60 @@ export const FORGE_WATCH_JOB_DEFAULTS = {
 };
 
 export type QueueName = typeof QUEUE_NAMES[keyof typeof QUEUE_NAMES];
+
+/**
+ * The dead-letter record for a job that will not be retried again.
+ *
+ * `removeOnFail` only keeps the last N failed jobs in Redis; without a record
+ * on the DLQ, a payload that exhausted its retries was deleted and nowhere
+ * queryable. This is the record that makes the DLQ a mechanism.
+ */
+export interface DeadLetterRecord {
+  source: string;
+  jobId: string | null;
+  name: string;
+  data: unknown;
+  error: string;
+  failedAt: number;
+}
+
+/**
+ * A job has exhausted its budget when the attempt that just failed was the
+ * last one BullMQ will make. `attemptsMade` is incremented before the failure
+ * is reported, so the final failure satisfies `attemptsMade >= attempts`.
+ */
+export function isFinalFailure(
+  attemptsMade: number,
+  attempts: number | undefined,
+  defaultAttempts: number = FORGE_WATCH_JOB_DEFAULTS.attempts,
+): boolean {
+  return attemptsMade >= (attempts ?? defaultAttempts);
+}
+
+export function buildDeadLetterRecord(
+  source: string,
+  job: { id?: string | null; name: string; data: unknown },
+  err: unknown,
+  now: () => number = Date.now,
+): DeadLetterRecord {
+  return {
+    source,
+    jobId: job.id ?? null,
+    name: job.name,
+    data: job.data,
+    error: err instanceof Error ? err.message : String(err),
+    failedAt: now(),
+  };
+}
+
+/** Move an exhausted job into the dead-letter queue. */
+export async function routeToDeadLetter(
+  source: string,
+  job: { id?: string | null; name: string; data: unknown },
+  err: unknown,
+  now: () => number = Date.now,
+): Promise<void> {
+  await addJob(QUEUE_NAMES.FORGE_WATCH_DLQ, 'dead-letter', buildDeadLetterRecord(source, job, err, now), {
+    attempts: 1,
+  });
+}

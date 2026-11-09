@@ -5,6 +5,7 @@ import { Chrome } from "@/components/Chrome";
 import { Modal } from "@/components/Modal";
 import { SponsorshipGlyph } from "@/components/Glyphs";
 import { API_BASE } from "@/lib/apiBase";
+import { formatWhen } from "@/lib/clock";
 import { formatEth, shortHash } from "@/lib/forge";
 import {
   countNewApplications,
@@ -35,17 +36,6 @@ import { useAccount } from "wagmi";
  * How often the owner's queue is re-read while the page is open.
  */
 const QUEUE_POLL_MS = 15_000;
-
-/**
- * A moment, in UTC, in a form that does not depend on the reader's locale.
- *
- * The queue is a record of when things happened, and "14:03" without a zone is
- * a fact about nobody. ISO, cut to the second, is dull and unambiguous.
- */
-function atTime(ms: number): string {
-  if (!Number.isFinite(ms)) return "—";
-  return `${new Date(ms).toISOString().slice(0, 19).replace("T", " ")} UTC`;
-}
 
 /** The one line an owner reads about an application. */
 function outcomeLine(application: SponsorshipApplication): string {
@@ -281,7 +271,7 @@ export default function FaucetPage() {
                   </p>
                   <p className="kv">
                     <span className="kv__key">When</span>
-                    <span className="mono">{atTime(application.at)}</span>
+                    <span className="mono">{formatWhen(application.at)}</span>
                   </p>
                 </li>
               ))}

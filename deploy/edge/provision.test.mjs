@@ -46,6 +46,18 @@ test("the installer recreates caddy when the config changed", () => {
   assert.ok(detectAt !== -1 && copyAt !== -1 && detectAt < copyAt, "the change must be measured before the files are copied");
 });
 
+test("the installer recreates the gate when the gate code changed", () => {
+  const sh = code(read("./provision.sh"));
+  // The gate container bind-mounts ./rpc-gate: a bind mount updates the bytes, never the
+  // running process. A gate.mjs fix that shipped beside a Caddyfile change used to leave
+  // the old limiter code running — the recreate is what makes the fix actually deploy.
+  assert.match(sh, /docker compose[^\n]*--force-recreate[^\n]*rpc-gate/);
+  // And the gate files are compared, not just copied: the cmp-before-copy ordering is
+  // what notices drift, and the loop must name the files the gate service executes.
+  assert.match(sh, /for f in rpc-gate\/gate\.mjs rpc-gate\/probe\.mjs/);
+  assert.match(sh, /cmp -s "\$SRC\/\$f" "\$INSTALL_DIR\/\$f"/);
+});
+
 test("the installer refuses to finish while the endpoint answers control methods", () => {
   const sh = code(read("./provision.sh"));
   // Both legs of the certificate check must ask, so an absent certificate cannot quietly

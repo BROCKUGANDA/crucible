@@ -5,6 +5,8 @@
 - `KEEPER_PRIVATE_KEY` / `JUROR_SEAT_PRIVATE_KEY` — keeper/juror services, separate per env, never in repo/images/logs.
 - `ALCHEMY_*`, `REDIS_URL`, `DATABASE_URL` — infra owner, per-env projects.
 - `KEEPER_API_KEY` — trusted worker bearer for `/engrams/evaluate`.
+- `TOKENXYZ_API_KEY` — API owner (Frenchy brain, STS host, live agent, arena judge); third-party inference budget metered against token.xyz credits; per-env; rotate on any chat/ticket exposure.
+- `TOKENS_API_KEY` — API owner (Solana asset adapter, `x-api-key` to api.tokens.xyz); third-party API budget; server-only.
 
 ## Rules
 - Managed secret store (KMS); env-specific identities; access logged.

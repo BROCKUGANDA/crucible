@@ -239,7 +239,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{
-            __html: JSON.stringify(JSON_LD),
+            // JSON.stringify does not escape "<", so a string containing "</script>" would
+            // close the tag early. The payloads are static today; the invariant is kept.
+            __html: JSON.stringify(JSON_LD).replace(/</g, "\\u003c"),
           }}
         />
         <script

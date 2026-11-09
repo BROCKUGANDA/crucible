@@ -32,6 +32,11 @@ function leafHash(leaf: MerkleLeaf, chainId: bigint): Hex {
   );
 }
 
+/** The canonical on-chain leaf for a recipient, amount, campaign and token. */
+export function leafFor(leaf: MerkleLeaf, chainId: bigint): Hex {
+  return leafHash(leaf, chainId);
+}
+
 function hashPair(a: Hex, b: Hex): Hex {
   return (a <= b
     ? keccak256(encodePacked(["bytes32", "bytes32"], [a, b]))

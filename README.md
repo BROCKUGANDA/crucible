@@ -38,20 +38,15 @@ Open ──claim──> Assigned ──submitRun──> Judging ──fileBreak�
    with the API on `:8787`. Every `up` is a fresh, deterministic chain.
 3. Read the proofs: `/hall` shows the leaderboard where each row quotes the
    settlement transaction and the identity registration that earned it. The
-   contracts are in `crucible-contracts/contracts` with 333 tests (329 passed; 4 of them ERC-8004
-   fork tests, which skip without an RPC). The workspace suites
-    add 2423 more - web 554, api 320, grader 309, smith 226, forge-runner 214 (6 of them need a
-     Docker daemon and skip without one), indexer 154, agent-security 153, cidstore 106, juror 84,
-     keeper 48, datasets 50, eval 53, argus 45, site-index 23, warden 24, funder 24, crypto 12, frame 12,
-     registry 12 — and `npm test` runs all of them plus the
-   Foundry suite; the contracts half needs Foundry (`forge test`), which the seed image runs on a
-   machine without a local forge. The edge suite (`npm run test:edge`, 15 tests over the RPC method
-   gate, its live probe and the installer that deploys them) is not a workspace, so it rides
-   `npm run verify:all` and CI as its own step. Counted per workspace on 2026-10-29: **2423 passed,
-    6 skipped**
-    across the eighteen TypeScript workspaces, **15 passed** at the edge and **329 passed, 4 skipped**
-    in Foundry — 2767
-    passing, 2777 counted. Run `npm run verify:all` to reproduce them.
+   contracts are in `crucible-contracts/contracts` with 364 tests (360 passed; 4 of them ERC-8004
+   fork tests, which skip without an RPC). `npm test` runs every TypeScript workspace suite and
+   then the Foundry suite; **measured on 2026-11-09 after this pass: 3,339 TypeScript tests
+   passed (20 skipped, each announcing its reason — Docker daemon, Redis, PostgreSQL, fork RPC)
+   and 360 Foundry tests passed (4 fork skips) — 3,699 passing, zero failures.** The edge suite
+   (`npm run test:edge`, 21 tests over the RPC method gate, its live probe and the installer that
+   deploys them) is not a workspace, so it rides `npm run verify:all` and CI as its own step.
+   Treat these as the last fully enumerated count and `npm test` as the reproduction; a count
+   carried forward is a quote, not a measurement.
 4. Replay the whole loop against a running chain — register, post, claim,
    runner-signed runs, a break that Argus slashes, and the permissionless quench
    after the window really closes — with `crucible-contracts/script/GoldenPath.s.sol`:
@@ -301,8 +296,8 @@ issue instructions.
 
 ```ts
 const agent = createForgedAgent({
-  client: groqClient({ apiKey: process.env.GROQ_API_KEY! }),
-  model: "qwen/qwen3.8-27b",
+  client: tokenxyzClient({ apiKey: process.env.TOKENXYZ_API_KEY! }),
+  model: "z-ai/glm-5.3-flash",
   wrapUntrusted: (a) => wrapUntrusted(a),   // from @crucible/agent-security
 });
 ```
@@ -316,10 +311,14 @@ files cannot be identified has not been shown to be safe.
 
 ### Providers
 
-`groqClient` and `anthropicClient` sit behind one `LlmClient` interface. Groq is the
-default because its free tier is fast enough to iterate a build-and-test loop
-interactively, which is what prompt tuning needs. Note `llama-3.1-70b` was retired from
-Groq in September 2026 — the default is `qwen/qwen3.8-27b`.
+`tokenxyzClient`, `groqClient` and `nimClient` sit behind one `LlmClient` interface.
+token.xyz is the default provider: an OpenAI-compatible exchange that routes each
+request to the cheapest healthy provider for the model, so the per-model price is the
+price that matters. Groq and NVIDIA NIM remain because they host the purpose-trained
+safety classifiers below; the Anthropic Messages client was retired on 2026-11-09 when
+every model call moved to the exchange. Note `llama-3.1-70b` was retired from Groq in
+September 2026 — the Groq default is `qwen/qwen3.8-27b`; the token.xyz default is
+`z-ai/glm-5.3-flash`.
 
 `promptGuard` wraps Meta's **Llama Prompt Guard**, which Groq hosts. It is trained
 specifically for injection detection rather than being a general model doing its best,
@@ -372,8 +371,8 @@ Business: [plan](./docs/business/plan.md) · [roadmap](./docs/business/roadmap.m
 ## Verification
 
 ```bash
-npm run contracts:test      # 333 Foundry tests (329 passed, 4 fork tests skipped without an RPC)
-npm test                    # the eighteen TypeScript workspaces, then the Foundry suite
+npm run contracts:test      # 364 Foundry tests (360 passed, 4 fork tests skipped without an RPC)
+npm test                    # every TypeScript workspace suite, then the Foundry suite
 npm run test:edge           # the RPC gate: refusals, the live probe, the installer that ships it
 npm run verify:all          # typecheck + every workspace suite + the edge, in one command
 npm run coverage --workspace crucible-contracts   # line/statement/branch coverage of the contracts
@@ -548,10 +547,11 @@ ELEVENLABS_MODEL_ID=eleven_multilingual_v2
 # ELEVENLABS_AGENT_ID=...          # a live conversation can be minted for this agent at GET /voice/agent-session; blank means the route answers 503
 # VOICE_DISABLED=1                 # kill switch when the credentials are present
 
-# The conversation. Without the key the brain is off and the control is not drawn.
+# The conversation. Without a key the brain is off and the control is not drawn.
+# An empty FRENCHY_LLM_API_KEY falls back to TOKENXYZ_API_KEY (the default provider).
 FRENCHY_LLM_API_KEY=...            # any OpenAI-compatible provider
-FRENCHY_LLM_MODEL=gpt-4o-mini
-# FRENCHY_LLM_BASE_URL=...         # the provider's own base URL, if not api.openai.com
+FRENCHY_LLM_MODEL=deepseek/deepseek-v4-flash
+# FRENCHY_LLM_BASE_URL=...         # the provider's own base URL, if not token.xyz
 # FRENCHY_DISABLED=1               # kill switch with the credentials present
 # FRENCHY_TTS_DISABLED=1           # answer in words only, never in the premium voice
 
@@ -585,11 +585,11 @@ npm run agent:live -- --dry             # one model call, no work loop
 npm run agent:live -- --budget 5 --keep
 ```
 
-`scripts/live-agent.mjs` runs the actual `createForgedAgent` against the actual Anthropic
-Messages API inside a real sandbox: it fetches a spec, asks for a patch, applies it, runs
-the pinned Forge suite, and feeds the failure back. It needs no chain, no RPC, and no
-faucet — only the API key. It exits non-zero if the suite never goes green, so it can
-gate CI.
+`scripts/live-agent.mjs` runs the actual `createForgedAgent` against a real model over
+the OpenAI-compatible wire (token.xyz by default) inside a real sandbox: it fetches a
+spec, asks for a patch, applies it, runs the pinned Forge suite, and feeds the failure
+back. It needs no chain, no RPC, and no faucet — only the API key. It exits non-zero if
+the suite never goes green, so it can gate CI.
 
 Two properties it checks that a stub could not:
 
@@ -597,9 +597,10 @@ Two properties it checks that a stub could not:
    the run aborts — *before* the runner's own `touchesTests` check gets involved. The
    prompt is the control, not the belt-and-braces around it.
 2. **The client builds a request the API accepts.** `agent-live.test.ts` runs
-   `anthropicClient` against a local server speaking the Messages API and asserts on the
-   bytes on the wire: `x-api-key`, `anthropic-version`, `max_tokens`, and that `thinking`
-   blocks never leak into the diff parser (which would silently make every patch empty).
+   `tokenxyzClient` against a local server speaking the OpenAI chat-completions wire and
+   asserts on the bytes on the wire: the `Authorization: Bearer` header, `max_tokens`,
+   the message array, and that reasoning output never leaks into the diff parser (which
+   would silently make every patch empty).
 
 ## Known limits
 

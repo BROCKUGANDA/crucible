@@ -7,6 +7,9 @@ import { StakingGlyph } from "@/components/Glyphs";
 import { API_BASE } from "@/lib/apiBase";
 import { buildAddStake, buildUnstake, buildWithdraw, useTx } from "@/lib/useTx";
 import { parseEth } from "@/lib/eth";
+import { formatEth } from "@/lib/forge";
+import { useDeployment } from "@/lib/wagmi";
+import { WrongNetworkNotice } from "@/components/Wallet";
 import { useAccount } from "wagmi";
 
 interface Stake {
@@ -29,6 +32,7 @@ interface EscrowView {
  */
 export default function StakingPage() {
   const { address, isConnected } = useAccount();
+  const dep = useDeployment();
   const { state, message, send, busy } = useTx();
   const [escrow, setEscrow] = useState<EscrowView | null>(null);
   const [loading, setLoading] = useState(false);
@@ -96,6 +100,10 @@ export default function StakingPage() {
         credit. Step 2: withdraw moves that credit to your wallet.
       </p>
 
+      {/* The escrow figures come from the API's chain while every signature goes to the
+          connected chain; a wallet on another deployment must be told before it signs. */}
+      <WrongNetworkNotice requiredChainId={dep.chainId} />
+
       {!isConnected || !address ? (
         <p className="hint" role="alert">
           Connect a wallet to see and manage your stake.
@@ -108,9 +116,9 @@ export default function StakingPage() {
         </p>
       ) : (
         <div className="surface detail-panel" id="stake-panel">
-          <p className="hint">Total free stake: {escrow?.stakedEth ?? "—"} ETH</p>
+          <p className="hint">Total free stake: {formatEth(escrow?.stakedEth)}</p>
           <p className="hint">
-            Withdrawable credit: {escrow?.withdrawableEth ?? "—"} ETH
+            Withdrawable credit: {formatEth(escrow?.withdrawableEth)}
           </p>
           <div className="btn-row">
             <button
@@ -135,7 +143,7 @@ export default function StakingPage() {
             {escrow.stakes.map((s) => (
               <li key={s.agentId} className="surface">
                 <p>
-                  Agent {s.agentId} — {s.eth} ETH staked
+                  Agent {s.agentId} — {formatEth(s.eth)} staked
                 </p>
                 <label className="field">
                   <span>Amount (ETH) — unstake or add stake</span>

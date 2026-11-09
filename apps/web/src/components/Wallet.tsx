@@ -101,7 +101,21 @@ function InjectedConnect() {
   const binanceConnector = connectors.find((c) => c.id === "wallet.binance.com");
   const coinbase = connectors.find((c) => c.type === "coinbaseWallet");
 
-  if (!injected && !coinbase && !(binance && binanceConnector)) {
+  const busy = isPending || landing;
+
+  // One door instead of four buttons. The bar used to carry Connect, Coinbase, Binance
+  // and Bitget side by side whenever a WalletConnect project id was absent — every wallet
+  // the visitor might own, advertised all the time. One Connect summary opens the
+  // chooser; the wallets it lists are the ones this browser actually exposes.
+  const walletOptions = [
+    ...(injected ? [{ id: "injected", connector: injected, label: "Browser wallet" }] : []),
+    ...(coinbase ? [{ id: "coinbase", connector: coinbase, label: "Coinbase Wallet" }] : []),
+    ...(binance && binanceConnector
+      ? [{ id: "binance", connector: binanceConnector, label: "Binance Wallet" }]
+      : []),
+  ];
+
+  if (walletOptions.length === 0) {
     return (
       <span className="mono" data-tone="ash">
         No wallet found
@@ -109,21 +123,10 @@ function InjectedConnect() {
     );
   }
 
-  const busy = isPending || landing;
-
   return (
     <span className="wallet-inline">
-      {injected ? (
-        <button
-          className="btn btn-primary"
-          disabled={busy}
-          aria-label="Connect wallet"
-          title="Connect wallet"
-          onClick={() => {
-            vibrate(haptics.bondStaked, true);
-            void connectAndLand(injected);
-          }}
-        >
+      <details className="wallet-menu">
+        <summary className="btn btn-primary wallet-menu__summary" aria-label="Choose a wallet to connect">
           {busy ? (
             "Connecting…"
           ) : (
@@ -132,38 +135,24 @@ function InjectedConnect() {
               <span className="wallet-label-short">Connect</span>
             </>
           )}
-        </button>
-      ) : null}
-      {binance && binanceConnector ? (
-        <button
-          className="btn btn-ghost"
-          disabled={busy}
-          aria-label="Connect Binance Wallet"
-          title="Connect Binance Wallet"
-          onClick={() => {
-            vibrate(haptics.bondStaked, true);
-            void connectAndLand(binanceConnector);
-          }}
-        >
-          <span className="wallet-label-full">Binance Wallet</span>
-          <span className="wallet-label-short">Binance</span>
-        </button>
-      ) : null}
-      {coinbase ? (
-        <button
-          className="btn btn-ghost"
-          disabled={busy}
-          aria-label="Connect Coinbase Wallet"
-          title="Connect Coinbase Wallet"
-          onClick={() => {
-            vibrate(haptics.bondStaked, true);
-            void connectAndLand(coinbase);
-          }}
-        >
-          <span className="wallet-label-full">Coinbase Wallet</span>
-          <span className="wallet-label-short">Coinbase</span>
-        </button>
-      ) : null}
+        </summary>
+        <div className="chrome__more-panel">
+          {walletOptions.map((option) => (
+            <button
+              key={option.id}
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                vibrate(haptics.bondStaked, true);
+                void connectAndLand(option.connector);
+              }}
+            >
+              {option.label}
+            </button>
+          ))}
+          <BitgetWalletConnectButton />
+        </div>
+      </details>
       {landError ?? error ? (
         <span className="mono" data-tone="sear">
           {(landError ?? error?.message ?? "").split("\n")[0]}

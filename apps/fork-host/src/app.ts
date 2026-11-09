@@ -38,6 +38,22 @@ export function createApp() {
   }
 
   async function provision(req: ProvisionRequest): Promise<ProvisionResult> {
+    // A repeat POST for the same trial used to overwrite `running` and orphan the first
+    // anvil child: its port stayed bound and the process kept running with no record.
+    // Stop the previous fork first, and wait for the exit so the replacement cannot race
+    // the port it is about to reuse.
+    const previous = running.get(req.trialId);
+    if (previous) {
+      previous.proc.kill();
+      await new Promise<void>((resolve) => {
+        const deadline = setTimeout(resolve, 3_000);
+        previous.proc.once("exit", () => {
+          clearTimeout(deadline);
+          resolve();
+        });
+      });
+      running.delete(req.trialId);
+    }
     const forkUrl = req.forkUrl ?? process.env.FORK_SOURCE_URL ?? "http://127.0.0.1:8545";
     const p = nextPort();
     const srcClient = createPublicClient({ chain: foundry, transport: http(forkUrl) });

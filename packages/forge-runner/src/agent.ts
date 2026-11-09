@@ -5,7 +5,6 @@ import {
   type WorkContext,
   type WorkResult,
 } from "@crucible/smith";
-import { withBackoff } from "@crucible/smith";
 import {
   hasInstructionFinding,
   scanRetrieved,
@@ -16,8 +15,6 @@ import {
   ForgeWatchEventType,
   type ForgeWatchEvent,
 } from "@crucible/forge-watch";
-import { assertEgressAllowed } from "./egress.js";
-import { ANTHROPIC_BASE, assertProviderUrl } from "./providers.js";
 
 /**
  * An LLM-backed agent for ForgeRunner.
@@ -504,63 +501,4 @@ function summariseResponse(raw: string, patch: string): string {
   }
   const files = filesTouched(patch);
   return `patch touches ${files.length} file(s): ${files.slice(0, 4).join(", ")}`;
-}
-
-/**
- * An Anthropic-backed client. Uses the Messages API via fetch, so the SDK has no
- * runtime dependency on a vendor package.
- */
-export function anthropicClient(args: {
-  apiKey: string;
-  baseUrl?: string;
-  model?: string;
-  /** Hosts this run may reach; see `egress.ts`. */
-  egressAllowlist?: string[];
-}): LlmClient {
-  const base = args.baseUrl ?? ANTHROPIC_BASE;
-  // This client had no URL guard at all, while every other provider had one: a `baseUrl` typed
-  // `file://` here would have been fetched. The scheme check and the allowlist are both applied
-  // before the first request, and the allowlist is what keeps a trial's agent on its own provider.
-  assertProviderUrl(base);
-  assertEgressAllowed(base, args.egressAllowlist);
-  return {
-    async complete({ system, prompt, temperature, maxTokens }) {
-      // The Messages API throttles aggressively during load spikes. Backing off on 429s
-      // rather than failing the whole iteration is what makes a rate-limited run a
-      // slow run instead of a dead run.
-      const res = await withBackoff(
-        () =>
-          fetch(`${base}/v1/messages`, {
-            method: "POST",
-            headers: {
-              "content-type": "application/json",
-              "x-api-key": args.apiKey,
-              "anthropic-version": "2023-06-01",
-            },
-            body: JSON.stringify({
-              model: args.model ?? "claude-sonnet-4-5",
-              max_tokens: maxTokens ?? 8000,
-              temperature: temperature ?? 0.2,
-              system,
-              messages: [{ role: "user", content: prompt }],
-            }),
-          }),
-        {
-          operation: "anthropic.messages",
-          retries: 4,
-          baseMs: 400,
-        },
-      );
-      if (!res.ok) {
-        throw new Error(`anthropic API responded ${res.status}: ${await res.text()}`);
-      }
-      const body = (await res.json()) as { content?: { type: string; text?: string }[] };
-      const text = (body.content ?? [])
-        .filter((c) => c.type === "text")
-        .map((c) => c.text ?? "")
-        .join("");
-      if (!text) throw new Error("anthropic returned no text content");
-      return text;
-    },
-  };
 }

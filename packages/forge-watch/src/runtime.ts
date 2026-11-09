@@ -21,9 +21,15 @@ import { createPgEventStore, type PgExecutor } from "./pg-store.js";
 import { RunSequencer } from "./sequencer.js";
 
 export interface ForgeWatchRuntimeOptions {
-  /** Enable PG persistence. Defaults to env FORGE_WATCH_PERSIST === "true". */
+  /**
+   * Enable PG persistence. When unset, a provided `pgExecutor` means durable
+   * (the host already wired the database — asking for a second opt-in on top is
+   * how telemetry ends up in memory beside an unused database);
+   * `FORGE_WATCH_PERSIST=false` is the explicit demo opt-out, and
+   * `FORGE_WATCH_PERSIST=true` forces it without an executor, which throws.
+   */
   persist?: boolean;
-  /** Required when persist is true. */
+  /** Required when persistence is enabled. */
   pgExecutor?: PgExecutor;
   /** Called for collector-level findings (duplicates, etc.). */
   onFinding?: (finding: CollectorFinding) => void;
@@ -47,10 +53,18 @@ export function isForgeWatchPersistEnabled(): boolean {
   return process.env.FORGE_WATCH_PERSIST === "true";
 }
 
+/** Resolve persistence: explicit option, then explicit demo opt-out, then the executor. */
+function resolvePersist(opts: ForgeWatchRuntimeOptions): boolean {
+  if (opts.persist !== undefined) return opts.persist;
+  if (process.env.FORGE_WATCH_PERSIST === "false") return false;
+  if (opts.pgExecutor) return true;
+  return isForgeWatchPersistEnabled();
+}
+
 export function createForgeWatchRuntime(
   opts: ForgeWatchRuntimeOptions = {},
 ): ForgeWatchRuntime {
-  const persist = opts.persist ?? isForgeWatchPersistEnabled();
+  const persist = resolvePersist(opts);
   const sequencer = opts.sequencer ?? new RunSequencer();
   let pgStore: ReturnType<typeof createPgEventStore> | null = null;
 
@@ -64,6 +78,13 @@ export function createForgeWatchRuntime(
     pgStore = createPgEventStore(opts.pgExecutor);
     store = pgStore;
   } else {
+    if (opts.persist === undefined && process.env.FORGE_WATCH_PERSIST !== "false") {
+      // A silent in-memory fallback is how a deployment reports monitoring while
+      // keeping none of it. Say so unless the host opted out explicitly.
+      console.warn(
+        "[forge-watch] no pgExecutor — telemetry is in-memory and not durable (FORGE_WATCH_PERSIST=false silences this in a demo)",
+      );
+    }
     store = new InMemoryEventStore();
   }
 

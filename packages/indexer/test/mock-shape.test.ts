@@ -22,7 +22,10 @@ import { bloomMayContain } from "../src/scribe.js";
  * silently weakened test suite.
  */
 describe("the block read the indexer makes", () => {
-  it("goes out as eth_getBlockByNumber with the block number as a hex string", async () => {
+  it("goes out as eth_getBlockByNumber with the block number as a hex string", { timeout: 30_000 }, async () => {
+    // A real HTTP round trip over localhost on a loaded host: the default 5s is
+    // the same class that killed grader/test/sampler.test.ts, so the timeout
+    // is explicit in the options object above.
     const trialTopic = encodeEventTopics({ abi: TRIALS_ABI, eventName: "TrialCreated" })[0] as `0x${string}`;
     const digest = hexToBytes(keccak256(trialTopic));
     const bloom = new Uint8Array(256);

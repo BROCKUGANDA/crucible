@@ -63,7 +63,28 @@ export function FrenchyWidget() {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState("");
   const [refusal, setRefusal] = useState<string | null>(null);
+  // Session dismissal: the floating pill can sit over dense tables, so the visitor can
+  // send it away for this visit. Session storage (not local): a new visit brings the
+  // door back — hidden-forever would be a feature nobody can find again.
+  const [dismissed, setDismissed] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    try {
+      setDismissed(window.sessionStorage.getItem("frenchy-widget:hidden") === "1");
+    } catch {
+      // Storage refused (private mode, hardened browser): the pill simply never hides.
+    }
+  }, []);
+
+  function dismiss() {
+    try {
+      window.sessionStorage.setItem("frenchy-widget:hidden", "1");
+    } catch {
+      // Same deal as the read: the in-memory dismissal still applies to this render.
+    }
+    setDismissed(true);
+  }
 
   // Keep the transcript in view while it is being spoken so a visitor can read what
   // is being captured as it arrives.
@@ -122,20 +143,32 @@ export function FrenchyWidget() {
 
   return (
     <div className="frenchy-widget" role="region" aria-label="Ask Frenchy (AI)">
-      {/* Floating trigger: always present when the panel is closed. */}
-      {!open && (
-        <button
-          type="button"
-          className="frenchy-widget__trigger"
-          onClick={() => setOpen(true)}
-          aria-label="Open Ask Frenchy (AI) chat"
-          title="Ask Frenchy (AI) — speak or type"
-        >
-          <span className="frenchy-widget__icon" aria-hidden="true">
-            ✦
-          </span>
-          <span className="frenchy-widget__label">Ask Frenchy</span>
-        </button>
+      {/* Floating trigger: always present when the panel is closed, unless the visitor
+          dismissed it for this visit. */}
+      {!open && !dismissed && (
+        <div className="frenchy-widget__cluster">
+          <button
+            type="button"
+            className="frenchy-widget__trigger"
+            onClick={() => setOpen(true)}
+            aria-label="Open Ask Frenchy (AI) chat"
+            title="Ask Frenchy (AI) — speak or type"
+          >
+            <span className="frenchy-widget__icon" aria-hidden="true">
+              ✦
+            </span>
+            <span className="frenchy-widget__label">Ask Frenchy</span>
+          </button>
+          <button
+            type="button"
+            className="frenchy-widget__dismiss"
+            onClick={dismiss}
+            aria-label="Hide Ask Frenchy for this visit"
+            title="Hide for this visit"
+          >
+            ×
+          </button>
+        </div>
       )}
 
       {/* Backdrop that dismisses the panel on a click outside. */}
