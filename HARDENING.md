@@ -1563,6 +1563,19 @@ guards is the decoration it exists to detect.
   2821 passed, 10 skipped, 0 failed (forge-runner 225/6 skipped, smith-sdk 237, indexer 159 (5 new),
   fork-host 5 (new), grader 309); `runner.test.ts` 8/8 green runs where it was ~50% red before.
 
+- **2026-11-09 — A sponsor-gated transition took its authority from the request body.**
+  `POST /trials/:id/transition` built `TransitionContext.sponsor` from `body.sponsor`, and
+  `validateTransition` compared the trial's sponsor against that claim — so any wallet holding
+  *any* valid SIWE session could cancel or return-to-draft any trial by naming the real sponsor,
+  while the session-verified address sat unused in `ctx.walletAddress`. `sponsor` is deleted
+  from `TransitionContext` (`apps/api/src/trial-lifecycle.ts`): the authorization identity is
+  now the caller's verified session address, and the body claim that invited the confusion no
+  longer exists. Both directions regression-tested in `apps/api/test/app.test.ts` — an attacker
+  session naming the real sponsor is rejected with `not-sponsor`, and the real sponsor needs no
+  body claim. **Mutation-proven:** both tests ran red against the unfixed route (the attacker's
+  cancel returned 200) before the fix and green after; full API suite 592 passed, typecheck
+  clean. Fixed in `56cb6fa`.
+
 ## Unresolved from the 2026-10-27 pass (continues the open list)
 
 23. **`apps/api` reported one failing test once, inside a saturated fan-out, and it has not been
