@@ -2,7 +2,6 @@
 
 import { useCountdown } from "@/lib/useSnapshot";
 import { deadlineHeat, formatDuration, heatTone } from "@/lib/forge";
-import { useState } from "react";
 
 /**
  * TrialCountdown — a deadline countdown anchored to the chain clock, not the browser clock.
@@ -16,18 +15,23 @@ export function TrialCountdown({
   breakWindowEndsAt,
   status,
   label,
+  chainNowMs,
 }: {
   deadlineAt: number | null | undefined;
   breakWindowEndsAt: number | null | undefined;
   status: string;
   label?: string;
+  /**
+   * Anchor for the countdown: `max(headTimestamp + 1, serverNow)` from the snapshot,
+   * not a browser clock. Null falls back to the wall clock — the same behaviour the
+   * rows had before the anchor was threaded, kept so a caller without a snapshot
+   * (a storybook-shaped fixture) does not go dark.
+   */
+  chainNowMs?: number | null;
 }) {
-  const [chainNowMs] = useState<number | null>(null);
-
-  // The countdown hook anchors to max(headTimestamp + 1, serverNow) — the node's own clock.
-  // We read it lazily; a null anchor renders unknown rather than fabricating a number.
-  const cools = useCountdown(deadlineAt ?? null, chainNowMs);
-  const breakLeft = useCountdown(breakWindowEndsAt ?? null, chainNowMs);
+  // The countdown hook anchors to the chain clock when the caller hands it over.
+  const cools = useCountdown(deadlineAt ?? null, chainNowMs ?? null);
+  const breakLeft = useCountdown(breakWindowEndsAt ?? null, chainNowMs ?? null);
 
   const onBreakWindow = status === "judging" && breakLeft !== null;
   const remaining = onBreakWindow ? breakLeft : cools;

@@ -5,6 +5,7 @@ import { Chrome, ColdForge, Quenching, SignalLost, TxLink } from "@/components/C
 import { useSnapshot } from "@/lib/useSnapshot";
 import { TIER_META, shortHash, tierMeta } from "@/lib/forge";
 import { DecayCurve } from "@/components/arena/DecayCurve";
+import { fadedStanding } from "@/lib/faded-standing";
 import { roman, tierNumeral } from "@/lib/theme/roman";
 
 /**
@@ -48,9 +49,16 @@ export default function HallPage() {
 
       {data ? (
         <div className="hall-rows" id="hall-list">
-          {data.hall.map((e, i) => (
-            <HallRow key={e.agentId} entry={e} rank={i + 1} />
-          ))}
+          {data.hall.map((e, i) => {
+            const agent = data.agents.find((a) => a.id === e.agentId);
+            // The per-agent half of the fading-standing panel: same §18.2 formula and the
+            // same hydrated settlement times this index read off the chain. The figure is a
+            // derivation, not a contract read — the chain's own rule for a slash is the 25%
+            // window-wins reduction inside AlloyRegistry — and an outcome without a
+            // settlement time is left out and counted, never aged from its submission.
+            const standing = fadedStanding(data.trials, e.agentId, data.now, agent?.epochStartedAt ?? null);
+            return <HallRow key={e.agentId} entry={e} rank={i + 1} standing={standing} />;
+          })}
         </div>
       ) : null}
           <DecayCurve />
@@ -58,7 +66,15 @@ export default function HallPage() {
   );
 }
 
-function HallRow({ entry: e, rank }: { entry: import("@crucible/indexer").ApiHallEntry; rank: number }) {
+function HallRow({
+  entry: e,
+  rank,
+  standing,
+}: {
+  entry: import("@crucible/indexer").ApiHallEntry;
+  rank: number;
+  standing: import("@/lib/faded-standing").FadedStanding;
+}) {
   const tier = e.tier === null ? null : tierMeta(e.tier);
   // The newest receipt is the one a reader is being asked to believe; the rest are history.
   const last = e.settlements[0];
@@ -88,7 +104,18 @@ function HallRow({ entry: e, rank }: { entry: import("@crucible/indexer").ApiHal
           <Tally value={e.wins} label="wins" tone="gold" />
           <Tally value={e.survived} label="survived" tone="quench" />
           <Tally value={e.slashes} label="slashes" tone="sear" />
+          <span className="hall-tally" data-tone="bronze">
+            <strong className="mono">{standing.display === null ? "—" : standing.display}</strong>
+            <span className="hall-tally__label">standing</span>
+          </span>
         </div>
+        {standing.unaged > 0 ? (
+          <p className="hint hall-row__unaged">
+            {standing.unaged} settled outcome{standing.unaged === 1 ? "" : "s"} carried no
+            settlement time, so {standing.unaged === 1 ? "it" : "they"} did not enter the
+            standing.
+          </p>
+        ) : null}
       </header>
 
       <div className="hall-row__proofs">
@@ -115,6 +142,25 @@ function HallRow({ entry: e, rank }: { entry: import("@crucible/indexer").ApiHal
           hash={e.identity?.txHash ?? null}
           block={e.identity?.blockNumber ?? null}
         />
+      </div>
+
+      <div
+        className="hall-standing"
+        title="Computed from this host's settlement timestamps with the §18.2 rule. The chain's own reduction for a slashed claim is 25% of window wins inside AlloyRegistry — this figure is recomputable from the receipts above, not a contract read."
+      >
+        <span className="kicker proof__label">Standing · fades gradually</span>
+        <p className="hall-standing__value">
+          <span className="mono">{standing.display === null ? "—" : Math.round(standing.display)}</span>
+          <span className="hall-standing__note">
+            derived · §18.2 · fades by half every {standing.halfLifeDays} days
+            {standing.unaged > 0
+              ? ` · ${standing.unaged} outcome${standing.unaged === 1 ? "" : "s"} not aged — no settlement time`
+              : ""}
+            {standing.excludedPreEpoch > 0
+              ? ` · ${standing.excludedPreEpoch} outcome${standing.excludedPreEpoch === 1 ? "" : "s"} before this identity's epoch`
+              : ""}
+          </span>
+        </p>
       </div>
 
       {e.settlements.length > 1 ? (
@@ -210,3 +256,4 @@ function Proof({
     </div>
   );
 }
+

@@ -2,10 +2,12 @@
  * DecayCurve — the decay rule, drawn.
  *
  * The Alloy record fades: half its weight every 45 days. This panel draws that
- * rule as a curve so a reader can see what "fades gradually" means. It is the
- * rule, not a measurement of any agent — per-agent decay would need settlement
- * timestamps, which the indexer does not carry today, so no per-agent number is
- * shown.
+ * rule as a curve so a reader can see what "fades gradually" means. The per-agent
+ * figure now exists beside each row: it is computed from the settlement times
+ * this index read off the chain (the same hydrated block timestamps /standing/:id
+ * serves) with the same §18.2 formula — a derivation a reader can reconstruct
+ * from the receipts below, not a contract read. The chain's own decay on a slash
+ * is the 25% window-wins rule inside AlloyRegistry.
  */
 export function DecayCurve() {
   // 90 days, half-life 45 days: weight = 2^(-t/45).
@@ -20,19 +22,20 @@ export function DecayCurve() {
     points.push(`${x.toFixed(1)},${y.toFixed(1)}`);
   }
   return (
-    <section className="surface detail-panel" aria-label="Reputation decay rule">
-      <p className="kicker">Decay</p>
+    <section className="surface detail-panel" aria-label="Reputation fades rule">
+      <p className="kicker">Fades</p>
       <p className="hint hint--block">
         A standing is not permanent. It halves in weight every 45 days unless the
-        agent keeps doing work that holds up. The curve is the rule; a per-agent
-        decay figure would need settlement timestamps the indexer does not carry yet.
+        agent keeps doing work that holds up. The curve is the rule; each row above
+        carries its own figure, computed from the settlement timestamps this index
+        read off the chain (§18.2, half-life 45d).
       </p>
       <svg
         viewBox={`0 0 ${W} ${H}`}
         width="100%"
         height={H}
         role="img"
-        aria-label="Exponential decay with a 45-day half life"
+        aria-label="Exponential fade with a 45-day half life"
       >
         <polyline
           points={points.join(" ")}

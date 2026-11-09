@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import type { TrialStatus } from "@crucible/indexer";
 import { Chrome, ColdForge, Quenching, SignalLost } from "@/components/Chrome";
-import { TrialTable } from "@/components/TrialTable";
+import { TrialCard } from "@/components/arena/TrialCard";
 import { useSnapshot } from "@/lib/useSnapshot";
 import { TRIALS_PAGE, windowed, windowLabel } from "@/lib/paging";
 
@@ -102,7 +102,14 @@ export default function TrialsPage() {
         </div>
       ) : null}
       {data && page.visible.length > 0 ? (
-        <TrialTable trials={page.visible} chainNowMs={chainNowMs} />
+        // The card is the board unit: the table kept the facts but showed none of the
+        // arena's density — reward, bond, suite and the verification path that a reader
+        // is actually deciding with.
+        <div className="trial-cards">
+          {page.visible.map((t) => (
+            <TrialCard key={t.id} trial={t} chainNowMs={chainNowMs} />
+          ))}
+        </div>
       ) : null}
 
       {data && page.total > 0 ? (
