@@ -1313,7 +1313,7 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
 
     const session = verifiedSessionFromContext(c);
 
-    let body: { to?: unknown; sponsor?: unknown } = {};
+    let body: { to?: unknown } = {};
     try {
       body = (await c.req.json()) as typeof body;
     } catch {
@@ -1321,7 +1321,6 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
     }
 
     const to = typeof body.to === "string" ? body.to : undefined;
-    const sponsor = typeof body.sponsor === "string" ? body.sponsor : null;
 
     const validStatuses: TrialLifeStatus[] = [
       "DRAFT", "REVIEW", "APPROVED", "SCHEDULED", "ACTIVE", "PAUSED",
@@ -1350,7 +1349,6 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
           })
         : null,
       walletAddress: session.payload.address,
-      sponsor,
     };
 
     const decision = validateTransition(trial, to as TrialLifeStatus, ctx);

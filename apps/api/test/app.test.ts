@@ -1293,6 +1293,30 @@ describe("trial lifecycle state machine (blueprint items 101-120)", () => {
       expect(res.status).toBe(403);
     });
 
+    it("security: a non-sponsor session cannot cancel by naming the sponsor in the body", async () => {
+      // Authorization binds to the verified session address, never to a
+      // client-supplied sponsor claim.
+      const attacker = "0x2222222222222222222222222222222222222222";
+      const res = await app.request(`/trials/${trialId}/transition`, {
+        method: "POST",
+        headers: sessionHeaders(attacker),
+        body: JSON.stringify({ to: "CANCELLED", sponsor: SPONSOR }),
+      });
+      expect(res.status).toBe(403);
+      const body = await res.json();
+      expect(body.code).toBe("not-sponsor");
+    });
+
+    it("security: sponsor-gated transitions work without a body sponsor claim", async () => {
+      const res = await app.request(`/trials/${trialId}/transition`, {
+        method: "POST",
+        headers: sessionHeaders(SPONSOR),
+        body: JSON.stringify({ to: "CANCELLED" }),
+      });
+      expect(res.status).toBe(200);
+      expect((await res.json()).trial.status).toBe("CANCELLED");
+    });
+
     it("111: illegal state transition - DRAFT to ACTIVE rejected", async () => {
       const res = await transitionViaApp(app, trialId, "ACTIVE");
       expect(res.status).toBe(403);

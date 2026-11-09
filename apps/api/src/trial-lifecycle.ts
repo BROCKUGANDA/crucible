@@ -209,10 +209,12 @@ export function resetStoreForTests(): void {
 export interface TransitionContext {
   /** The principal requesting the transition, resolved from SIWE session. */
   principal: OrganisationPrincipal | null;
-  /** The connected wallet (WALLET_CONNECTED state without SIWE), or null. */
+  /**
+   * The caller's address, taken from the verified SIWE session. This is the
+   * authorization identity for sponsor-gated transitions; a value supplied in
+   * the request body is never authority.
+   */
   walletAddress: string | null;
-  /** The sponsor address, required for sponsor-gated transitions. */
-  sponsor: string | null;
 }
 
 /** Why a transition was rejected. */
@@ -274,14 +276,14 @@ export function validateTransition(
 
   // Sponsor-gated transitions.
   if (to === "CANCELLED" || to === "DRAFT") {
-    if (!ctx.sponsor || !ctx.principal) {
+    if (!ctx.walletAddress || !ctx.principal) {
       return {
         allowed: false,
         reason: "transition requires SIWE-authenticated sponsor",
         code: "not-authenticated",
       };
     }
-    if (trial.sponsor.toLowerCase() !== ctx.sponsor.toLowerCase()) {
+    if (trial.sponsor.toLowerCase() !== ctx.walletAddress.toLowerCase()) {
       return {
         allowed: false,
         reason: `only the trial sponsor (${trial.sponsor}) may ${to === "CANCELLED" ? "cancel" : "return to draft"}`,
