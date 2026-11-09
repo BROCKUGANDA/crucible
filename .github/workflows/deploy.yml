@@ -276,6 +276,50 @@ jobs:
         # `docker compose ps` is the same silent absence the keeper had for two weeks.
         run: docker compose -f compose.yaml -f compose.vps.yaml build web api keeper juror seed funder
 
+      # The API reads its SQL migrations from inside the image at boot. A Dockerfile
+      # that stops copying /repo/migrations builds a green image that cannot start —
+      # the 2026-11-09 boot loop was exactly this, fixed on the host but never
+      # asserted anywhere, so the next deploy could rebuild the same unbootable
+      # image and re-break /api/*. Assert the artifact, not the file list.
+      - name: assert the api image carries its migrations
+        working-directory: /home/ubuntu/crucible
+        run: |
+          set -euo pipefail
+          if ! docker run --rm --entrypoint sh crucible-api:latest -c \
+            'ls /repo/migrations/*.sql >/dev/null 2>&1'; then
+            echo "::error::the api image contains no /repo/migrations/*.sql; it would boot-loop. Fix apps/api/Dockerfile (COPY --from=build /repo/migrations ./migrations) before deploying."
+            exit 1
+          fi
+          echo "the api image carries /repo/migrations/*.sql"
+
+      # The 2026-11-09 incident began with a manual `docker compose up` that omitted
+      # compose.vps.yaml: every service that composes to "no published ports" on the
+      # VPS published its ports instead, exposing the stack behind the edge. Every
+      # workflow in this repository uses both files; this makes the VPS assert that
+      # invariant on the config it is about to bring up, so a future manual run or a
+      # workflow regression is caught before a container starts, not discovered from
+      # the outside.
+      - name: assert no crucible service publishes a host port
+        working-directory: /home/ubuntu/crucible
+        run: |
+          set -euo pipefail
+          docker compose -f compose.yaml -f compose.vps.yaml config --format json > /tmp/crucible-compose.json
+          node -e '
+            const cfg = require("/tmp/crucible-compose.json");
+            const svcs = cfg.services ?? {};
+            let fail = 0;
+            for (const [name, svc] of Object.entries(svcs)) {
+              const published = (svc.ports ?? []).filter((p) => p.published !== undefined && p.published !== null && p.published !== 0);
+              if (published.length > 0) {
+                console.error(`::error::${name} would publish host port(s) ${published.map((p) => p.published).join(", ")} on the VPS; only the edge may be reachable.`);
+                fail = 1;
+              }
+            }
+            if (fail) process.exit(1);
+            console.log("no crucible service publishes a host port — the edge is the only way in");
+          '
+          rm -f /tmp/crucible-compose.json
+
       # Validate the addresses BEFORE the swap, not after it.
       #
       # The seed publishes what actually landed to `/run/crucible/deployed.env` on the

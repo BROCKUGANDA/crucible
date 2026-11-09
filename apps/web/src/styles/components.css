@@ -573,6 +573,76 @@
   border-bottom: 1px solid var(--bg2);
 }
 
+/* Grouped destinations inside the More panel: sections are who the page is for, so
+   visitors see Explore and Learn while operators and vendors find their own doors
+   without wading through the other's tools. */
+.chrome__more-group {
+  display: grid;
+  gap: 2px;
+  padding-top: 6px;
+}
+
+.chrome__more-group + .chrome__more-group {
+  margin-top: 6px;
+  border-top: 1px solid var(--bg2);
+}
+
+.chrome__more-heading {
+  padding: 2px 12px 4px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text);
+}
+
+.chrome__more-note {
+  padding: 0 12px 6px;
+  font-size: 0.75rem;
+  color: var(--dim);
+  opacity: 0.85;
+  white-space: normal;
+  max-width: 260px;
+}
+
+/* A gated tool stays listed when signed out — the door is findable — but says what
+   it needs instead of vanishing. */
+.chrome__auth-chip {
+  margin-left: 8px;
+  padding: 1px 7px;
+  font-size: 0.66rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border-radius: 999px;
+  border: 1px solid var(--bg2);
+  background: var(--bg1);
+  color: var(--dim);
+}
+
+.chrome__more-panel a:hover .chrome__auth-chip,
+.chrome__more-panel a[aria-current="page"] .chrome__auth-chip {
+  color: var(--text);
+}
+
+/* The mobile sheet carries the same grouping as the More panel, plus the primary
+   row at the top so nothing is hidden behind a hunt. */
+.sheet-group {
+  display: grid;
+  gap: 2px;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--bg2);
+}
+
+.sheet-heading {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text);
+}
+
 /* ── the wallet chooser (no-WalletConnect configuration) ────── */
 
 /* Same disclosure mechanics as chrome__more, wearing the primary button: one Connect
