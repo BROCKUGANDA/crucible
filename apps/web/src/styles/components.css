@@ -1130,6 +1130,35 @@
   color: var(--ash);
 }
 
+/* The per-agent decay figure, beside the receipts it is computed from. */
+.hall-standing {
+  padding: 10px 18px;
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  border-top: 1px solid var(--bg2);
+  flex-wrap: wrap;
+}
+
+.hall-standing__value {
+  margin: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.hall-standing__value .mono {
+  font-size: 1.05rem;
+  font-variant-numeric: tabular-nums lining-figures;
+  color: var(--text);
+}
+
+.hall-standing__note {
+  color: var(--faint);
+  font-size: var(--fs-small);
+}
+
 .hall-row__more {
   padding: 12px 18px 16px;
 }
