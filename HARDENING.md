@@ -1626,6 +1626,18 @@ guards is the decoration it exists to detect.
   (surface unmounted), the `/trials/:id/events` stream ceiling, STAMP reviewer roles, the
   global-error wallet-graph import, and the fork-test advisory gate.
 
+- **2026-11-09 (cont.) — Engram Merkle-claim wiring shipped end to end.** The keeper
+  evaluation bridge (`fb56eee`) issues entitlements, but no path could mint them: the
+  `rewards` page reserved an off-chain claim the contract never saw. Now `GET /engrams/merkle-proof`
+  rebuilds the on-chain leaf from the caller's own entitlements and serves its proof
+  (session-gated, self-only), the rewards page claims on-chain in one wallet transaction via
+  `buildClaimEngram` to the deployment's distributor, the `Deployment` record carries
+  engram + distributor per network, and `Deploy.s.sol` deploys `EngramERC1155` →
+  `EngramDistributor` and grants the distributor the minter role. `forge build --sizes` compiles
+  the added script frame. The Forge Watch system was re-audited for any on-chain surface and
+  found fully off-chain (no contract reads, signs, or settles on its fields; telemetry
+  garbage changes zero on-chain state). (`00cfa6c`.)
+
 ## Unresolved from the 2026-10-27 pass (continues the open list)
 
 23. **`apps/api` reported one failing test once, inside a saturated fan-out, and it has not been

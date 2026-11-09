@@ -187,7 +187,7 @@ includes coverage floors, gitleaks full history, Trivy exit-code gates, and depl
 | RUN-M7 | MEDIUM | Untracked root scripts holding credential material are rsynced to the prod VPS on every deploy | `.github/workflows/deploy.yml:66` | Fixed `0273061` (rsync excludes) |
 | RUN-L* | LOW | API lacks graceful shutdown/rejection handlers; API binds all interfaces (demo intent); migration-runner "in a transaction" comment false; fork-host children on 0.0.0.0; VPS IP committed; `.env.mainnet.example` gitignored | various | Open |
 
-## Earlier fix on this branch (pre-audit)
+| VERDICT-1 | — | "Verdict integrity is inviolable: owning tokens or staking must never improve a benchmark score or influence Argus's verdicts" | design | Holds: Verdicts derive only from evidence + Argus votes + chain state; staking/Engram ownership never feeds score inputs. Recorded in the taste ledger (confidence 0.9); this register does not claim an exploit there because none exists in the audited surfaces. |
 
 - `56cb6fa` — sponsor-gated transitions authorized against the request body instead of the
   session (`body.sponsor`); fixed and mutation-proven, recorded in HARDENING.md.
