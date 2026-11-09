@@ -22,11 +22,11 @@ function startGate(handler) {
   });
 }
 
-async function post(server, body) {
+async function post(server, body, headers = {}) {
   const { port } = server.address();
   const res = await fetch(`http://127.0.0.1:${port}/`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", ...headers },
     body: typeof body === "string" ? body : JSON.stringify(body),
   });
   return { status: res.status, text: await res.text() };
@@ -102,4 +102,46 @@ test("rate limiter admits a burst then refuses", () => {
   assert.equal(limiter.take("b"), true);
   nowMs += 2000;
   assert.equal(limiter.take("a"), true);
+});
+
+test("keys the limiter on the right-most forwarded entry, so a spoofed prefix cannot mint buckets", async (t) => {
+  // The proxy overwrites X-Forwarded-For, so in production the header carries exactly
+  // one entry — the real client. The header below is what a caller sends when the
+  // overwrite is missing (or what arrives if the gate is reached in-network): a fresh
+  // invented entry prepended per request. Keying on the LEFT entry gave each of these
+  // its own bucket and made the limiter decorative; the right-most entry is the one
+  // the trusted hop wrote, so all three of these share one bucket and the third
+  // refusal is the control working.
+  const server = new Promise((resolve) => {
+    const s = createGate({
+      upstream: "http://upstream.invalid",
+      limiter: createRateLimiter({ capacity: 2, refillPerSecond: 0 }),
+      fetchImpl: echoUpstream,
+    });
+    s.listen(0, "127.0.0.1", () => resolve(s));
+  });
+  t.after(() => server.then((s) => s.close()));
+  const up = await server;
+
+  const first = await post(up, { jsonrpc: "2.0", id: 1, method: "eth_blockNumber", params: [] }, {
+    "x-forwarded-for": "9.9.9.9, 203.0.113.7",
+  });
+  assert.equal(first.status, 200);
+
+  const second = await post(up, { jsonrpc: "2.0", id: 2, method: "eth_blockNumber", params: [] }, {
+    "x-forwarded-for": "8.8.8.8, 203.0.113.7",
+  });
+  assert.equal(second.status, 200);
+
+  const third = await post(up, { jsonrpc: "2.0", id: 3, method: "eth_blockNumber", params: [] }, {
+    "x-forwarded-for": "7.7.7.7, 203.0.113.7",
+  });
+  assert.equal(third.status, 429, "a spoofed left entry must not mint a fresh bucket");
+
+  // And a genuinely different right-most entry still has its own bucket: the limiter
+  // limits per client, not per planet.
+  const other = await post(up, { jsonrpc: "2.0", id: 4, method: "eth_blockNumber", params: [] }, {
+    "x-forwarded-for": "203.0.113.9",
+  });
+  assert.equal(other.status, 200);
 });
