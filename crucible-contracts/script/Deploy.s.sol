@@ -132,7 +132,7 @@ contract Deploy is DevKeyScript {
     function _deployEngrams(uint256 pk) internal returns (EngramERC1155 engram, EngramDistributor distributor) {
         string memory baseUri = vm.envOr("ENGRAM_BASE_URI", string("ipfs://crucible-engrams/"));
         vm.startBroadcast(pk);
-        engram = new EngramERC1155(msg.sender, baseUri);
+        engram = new EngramERC1155(vm.addr(pk), baseUri);
         distributor = new EngramDistributor(address(engram));
         engram.setMinter(address(distributor), true);
         vm.stopBroadcast();
