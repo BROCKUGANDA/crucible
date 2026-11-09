@@ -44,11 +44,12 @@ describe("workload contracts (WP0)", () => {
     expect(validateManifest({ runId: "" } as never).length).toBeGreaterThan(0);
   });
 
-  it("adapter registry covers all three profiles", () => {
-    expect(listAdapters()).toHaveLength(3);
+  it("adapter registry covers all profiles incl. Solana engineering", () => {
+    expect(listAdapters()).toHaveLength(4);
     expect(getAdapter("SOFTWARE_ENGINEERING").profile).toBe("SOFTWARE_ENGINEERING");
     expect(getAdapter("STRUCTURED_DATA").profile).toBe("STRUCTURED_DATA");
     expect(getAdapter("AUTONOMOUS_FINANCE").profile).toBe("AUTONOMOUS_FINANCE");
+    expect(getAdapter("SOLANA_ENGINEERING")).toBeDefined();
   });
 });
 

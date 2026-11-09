@@ -203,6 +203,8 @@ services:
       DATABASE_URL: ${DATABASE_URL:-}
       # STAMP protocol-ownership domain: disabled unless explicitly enabled.
       STAMP_MODE: ${STAMP_MODE:-disabled}
+      # Solana asset intelligence (Tokens API, server-only). Empty = adapter refuses.
+      TOKENS_API_KEY: ${TOKENS_API_KEY:-}
     ports:
       - "${API_HOST_PORT:-8787}:8787"
     volumes:
