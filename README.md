@@ -38,21 +38,15 @@ Open ──claim──> Assigned ──submitRun──> Judging ──fileBreak�
    with the API on `:8787`. Every `up` is a fresh, deterministic chain.
 3. Read the proofs: `/hall` shows the leaderboard where each row quotes the
    settlement transaction and the identity registration that earned it. The
-   contracts are in `crucible-contracts/contracts` with 333 tests (329 passed; 4 of them ERC-8004
-   fork tests, which skip without an RPC). The workspace suites
-    add 2423 more - web 554, api 320, grader 309, smith 226, forge-runner 214 (6 of them need a
-     Docker daemon and skip without one), indexer 154, agent-security 153, cidstore 106, juror 84,
-     keeper 48, datasets 50, eval 53, argus 45, site-index 23, warden 24, funder 24, crypto 12, frame 12,
-     registry 12 — and `npm test` runs all of them plus the
-   Foundry suite; the contracts half needs Foundry (`forge test`), which the seed image runs on a
-   machine without a local forge. The edge suite (`npm run test:edge`, 21 tests over the RPC method
-   gate, its live probe and the installer that deploys them) is not a workspace, so it rides
-   `npm run verify:all` and CI as its own step. The per-workspace breakdown above was enumerated on
-   2026-10-29; on 2026-11-09 (after the audit slices added 43 regression tests) `npm run verify:all`
-   is green end to end — typecheck, every TypeScript workspace, the edge's **21 passed**, and
-   Foundry unchanged at **329 passed, 4 skipped** (no contract files changed in that pass). Treat
-   the per-workspace figures as the last fully enumerated count, and `npm run verify:all` as the
-   reproduction.
+   contracts are in `crucible-contracts/contracts` with 364 tests (360 passed; 4 of them ERC-8004
+   fork tests, which skip without an RPC). `npm test` runs every TypeScript workspace suite and
+   then the Foundry suite; **measured on 2026-11-09 after this pass: 3,339 TypeScript tests
+   passed (20 skipped, each announcing its reason — Docker daemon, Redis, PostgreSQL, fork RPC)
+   and 360 Foundry tests passed (4 fork skips) — 3,699 passing, zero failures.** The edge suite
+   (`npm run test:edge`, 21 tests over the RPC method gate, its live probe and the installer that
+   deploys them) is not a workspace, so it rides `npm run verify:all` and CI as its own step.
+   Treat these as the last fully enumerated count and `npm test` as the reproduction; a count
+   carried forward is a quote, not a measurement.
 4. Replay the whole loop against a running chain — register, post, claim,
    runner-signed runs, a break that Argus slashes, and the permissionless quench
    after the window really closes — with `crucible-contracts/script/GoldenPath.s.sol`:
@@ -377,8 +371,8 @@ Business: [plan](./docs/business/plan.md) · [roadmap](./docs/business/roadmap.m
 ## Verification
 
 ```bash
-npm run contracts:test      # 333 Foundry tests (329 passed, 4 fork tests skipped without an RPC)
-npm test                    # the eighteen TypeScript workspaces, then the Foundry suite
+npm run contracts:test      # 364 Foundry tests (360 passed, 4 fork tests skipped without an RPC)
+npm test                    # every TypeScript workspace suite, then the Foundry suite
 npm run test:edge           # the RPC gate: refusals, the live probe, the installer that ships it
 npm run verify:all          # typecheck + every workspace suite + the edge, in one command
 npm run coverage --workspace crucible-contracts   # line/statement/branch coverage of the contracts
