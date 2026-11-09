@@ -10,8 +10,15 @@ import { resolveProfile, validateProfile } from "../src/profile.js";
  */
 
 describe("resolveProfile", () => {
-  it("defaults to demo when unset, and accepts the three names case-insensitively", () => {
-    expect(resolveProfile(undefined)).toBe("demo");
+  it("treats unset as no profile (the previous behaviour), not as demo", () => {
+    // A host whose .env predates the variable must not crash — measured: the VPS .env
+    // had no such line, and the swapped api container went unhealthy on its first probe.
+    expect(resolveProfile(undefined)).toBeNull();
+    expect(resolveProfile("")).toBeNull();
+    expect(resolveProfile("  ")).toBeNull();
+  });
+
+  it("accepts the three names case-insensitively when set", () => {
     expect(resolveProfile(" Demo ")).toBe("demo");
     expect(resolveProfile("preview")).toBe("preview");
     expect(resolveProfile("production")).toBe("production");

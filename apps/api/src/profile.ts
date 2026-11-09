@@ -17,9 +17,19 @@ export type CrucibleProfile = "demo" | "preview" | "production";
 
 const PROFILES: readonly CrucibleProfile[] = ["demo", "preview", "production"];
 
-/** Resolve `CRUCIBLE_PROFILE`; unset means demo (the stack this repo actually ships). */
-export function resolveProfile(raw: string | undefined): CrucibleProfile {
-  const value = (raw ?? "demo").trim().toLowerCase();
+/**
+ * Resolve `CRUCIBLE_PROFILE`.
+ *
+ * Unset means the previous behaviour — no profile, no gate — not "demo". The gate exists
+ * to stop a profile that contradicts its chain, not to punish a host that never set it:
+ * a static default would crash-loop every container whose `.env` predates the variable
+ * (measured 2026-11-09: the VPS `.env` had no such line, and the swapped API container
+ * went unhealthy on its first health probe). `demo` is what the compose default builds
+ * and what the local stack declares; a host declares one only by setting it.
+ */
+export function resolveProfile(raw: string | undefined): CrucibleProfile | null {
+  if (raw === undefined || raw.trim() === "") return null;
+  const value = raw.trim().toLowerCase();
   if (value === "demo" || value === "preview" || value === "production") return value;
   throw new Error(
     `unknown CRUCIBLE_PROFILE "${value}"; expected one of ${PROFILES.join(", ")}`,

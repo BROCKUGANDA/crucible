@@ -123,11 +123,14 @@ services:
       # sign-in message. Both are configuration rather than something the
       # request may say.
       CHAIN_ID: ${CHAIN_ID:-31337}
-      # Deployment profile (docs/runbooks/profiles.md). The API refuses an unknown name,
-      # refuses demo off chain 31337, and refuses preview/production until their gates
-      # exist. Empty means demo — the profile this repo actually ships.
-      CRUCIBLE_PROFILE: ${CRUCIBLE_PROFILE:-demo}
-      REAL_VALUE_OPERATIONS: ${REAL_VALUE_OPERATIONS:-0}
+      # Deployment profile (docs/runbooks/profiles.md). Env-only on purpose: the value is
+      # passed ONLY when the host explicitly sets it. A static `${VAR:-demo}` would read a
+      # default that shadows a missing host value, and a gate that rejects a container whose
+      # host simply never set the variable is a crash-loop, not a gate. Unset therefore
+      # means "no opinion", and the API absolves it (the old code path). preview/production
+      # still refuse to boot when set.
+      CRUCIBLE_PROFILE: ${CRUCIBLE_PROFILE:-}
+      REAL_VALUE_OPERATIONS: ${REAL_VALUE_OPERATIONS:-}
       AUTH_ORIGIN: ${AUTH_ORIGIN:-}
       # The secret itself is NOT set here: a deployment that has not been
       # given one must get a 503 from the auth routes, not a session signed
