@@ -1023,6 +1023,11 @@
 .metric-card__value--success { color:var(--success); }
 .metric-card__value--warning { color:var(--warning); }
 .metric-card__value--error { color:var(--error); }
+/* The two variants /home already renders: without these, a neutral or pending value
+   inherited the display colour while its neighbours were toned — two vocabularies for
+   one meaning. */
+.metric-card__value--neutral { color:var(--text); }
+.metric-card__value--pending { color:var(--faint); }
 .metric-card__hint { font-size:var(--fs-small); color:var(--dim); }
 .empty-state { padding:var(--s-6); text-align:center; border:1px dashed var(--ash); border-radius:var(--radius); }
 .empty-state__title { font-size:var(--fs-sub); margin-bottom:var(--s-2); }

@@ -21,7 +21,10 @@ import { SigningNotice } from "@/components/SigningNotice";
  */
 
 const KICKERS = ["01 — STRIKE", "02 — FUEL", "03 — IGNITE"] as const;
-const STEPS = ["Subject", "Spec", "Tests & reward", "Timing", "Review", "Launch"] as const;
+// Three steps, because the wizard has three. Six names were declared and a hand-written
+// index map highlighted steps 1/3/5, so "Subject" and "Review" were permanent theatre:
+// never active, never reachable, and no review step ever rendered.
+const STEPS = ["Spec", "Tests & reward", "Timing"] as const;
 
 export default function NewTrialPage() {
   const [values, setValues] = useState<WizardValues>(EMPTY_WIZARD);
@@ -44,8 +47,8 @@ export default function NewTrialPage() {
 
       <nav className="wizard-stepper" aria-label="Wizard progress">
         {STEPS.map((s, i) => {
-          const active = i === (step === 0 ? 1 : step === 1 ? 3 : 5);
-          const done = i < (step === 0 ? 1 : step === 1 ? 3 : 5);
+          const active = i === step;
+          const done = i < step;
           return (
             <span
               key={s}

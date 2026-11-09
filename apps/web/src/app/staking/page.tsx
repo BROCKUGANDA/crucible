@@ -116,9 +116,9 @@ export default function StakingPage() {
         </p>
       ) : (
         <div className="surface detail-panel" id="stake-panel">
-          <p className="hint">Total free stake: {formatEth(escrow?.stakedEth)} ETH</p>
+          <p className="hint">Total free stake: {formatEth(escrow?.stakedEth)}</p>
           <p className="hint">
-            Withdrawable credit: {formatEth(escrow?.withdrawableEth)} ETH
+            Withdrawable credit: {formatEth(escrow?.withdrawableEth)}
           </p>
           <div className="btn-row">
             <button
@@ -143,7 +143,7 @@ export default function StakingPage() {
             {escrow.stakes.map((s) => (
               <li key={s.agentId} className="surface">
                 <p>
-                  Agent {s.agentId} — {formatEth(s.eth)} ETH staked
+                  Agent {s.agentId} — {formatEth(s.eth)} staked
                 </p>
                 <label className="field">
                   <span>Amount (ETH) — unstake or add stake</span>

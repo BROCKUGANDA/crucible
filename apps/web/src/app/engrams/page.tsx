@@ -5,6 +5,7 @@ import { Chrome } from "@/components/Chrome";
 import { EngramGlyph } from "@/components/Glyphs";
 import { useSnapshot } from "@/lib/useSnapshot";
 import { API_BASE } from "@/lib/apiBase";
+import { formatDuration } from "@/lib/forge";
 import { useAccount } from "wagmi";
 
 const COMMON = ["Forgeborn", "Quenched", "Tempered", "Anvil-marked"];
@@ -53,12 +54,6 @@ function eventState(now: number): { active: boolean; name: string; endsIn: numbe
   const endsIn = active ? (24 - hour) * 3600000 - (now % 3600000) : (18 - hour) * 3600000 - (now % 3600000);
   const names = ["Forge Surge", "Anvil Tide", "Quench Window", "Ember Hour"];
   return { active, name: names[day % names.length]!, endsIn: Math.max(0, endsIn) };
-}
-
-function formatMs(ms: number): string {
-  const h = Math.floor(ms / 3600000);
-  const m = Math.floor((ms % 3600000) / 60000);
-  return h > 0 ? `${h}h ${m}m` : `${m}m`;
 }
 
 interface Entitlement {
@@ -155,16 +150,20 @@ export default function EngramsPage() {
   const ev = eventState(now);
   const settled = (snapshot.data?.trials ?? []).filter((t: any) => t.status === "settled");
   const knownTokenIds = new Set(entitlements.map((e) => e.tokenId));
-  const newEngrams = settled.filter((t: any) => !knownTokenIds.has(t.id));
-  if (newEngrams.length > 0 && typeof window !== "undefined") {
-    setTimeout(() => {
-      setOpened((prev) => {
-        const held = [...prev];
-        for (const t of newEngrams) if (!held.includes(t.id)) held.push(t.id);
-        return held;
-      });
-    }, 0);
-  }
+  const newEngramIds = settled.filter((t: any) => !knownTokenIds.has(t.id)).map((t: any) => t.id);
+  // This used to run during render behind a setTimeout(…, 0): a state update scheduled
+  // from the render path itself, re-scheduled on every pass. The effect runs after commit
+  // and is keyed on the serialized ids, so it fires once per newly settled trial.
+  const newEngramKey = newEngramIds.join(",");
+  useEffect(() => {
+    if (!newEngramKey) return;
+    setOpened((prev) => {
+      const held = [...prev];
+      for (const id of newEngramIds) if (!held.includes(id)) held.push(id);
+      return held;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the serialized ids are the key
+  }, [newEngramKey]);
 
   const ownedIds = [...new Set([...entitlements.map((e) => e.tokenId), ...opened])];
   const heldEngrams = ownedIds
@@ -192,8 +191,8 @@ export default function EngramsPage() {
         <h2 className="section-title section-title--tight">{ev.name}</h2>
         <p className="hint">
           {ev.active
-            ? `Surge active — opens are upgraded (common→rare, rare→legendary). Ends in ${formatMs(ev.endsIn)}.`
-            : `Surge begins in ${formatMs(ev.endsIn)}. Hold engrams to roll during the surge.`}
+            ? `Surge active — opens are upgraded (common→rare, rare→legendary). Ends in ${formatDuration(Math.ceil(ev.endsIn / 1000))}.`
+            : `Surge begins in ${formatDuration(Math.ceil(ev.endsIn / 1000))}. Hold engrams to roll during the surge.`}
         </p>
       </div>
 
