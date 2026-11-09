@@ -242,6 +242,14 @@ export function createCampaignRoutes(config: CampaignsConfig = {}): Hono {
       );
     }
 
+    const maxClaimsPerWallet = body.maxClaimsPerWallet ?? 1;
+    if (!Number.isInteger(maxClaimsPerWallet) || maxClaimsPerWallet < 1) {
+      return c.json(
+        { error: "maxClaimsPerWallet must be a positive integer", code: "bad-request" },
+        400,
+      );
+    }
+
     // Max budget check
     if (config.maxBudgetWei && totalBudget > config.maxBudgetWei) {
       return c.json(
@@ -272,7 +280,7 @@ export function createCampaignRoutes(config: CampaignsConfig = {}): Hono {
         assetContract: body.assetContract,
         totalBudget,
         perClaimAmount,
-        maxClaimsPerWallet: body.maxClaimsPerWallet || 1,
+        maxClaimsPerWallet,
         startsAt: body.startsAt,
         endsAt: body.endsAt,
         eligibility: body.eligibility,
@@ -451,6 +459,109 @@ export function createCampaignRoutes(config: CampaignsConfig = {}): Hono {
       },
       201,
     );
+  });
+
+  /**
+   * Complete a pending claim with the on-chain transfer's transaction hash.
+   *
+   * Sponsor-gated: the sponsor executes (or coordinates) the transfer and the
+   * route records it. Completion is the only path that moves pending budget to
+   * completed — without it every claim would reserve budget forever and a
+   * campaign would deplete having paid nothing.
+   */
+  app.post("/:campaignId/claims/:claimId/complete", async (c) => {
+    const session = verifiedSessionFromContext(c);
+    if (!session) {
+      return c.json({ error: "unauthenticated", code: "no-credential" }, 401);
+    }
+
+    const campaignId = c.req.param("campaignId");
+    const campaign = distributor.getCampaign(campaignId);
+    if (!campaign) {
+      return c.json({ error: "Campaign not found", code: "not_found" }, 404);
+    }
+    if (campaign.sponsor.toLowerCase() !== session.payload.address.toLowerCase()) {
+      return c.json({ error: "Only the campaign sponsor can complete claims", code: "forbidden" }, 403);
+    }
+
+    let body: { txHash?: unknown } = {};
+    try {
+      body = (await c.req.json()) as typeof body;
+    } catch {
+      return c.json({ error: "invalid body", code: "bad-request" }, 400);
+    }
+    const txHash = typeof body.txHash === "string" ? body.txHash.trim() : "";
+    if (!/^0x[0-9a-fA-F]{64}$/.test(txHash)) {
+      return c.json(
+        { error: "txHash must be a 0x-prefixed 32-byte transaction hash", code: "bad-request" },
+        400,
+      );
+    }
+
+    const claimId = c.req.param("claimId");
+    if (!distributor.listClaims(campaignId).some((claim) => claim.claimId === claimId)) {
+      return c.json({ error: "Claim not found", code: "not_found" }, 404);
+    }
+
+    const result = distributor.completeClaim(claimId, txHash);
+    if ("error" in result) {
+      const status = result.code === "claim_not_found" ? 404 : 400;
+      return c.json(result, status);
+    }
+    return c.json({
+      claim: {
+        claimId: result.claimId,
+        status: result.status,
+        txHash: result.txHash,
+        completedAt: result.completedAt,
+      },
+    });
+  });
+
+  /**
+   * Reject a pending claim. Sponsor-gated; releasing the reservation is the
+   * point — the budget returns to remaining rather than dying in pending.
+   */
+  app.post("/:campaignId/claims/:claimId/reject", async (c) => {
+    const session = verifiedSessionFromContext(c);
+    if (!session) {
+      return c.json({ error: "unauthenticated", code: "no-credential" }, 401);
+    }
+
+    const campaignId = c.req.param("campaignId");
+    const campaign = distributor.getCampaign(campaignId);
+    if (!campaign) {
+      return c.json({ error: "Campaign not found", code: "not_found" }, 404);
+    }
+    if (campaign.sponsor.toLowerCase() !== session.payload.address.toLowerCase()) {
+      return c.json({ error: "Only the campaign sponsor can reject claims", code: "forbidden" }, 403);
+    }
+
+    let body: { reason?: unknown } = {};
+    try {
+      body = (await c.req.json()) as typeof body;
+    } catch {
+      body = {};
+    }
+    const reason = typeof body.reason === "string" && body.reason.trim() ? body.reason.trim() : "rejected by sponsor";
+
+    const claimId = c.req.param("claimId");
+    if (!distributor.listClaims(campaignId).some((claim) => claim.claimId === claimId)) {
+      return c.json({ error: "Claim not found", code: "not_found" }, 404);
+    }
+
+    const result = distributor.rejectClaim(claimId, reason);
+    if ("error" in result) {
+      const status = result.code === "claim_not_found" ? 404 : 400;
+      return c.json(result, status);
+    }
+    return c.json({
+      claim: {
+        claimId: result.claimId,
+        status: result.status,
+        completedAt: result.completedAt,
+      },
+    });
   });
 
   /**

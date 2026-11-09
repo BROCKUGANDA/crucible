@@ -2548,6 +2548,10 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
     app.route(
       "/campaigns",
       createCampaignRoutes({
+        // Any authenticated wallet may create a campaign, so the advertised
+        // budget needs a ceiling: without one a session can publish an
+        // authoritative-looking "remaining: X wei" backed by nothing.
+        maxBudgetWei: 10n * 10n ** 18n,
         ...opts.campaigns,
         // Eligibility signals are derived here, from the same authoritative
         // state the identity score reads — a caller's body never supplies one.

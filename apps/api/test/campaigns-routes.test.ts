@@ -157,3 +157,97 @@ describe("campaign routes: eligibility signals are server-derived", () => {
     expect(ok.status).toBe(201);
   });
 });
+
+describe("campaign claim completion (audit MONEY-M3)", () => {
+  const TX_HASH = "0x" + "ab".repeat(32);
+
+  async function claimOnce(app: Hono, campaignId: string): Promise<string> {
+    const res = await app.request(`/${campaignId}/claim`, {
+      method: "POST",
+      headers: sessionHeaders(WALLET),
+      body: JSON.stringify({}),
+    });
+    expect(res.status).toBe(201);
+    return ((await res.json()) as { claim: { claimId: string } }).claim.claimId;
+  }
+
+  function complete(app: Hono, campaignId: string, claimId: string, address: string, txHash = TX_HASH) {
+    return app.request(`/${campaignId}/claims/${claimId}/complete`, {
+      method: "POST",
+      headers: sessionHeaders(address),
+      body: JSON.stringify({ txHash }),
+    });
+  }
+
+  it("the sponsor completes a pending claim with a transaction hash", async () => {
+    const { app, campaignId, distributor } = harness();
+    const claimId = await claimOnce(app, campaignId);
+    expect(distributor.getBudget(campaignId)?.pending).toBe(10n);
+
+    const res = await complete(app, campaignId, claimId, CAMPAIGN_SPONSOR);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.claim.status).toBe("completed");
+    expect(body.claim.txHash).toBe(TX_HASH);
+
+    const budget = distributor.getBudget(campaignId)!;
+    expect(budget.pending).toBe(0n);
+    expect(budget.completed).toBe(10n);
+  });
+
+  it("rejecting a claim releases its budget", async () => {
+    const { app, campaignId, distributor } = harness();
+    const claimId = await claimOnce(app, campaignId);
+
+    const res = await app.request(`/${campaignId}/claims/${claimId}/reject`, {
+      method: "POST",
+      headers: sessionHeaders(CAMPAIGN_SPONSOR),
+      body: JSON.stringify({ reason: "failed verification" }),
+    });
+    expect(res.status).toBe(200);
+    expect((await res.json()).claim.status).toBe("rejected");
+
+    const budget = distributor.getBudget(campaignId)!;
+    expect(budget.pending).toBe(0n);
+    expect(budget.remaining).toBe(1000n);
+  });
+
+  it("only the campaign sponsor can complete or reject a claim", async () => {
+    const { app, campaignId } = harness();
+    const claimId = await claimOnce(app, campaignId);
+
+    const completed = await complete(app, campaignId, claimId, WALLET);
+    expect(completed.status).toBe(403);
+
+    const rejected = await app.request(`/${campaignId}/claims/${claimId}/reject`, {
+      method: "POST",
+      headers: sessionHeaders(WALLET),
+      body: JSON.stringify({}),
+    });
+    expect(rejected.status).toBe(403);
+  });
+
+  it("a claim id from another campaign is not found", async () => {
+    const first = harness();
+    const second = harness();
+    const foreignClaim = await claimOnce(second.app, second.campaignId);
+
+    const res = await complete(first.app, first.campaignId, foreignClaim, CAMPAIGN_SPONSOR);
+    expect(res.status).toBe(404);
+  });
+
+  it("rejects a malformed transaction hash and a claim that is no longer pending", async () => {
+    const { app, campaignId } = harness();
+    const claimId = await claimOnce(app, campaignId);
+
+    const malformed = await complete(app, campaignId, claimId, CAMPAIGN_SPONSOR, "0x1234");
+    expect(malformed.status).toBe(400);
+
+    const first = await complete(app, campaignId, claimId, CAMPAIGN_SPONSOR);
+    expect(first.status).toBe(200);
+
+    const second = await complete(app, campaignId, claimId, CAMPAIGN_SPONSOR);
+    expect(second.status).toBe(400);
+    expect((await second.json()).code).toBe("claim_not_pending");
+  });
+});
