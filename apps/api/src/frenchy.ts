@@ -331,6 +331,14 @@ export function createFrenchyRoutes(config: FrenchyConfig | null, deps: FrenchyD
   const app = new Hono();
   const getModel = deps.getModel ?? (() => emptyReadModel());
 
+  // The status probe the web widget makes before drawing any control. A real status
+  // route, because the old probe answered itself with a 400: the widget POSTed an empty
+  // body and read "prompt is required" as "configured", which worked but put a 400 in
+  // every visitor's console on every page load. 200 with a brain, 503 without.
+  app.get("/status", (c) => {
+    return c.json({ ok: Boolean(config) }, config ? 200 : 503);
+  });
+
   app.post("/", async (c) => {
     if (!config) {
       return c.json({ error: "Frenchy's brain is not configured" }, 503);

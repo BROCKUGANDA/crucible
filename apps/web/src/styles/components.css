@@ -560,6 +560,57 @@
   background: var(--bg2);
 }
 
+/* Settings that ride in the More panel: the voice and sound switches are controls, not
+   destinations, so they get their own row above the links instead of three more
+   buttons on the bar itself. */
+.chrome__more-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 4px 4px 10px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid var(--bg2);
+}
+
+/* ── the wallet chooser (no-WalletConnect configuration) ────── */
+
+/* Same disclosure mechanics as chrome__more, wearing the primary button: one Connect
+   on the bar, and the wallets this browser actually exposes listed in the panel. */
+.wallet-menu {
+  position: relative;
+}
+
+.wallet-menu__summary {
+  list-style: none;
+  cursor: pointer;
+}
+
+.wallet-menu__summary::-webkit-details-marker {
+  display: none;
+}
+
+.wallet-menu .chrome__more-panel button {
+  display: block;
+  width: 100%;
+  padding: 9px 12px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--dim);
+  font: inherit;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.wallet-menu .chrome__more-panel button:hover,
+.wallet-menu .chrome__more-panel button:focus-visible {
+  color: var(--text);
+  background: var(--bg2);
+  outline: none;
+}
+
 /* ── network switcher ───────────────────────────────────────── */
 
 /* The header's environment chip is the summary of a disclosure, and the panel lists the
@@ -997,11 +1048,12 @@
 
 /* ── Frenchy side-chat widget ───────────────────────────────── */
 
-/* The widget owns its own corner: fixed, bottom-right, above the chrome but below
-   any modal. It never moves with the page scroll. */
+/* The widget owns its own corner: fixed, bottom-right, above the page but below any
+   modal scrim (the trigger at --z-overlay, the open panel raised with it). It never
+   moves with the page scroll. */
 .frenchy-widget {
   position: fixed;
-  z-index: var(--z-modal);
+  z-index: var(--z-overlay);
   bottom: var(--s-5);
   right: var(--s-5);
   font-family: var(--font-display);
@@ -1010,20 +1062,54 @@
   color: var(--text);
 }
 
+/* Trigger and its dismissal sit together: the pill opens the chat, the small × sends
+   the whole widget away for this visit (session storage), because a floating pill is
+   allowed to overlap dense tables exactly once — after that it is the visitor's call. */
+.frenchy-widget__cluster {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.frenchy-widget__dismiss {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--faint);
+  font: inherit;
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: color var(--t-tap), border-color var(--t-tap);
+}
+
+.frenchy-widget__dismiss:hover,
+.frenchy-widget__dismiss:focus-visible {
+  color: var(--text);
+  border-color: var(--bg2);
+  outline: none;
+}
+
 /* The closed state is a single floating button. */
 .frenchy-widget__trigger {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  min-height: 44px;
-  padding: 12px 16px;
+  min-height: 40px;
+  padding: 9px 14px;
   border-radius: 999px;
   border: 1px solid var(--bg2);
   background: var(--bg1);
   color: var(--text);
   font-family: var(--font-display);
   font-weight: 600;
-  font-size: 0.9rem;
+  font-size: 0.85rem;
   cursor: pointer;
   box-shadow: 0 20px 40px rgba(0, 0, 0, 0.45), 0 0 0 1px color-mix(in srgb, var(--ember) 14%, transparent);
   transition:

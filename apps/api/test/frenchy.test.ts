@@ -66,3 +66,26 @@ describe("Frenchy's brain context", () => {
     expect(users[1]).toContain("Where is my ETH?");
   });
 });
+
+describe("GET /frenchy/status", () => {
+  it("answers 200 when a brain is configured, without calling it", async () => {
+    const brain = fakeBrain();
+    const app = createFrenchyRoutes({
+      llm: { apiKey: "test", model: "test-model", baseUrl: "https://llm.test/v1", fetchImpl: brain.fetchImpl },
+    });
+
+    const res = await app.request("/status");
+    expect(res.status).toBe(200);
+    expect((await res.json()).ok).toBe(true);
+    // The status probe exists so the widget can ask for nothing: a configuration
+    // question that reached the provider would cost a credit per page load.
+    expect(brain.calls).toHaveLength(0);
+  });
+
+  it("answers 503 when there is no brain", async () => {
+    const app = createFrenchyRoutes(null);
+    const res = await app.request("/status");
+    expect(res.status).toBe(503);
+    expect((await res.json()).ok).toBe(false);
+  });
+});

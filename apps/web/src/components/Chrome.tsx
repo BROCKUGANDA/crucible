@@ -53,6 +53,8 @@ const NAV_MORE: NavItem[] = [
   { href: "/tour", label: "Tour" },
   { href: "/docs", label: "Docs" },
   { href: "/scorecards", label: "Scorecards" },
+  { href: "/ghost", label: "Ghost runs" },
+  { href: "/showcase", label: "Showcase" },
 ];
 
 export function Chrome({ children }: { children: ReactNode }) {
@@ -109,12 +111,18 @@ export function Chrome({ children }: { children: ReactNode }) {
 
         <div className="chrome__actions">
           {/* Secondary routes stay reachable without making every label fight for the
-              same row. A disclosure is one keyboard stop, and it closes on navigation. */}
+              same row. A disclosure is one keyboard stop, and it closes on navigation.
+              The voice and sound switches live here too: they are settings, not
+              destinations, and they were half the controls on one bar. */}
           <details className="chrome__more" ref={moreRef}>
             <summary className="chrome__more-summary">
               More <span aria-hidden="true">▾</span>
             </summary>
             <div className="chrome__more-panel">
+              <div className="chrome__more-controls">
+                <VoiceControl />
+                <PayoffSound />
+              </div>
               {visibleMore.map((item) => (
                 <Link
                   key={item.href}
@@ -138,8 +146,6 @@ export function Chrome({ children }: { children: ReactNode }) {
             <span aria-hidden="true">☰</span>
           </button>
 
-          <VoiceControl />
-          <PayoffSound />
           <SponsorshipBadge />
           <WalletButton />
         </div>
@@ -178,20 +184,11 @@ export function Chrome({ children }: { children: ReactNode }) {
         <span>Forged at the Colosseum Crypto World&apos;s Fair.</span>
         <span>Alloy is non-transferable. Trust should be too: reputation you can only earn.</span>
         {/* Kept here, not in the hero: /claims is where a reader checks a promise against what
-            enforces it, and it must stay reachable now that the hero speaks in plain words. */}
+            enforces it, and it must stay reachable now that the hero speaks in plain words.
+            /verify keeps its own door here too — route-coverage.test.ts asserts it. Every
+            other door moved into the More menu: eight footer links was a sitemap, not a footer. */}
         <Link href="/claims">What is enforced, promise by promise</Link>
-        {/* The receipt checker had no door: it existed, the sitemap listed it, and no page
-            linked to it — so the one artifact an integrator is told to check could only be
-            reached by guessing the URL. It belongs beside the promise list, in the same
-            plain words, because both answer "can I check this myself?". */}
         <Link href="/verify">Check a receipt yourself</Link>
-        {/* Orphan routes — pages exist but had no inbound link, so a visitor could only reach
-            them by guessing the URL. Each door below is the page's own job title in plain
-            words, matching how /claims and /verify are linked. /trials stays as an alias
-            beside the nav so a reader scanning the footer still finds the board. */}
-        <Link href="/ghost">Start a ghost run on a fork</Link>
-        <Link href="/showcase">House bouts on screen</Link>
-        <Link href="/trials">Trials board</Link>
         <SeedPhrasePromise />
       </footer>
     </div>
@@ -273,23 +270,8 @@ export function TxLink({ hash }: { hash: string }) {
   );
 }
 
-/** Route error boundary in the forge voice. Never a white screen. */
-export function Crack({ message }: { message: string }) {
-  return (
-    <div className="surface void-panel">
-      <h2 className="void-panel__title" data-tone="sear">
-        The crucible cracked.
-      </h2>
-      <p className="void-panel__body">
-        Something broke on our side, not yours. The heat is contained.
-      </p>
-      <pre className="mono void-panel__trace">{message}</pre>
-      <button className="btn btn-primary" onClick={() => location.reload()}>
-        Re-ignite
-      </button>
-    </div>
-  );
-}
+/** Route error panel lives in `components/Crack.tsx`: the crash boundary must be able to
+ * import it without importing the wallet graph this file carries. */
 
 export function Quenching({ label }: { label: string }) {
   return (
