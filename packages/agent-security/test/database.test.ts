@@ -12,7 +12,7 @@
 
 import { describe, it, expect, afterEach } from 'vitest';
 import {
-  pool,
+  getPool,
   getClient,
   query,
   withTransaction,
@@ -28,7 +28,7 @@ const testLive = it.skipIf(!live.ok);
 
 describe('database module', () => {
   it('exports all expected functions', () => {
-    expect(typeof pool).toBe('object');
+    expect(typeof getPool).toBe('function');
     expect(typeof getClient).toBe('function');
     expect(typeof query).toBe('function');
     expect(typeof withTransaction).toBe('function');

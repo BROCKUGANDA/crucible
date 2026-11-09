@@ -17,32 +17,34 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-const DATABASE_URL = (() => {
+/**
+ * Resolve the connection string, refusing the known-default localhost pair in production.
+ *
+ * This runs on first *use*, not at import. It used to be a top-level IIFE, which meant merely
+ * importing `@crucible/agent-security` — the way `auth.ts` imports the Redis nonce store — created
+ * a Postgres pool and threw in any production process without `DATABASE_URL`. The deployed API
+ * crash-looped on `DATABASE_URL is required in production` while using no Postgres feature at all:
+ * the barrel re-exports this module, so an unused pool was a boot-time landmine. A connection pool
+ * is a resource a process opens when it needs it, the same lazy shape `cache.ts` uses for Redis.
+ * The safety intent is unchanged — a production query still refuses the localhost default — it
+ * just fires when somebody actually asks the database for something.
+ */
+function resolveDatabaseUrl(): string {
   const configured = process.env.DATABASE_URL?.trim();
   if (configured) return configured;
   if (process.env.NODE_ENV === "production") {
-    // The localhost default carries a known user/password pair; a production
-    // process that silently dials it could trust any Postgres that answers.
     throw new Error(
       "DATABASE_URL is required in production; refusing the localhost crucible:crucible default",
     );
   }
   return "postgresql://crucible:crucible@localhost:5432/crucible";
-})();
+}
 
-const pool = new Pool({
-  connectionString: DATABASE_URL,
-  max: 20,
-  idleTimeoutMillis: 30_000,
-  connectionTimeoutMillis: 10_000,
-});
-
-export { pool };
-
+let pool: Pool | null = null;
 let closed = false;
 
 /**
- * The pool, unless this process has shut its database down.
+ * The pool, created on first use and refused after shutdown.
  *
  * `pg` answers a use after `end()` with "Cannot use a pool after calling end on the pool"
  * and a second `end()` with "Called end on pool more than once". Both were observed in CI,
@@ -51,11 +53,23 @@ let closed = false;
  * only one that had a cause. Refusing with the real reason is the fix: shutdown is
  * idempotent, and use after shutdown says so.
  */
-function activePool(): Pool {
+export function getPool(): Pool {
   if (closed) {
     throw new Error('database pool is closed; this process has shut its database down');
   }
+  if (pool === null) {
+    pool = new Pool({
+      connectionString: resolveDatabaseUrl(),
+      max: 20,
+      idleTimeoutMillis: 30_000,
+      connectionTimeoutMillis: 10_000,
+    });
+  }
   return pool;
+}
+
+function activePool(): Pool {
+  return getPool();
 }
 
 /**
@@ -231,7 +245,9 @@ function splitSqlStatements(sql: string): string[] {
 export async function closePool(): Promise<void> {
   if (closed) return;
   closed = true;
-  await pool.end();
+  // A pool that was never opened has nothing to end — and `pg` lets a never-connected pool end
+  // cleanly anyway, so this only guards the null. Shutdown must not require the database to exist.
+  if (pool !== null) await pool.end();
 }
 
 // Health check: verify database connectivity. A closed pool is not healthy, and the
