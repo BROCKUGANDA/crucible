@@ -45,13 +45,14 @@ Open ──claim──> Assigned ──submitRun──> Judging ──fileBreak�
      keeper 48, datasets 50, eval 53, argus 45, site-index 23, warden 24, funder 24, crypto 12, frame 12,
      registry 12 — and `npm test` runs all of them plus the
    Foundry suite; the contracts half needs Foundry (`forge test`), which the seed image runs on a
-   machine without a local forge. The edge suite (`npm run test:edge`, 15 tests over the RPC method
+   machine without a local forge. The edge suite (`npm run test:edge`, 21 tests over the RPC method
    gate, its live probe and the installer that deploys them) is not a workspace, so it rides
-   `npm run verify:all` and CI as its own step. Counted per workspace on 2026-10-29: **2423 passed,
-    6 skipped**
-    across the eighteen TypeScript workspaces, **15 passed** at the edge and **329 passed, 4 skipped**
-    in Foundry — 2767
-    passing, 2777 counted. Run `npm run verify:all` to reproduce them.
+   `npm run verify:all` and CI as its own step. The per-workspace breakdown above was enumerated on
+   2026-10-29; on 2026-11-09 (after the audit slices added 43 regression tests) `npm run verify:all`
+   is green end to end — typecheck, every TypeScript workspace, the edge's **21 passed**, and
+   Foundry unchanged at **329 passed, 4 skipped** (no contract files changed in that pass). Treat
+   the per-workspace figures as the last fully enumerated count, and `npm run verify:all` as the
+   reproduction.
 4. Replay the whole loop against a running chain — register, post, claim,
    runner-signed runs, a break that Argus slashes, and the permissionless quench
    after the window really closes — with `crucible-contracts/script/GoldenPath.s.sol`:
