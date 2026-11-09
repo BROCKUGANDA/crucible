@@ -28,6 +28,13 @@ import {
  * The UI needs exact ETH values for money; a float would be the wrong call.
  */
 
+export interface ApiTrialDispute {
+  /** lowercased seat addresses that sealed, in the order the vote logs arrived */
+  committed: string[];
+  /** lowercased seat addresses that unsealed, in the order the vote logs arrived */
+  revealed: string[];
+}
+
 export interface ApiTrial {
   id: number;
   sponsor: string;
@@ -55,6 +62,23 @@ export interface ApiTrial {
   breakWindowEndsAt: number | null;
   /** true when the sponsor has not disclosed the CID text yet */
   awaitingDisclosure: boolean;
+  /**
+   * The block `VerdictFinalized` was seen in, replaced by that block's timestamp on hydrate.
+   * Null until the trial settles. This is the anchor for per-agent decay: age from here
+   * is the age of the outcome, not of the submission.
+   */
+  settledAt: number | null;
+  /**
+   * When a break opened the dispute, in seconds (hydrated) — null when no break was filed.
+   */
+  disputeOpenedAt: number | null;
+  /**
+   * What the vote logs say, for a trial a skeptic attacked. Null when no break was filed —
+   * there was never a vote to count, which is a different answer from "no votes yet".
+   * The seat sets are named by the logs themselves; nothing here can name a seat the
+   * chain did not publish.
+   */
+  dispute: ApiTrialDispute | null;
 }
 
 /**
@@ -169,6 +193,16 @@ export function weiToEth(wei: bigint, maxDecimals = MAX_DECIMALS): string {
 
 export function toApiTrial(row: TrialRow, model: ReadModel): ApiTrial {
   const agent = row.agentId !== null ? model.agents.get(row.agentId) : undefined;
+  // The seat lists are copies, not the projection's own arrays: a snapshot may hand
+  // them to a serializer or a caller who mutates them, and neither may reach back
+  // into the read model the next tick is built from.
+  const dispute =
+    row.breakSkeptic !== null || model.disputes.has(row.id)
+      ? {
+          committed: [...(model.disputes.get(row.id)?.committed ?? [])],
+          revealed: [...(model.disputes.get(row.id)?.revealed ?? [])],
+        }
+      : null;
   return {
     id: row.id,
     sponsor: row.sponsor,
@@ -193,6 +227,9 @@ export function toApiTrial(row: TrialRow, model: ReadModel): ApiTrial {
     deadlineAt: deadlineEndsAt(row),
     breakWindowEndsAt: breakWindowEndsAt(row),
     awaitingDisclosure: row.specCID === null || row.testsCID === null,
+    settledAt: row.settledAt,
+    disputeOpenedAt: row.disputeOpenedAt,
+    dispute,
   };
 }
 
