@@ -17,7 +17,18 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-const DATABASE_URL = process.env.DATABASE_URL ?? 'postgresql://crucible:crucible@localhost:5432/crucible';
+const DATABASE_URL = (() => {
+  const configured = process.env.DATABASE_URL?.trim();
+  if (configured) return configured;
+  if (process.env.NODE_ENV === "production") {
+    // The localhost default carries a known user/password pair; a production
+    // process that silently dials it could trust any Postgres that answers.
+    throw new Error(
+      "DATABASE_URL is required in production; refusing the localhost crucible:crucible default",
+    );
+  }
+  return "postgresql://crucible:crucible@localhost:5432/crucible";
+})();
 
 const pool = new Pool({
   connectionString: DATABASE_URL,

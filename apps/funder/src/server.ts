@@ -166,17 +166,34 @@ app.post("/allocate", async (c) => {
   let transferId: string | null = null;
   let reason: string | null = null;
   let ok = false;
+  let holdRoom = false;
   try {
     const result = await transferUsdc(cfg, wallet, estimate.estimated.toString());
     transferId = result.transferId;
-    ok = result.status === "settled" || result.status === null; // null = no status field, treat as accepted
-    granted = estimate.estimated;
-    if (!ok) reason = `transfer returned status ${result.status ?? "unknown"}`;
+    const settled = result.status === "settled" || result.status === null; // null = no status field, treat as accepted
+    ok = settled;
+    granted = settled ? estimate.estimated : 0;
+    if (!settled) {
+      // A status we do not recognise (e.g. "pending") may still complete on-chain.
+      // The room stays consumed: an unknown outcome is not evidence that nothing
+      // left the wallet.
+      holdRoom = result.status !== "failed" && result.status !== "rejected";
+      reason = `transfer returned status ${result.status ?? "unknown"}${holdRoom ? " (room held conservatively)" : ""}`;
+    }
   } catch (err) {
     reason = err instanceof Error ? err.message : String(err);
   }
 
-  caps.settle(estimate.reservationId, { requested, granted, ok, reason, risk });
+  caps.settle(estimate.reservationId, {
+    requested,
+    granted,
+    ok,
+    reason,
+    risk,
+    wallet,
+    estimated: estimate.estimated,
+    holdRoom,
+  });
 
   const res: AllocateResponse = {
     ok,

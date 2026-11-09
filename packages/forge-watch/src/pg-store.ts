@@ -138,8 +138,13 @@ export class PgEventStore implements EventStore {
       );
       if (inserted.rows.length > 0) return true;
     } catch (err) {
-      // Outbox table may not exist in older deployments — fall back.
+      // Older deployments may lack the outbox table. Degrading is allowed, but
+      // not silently: the durability guarantee this method exists for is off,
+      // and the operator has to be able to see that.
       if (String((err as Error)?.message ?? "").includes("forge_watch_outbox")) {
+        console.warn(
+          "[forge-watch] outbox table missing; event persisted without an outbox row (durability degraded)",
+        );
         return this.append(event);
       }
       throw err;

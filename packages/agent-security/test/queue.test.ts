@@ -15,6 +15,7 @@ import {
   addJob,
   getAllQueues,
   closeQueues,
+  redisOptionsFromUrl,
   QUEUE_NAMES,
 } from '../src/queue.js';
 import { probeRedis, skipBanner } from './support/live.js';
@@ -38,6 +39,24 @@ describe('queue module', () => {
     expect(typeof getAllQueues).toBe('function');
     expect(typeof closeQueues).toBe('function');
     expect(typeof QUEUE_NAMES).toBe('object');
+  });
+
+  it('parses REDIS_URL into host, port, credentials and db', () => {
+    // ioredis ignores a `{ url }` options object, so REDIS_URL must be parsed
+    // explicitly or every queue silently dials 127.0.0.1.
+    expect(redisOptionsFromUrl('redis://redis.internal:6380/3')).toEqual({
+      host: 'redis.internal',
+      port: 6380,
+      db: 3,
+    });
+    expect(redisOptionsFromUrl('redis://user:pass@cache:6379/0')).toEqual({
+      host: 'cache',
+      port: 6379,
+      username: 'user',
+      password: 'pass',
+      db: 0,
+    });
+    expect(redisOptionsFromUrl('redis://localhost')).toEqual({ host: 'localhost', port: 6379 });
   });
 
   it('QUEUE_NAMES has expected values', () => {

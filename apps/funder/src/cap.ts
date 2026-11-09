@@ -32,6 +32,8 @@ export const RESERVATION_TTL_MS = 120_000;
 
 /** One recorded allocation. */
 export interface AllocationRecord {
+  /** Monotonic sequence for cursor pagination over the ledger; per process (in-memory). */
+  id: number;
   /** Lowercased wallet address. */
   wallet: string;
   /** ETH requested. */
@@ -44,6 +46,12 @@ export interface AllocationRecord {
   at: string;
   /** Whether the grant succeeded. */
   ok: boolean;
+  /**
+   * True when the transfer's outcome is unknown but the money may still have
+   * left. The room stays consumed until the day rolls over — an unrecognised
+   * status is not evidence that nothing was spent.
+   */
+  holdRoom?: boolean;
   /** Failure reason when ok is false. */
   reason?: string | null;
   /**
@@ -103,8 +111,8 @@ export class CapTracker {
   private walletToday(wallet: string): number {
     const d = this.today();
     const granted = this.allocations
-      .filter((a) => a.wallet === wallet && a.at.startsWith(d) && a.ok)
-      .reduce((sum, a) => sum + a.granted, 0);
+      .filter((a) => a.wallet === wallet && a.at.startsWith(d) && (a.ok || a.holdRoom))
+      .reduce((sum, a) => sum + (a.ok ? a.granted : a.estimated), 0);
     return granted + this.reservedToday(wallet);
   }
 
@@ -112,8 +120,8 @@ export class CapTracker {
   private allToday(): number {
     const d = this.today();
     const granted = this.allocations
-      .filter((a) => a.at.startsWith(d) && a.ok)
-      .reduce((sum, a) => sum + a.granted, 0);
+      .filter((a) => a.at.startsWith(d) && (a.ok || a.holdRoom))
+      .reduce((sum, a) => sum + (a.ok ? a.granted : a.estimated), 0);
     return granted + this.reservedAllToday();
   }
 
@@ -181,7 +189,10 @@ export class CapTracker {
 
   /**
    * Convert a hold into its audit record. A successful settle keeps the room
-   * consumed (the money left); a failed one frees it.
+   * consumed (the money left); a definitive failure frees it. When the hold has
+   * already expired (the transfer outlived its reservation), the outcome is
+   * still recorded from the caller's wallet and estimate — a real grant must
+   * never be invisible to the ledger.
    */
   settle(
     reservationId: string,
@@ -191,19 +202,29 @@ export class CapTracker {
       ok: boolean;
       reason?: string | null;
       risk?: AllocationRecord["risk"];
+      /** Fallbacks when the hold has been pruned mid-flight. */
+      wallet?: string;
+      estimated?: number;
+      /** Unknown outcome: the money may have left, so the room stays consumed. */
+      holdRoom?: boolean;
     },
   ): void {
     const held = this.reservations.find((r) => r.id === reservationId);
-    if (!held) return;
-    this.reservations = this.reservations.filter((r) => r.id !== reservationId);
+    const wallet = held?.wallet ?? outcome.wallet;
+    if (!wallet) return;
+    const amount = held?.amount ?? outcome.estimated ?? 0;
+    if (held) {
+      this.reservations = this.reservations.filter((r) => r.id !== reservationId);
+    }
     this.record(
-      held.wallet,
+      wallet,
       outcome.requested,
-      held.amount,
+      amount,
       outcome.granted,
       outcome.ok,
       outcome.reason,
       outcome.risk,
+      outcome.holdRoom,
     );
   }
 
@@ -216,8 +237,10 @@ export class CapTracker {
     ok: boolean,
     reason?: string | null,
     risk?: AllocationRecord["risk"],
+    holdRoom?: boolean,
   ): void {
     this.allocations.push({
+      id: this.allocations.length + 1,
       wallet: wallet.toLowerCase(),
       requested,
       estimated,
@@ -225,6 +248,7 @@ export class CapTracker {
       at: new Date(this.now()).toISOString(),
       ok,
       reason,
+      ...(holdRoom ? { holdRoom } : {}),
       ...(risk ? { risk } : {}),
     });
   }

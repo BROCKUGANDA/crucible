@@ -29,11 +29,21 @@ fi
 # process reports `configured:true` and then calls a CLI with no profile.
 [ -n "$key_file" ] || key_file="${CDP_API_KEY_FILE:-}"
 
+# `--plaintext` writes the CDP secret into the CLI's own config file in the
+# container. That is a deliberate trade for the sandbox profile, but it must be
+# opt-in: honour CDP_ALLOW_PLAINTEXT_SECRETS rather than always writing it.
+plaintext_flag=""
+if [ "${CDP_ALLOW_PLAINTEXT_SECRETS:-}" = "1" ]; then
+  plaintext_flag="--plaintext"
+else
+  echo "[funder] CDP_ALLOW_PLAINTEXT_SECRETS is not 1; the CDP profile will not store the secret in plaintext" >&2
+fi
+
 if [ -n "$key_file" ] && [ -f "$key_file" ]; then
-  cdp env "$env_name" --key-file "$key_file" --url "$base_url" --plaintext >/dev/null 2>&1 \
+  cdp env "$env_name" --key-file "$key_file" --url "$base_url" $plaintext_flag >/dev/null 2>&1 \
     || echo "[funder] could not configure CDP from $key_file; money paths will refuse" >&2
 elif [ -n "$key_id" ] && [ -n "$key_secret" ]; then
-  cdp env "$env_name" --key-id "$key_id" --key-secret "$key_secret" --url "$base_url" --plaintext >/dev/null 2>&1 \
+  cdp env "$env_name" --key-id "$key_id" --key-secret "$key_secret" --url "$base_url" $plaintext_flag >/dev/null 2>&1 \
     || echo "[funder] could not configure the CDP profile; money paths will refuse" >&2
 else
   echo "[funder] no CDP credentials in the environment; starting unconfigured" >&2

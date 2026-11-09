@@ -29,7 +29,7 @@
  */
 
 import { existsSync } from "node:fs";
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -411,11 +411,16 @@ async function main() {
           max: 4,
           connectionTimeoutMillis: 5_000,
         });
-        const migration = await readFile(
-          path.join(ROOT, "migrations", "0001_forge_watch_events.sql"),
-          "utf8",
-        );
-        await watchPool.query(migration);
+        // Every migration, in order. Running only 0001 left a fresh database
+        // without forge_watch_outbox, and appendWithOutbox then degraded
+        // silently — the durability the feature exists for was never on.
+        const migrationDir = path.join(ROOT, "migrations");
+        const migrationFiles = (await readdir(migrationDir))
+          .filter((file) => file.endsWith(".sql"))
+          .sort();
+        for (const file of migrationFiles) {
+          await watchPool.query(await readFile(path.join(migrationDir, file), "utf8"));
+        }
         watch = createForgeWatchRuntime({
           persist: true,
           pgExecutor: async (sql, params) => {

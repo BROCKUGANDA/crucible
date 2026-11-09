@@ -138,4 +138,51 @@ describe("CapTracker", () => {
     expect(caps.holds()).toHaveLength(0);
     expect(caps.reserve(w, MAX_PER_ALLOCATION_ETH).ok).toBe(true);
   });
+
+  it("an unknown transfer outcome keeps the room held, not freed", () => {
+    const caps = new CapTracker();
+    const w = "0x1111111111111111111111111111111111111111";
+    const held = caps.reserve(w, MAX_PER_ALLOCATION_ETH);
+    if (!held.ok) throw new Error("reserve failed");
+
+    caps.settle(held.reservationId, {
+      requested: MAX_PER_ALLOCATION_ETH,
+      granted: 0,
+      ok: false,
+      reason: "transfer returned status pending",
+      holdRoom: true,
+      wallet: w,
+      estimated: held.estimated,
+    });
+
+    // The unknown 0.05 counts against the 0.2 per-wallet cap: three more
+    // reservations reach 0.2 exactly and the fourth is refused.
+    expect(caps.reserve(w, MAX_PER_ALLOCATION_ETH).ok).toBe(true);
+    expect(caps.reserve(w, MAX_PER_ALLOCATION_ETH).ok).toBe(true);
+    expect(caps.reserve(w, MAX_PER_ALLOCATION_ETH).ok).toBe(true);
+    expect(caps.reserve(w, MAX_PER_ALLOCATION_ETH).ok).toBe(false);
+  });
+
+  it("records a grant whose reservation expired mid-flight", () => {
+    let nowMs = Date.parse("2026-10-27T00:00:00Z");
+    const caps = new CapTracker({ now: () => nowMs });
+    const w = "0x1111111111111111111111111111111111111111";
+    const held = caps.reserve(w, MAX_PER_ALLOCATION_ETH);
+    if (!held.ok) throw new Error("reserve failed");
+
+    nowMs += 121_000; // the hold is pruned while the transfer is in flight
+    expect(caps.holds()).toHaveLength(0);
+
+    caps.settle(held.reservationId, {
+      requested: MAX_PER_ALLOCATION_ETH,
+      granted: MAX_PER_ALLOCATION_ETH,
+      ok: true,
+      wallet: w,
+      estimated: held.estimated,
+    });
+
+    // The grant is in the ledger even though its reservation is gone.
+    expect(caps.list()).toHaveLength(1);
+    expect(caps.list()[0]!.granted).toBe(MAX_PER_ALLOCATION_ETH);
+  });
 });

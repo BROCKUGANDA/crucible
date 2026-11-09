@@ -11,13 +11,29 @@
  */
 
 import { Queue, Worker, type Job, type QueueOptions, type WorkerOptions } from 'bullmq';
-import { Redis } from 'ioredis';
+import { type RedisOptions } from 'ioredis';
 
 const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
 
-const redisConnection = {
-  url: REDIS_URL,
-};
+/**
+ * ioredis parses a URL only when it is passed as a string or as `host`/`port`
+ * options — `{ url }` is silently ignored and the client dials 127.0.0.1 no
+ * matter what REDIS_URL says. Parse it here so the configured instance is the
+ * one BullMQ connects to.
+ */
+export function redisOptionsFromUrl(raw: string): RedisOptions {
+  const url = new URL(raw);
+  const db = url.pathname && url.pathname !== '/' ? Number(url.pathname.slice(1)) : undefined;
+  return {
+    host: url.hostname || 'localhost',
+    port: url.port ? Number(url.port) : 6379,
+    ...(url.username ? { username: decodeURIComponent(url.username) } : {}),
+    ...(url.password ? { password: decodeURIComponent(url.password) } : {}),
+    ...(db !== undefined && Number.isInteger(db) ? { db } : {}),
+  };
+}
+
+const redisConnection: RedisOptions = redisOptionsFromUrl(REDIS_URL);
 
 const queueOptions: QueueOptions = {
   connection: redisConnection,
