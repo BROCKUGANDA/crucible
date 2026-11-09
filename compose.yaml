@@ -120,6 +120,11 @@ services:
       # sign-in message. Both are configuration rather than something the
       # request may say.
       CHAIN_ID: ${CHAIN_ID:-31337}
+      # Deployment profile (docs/runbooks/profiles.md). The API refuses an unknown name,
+      # refuses demo off chain 31337, and refuses preview/production until their gates
+      # exist. Empty means demo — the profile this repo actually ships.
+      CRUCIBLE_PROFILE: ${CRUCIBLE_PROFILE:-demo}
+      REAL_VALUE_OPERATIONS: ${REAL_VALUE_OPERATIONS:-0}
       AUTH_ORIGIN: ${AUTH_ORIGIN:-}
       # The secret itself is NOT set here: a deployment that has not been
       # given one must get a 503 from the auth routes, not a session signed

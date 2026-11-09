@@ -42,6 +42,7 @@ import { makeReplaySource } from "./replay.js";
 import { dlq } from "./dlq.js";
 import { createPassportSource } from "./passport.js";
 import { resolveSecurity } from "./security.js";
+import { resolveProfile, validateProfile } from "./profile.js";
 
 /**
  * API + indexer in one process.
@@ -340,6 +341,13 @@ function requiredChainId(): number {
 const configuredChainId = requiredChainId();
 const configuredTrialsAddress = trialsAddress;
 
+// The profile gate. `demo` (the default) is allowed only on the local Anvil chain with
+// REAL_VALUE_OPERATIONS=0; preview and production refuse to boot until their gates
+// exist (docs/runbooks/profiles.md). This runs before the chain probe because a
+// misconfigured profile should be refused on configuration, not on a network answer.
+const configuredProfile = resolveProfile(process.env.CRUCIBLE_PROFILE);
+validateProfile(configuredProfile, { chainId: configuredChainId, env: process.env });
+
 async function verifyChainAtBoot(): Promise<void> {
   let liveChainId: number;
   try {
@@ -365,7 +373,7 @@ async function verifyChainAtBoot(): Promise<void> {
 
 await verifyChainAtBoot();
 console.log(
-  `[crucible] chain verified: id ${configuredChainId}, trials at ${configuredTrialsAddress}`,
+  `[crucible] profile ${configuredProfile}: chain verified: id ${configuredChainId}, trials at ${configuredTrialsAddress}`,
 );
 
 const scribe = new Scribe({
