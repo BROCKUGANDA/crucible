@@ -10,7 +10,10 @@ name: crucible
 
 services:
   anvil:
-    image: ghcr.io/foundry-rs/foundry:latest
+    # Pinned by digest, resolved from the registry on 2026-11-09. `:latest` at the chain
+    # boundary is a floating tag: an `up` on a box that pulled yesterday can start a
+    # different anvil than the one the seed asserted. Bump the digest deliberately.
+    image: ghcr.io/foundry-rs/foundry:latest@sha256:3a392c18f9b16e665e932de159fb6fa9ed972c4b4352f2f76a1a8c7ca9b57d39
     entrypoint: ["anvil"]
     # The block cadence is one knob, and it is the args — not a mode name. anvil reads its
     # command line and nothing else, so an ANVIL_MODE variable passed to the container would be
@@ -208,6 +211,9 @@ services:
       DATABASE_URL: ${DATABASE_URL:-}
       # STAMP protocol-ownership domain: disabled unless explicitly enabled.
       STAMP_MODE: ${STAMP_MODE:-disabled}
+      # Comma-separated wallets allowed to operate the STAMP manual-review queue.
+      # Empty closes the queue; a signed-in wallet is not a reviewer.
+      CRUCIBLE_STAMP_REVIEWERS: ${CRUCIBLE_STAMP_REVIEWERS:-}
       # Solana asset intelligence (Tokens API, server-only). Empty = adapter refuses.
       TOKENS_API_KEY: ${TOKENS_API_KEY:-}
       # token.xyz — the OpenAI-compatible exchange that serves Frenchy's brain and the
