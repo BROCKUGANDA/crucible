@@ -5,8 +5,14 @@
  * never touch on-chain financial outcomes, verdicts, payouts, or bonds (ADR-0025).
  */
 
-import type { Job, WorkerOptions } from "bullmq";
-import { createWorker, QUEUE_NAMES, FORGE_WATCH_JOB_DEFAULTS } from "./queue.js";
+import type { Job, Worker, WorkerOptions } from "bullmq";
+import {
+  createWorker,
+  QUEUE_NAMES,
+  FORGE_WATCH_JOB_DEFAULTS,
+  isFinalFailure,
+  routeToDeadLetter,
+} from "./queue.js";
 
 export interface ForgeWatchMonitorJob {
   schemaVersion: number;
@@ -147,6 +153,20 @@ export function registerForgeWatchWorkers(opts?: {
         wopts(1),
       ),
     );
+  }
+
+  // A job that exhausts its retry budget was deleted by `removeOnFail` and was
+  // nowhere queryable. On the final failure, its payload goes to the DLQ.
+  for (const worker of workers as Worker[]) {
+    worker.on("failed", (job, err) => {
+      if (!job) return;
+      const attempts = (job.opts?.attempts ?? FORGE_WATCH_JOB_DEFAULTS.attempts) as number;
+      if (!isFinalFailure(job.attemptsMade, attempts)) return;
+      void routeToDeadLetter("forge-watch", job, err).catch(() => {
+        // The failure that brought us here is already logged by the worker; a
+        // dead letter that cannot be written must not throw from a listener.
+      });
+    });
   }
   return workers;
 }

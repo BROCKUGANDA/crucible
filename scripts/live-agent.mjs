@@ -429,6 +429,47 @@ async function main() {
           },
         });
         console.log("  watch     Forge Watch telemetry enabled (PostgreSQL outbox)");
+
+        // The delivery half of the outbox: claim due rows and enqueue one L0 job per
+        // event. Without the queue the rows stay pending — say so rather than claim a
+        // dispatch that does not happen.
+        if (process.env.REDIS_URL) {
+          const fw = await import(pathToFileURL(fwDist).href);
+          const as = await import(
+            pathToFileURL(path.join(ROOT, "packages/agent-security/dist/index.js")).href
+          );
+          const l0 = as.getQueue("forge-watch-l0");
+          const relay = fw.createOutboxRelay({
+            pgExecutor: async (sql, params) => {
+              const result = await watchPool.query(sql, params);
+              return { rows: result.rows, rowCount: result.rowCount };
+            },
+            dispatch: async (row) => {
+              const event = await watch.store.find(row.eventId);
+              if (!event) throw new Error(`outbox row references unknown event ${row.eventId}`);
+              await l0.add(
+                "monitor",
+                fw.monitorEventJob(event.runId, {
+                  eventId: event.eventId,
+                  sequence: event.sequence,
+                  eventType: event.eventType,
+                  source: event.source,
+                  authorizationDecision: event.authorizationDecision,
+                }),
+              );
+            },
+            onLog: (line) => console.log(`  watch     ${line}`),
+          });
+          const relayTimer = setInterval(() => {
+            relay.drainOnce().catch((error) =>
+              console.error(`  watch     outbox drain failed: ${String(error?.message ?? error)}`),
+            );
+          }, 5_000);
+          relayTimer.unref?.();
+          console.log("  watch     outbox relay on (forge-watch-l0, 5s cadence)");
+        } else {
+          console.log("  watch     outbox relay off (REDIS_URL unset; outbox rows stay pending)");
+        }
       } else {
         if (process.env.NODE_ENV === "production") {
           throw new Error("production telemetry requires FORGE_WATCH_PERSIST=true");

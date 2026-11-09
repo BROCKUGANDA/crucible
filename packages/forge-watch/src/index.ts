@@ -49,3 +49,4 @@ export {
   type MonitorEvent,
   type MonitorJobPayload,
 } from "./dispatch.js";
+export { createOutboxRelay, type OutboxRelay, type OutboxRow, type OutboxRelayOptions } from "./outbox.js";

@@ -151,3 +151,60 @@ export const FORGE_WATCH_JOB_DEFAULTS = {
 };
 
 export type QueueName = typeof QUEUE_NAMES[keyof typeof QUEUE_NAMES];
+
+/**
+ * The dead-letter record for a job that will not be retried again.
+ *
+ * `removeOnFail` only keeps the last N failed jobs in Redis; without a record
+ * on the DLQ, a payload that exhausted its retries was deleted and nowhere
+ * queryable. This is the record that makes the DLQ a mechanism.
+ */
+export interface DeadLetterRecord {
+  source: string;
+  jobId: string | null;
+  name: string;
+  data: unknown;
+  error: string;
+  failedAt: number;
+}
+
+/**
+ * A job has exhausted its budget when the attempt that just failed was the
+ * last one BullMQ will make. `attemptsMade` is incremented before the failure
+ * is reported, so the final failure satisfies `attemptsMade >= attempts`.
+ */
+export function isFinalFailure(
+  attemptsMade: number,
+  attempts: number | undefined,
+  defaultAttempts: number = FORGE_WATCH_JOB_DEFAULTS.attempts,
+): boolean {
+  return attemptsMade >= (attempts ?? defaultAttempts);
+}
+
+export function buildDeadLetterRecord(
+  source: string,
+  job: { id?: string | null; name: string; data: unknown },
+  err: unknown,
+  now: () => number = Date.now,
+): DeadLetterRecord {
+  return {
+    source,
+    jobId: job.id ?? null,
+    name: job.name,
+    data: job.data,
+    error: err instanceof Error ? err.message : String(err),
+    failedAt: now(),
+  };
+}
+
+/** Move an exhausted job into the dead-letter queue. */
+export async function routeToDeadLetter(
+  source: string,
+  job: { id?: string | null; name: string; data: unknown },
+  err: unknown,
+  now: () => number = Date.now,
+): Promise<void> {
+  await addJob(QUEUE_NAMES.FORGE_WATCH_DLQ, 'dead-letter', buildDeadLetterRecord(source, job, err, now), {
+    attempts: 1,
+  });
+}
