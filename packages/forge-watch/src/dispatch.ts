@@ -25,6 +25,21 @@ export function runJobId(runId: string, phase: string): string {
   return `fw:run:${runId}:${phase}`;
 }
 
+/**
+ * The part of an event a monitor needs to make a deterministic judgement.
+ * Carried in the job because the L0 worker has no store access; without it the
+ * worker can only report pass.
+ */
+export interface MonitorEvent {
+  eventId: string;
+  sequence: number;
+  eventType: string;
+  source: string;
+  authorizationDecision?: "allowed" | "denied" | "pending";
+  toolId?: string;
+  permission?: string;
+}
+
 export interface MonitorJobPayload {
   schemaVersion: 1;
   runId: string;
@@ -33,6 +48,8 @@ export interface MonitorJobPayload {
   eventIds?: string[];
   phase: "l0" | "l1" | "l2" | "l3" | "finding-flush";
   enqueuedAt: number;
+  /** The events this job is meant to inspect, in producer order. */
+  events?: MonitorEvent[];
 }
 
 export function monitorJob(
@@ -43,4 +60,20 @@ export function monitorJob(
     enqueuedAt: Date.now(),
     ...payload,
   };
+}
+
+/**
+ * A single-event L0 job carrying everything the worker needs to decide.
+ */
+export function monitorEventJob(
+  runId: string,
+  event: MonitorEvent,
+  phase: MonitorJobPayload["phase"] = "l0",
+): MonitorJobPayload {
+  return monitorJob({
+    runId,
+    eventId: event.eventId,
+    phase,
+    events: [event],
+  });
 }

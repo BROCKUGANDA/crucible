@@ -44,6 +44,8 @@ export {
   eventJobId,
   runJobId,
   monitorJob,
+  monitorEventJob,
   type ForgeWatchQueueLevel,
+  type MonitorEvent,
   type MonitorJobPayload,
 } from "./dispatch.js";
