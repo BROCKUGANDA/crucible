@@ -46,9 +46,13 @@ CREATE TABLE IF NOT EXISTS memberships (
   created_at   BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW()) * 1000)::BIGINT,
   created_by   TEXT NOT NULL,
   revoked_at   BIGINT,
-  expires_at   BIGINT,
-  CONSTRAINT memberships_one_active_per_principal_org UNIQUE (org_id, principal_id) WHERE revoked_at IS NULL AND (expires_at IS NULL OR expires_at > EXTRACT(EPOCH FROM NOW()) * 1000)
+  expires_at   BIGINT
 );
+
+-- One non-revoked membership per principal per org. Expiry is checked at read time by the
+-- RLS policies: a partial index predicate cannot call NOW() (it must be immutable).
+CREATE UNIQUE INDEX IF NOT EXISTS memberships_one_active_per_principal_org
+  ON memberships (org_id, principal_id) WHERE revoked_at IS NULL;
 
 CREATE INDEX IF NOT EXISTS memberships_org_id_idx ON memberships (org_id);
 CREATE INDEX IF NOT EXISTS memberships_principal_id_idx ON memberships (principal_id);
