@@ -79,7 +79,6 @@ import {
   listCampaigns,
   updateCampaign,
   deleteCampaign,
-  __resetForgeStoreForTests,
 } from "@crucible/agent-security";
 
 export function createForgeRoutes(): Hono {
@@ -680,14 +679,6 @@ export function createForgeRoutes(): Hono {
       return c.json({ error: "org_id is required" }, 400);
     }
     return jsonWithBigInt(c, { campaigns: listCampaigns(orgId) });
-  });
-
-  /**
-   * Reset the forge store (testing only).
-   */
-  app.post("/__reset", (c) => {
-    __resetForgeStoreForTests();
-    return c.json({ ok: true });
   });
 
   return app;

@@ -1177,12 +1177,22 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
     let minRewardWei: bigint | null = null;
     let maxRewardWei: bigint | null = null;
     if (minReward !== undefined && minReward !== "") {
-      const v = BigInt(minReward);
+      let v: bigint;
+      try {
+        v = BigInt(minReward);
+      } catch {
+        return c.json({ error: "minRewardWei must be an integer wei amount" }, 400);
+      }
       if (v < 0n) return c.json({ error: "minRewardWei must be non-negative" }, 400);
       minRewardWei = v;
     }
     if (maxReward !== undefined && maxReward !== "") {
-      const v = BigInt(maxReward);
+      let v: bigint;
+      try {
+        v = BigInt(maxReward);
+      } catch {
+        return c.json({ error: "maxRewardWei must be an integer wei amount" }, 400);
+      }
       if (v < 0n) return c.json({ error: "maxRewardWei must be non-negative" }, 400);
       maxRewardWei = v;
     }
@@ -1192,7 +1202,7 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
     const list = snap.trials.filter((t) => {
       if (status && t.status !== status) return false;
       if (sponsor && t.sponsor.toLowerCase() !== sponsor.toLowerCase()) return false;
-      const reward = BigInt(t.rewardEth);
+      const reward = BigInt(t.rewardWei);
       if (minRewardWei !== null && reward < minRewardWei) return false;
       if (maxRewardWei !== null && reward > maxRewardWei) return false;
       if (eligible === "1" || eligible === "true") {

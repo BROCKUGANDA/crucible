@@ -240,8 +240,9 @@ export type TransitionDecision = TransitionAcceptance | TransitionRejection;
  * Rules enforced:
  *   1. The target state must be in TRANSITIONS[current].
  *   2. Terminal states (ARCHIVED, CANCELLED) have no outgoing transitions.
- *   3. Sponsor-gated transitions (create, cancel, edit) require the caller to
- *      be the recorded sponsor.
+ *   3. Every transition is sponsor-gated: the recorded sponsor drives the trial's
+ *      lifecycle, and the check binds to the caller's verified session address,
+ *      never to a request-supplied value.
  *   4. Once a run has started, published revisions cannot change started runs
  *      (enforced by revisioning, not by blocking the transition itself).
  *   5. DISPUTED requires a break to have been filed (chain Challenged).
@@ -274,22 +275,21 @@ export function validateTransition(
     };
   }
 
-  // Sponsor-gated transitions.
-  if (to === "CANCELLED" || to === "DRAFT") {
-    if (!ctx.walletAddress || !ctx.principal) {
-      return {
-        allowed: false,
-        reason: "transition requires SIWE-authenticated sponsor",
-        code: "not-authenticated",
-      };
-    }
-    if (trial.sponsor.toLowerCase() !== ctx.walletAddress.toLowerCase()) {
-      return {
-        allowed: false,
-        reason: `only the trial sponsor (${trial.sponsor}) may ${to === "CANCELLED" ? "cancel" : "return to draft"}`,
-        code: "not-sponsor",
-      };
-    }
+  // Sponsor-gated: every transition. The authorization identity is the caller's
+  // verified session address; chain-gated targets are additionally restricted below.
+  if (!ctx.walletAddress || !ctx.principal) {
+    return {
+      allowed: false,
+      reason: "transition requires SIWE-authenticated sponsor",
+      code: "not-authenticated",
+    };
+  }
+  if (trial.sponsor.toLowerCase() !== ctx.walletAddress.toLowerCase()) {
+    return {
+      allowed: false,
+      reason: `only the trial sponsor (${trial.sponsor}) may transition this trial`,
+      code: "not-sponsor",
+    };
   }
 
   // DISPUTED requires the chain to be in Challenged (a break was filed).

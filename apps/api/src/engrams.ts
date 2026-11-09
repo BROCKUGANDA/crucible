@@ -2,6 +2,7 @@
  * @file engrams.ts — Engram achievement + rewards routes (REW-001..003).
  */
 
+import { createHash, timingSafeEqual } from "node:crypto";
 import { Hono, type Context } from "hono";
 import {
   AchievementEngine,
@@ -65,9 +66,18 @@ export function createEngramRoutes(): Hono {
   app.post("/evaluate", async (c) => {
     // Trusted worker only: requires keeper/warden bearer, never a user session.
     // A caller-supplied VerifiedEvent with verified:true is not authority (REW-001).
+    // The comparison is constant-time over digests and the key must carry real
+    // entropy — a short deployment value is refused rather than trusted.
     const keeperKey = process.env.KEEPER_API_KEY ?? "";
     const auth = c.req.header("authorization") ?? "";
-    if (!keeperKey || auth !== `Bearer ${keeperKey}`) {
+    const provided = auth.startsWith("Bearer ") ? auth.slice("Bearer ".length) : "";
+    const configured = Buffer.from(keeperKey, "utf8");
+    const candidate = Buffer.from(provided, "utf8");
+    const matches =
+      configured.length >= 32 &&
+      configured.length === candidate.length &&
+      timingSafeEqual(createHash("sha256").update(configured).digest(), createHash("sha256").update(candidate).digest());
+    if (!matches) {
       return c.json({ error: "forbidden: trusted worker required", code: "not-a-worker" }, 403);
     }
     let body: { event?: VerifiedEvent; recipient?: string } = {};

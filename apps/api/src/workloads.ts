@@ -28,9 +28,12 @@ type RunRecord = {
   scorecard?: unknown;
   report?: unknown;
   createdAt: number;
+  /** the verified session address that created the run; the only reader of the record */
+  createdBy: string;
 };
 const runs = new Map<string, RunRecord>();
 export function __resetRunsForTests(): void { runs.clear(); }
+export function __seedRunForTests(record: RunRecord): void { runs.set(record.runId, record); }
 
 function ctx(body: Record<string, unknown>, profile: WorkloadProfile): RunContext {
   const runId = `run-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -84,14 +87,21 @@ export function createWorkloadRoutes(): Hono {
       runId: runCtx.runId, attemptId: runCtx.attemptId, tenantId: runCtx.tenantId,
       trialId: runCtx.trialId, workloadProfile: profile,
       status: report.status, report, scorecard, createdAt: Date.now(),
+      createdBy: session.payload.address.toLowerCase(),
     };
     runs.set(runCtx.runId, record);
     return c.json({ run: record, report, scorecard }, 201);
   });
 
   app.get("/runs/:runId", (c) => {
+    const session = verifiedSessionFromContext(c);
+    if (!session) return c.json({ error: "unauthenticated", code: "no-credential" }, 401);
     const r = runs.get(c.req.param("runId"));
-    if (!r) return c.json({ error: "run not found", code: "not-found" }, 404);
+    // A run record carries the creator's report and scorecard: 404 — not 403 —
+    // for a stranger, so the ID confirms nothing about existence.
+    if (!r || r.createdBy !== session.payload.address.toLowerCase()) {
+      return c.json({ error: "run not found", code: "not-found" }, 404);
+    }
     return c.json({ run: r });
   });
 
