@@ -104,17 +104,19 @@ export function createMeteringStore(): MeteringStore {
   };
 
   function periodBounds(period: UsagePeriod, now: number): { start: number; end: number } {
-    const d = new Date(now);
+    // UTC boundaries, not host-local ones: a "daily" quota must not reset at each
+    // server's midnight, and the funder's own day caps are already UTC.
     if (period === "hourly") {
-      const start = new Date(d.getFullYear(), d.getMonth(), d.getDate(), d.getHours()).getTime();
+      const start = Math.floor(now / 3_600_000) * 3_600_000;
       return { start, end: start + 3_600_000 };
     }
     if (period === "daily") {
-      const start = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+      const start = Math.floor(now / 86_400_000) * 86_400_000;
       return { start, end: start + 86_400_000 };
     }
-    const start = new Date(d.getFullYear(), d.getMonth(), 1).getTime();
-    const end = new Date(d.getFullYear(), d.getMonth() + 1, 1).getTime();
+    const d = new Date(now);
+    const start = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1);
+    const end = Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1);
     return { start, end };
   }
 

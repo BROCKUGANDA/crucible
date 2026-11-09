@@ -6,7 +6,26 @@
  */
 
 import { describe, it, expect, afterEach } from "vitest";
+import { createHmac } from "node:crypto";
 import { createEngramRoutes } from "../src/engrams";
+
+process.env.AUTH_ALLOW_DEV_SECRET = "1";
+process.env.AUTH_ORIGIN = "http://localhost:3000";
+
+const DEV_SECRET = "crucible-local-dev-secret-not-for-production";
+
+function sessionCookie(address: string): string {
+  const now = Date.now();
+  const payload = {
+    address,
+    issuedAt: Math.floor(now / 1000),
+    expiresAt: Math.floor(now / 1000) + 60 * 60 * 24 * 7,
+    aud: "http://localhost:3000",
+  };
+  const encoded = Buffer.from(JSON.stringify(payload)).toString("base64url");
+  const sig = createHmac("sha256", DEV_SECRET).update(encoded).digest("base64url");
+  return `__Host-crucible_session=${encoded}.${sig}`;
+}
 
 const LONG_KEY = "keeper-key-0123456789abcdef0123456789abcdef";
 
@@ -29,6 +48,17 @@ afterEach(() => {
 });
 
 describe("engrams evaluate keeper gate", () => {
+  it("answers /me for the session's own address without a path address", async () => {
+    const app = createEngramRoutes();
+    const unauth = await app.request("/me");
+    expect(unauth.status).toBe(401);
+
+    const res = await app.request("/me", { headers: { cookie: sessionCookie("0x1111111111111111111111111111111111111111") } });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { entitlements: unknown[] };
+    expect(Array.isArray(body.entitlements)).toBe(true);
+  });
+
   it("refuses when no key is configured, even with an empty bearer", async () => {
     const r = await evaluate("Bearer ");
     expect(r.status).toBe(403);

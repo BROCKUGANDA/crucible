@@ -45,6 +45,21 @@ export function createEngramRoutes(): Hono {
   const app = new Hono();
 
   /**
+   * The caller's own entitlements, addressed by the verified session.
+   *
+   * Registered before `/:recipient` so "me" is never read as an address, and so
+   * the address never has to travel in the path — a path segment lands in access
+   * logs, history and Referer headers.
+   */
+  app.get("/me", (c) => {
+    const session = verifiedSessionFromContext(c);
+    if (!session) {
+      return c.json({ error: "unauthenticated", code: "no-credential" }, 401);
+    }
+    return c.json({ entitlements: engine.entitlementsFor(session.payload.address) });
+  });
+
+  /**
    * List entitlements for a recipient.
    *
    * Session-gated: only the recipient can query their own entitlements.
