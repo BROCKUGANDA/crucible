@@ -198,6 +198,11 @@ services:
       CRUCIBLE_OWNER_ADDRESSES: ${CRUCIBLE_OWNER_ADDRESSES:-}
       WARDEN_WEBHOOK_URL: ${WARDEN_WEBHOOK_URL:-}
       KEEPER_API_KEY: ${KEEPER_API_KEY:-}
+      # Durable storage gate (production fail-closed; dev runs in-memory).
+      STORAGE_BACKEND: ${STORAGE_BACKEND:-}
+      DATABASE_URL: ${DATABASE_URL:-}
+      # STAMP protocol-ownership domain: disabled unless explicitly enabled.
+      STAMP_MODE: ${STAMP_MODE:-disabled}
     ports:
       - "${API_HOST_PORT:-8787}:8787"
     volumes:
