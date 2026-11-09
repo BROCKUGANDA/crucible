@@ -21,6 +21,7 @@ import {
   type TrialStatus,
 } from "@crucible/indexer";
 import {
+  campaignEligibilitySignals,
   decide,
   scoreWallet,
   type Decision,
@@ -2534,7 +2535,23 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
    * a distributor must not render an empty list that reads as "no campaigns".
    */
   if (opts.campaigns !== undefined && opts.campaigns !== null) {
-    app.route("/campaigns", createCampaignRoutes(opts.campaigns));
+    app.route(
+      "/campaigns",
+      createCampaignRoutes({
+        ...opts.campaigns,
+        // Eligibility signals are derived here, from the same authoritative
+        // state the identity score reads — a caller's body never supplies one.
+        signals: async (wallet) => {
+          const model = deps.getModel();
+          const now = deps.indexStatus?.().headTimestamp ?? null;
+          const passport = passportSignal(await passportCheck(wallet));
+          return {
+            ...campaignEligibilitySignals(model, wallet, now),
+            ...(passport ? { passportSignal: passport } : {}),
+          };
+        },
+      }),
+    );
   } else {
     app.all("/campaigns/*", (c) =>
       c.json({ error: "campaigns not configured on this host", code: "not-implemented" }, 501),

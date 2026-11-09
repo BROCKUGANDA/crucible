@@ -377,3 +377,36 @@ export function decide(score: RiskScore): Decision {
   }
   return { action: "deny", reason: "Insufficient evidence of humanity" };
 }
+
+/**
+ * The campaign eligibility signals for one wallet, derived from the same
+ * on-chain evidence the risk score reads — never from the request body.
+ *
+ * `trialCount` counts the wallet's settled trials as an agent operator,
+ * `reputation` is the agent's paid-verdict count (the hall's ranking input),
+ * and `walletAge` is whole days of on-chain activity measured on the chain's
+ * clock. A wallet with no on-chain history yields an empty object: a campaign
+ * criterion that needs a signal then fails closed rather than trusting an
+ * unknown.
+ */
+export function campaignEligibilitySignals(
+  model: ReadModel,
+  wallet: string,
+  nowSeconds: number | null,
+): { walletAge?: number; trialCount?: number; reputation?: number } {
+  const agent = findAgentByWallet(model, wallet);
+  if (!agent) return {};
+
+  const trials = getAgentTrials(model, agent.id);
+  const signals: { walletAge?: number; trialCount?: number; reputation?: number } = {
+    trialCount: trials.length,
+    reputation: agent.wins,
+  };
+
+  if (trials.length > 0 && nowSeconds !== null) {
+    const oldest = Math.min(...trials.map((t) => t.createdAt));
+    signals.walletAge = Math.floor((nowSeconds - oldest) / 86400);
+  }
+
+  return signals;
+}

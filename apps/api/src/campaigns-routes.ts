@@ -17,11 +17,24 @@ import {
   type ClaimResult,
   type EligibilityResult,
 } from "./campaigns.js";
+import type { PassportSignal } from "./identity.js";
 import { verifiedSessionFromContext } from "./auth.js";
 
 // ---------------------------------------------------------------------------
 // Config
 // ---------------------------------------------------------------------------
+
+/**
+ * The eligibility signals for one wallet, as derived by the host. Every value
+ * is computed server-side from authoritative state; the request body is never
+ * a source for any of them, and a missing signal fails a criterion closed.
+ */
+export interface CampaignEligibilitySignals {
+  walletAge?: number;
+  trialCount?: number;
+  reputation?: number;
+  passportSignal?: PassportSignal;
+}
 
 export interface CampaignsConfig {
   /** The distributor instance. Defaults to a new in-memory store. */
@@ -30,6 +43,13 @@ export interface CampaignsConfig {
   allowedSponsors?: readonly string[];
   /** Maximum budget per campaign (in wei). 0 means unlimited. */
   maxBudgetWei?: bigint;
+  /**
+   * Derives the eligibility signals for a wallet from authoritative state
+   * (read model, chain clock, Passport source). Unset means no signals exist:
+   * campaigns with signal-dependent criteria fail closed rather than trusting
+   * a caller's claim.
+   */
+  signals?: (wallet: string) => Promise<CampaignEligibilitySignals> | CampaignEligibilitySignals;
 }
 
 // ---------------------------------------------------------------------------
@@ -366,7 +386,9 @@ export function createCampaignRoutes(config: CampaignsConfig = {}): Hono {
   /**
    * Check eligibility for a campaign.
    *
-   * Session-gated: the caller checks their own eligibility.
+   * Session-gated: the caller checks their own eligibility. The eligibility
+   * signals are derived server-side from authoritative state; a client-supplied
+   * value is never a source for any of them.
    */
   app.post("/:campaignId/eligibility", async (c) => {
     const session = verifiedSessionFromContext(c);
@@ -375,23 +397,9 @@ export function createCampaignRoutes(config: CampaignsConfig = {}): Hono {
     }
 
     const campaignId = c.req.param("campaignId");
-    let body: {
-      walletAge?: number;
-      trialCount?: number;
-      reputation?: number;
-    } = {};
+    const signals = config.signals ? await config.signals(session.payload.address) : {};
 
-    try {
-      body = (await c.req.json()) as typeof body;
-    } catch {
-      return c.json({ error: "invalid body", code: "bad-request" }, 400);
-    }
-
-    const result = distributor.checkEligibility(campaignId, session.payload.address, {
-      walletAge: body.walletAge,
-      trialCount: body.trialCount,
-      reputation: body.reputation,
-    });
+    const result = distributor.checkEligibility(campaignId, session.payload.address, signals);
 
     if ("error" in result) {
       return c.json(result, 400);
@@ -406,7 +414,9 @@ export function createCampaignRoutes(config: CampaignsConfig = {}): Hono {
   /**
    * Attempt a claim.
    *
-   * Session-gated: the caller claims for their own wallet.
+   * Session-gated: the caller claims for their own wallet. The eligibility
+   * signals are derived server-side from authoritative state; a client-supplied
+   * value is never a source for any of them.
    */
   app.post("/:campaignId/claim", async (c) => {
     const session = verifiedSessionFromContext(c);
@@ -415,23 +425,9 @@ export function createCampaignRoutes(config: CampaignsConfig = {}): Hono {
     }
 
     const campaignId = c.req.param("campaignId");
-    let body: {
-      walletAge?: number;
-      trialCount?: number;
-      reputation?: number;
-    } = {};
+    const signals = config.signals ? await config.signals(session.payload.address) : {};
 
-    try {
-      body = (await c.req.json()) as typeof body;
-    } catch {
-      return c.json({ error: "invalid body", code: "bad-request" }, 400);
-    }
-
-    const result = distributor.attemptClaim(campaignId, session.payload.address, {
-      walletAge: body.walletAge,
-      trialCount: body.trialCount,
-      reputation: body.reputation,
-    });
+    const result = distributor.attemptClaim(campaignId, session.payload.address, signals);
 
     if ("error" in result) {
       const status = result.code === "campaign_not_found" ? 404 : 400;
