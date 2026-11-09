@@ -50,6 +50,11 @@ const NAV_ACTIONS: NavItem[] = [
 ];
 
 const NAV_MORE: NavItem[] = [
+  { href: "/demo", label: "Pilot demo" },
+  { href: "/developers", label: "Developer pilot" },
+  { href: "/ops", label: "Ops profile" },
+  { href: "/app", label: "Operator console" },
+  { href: "/proofs", label: "Pilot proofs" },
   { href: "/agents", label: "Agents" },
   { href: "/verticals", label: "Verticals" },
   { href: "/engineering", label: "Engineering" },
