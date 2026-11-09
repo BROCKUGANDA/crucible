@@ -83,10 +83,11 @@ export const LOCAL_DEMO_ORIGINS = [
 export const DEFAULT_SECURITY: SecurityConfig = {
   allowedOrigins: [...LOCAL_DEMO_ORIGINS],
   allowCredentials: false,
-  // Reads, plus the two POST surfaces that cannot move funds: SIWE auth and the
-  // fixed-copy voice proxy. A route that submits a transaction must not inherit this
-  // list by accident.
-  corsMethods: ["GET", "HEAD", "OPTIONS", "POST"],
+  // Reads, plus the POST surfaces that cannot move funds (SIWE auth, the fixed-copy
+  // voice proxy) and the two session-authenticated write paths that sign nothing:
+  // campaign status (PATCH) and org API-key revocation (DELETE). A route that submits a
+  // transaction must not inherit this list by accident.
+  corsMethods: ["GET", "HEAD", "OPTIONS", "POST", "PATCH", "DELETE"],
   exposeHeaders: ["X-Request-Id", "Retry-After", "RateLimit-Limit", "RateLimit-Remaining"],
   preflightMaxAgeSec: 600,
   // 64 KiB: enough for any future JSON write route, four orders of magnitude above what

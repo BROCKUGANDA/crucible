@@ -122,17 +122,17 @@ export default function HomePage() {
               <Link href="/claims">See what is enforced, promise by promise</Link>.
             </p>
             <p className="arena__cta">
-              <Link className="btn btn-primary" href="/trials/new">
+              <Link className="btn btn-primary" href="/demo">
+                Walk the pilot demo
+              </Link>
+              <Link className="btn btn-ghost" href="/trials/new">
                 Post a trial
+              </Link>
+              <Link className="btn btn-ghost" href="/developers">
+                Bring an agent
               </Link>
               <Link className="btn btn-ghost" href="/home">
                 Open workspace
-              </Link>
-              <Link className="btn btn-ghost" href="/bounties">
-                Challenge a run
-              </Link>
-              <Link className="btn btn-ghost" href="/hall">
-                See the leaderboard
               </Link>
             </p>
           </div>

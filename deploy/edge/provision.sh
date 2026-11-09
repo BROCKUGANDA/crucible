@@ -75,9 +75,19 @@ fi
 # running Caddy keeps the config it read at container start. Copying a new Caddyfile over
 # an old container changes nothing until the container is recreated.
 needs_recreate=0
+needs_gate_recreate=0
 for f in Caddyfile compose.yaml; do
 	if [ ! -f "$INSTALL_DIR/$f" ] || ! cmp -s "$SRC/$f" "$INSTALL_DIR/$f"; then
 		needs_recreate=1
+	fi
+done
+# The gate's own files are drift-checked too, because its container is what runs them:
+# compose bind-mounts ./rpc-gate read-only, and a bind mount updates the bytes but never
+# the running process. A changed gate.mjs that shipped without a Caddyfile change would
+# leave the old limiter code running — exactly how a security fix fails to deploy.
+for f in rpc-gate/gate.mjs rpc-gate/probe.mjs; do
+	if [ ! -f "$INSTALL_DIR/$f" ] || ! cmp -s "$SRC/$f" "$INSTALL_DIR/$f"; then
+		needs_gate_recreate=1
 	fi
 done
 
@@ -102,6 +112,10 @@ docker compose -f compose.yaml up -d
 if [ "$needs_recreate" = 1 ]; then
 	echo "==> the edge config differs from the running container; recreating caddy"
 	docker compose -f compose.yaml up -d --force-recreate --no-deps caddy
+fi
+if [ "$needs_gate_recreate" = 1 ]; then
+	echo "==> the gate code differs from the running container; recreating rpc-gate"
+	docker compose -f compose.yaml up -d --force-recreate --no-deps rpc-gate
 fi
 
 status=""

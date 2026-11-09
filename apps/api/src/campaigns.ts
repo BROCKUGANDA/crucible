@@ -261,6 +261,18 @@ export function createCampaignStore(): CampaignStore {
       const claim = claims.get(claimId);
       if (!claim) return undefined;
 
+      // The store enforces the claim state machine as a last line of defence:
+      // a rejected claim releasing budget must never later count as completed,
+      // or the same reservation would be spent twice across the books.
+      const allowed: Record<ClaimStatus, readonly ClaimStatus[]> = {
+        pending: ["approved", "rejected", "completed", "expired"],
+        approved: ["completed", "rejected", "expired"],
+        rejected: [],
+        completed: [],
+        expired: [],
+      };
+      if (!allowed[claim.status].includes(status)) return undefined;
+
       const now = Date.now();
       const updated: Claim = {
         ...claim,

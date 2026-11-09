@@ -107,7 +107,8 @@ describe("cancellation is wired, not plumbed", () => {
     expect(provider).toContain("const FRENCHY_API = `${API_BASE}/frenchy`;");
     expect(provider).toContain("const FRENCHY_VOICE_API = `${API_BASE}/frenchy/voice`;");
     expect(provider).not.toContain('"/api/frenchy"');
-    expect(code(STATUS)).toContain("`${API_BASE}/frenchy`");
+    // The brain probe asks the real status route, not the chat route with an empty body.
+    expect(code(STATUS)).toContain("`${API_BASE}/frenchy/status`");
   });
 
   it("runs one teardown on unmount and no second stop that could race it", () => {

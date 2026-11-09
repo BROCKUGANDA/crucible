@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Chrome } from "@/components/Chrome";
+import { Payload } from "@/components/Payload";
 import { API_BASE } from "@/lib/apiBase";
 
 const MANDATE = {
@@ -50,7 +51,7 @@ export default function FinancePage() {
         <button className="btn" onClick={() => check(9999)} disabled={loading}>Check 9999 (exceeds limit)</button>
       </div>
       {error && <p className="hint" role="alert">{error} (sign in with SIWE first)</p>}
-      {result !== null && result !== undefined && <pre className="code">{JSON.stringify(result as Record<string, unknown>, null, 2)}</pre>}
+      {result !== null && result !== undefined && <Payload value={result} title="Risk decision" />}
     </Chrome>
   );
 }

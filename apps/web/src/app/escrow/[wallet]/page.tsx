@@ -38,7 +38,13 @@ export default function EscrowPage({ params }: { params: Promise<{ wallet: strin
 
     void (async () => {
       try {
-        const res = await fetch(`${API_BASE}/escrow/${wallet}`, { signal: controller.signal });
+        // Only a well-formed address reaches the API; anything else is the same
+        // 404 a missing address would produce, and the segment is encoded.
+        if (!/^0x[0-9a-f]{40}$/.test(wallet)) {
+          setPhase({ kind: "refused", status: 404 });
+          return;
+        }
+        const res = await fetch(`${API_BASE}/escrow/${encodeURIComponent(wallet)}`, { signal: controller.signal });
         if (!alive) return;
         if (!res.ok) {
           setPhase({ kind: "refused", status: res.status });

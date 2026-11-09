@@ -74,6 +74,9 @@ jobs:
             --exclude 'docs/media/raw' \
             --exclude 'docs/media/cards' \
             --exclude '*.log' \
+            --exclude 'setup*.js' \
+            --exclude 'svc*.js' \
+            --exclude 'tok.js' \
             "$GITHUB_WORKSPACE/" "$HOME/crucible/"
 
           # A checkout on Windows can hand rsync a 0644 mode for the container
@@ -267,7 +270,11 @@ jobs:
         # daemon moving money on the demo box was the hackathon build, two weeks of
         # its own hardening short (trace spine, gas ledger, sweep kill switch,
         # acting-hop breaker). A service the deploy never recreates ages silently.
-        run: docker compose -f compose.yaml -f compose.vps.yaml build web api keeper seed funder
+        # The juror builds here too. It is only SWAPPED when the host holds a seat key
+        # (JUROR_SEAT_PRIVATE_KEY) — the swap step below names the skip loudly when it
+        # does not, because a service defined in compose.yaml and absent from
+        # `docker compose ps` is the same silent absence the keeper had for two weeks.
+        run: docker compose -f compose.yaml -f compose.vps.yaml build web api keeper juror seed funder
 
       # Validate the addresses BEFORE the swap, not after it.
       #
@@ -356,7 +363,17 @@ jobs:
         # moves (ADR-0003), so a mid-swap death leaves a credit, not a loss.
         run: |
           set -euo pipefail
-          docker compose -f compose.yaml -f compose.vps.yaml up -d --no-deps web api keeper funder
+          # The juror is conditional BY KEY, not by hope: with a seat key on the host the
+          # container is recreated like the rest; without one it would crash-loop, so the
+          # deploy names the skip in the run summary instead of silently leaving disputes
+          # with no automated Argus seat.
+          juror=""
+          if grep -qE '^JUROR_SEAT_PRIVATE_KEY=0x[0-9a-fA-F]{64}$' .env; then
+            juror="juror"
+          else
+            echo "::warning::JUROR_SEAT_PRIVATE_KEY is not set on this host — juror was NOT swapped; disputes have no automated Argus seat until it is configured."
+          fi
+          docker compose -f compose.yaml -f compose.vps.yaml up -d --no-deps web api keeper funder $juror
           # The rollback step below must know whether the swap actually happened. Most of this job's
           # refusals fire before it — a red gate, an address the seed never published, a keeper with
           # no signing key — and re-pointing `:latest` plus recreating three healthy containers after

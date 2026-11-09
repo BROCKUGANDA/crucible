@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { Chrome } from "@/components/Chrome";
 import { API_BASE } from "@/lib/apiBase";
+import { parseEth } from "@/lib/eth";
 import { useAccount } from "wagmi";
 
 /**
@@ -30,6 +31,13 @@ export default function ForgeBriefPage() {
     setLoading(true);
 
     try {
+      // Decimal ETH in, exact wei out. The old conversion multiplied a float by 1e18 —
+      // the bug lib/eth.ts exists to forbid; parseEth reads digits, never doubles.
+      const rewardWei = parseEth(proposedRewardEth);
+      if (rewardWei === null) {
+        setError("Reward must be a decimal ETH amount, e.g. 0.05");
+        return;
+      }
       const res = await fetch(`${API_BASE}/forge/brief`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -95,10 +103,10 @@ export default function ForgeBriefPage() {
             dataClassification: "public",
           },
           financialCommitment: {
-            maxBudgetWei: BigInt(Math.floor(parseFloat(proposedRewardEth) * 1e18)).toString(),
+            maxBudgetWei: rewardWei.toString(),
             nativeAsset: "ETH",
             network: "31337",
-            proposedRewardWei: BigInt(Math.floor(parseFloat(proposedRewardEth) * 1e18)).toString(),
+            proposedRewardWei: rewardWei.toString(),
           },
         }),
       });

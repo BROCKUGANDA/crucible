@@ -560,6 +560,57 @@
   background: var(--bg2);
 }
 
+/* Settings that ride in the More panel: the voice and sound switches are controls, not
+   destinations, so they get their own row above the links instead of three more
+   buttons on the bar itself. */
+.chrome__more-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 4px 4px 10px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid var(--bg2);
+}
+
+/* ── the wallet chooser (no-WalletConnect configuration) ────── */
+
+/* Same disclosure mechanics as chrome__more, wearing the primary button: one Connect
+   on the bar, and the wallets this browser actually exposes listed in the panel. */
+.wallet-menu {
+  position: relative;
+}
+
+.wallet-menu__summary {
+  list-style: none;
+  cursor: pointer;
+}
+
+.wallet-menu__summary::-webkit-details-marker {
+  display: none;
+}
+
+.wallet-menu .chrome__more-panel button {
+  display: block;
+  width: 100%;
+  padding: 9px 12px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--dim);
+  font: inherit;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.wallet-menu .chrome__more-panel button:hover,
+.wallet-menu .chrome__more-panel button:focus-visible {
+  color: var(--text);
+  background: var(--bg2);
+  outline: none;
+}
+
 /* ── network switcher ───────────────────────────────────────── */
 
 /* The header's environment chip is the summary of a disclosure, and the panel lists the
@@ -710,6 +761,98 @@
   border-top: 1px solid var(--bg1);
   font-size: 0.75rem;
   color: var(--faint);
+}
+
+/* ── two-tier header + grouped footer ──────────────────────────── */
+
+/* The header reads as one block with a rail: brand top-left, the dispute
+   journey (dispute a claim / check a balance / earn something) across the
+   top-right, proven rows warm down the bottom instead of a single pill. */
+.chrome__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+/* The journey rail: the primary track sits beside one warm reserved link. */
+.chrome__nav-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.chrome__nav-cta {
+  flex: none;
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--ember) 55%, transparent);
+  color: var(--gold);
+  transition: background var(--t-state) var(--ease-ignite), color var(--t-state) var(--ease-ignite);
+}
+
+.chrome__nav-cta:hover,
+.chrome__nav-cta[aria-current="page"] {
+  background: color-mix(in srgb, var(--ember) 22%, transparent);
+  color: var(--hot);
+}
+
+/* Footer in two proven rows: the Colosseum verdict (proofs a stranger can
+   check) above grouped columns that answer where money lives, who operates
+   it, what proves it, and where to learn it. */
+.chrome__foot-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px 14px;
+  padding: 8px 0;
+}
+
+.chrome__foot-row--proofs {
+  width: 100%;
+  border-bottom: 1px dashed color-mix(in srgb, var(--bg2) 70%, transparent);
+  padding-bottom: 12px;
+}
+
+.chrome__foot-row--links {
+  width: 100%;
+  align-items: center;
+}
+
+.chrome__foot-verdict {
+  color: var(--dim);
+}
+
+.chrome__foot-proof {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: color-mix(in srgb, var(--gold) 40%, transparent);
+}
+
+.chrome__foot-proof:hover {
+  color: var(--text);
+}
+
+.chrome__foot-group {
+  flex-basis: 100%;
+  font-size: 0.62rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--faint) 80%, transparent);
+  margin-top: 2px;
+}
+
+@media (min-width: 900px) {
+  .chrome__foot-row--links .chrome__foot-group {
+    flex-basis: auto;
+    margin-left: 18px;
+  }
+
+  .chrome__foot-row--links .chrome__foot-group:first-of-type {
+    margin-left: 0;
+  }
 }
 
 .sheet-link {
@@ -972,7 +1115,20 @@
 .metric-card__value--success { color:var(--success); }
 .metric-card__value--warning { color:var(--warning); }
 .metric-card__value--error { color:var(--error); }
+/* The two variants /home already renders: without these, a neutral or pending value
+   inherited the display colour while its neighbours were toned — two vocabularies for
+   one meaning. */
+.metric-card__value--neutral { color:var(--text); }
+.metric-card__value--pending { color:var(--faint); }
 .metric-card__hint { font-size:var(--fs-small); color:var(--dim); }
+/* Structured API payloads (the console pages): label/value rows, raw JSON behind a
+   toggle. A payload dump was the one surface on the site that printed `null`. */
+.payload { display:grid; gap:2px; margin:var(--s-2) 0; }
+.payload__row { display:flex; gap:12px; justify-content:space-between; padding:4px 0; border-bottom:1px solid var(--bg1); }
+.payload__row dt { flex:0 0 auto; }
+.payload__row dd { margin:0; text-align:right; overflow-wrap:anywhere; }
+.payload__raw { margin-top:var(--s-3); }
+.payload__raw > summary { cursor:pointer; }
 .empty-state { padding:var(--s-6); text-align:center; border:1px dashed var(--ash); border-radius:var(--radius); }
 .empty-state__title { font-size:var(--fs-sub); margin-bottom:var(--s-2); }
 .empty-state__body { color:var(--dim); font-size:var(--fs-small); }
@@ -997,11 +1153,12 @@
 
 /* ── Frenchy side-chat widget ───────────────────────────────── */
 
-/* The widget owns its own corner: fixed, bottom-right, above the chrome but below
-   any modal. It never moves with the page scroll. */
+/* The widget owns its own corner: fixed, bottom-right, above the page but below any
+   modal scrim (the trigger at --z-overlay, the open panel raised with it). It never
+   moves with the page scroll. */
 .frenchy-widget {
   position: fixed;
-  z-index: var(--z-modal);
+  z-index: var(--z-overlay);
   bottom: var(--s-5);
   right: var(--s-5);
   font-family: var(--font-display);
@@ -1010,20 +1167,54 @@
   color: var(--text);
 }
 
+/* Trigger and its dismissal sit together: the pill opens the chat, the small × sends
+   the whole widget away for this visit (session storage), because a floating pill is
+   allowed to overlap dense tables exactly once — after that it is the visitor's call. */
+.frenchy-widget__cluster {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.frenchy-widget__dismiss {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--faint);
+  font: inherit;
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: color var(--t-tap), border-color var(--t-tap);
+}
+
+.frenchy-widget__dismiss:hover,
+.frenchy-widget__dismiss:focus-visible {
+  color: var(--text);
+  border-color: var(--bg2);
+  outline: none;
+}
+
 /* The closed state is a single floating button. */
 .frenchy-widget__trigger {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  min-height: 44px;
-  padding: 12px 16px;
+  min-height: 40px;
+  padding: 9px 14px;
   border-radius: 999px;
   border: 1px solid var(--bg2);
   background: var(--bg1);
   color: var(--text);
   font-family: var(--font-display);
   font-weight: 600;
-  font-size: 0.9rem;
+  font-size: 0.85rem;
   cursor: pointer;
   box-shadow: 0 20px 40px rgba(0, 0, 0, 0.45), 0 0 0 1px color-mix(in srgb, var(--ember) 14%, transparent);
   transition:

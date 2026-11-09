@@ -298,6 +298,65 @@ export function buildClaimTrial(trialId: number): Hex {
   return encodeFunctionData({ abi: TRIALS_ABI, functionName: "claimTrial", args: [BigInt(trialId)] });
 }
 
+const DISTRIBUTOR_ABI = [
+  {
+    type: "function",
+    name: "createCampaign",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "root", type: "bytes32" },
+      { name: "tokenId", type: "uint256" },
+      { name: "budget", type: "uint256" },
+      { name: "start", type: "uint64" },
+      { name: "end", type: "uint64" },
+    ],
+    outputs: [{ name: "id", type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "claim",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "campaignId", type: "uint256" },
+      { name: "amount", type: "uint256" },
+      { name: "proof", type: "bytes32[]" },
+    ],
+    outputs: [],
+  },
+] as const;
+
+/**
+ * Claim an earned Engram from the deployed EngramDistributor with a Merkle proof
+ * over the on-chain leaf `keccak256(chainId, recipient, amount, campaignId,
+ * tokenId)` — the claim moves through the distributor's campaign, never around
+ * it, and each wallet can claim each campaign once.
+ */
+export function buildCreateCampaign(args: {
+  root: Hex;
+  tokenId: bigint;
+  budget: bigint;
+  start: bigint;
+  end: bigint;
+}): Hex {
+  return encodeFunctionData({
+    abi: DISTRIBUTOR_ABI,
+    functionName: "createCampaign",
+    args: [args.root, args.tokenId, args.budget, args.start, args.end],
+  });
+}
+
+export function buildClaimEngram(args: {
+  campaignId: bigint;
+  amount: bigint;
+  proof: Hex[];
+}): Hex {
+  return encodeFunctionData({
+    abi: DISTRIBUTOR_ABI,
+    functionName: "claim",
+    args: [args.campaignId, args.amount, args.proof],
+  });
+}
+
 export function buildFileBreak(trialId: number, proofDigest: Hex, stakeWei: bigint) {
   return {
     data: encodeFunctionData({

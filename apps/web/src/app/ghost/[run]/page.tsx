@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Chrome, ColdForge } from "@/components/Chrome";
+import { formatEth } from "@/lib/forge";
 
 interface ForkInfo { rpcUrl: string; forkBlock: number; chainId: number; accounts: { address: string; balanceEth: string }[]; }
 
@@ -38,7 +39,7 @@ export default function GhostRunPage() {
         <div className="hint hint--block">
           <p>RPC: <span className="mono">{info.rpcUrl}</span></p>
           <p>Fork block: {info.forkBlock} · chainId: {info.chainId}</p>
-          <p>Accounts: {info.accounts.map(a => `${a.address} (${a.balanceEth} ETH)`).join(", ")}</p>
+          <p>Accounts: {info.accounts.map(a => `${a.address} (${formatEth(a.balanceEth)})`).join(", ")}</p>
         </div>
       )}
       {!info && !loading && <ColdForge line="Open a trial first, then fork it into a ghost run." cta="Open the trials board" href="/trials" />}

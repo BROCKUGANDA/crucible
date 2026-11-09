@@ -1563,6 +1563,81 @@ guards is the decoration it exists to detect.
   2821 passed, 10 skipped, 0 failed (forge-runner 225/6 skipped, smith-sdk 237, indexer 159 (5 new),
   fork-host 5 (new), grader 309); `runner.test.ts` 8/8 green runs where it was ~50% red before.
 
+- **2026-11-09 — A sponsor-gated transition took its authority from the request body.**
+  `POST /trials/:id/transition` built `TransitionContext.sponsor` from `body.sponsor`, and
+  `validateTransition` compared the trial's sponsor against that claim — so any wallet holding
+  *any* valid SIWE session could cancel or return-to-draft any trial by naming the real sponsor,
+  while the session-verified address sat unused in `ctx.walletAddress`. `sponsor` is deleted
+  from `TransitionContext` (`apps/api/src/trial-lifecycle.ts`): the authorization identity is
+  now the caller's verified session address, and the body claim that invited the confusion no
+  longer exists. Both directions regression-tested in `apps/api/test/app.test.ts` — an attacker
+  session naming the real sponsor is rejected with `not-sponsor`, and the real sponsor needs no
+  body claim. **Mutation-proven:** both tests ran red against the unfixed route (the attacker's
+  cancel returned 200) before the fix and green after; full API suite 592 passed, typecheck
+  clean. Fixed in `56cb6fa`.
+
+- **2026-11-09 — Campaign eligibility signals were client-attested.** `/campaigns/:id/eligibility`
+  and `/:id/claim` took `walletAge`/`trialCount`/`reputation` from the request body and the
+  distributor enforced criteria against them — a caller could assert any signal. The routes now
+  take every signal from a configured provider; the default wiring derives them in `app.ts` from
+  the same on-chain evidence the identity score reads (settled trials as agent operator,
+  paid-verdict count, wallet age on the chain clock) plus the Passport source, which no route had
+  ever supplied to `requirePassport` campaigns. No provider means signal-dependent criteria fail
+  closed. **Mutation-proven:** reintroducing body-derived signals turns the regression red
+  (asserted `trialCount: 99` yields a 201 claim). `5eb5242`.
+
+- **2026-11-09 — The 2026-11-09 deep audit (register in `CRUCIBLE_AUDIT.md`) closed its critical
+  and high authorization findings in three slices, each with red-first regressions.** A
+  four-part parallel audit (API authz matrix, money integrity, web access-state, runtime/keys)
+  filed the register; the first two slices closed: the unauthenticated `POST /forge/__reset`
+  destructive wipe (`5541acb`); `GET /v1/runs/:runId` serving private run records to anyone
+  with a guessable id, now session-gated and creator-bound (`5541acb`); `GET /trials` 500ing on
+  any fractional `rewardEth` because `BigInt` cannot parse a display string — `ApiTrial` now
+  carries exact `rewardWei`, the filter compares it, and the query filters were measured
+  **vacuous** before (the display string parsed as wei excluded every sane trial, so the old
+  min-reward test passed on an empty set) (`5541acb`); the `/engrams/evaluate` keeper bearer
+  compared in constant time over sha256 digests with a 32-byte floor (`5541acb`); trial
+  transitions sponsor-gated for every target, not just cancel/draft (`5541acb`); and the forge
+  cross-tenant IDOR — authorization bound to the request's `orgId` while lookups were global,
+  so a member of org A could read and `fund`/`settle` org B's briefs and campaigns by naming
+  their ids — now authorizes against the resource's owning org, with 404 (not 403) for
+  non-members so a foreign id confirms nothing about existence (`0c442ff`).
+
+- **2026-11-09 (cont.) — Audit slices C–F.** Claim completion and rejection routes now exist
+  (sponsor-gated, tx-hash-validated; previously every claim reserved budget forever —
+  `e9869c4`), campaign creation got a default 10 ETH ceiling, and `maxClaimsPerWallet` is a
+  positive integer. A CSRF middleware rejects state-changing cookie-bearing requests whose
+  Origin is present and not configured (the production cookie is `SameSite=None` and
+  `csrfOriginCheck` had never been called); `/monitoring` is owner-only; org budget/API-key
+  actions go through the role matrix (`org:budget:set` / `org:manage`) instead of membership
+  (`df2bdf9`). The funder's cap accounting now holds room on an unrecognised transfer status
+  instead of freeing it, and records a grant whose reservation expired mid-flight (`0273061`);
+  `REDIS_URL` is actually parsed into the connection (ioredis ignored `{ url }`),
+  `DATABASE_URL` no longer defaults to `crucible:crucible` in production, `live-agent` runs
+  every migration, the outbox fallback warns, the funder entrypoint honours
+  `CDP_ALLOW_PLAINTEXT_SECRETS`, and the deploy rsync excludes the untracked credential-bearing
+  scripts (`0273061`). L0 judges real events (sequence coverage, denied egress/tool, test
+  modification) instead of dead branches (`b31ea96`); Forge Watch is durable whenever a PG
+  executor is wired (`7c8db34`). The keeper now feeds `/engrams/evaluate` from each finalized
+  trial with a deterministic event id (`fb56eee`). `/staking` advertises the wrong-network
+  guard every other money page had, and the CSP names the Scribe WebSocket host (`69a838c`;
+  staking's browser verification is still pending). **Left open, named:** the outbox relay
+  (`forge_watch_outbox` is still insert-only), the DLQ mechanism, metering's tenant binding
+  (surface unmounted), the `/trials/:id/events` stream ceiling, STAMP reviewer roles, the
+  global-error wallet-graph import, and the fork-test advisory gate.
+
+- **2026-11-09 (cont.) — Engram Merkle-claim wiring shipped end to end.** The keeper
+  evaluation bridge (`fb56eee`) issues entitlements, but no path could mint them: the
+  `rewards` page reserved an off-chain claim the contract never saw. Now `GET /engrams/merkle-proof`
+  rebuilds the on-chain leaf from the caller's own entitlements and serves its proof
+  (session-gated, self-only), the rewards page claims on-chain in one wallet transaction via
+  `buildClaimEngram` to the deployment's distributor, the `Deployment` record carries
+  engram + distributor per network, and `Deploy.s.sol` deploys `EngramERC1155` →
+  `EngramDistributor` and grants the distributor the minter role. `forge build --sizes` compiles
+  the added script frame. The Forge Watch system was re-audited for any on-chain surface and
+  found fully off-chain (no contract reads, signs, or settles on its fields; telemetry
+  garbage changes zero on-chain state). (`00cfa6c`.)
+
 ## Unresolved from the 2026-10-27 pass (continues the open list)
 
 23. **`apps/api` reported one failing test once, inside a saturated fan-out, and it has not been
@@ -2106,3 +2181,5 @@ Report a vulnerability as described in [`SECURITY.md`](SECURITY.md), not in a pu
 - **Real-money release remains blocked on the full sequence (2026-11-06).** The signed scorecard pipeline is verified locally, but this work did not run a paid provider publication, production rollout or promotion. The earlier all-workspace typecheck blocker (ioredis 5.11.1 missing `built/index.d.ts`) was closed by declaring the module surface in `packages/agent-security/src/ioredis.d.ts`; `npm run typecheck` is now clean repo-wide across all 19 workspaces and scripts. Do not classify the release sequence as passed. The full npm test run (2,761 tests: 2,432 TS + 329 Foundry), all edge checks, the Forge size build and the contract coverage floor gate passed separately; after the final API adversarial cases were added, the API workspace reran 352/352. The signer secret and publication directory are not configured for production, and CRU-003 has not started. Real-money traffic stays closed until the complete release sequence passes.
 
 - **CRU-002 (2026-11-06): an outside specification asked for an evidence pipeline; thirteen of its twenty-four claims already existed, and the owner chose to build it anyway.** The blueprint ("Evaluation Evidence Pipeline — Locked Implementation Contract") named real files and real types, which made it close enough to be plausible and wrong where it mattered. Audited verdict by verdict: the events, the manifest + JCS + keccak `runHash`, the identity fields, the digest-integrity gate, the cohort concept, the measured score with confidence bounds and the deterministic rebuild **already exist** — several in stronger shape, since the existing evidence identity is an EIP-712 typed hash *with a signer* where the proposal was an unsigned `keccak256(chainId, trialId, runHash)`. `ArgusPhase` and `ArgusReplayability` **are not exported types** (the phase union is inline at `packages/argus/src/argus.ts:65`), and the proposal's `deterministic|partial|nondeterministic` **would have regressed ADR-0013**, whose classes are `artifact-replayable|generation-attested|undecided`, derived from `phase` alone (`apps/juror/src/state.ts:35`, `policy.ts:249-252`). `identity.funderId` as a run fact is **dead on arrival** — in this contract set "funder" is the party that *receives* a refund (`crucible-contracts/contracts/RewardMath.sol:15-16`). `HallRow` is a React component (`apps/web/src/app/hall/page.tsx:59`); the projection is `HallEntry` (`packages/indexer/src/model.ts:753`). Its `(timestamp, evaluationId)` cursor **contradicts ADR-0010** and is nevertheless right for these rows: verification time is not chain position and collides on whole seconds. **What genuinely did not exist was three things**: the runner computed a manifest on every green run and no caller anywhere pinned or announced it (`grep manifestCid` before this slice returned this slice's own files); Argus returned a `VerifyReport` that nothing kept, while the seat's durable record holds one entry per trial **and overwrites it** (`apps/juror/src/state.ts:105-107`); and there was no per-run evaluation document or read surface. Those were built; the rest was adopted as a parallel surface with the collision written down instead of hidden — **ADR-0024**. `docs/adr/README.md` had also gone stale: no row for 0019, 0020 (both of them), 0021 or this one, and **two ADRs are numbered 0020**, written a week apart by different sessions. The collision is recorded rather than renamed, because a rename means editing citations in a dozen files including `docs/since-submission.md` — a dated log that must not be rewritten after the fact — while other sessions still have those files open. Gates **919-929** were added, and one lost `- id:` line was restored as 929 (an entry whose `title:`/`frameworks:` sat under the previous id, invisible to the generator): the register now parses 511 ids against 511 titles. **Not claimed, with the reason:** `/evaluations` and `/leaderboards` are mounted with no host source and answer 503 with that stated, rather than serving an empty list that reads as "nothing was verified" — the join needs two facts the read model does not carry (a `blockNumber` on `RunRow`, `model.ts:140-143`, and the signer recovered from the signature the chain kept), and inventing either would produce records that validate and lie. Cohorts are therefore empty, and comparability is claimed on a cohort's name rather than verified against suite and judge pins (gate 927 says so in its own text). **Two instrument findings kept because they are the class that hides:** the first mutation of the manifest-publish gate was a silent no-op — the pattern did not match a CRLF line, so 32 tests passed over an *unmutated* file; re-applied against a verified edit it goes red. And an `opts` field added by two overlapping scripted edits produced a duplicate property plus a mangled import (`"@crucible/cidstore"` became `"/cidstore"`) because `@` interpolates inside a double-quoted `perl -e`; both were caught by `tsc`, which is why the typecheck runs before the commit rather than after the push.
+
+- **Production-hardening pass (2026-11-09): provider switch, chrome declutter, gate bypass, pagination, money law, profile gate.** Seven verified slices, each committed separately. **LLM:** every inference call defaults to the token.xyz exchange (OpenAI-compatible) under TOKENXYZ_API_KEY; the Anthropic Messages client is deleted, Groq/NIM survive only as the classifiers promptGuard screens with, and the voice stack (TTS/STT/Scribe/ConvAI) stays ElevenLabs untouched. Wire tests assert the chat-completions bytes, and the brain probe became a real GET /frenchy/status instead of reading its own 400. **Edge:** /anvil forwarded the caller's own X-Forwarded-For and the gate keyed on the left-most entry — unlimited fresh rate-limit buckets by header. Fixed at the proxy (header_up), the gate (right-most entry), and the installer (gate-file drift check + container recreate); mutation-proven red under the old keying. **API:** one pagination contract (numeric + opaque cursors, no silent default cap) on ten list routes; creator-scoped Idempotency-Key on POST /v1/runs; /trials/:id/events under the shared open-stream ceiling; CORS advertises the PATCH/DELETE routes it actually serves; snapshotSignature imported instead of inlined; one shared sweeper; fork-host stops the previous fork before replacing it. **Web:** the Workspace agent card read `owner` (indexer serves `operator`) and the verdict badge tested a verdict the chain never emits; both fixed, and the checklist item that said "Register an agent" now links there instead of to /trials/new. Wei was printed through an ETH-string formatter in the bounty calculator and the brief detail tab (10^18 off); brief creation crossed a float; brief/[id] now awaits the Next 15 params Promise, stops sending an orgId the API stopped reading (0c442ff), and uses the role=tablist pattern trial detail already had. One formatWhen (ISO UTC) replaced toLocaleString; engrams' render-time setTimeout state update is an effect. Navbar: voice/sound into More, four inline wallet buttons collapsed into one Connect chooser, footer 8→4; Frenchy pill smaller, session-dismissible, below modal scrims; global-error imports a wallet-free Crack and route errors print their digest as a fault code. **Profiles:** CRUCIBLE_PROFILE refuses unknown names, refuses demo off chain 31337 or with REAL_VALUE_OPERATIONS≠0, and refuses preview/production outright until the runbook gates exist (apps/api/src/profile.ts, 0ee612e); compose.public-demo.yaml publishes no origin port. **Measured, not carried forward:** npm test 3,339 TS passed (20 skipped) + 360 Foundry passed (4 fork skips) = 3,699 passing, 0 failures; typecheck clean; forge build --sizes compiles script/; edge 21/21; web next build green. **Open and stated:** token.xyz inference is unverified live (the key authenticates; the account has no credits — 402); the compose overlay could not be `config`-checked (no Docker on this machine); browser verification of the chrome and money changes and the live-site redeploy (api/snapshot was 502 at the time of the report) remain for the operator; org sublists and the funder's internal /allocations stay whole by design (tenancy-bounded, loopback-only); console pages (rewards/solana/finance/data/engineering/scorecards) still render raw JSON dumps and 27 secondary segments still fall back to the root loading state.

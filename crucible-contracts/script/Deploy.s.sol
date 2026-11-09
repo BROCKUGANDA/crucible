@@ -7,6 +7,8 @@ import {CrucibleTrials} from "../contracts/CrucibleTrials.sol";
 import {AlloyRegistry} from "../contracts/AlloyRegistry.sol";
 import {ReputationBridge} from "../contracts/ReputationBridge.sol";
 import {VerificationReceipt} from "../contracts/VerificationReceipt.sol";
+import {EngramERC1155} from "../contracts/EngramERC1155.sol";
+import {EngramDistributor} from "../contracts/EngramDistributor.sol";
 
 /// The signer decision every deployment script in this file shares, so the rule cannot
 /// drift between two callers of the same env var.
@@ -71,7 +73,16 @@ contract Deploy is DevKeyScript {
     error TreasuryMustBeContract(address treasury);
     error OwnerMustBeContract(address ownerSafe);
 
-    function run() external returns (CrucibleTrials trials, AlloyRegistry alloy, VerificationReceipt receipt) {
+    function run()
+        external
+        returns (
+            CrucibleTrials trials,
+            AlloyRegistry alloy,
+            VerificationReceipt receipt,
+            EngramERC1155 engram,
+            EngramDistributor distributor
+        )
+    {
         uint256 pk = signerKey();
         address treasury = vm.envAddress("TREASURY_ADDRESS");
         address ownerSafe = vm.envAddress("OWNER_SAFE_ADDRESS");
@@ -96,12 +107,17 @@ contract Deploy is DevKeyScript {
         receipt.setMinter(address(trials));
         vm.stopBroadcast();
 
+        (engram, distributor) = _deployEngrams(pk);
+
         _report(address(alloy), address(trials));
         console.log("TreasurySafe", treasury);
         console.log("OwnerSafe", ownerSafe);
         console.log("VerificationReceipt", address(receipt));
         console.log("NOTE: setVerificationReceipt/setReceiptsEnabled are the owner Safe's first transactions");
     }
+
+    /// EngramERC1155 is deployed by _deployEngrams, below — with the distributor
+    /// it grants the minter role, so every campaign claim mints through it.
 
     /// v1 fixes exactly three Argus seats; 2-of-3 commit-reveal resolves a dispute.
     /// Anvil accounts 1-3.
@@ -117,6 +133,19 @@ contract Deploy is DevKeyScript {
     function _report(address alloyAddr, address trialsAddr) internal pure {
         console.log("AlloyRegistry", alloyAddr);
         console.log("CrucibleTrials", trialsAddr);
+    }
+
+    /// EngramERC1155 → EngramDistributor, then the distributor gets the minter role.
+    /// (Separate frame so `run` stays under the 16-slot stack limit.)
+    function _deployEngrams(uint256 pk) internal returns (EngramERC1155 engram, EngramDistributor distributor) {
+        string memory baseUri = vm.envOr("ENGRAM_BASE_URI", string("ipfs://crucible-engrams/"));
+        vm.startBroadcast(pk);
+        engram = new EngramERC1155(vm.addr(pk), baseUri);
+        distributor = new EngramDistributor(address(engram));
+        engram.setMinter(address(distributor), true);
+        vm.stopBroadcast();
+        console.log("EngramERC1155", address(engram));
+        console.log("EngramDistributor", address(distributor));
     }
 }
 

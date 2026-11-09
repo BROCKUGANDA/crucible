@@ -122,22 +122,41 @@ export class RateLimiter {
  * `Retry-After` is the part that makes this a feature rather than a wall of 429s: a
  * well-behaved client waits and comes back, and an honest GUI backs off instead of hammering.
  */
+const sweepers = new Set<{ sweep(): void }>();
+let sweepTimer: ReturnType<typeof setInterval> | undefined;
+let sweepIntervalMs = Number.POSITIVE_INFINITY;
+
+/**
+ * One sweep timer for every limiter in the process.
+ *
+ * Each middleware instance used to arm its own unref'd interval on first use and never
+ * clear it — around eight sub-limiters meant eight timers waking forever. Sweeping is
+ * idempotent and cheap, so one timer walks every registered limiter. The interval follows
+ * the smallest window any of them asked for; a longer-window limiter is swept a little
+ * early, which only frees a stale entry sooner.
+ */
+function registerSweeper(limiter: { sweep(): void }, windowMs: number): void {
+  sweepers.add(limiter);
+  if (!(windowMs > 0)) return;
+  if (!sweepTimer || windowMs < sweepIntervalMs) {
+    if (sweepTimer) clearInterval(sweepTimer);
+    sweepIntervalMs = windowMs;
+    sweepTimer = setInterval(() => {
+      for (const l of sweepers) l.sweep();
+    }, sweepIntervalMs);
+    sweepTimer.unref?.();
+  }
+}
+
 export function rateLimit(config: RateLimitConfig & { trustProxy?: boolean }) {
   const limiter = new RateLimiter(config);
   const trustProxy = config.trustProxy ?? false;
 
   // The sweep only matters if clients keep coming; an otherwise idle process leaks no
   // memory because there is no timer.
-  let sweepTimer: ReturnType<typeof setInterval> | undefined;
-
-  const ensureSweeper = () => {
-    if (!sweepTimer) sweepTimer = setInterval(() => limiter.sweep(), config.windowMs);
-    sweepTimer.unref?.();
-  };
+  registerSweeper(limiter, config.windowMs);
 
   return async function middleware(c: Context, next: Next) {
-    ensureSweeper();
-
     const identity = trustProxy ? proxiedIdentity(c) : socketAddress(c);
 
     const verdict = limiter.consume(identity ?? "shared");

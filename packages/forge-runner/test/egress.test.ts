@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { assertEgressAllowed, EgressDenied, hostAllowed } from "../src/egress.js";
-import { anthropicClient, nimClient, openAiCompatibleClient } from "../src/index.js";
+import { tokenxyzClient, nimClient, openAiCompatibleClient } from "../src/index.js";
 
 describe("the egress allowlist", () => {
   it("lets a listed host through", () => {
@@ -64,17 +64,17 @@ describe("the allowlist on the clients that make the requests", () => {
     ).not.toThrow();
   });
 
-  it("guards the Anthropic client, which had no URL check at all before", () => {
+  it("guards the exchange client the same way as every other provider", () => {
     // A `file://` baseUrl must be refused by the scheme guard, not fetched.
-    expect(() => anthropicClient({ apiKey: "k", baseUrl: "file:///etc/hostname" })).toThrow(
+    expect(() => tokenxyzClient({ apiKey: "k", baseUrl: "file:///etc/hostname" })).toThrow(
       /must be http\(s\)/,
     );
     // And a host outside the allowlist is refused even though the scheme is fine.
     expect(() =>
-      anthropicClient({
+      tokenxyzClient({
         apiKey: "k",
         baseUrl: "https://api.openai.com",
-        egressAllowlist: ["api.anthropic.com"],
+        egressAllowlist: ["token.xyz"],
       }),
     ).toThrow(EgressDenied);
   });

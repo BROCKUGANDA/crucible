@@ -1,7 +1,17 @@
 import { describe, it, expect } from "vitest";
-import { buildMerkleTree, verifyProof, getProof } from "../src/index.js";
+import { buildMerkleTree, verifyProof, getProof, leafFor } from "../src/index.js";
 
 const CHAIN = 31337n;
+
+describe("the canonical leaf", () => {
+  it("re-derives the digest the tree builder uses", () => {
+    const leaf = { recipient: "0x1111111111111111111111111111111111111111" as const, amount: 1n, campaignId: 0n, tokenId: 1001n };
+    const tree = buildMerkleTree([leaf], CHAIN);
+    expect(leafFor(leaf, CHAIN)).toBe(tree.leaves[0]);
+    expect(getProof(tree, leafFor(leaf, CHAIN))).toEqual([]);
+    expect(verifyProof(leafFor(leaf, CHAIN), [], tree.root)).toBe(true);
+  });
+});
 
 describe("Merkle tree", () => {
   it("single leaf root equals leaf", () => {

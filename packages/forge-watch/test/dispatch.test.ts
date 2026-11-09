@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { eventJobId, runJobId, monitorJob, FORGE_WATCH_QUEUE_NAMES } from "../src/index.js";
+import {
+  eventJobId,
+  runJobId,
+  monitorJob,
+  monitorEventJob,
+  FORGE_WATCH_QUEUE_NAMES,
+} from "../src/index.js";
 
 describe("Forge Watch dispatch helpers", () => {
   it("builds stable idempotent event job ids", () => {
@@ -16,6 +22,20 @@ describe("Forge Watch dispatch helpers", () => {
     expect(p.schemaVersion).toBe(1);
     expect(p.runId).toBe("r");
     expect(typeof p.enqueuedAt).toBe("number");
+  });
+
+  it("monitorEventJob carries the event the L0 worker inspects", () => {
+    const payload = monitorEventJob("r", {
+      eventId: "evt-1",
+      sequence: 4,
+      eventType: "egress.decision",
+      source: "gateway",
+      authorizationDecision: "denied",
+    });
+    expect(payload.eventId).toBe("evt-1");
+    expect(payload.events).toHaveLength(1);
+    expect(payload.events![0]!.authorizationDecision).toBe("denied");
+    expect(payload.phase).toBe("l0");
   });
 
   it("exposes queue names", () => {

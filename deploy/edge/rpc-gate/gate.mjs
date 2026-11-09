@@ -74,10 +74,21 @@ function jsonRpcError(id, code, message) {
   return JSON.stringify({ jsonrpc: "2.0", id: id ?? null, error: { code, message } });
 }
 
+/**
+ * The bucket key: the RIGHT-most X-Forwarded-For entry, else the socket address.
+ *
+ * The proxy in front sets this header outright (Caddyfile `header_up X-Forwarded-For
+ * {remote_host}`), so the right-most entry is the one the trusted hop wrote and the
+ * entries to its left are whatever the caller invented. Keying on the left-most entry
+ * let a caller mint a fresh rate-limit bucket per request by varying the header — the
+ * same bypass the API's limiter fixed behind the same proxy. A caller that reaches the
+ * gate without the proxy owns the socket address anyway, which is the honest key.
+ */
 function clientKey(req) {
   const forwarded = req.headers["x-forwarded-for"];
   if (typeof forwarded === "string" && forwarded.trim()) {
-    return forwarded.split(",")[0].trim();
+    const entries = forwarded.split(",").map((entry) => entry.trim()).filter(Boolean);
+    if (entries.length > 0) return entries[entries.length - 1];
   }
   return req.socket.remoteAddress ?? "unknown";
 }

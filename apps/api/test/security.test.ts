@@ -100,8 +100,13 @@ describe("CORS: explicit origin policy", () => {
     expect(methods).toContain("GET");
     // POST is advertised because the auth routes need it.
     expect(methods).toContain("POST");
-    // The methods the API does not have are still not advertised.
-    for (const write of ["PUT", "DELETE", "PATCH"]) expect(methods).not.toContain(write);
+    // And the write methods the API actually serves: campaign status is PATCH, org
+    // API-key revocation is DELETE. Advertising only the reads refused both at the
+    // preflight, which is the same failure POST had before the auth routes landed.
+    expect(methods).toContain("PATCH");
+    expect(methods).toContain("DELETE");
+    // PUT is still not a method this API serves.
+    expect(methods).not.toContain("PUT");
   });
 
   it("never grants credentialed cross-origin access unless it is asked to", async () => {

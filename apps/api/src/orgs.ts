@@ -19,6 +19,7 @@ import {
   getOrganisation,
   organisationsForPrincipal,
   isMemberOf,
+  authorize,
   newOrganisation,
   type OrganisationPrincipal,
 } from "@crucible/agent-security";
@@ -167,8 +168,11 @@ export function createOrgRoutes(): Hono {
       return c.json({ error: "unauthenticated", code: "no-credential" }, 401);
     }
     const id = c.req.param("id");
-    if (!isMemberOf(principal.wallet.id, id)) {
-      return c.json({ error: "forbidden", code: "not-a-member" }, 403);
+    // Budget creation is a spend-control decision: the role matrix decides,
+    // not mere membership (org:budget:set is owner/billing-admin only).
+    const decision = authorize(principal, id, "org:budget:set");
+    if (!decision.allow) {
+      return c.json({ error: "forbidden", reason: decision.reason, code: decision.code }, 403);
     }
     let body: { budgetId?: string; category?: string; totalUnits?: string; periodStart?: number; periodEnd?: number } = {};
     try {
@@ -214,8 +218,10 @@ export function createOrgRoutes(): Hono {
       return c.json({ error: "unauthenticated", code: "no-credential" }, 401);
     }
     const id = c.req.param("id");
-    if (!isMemberOf(principal.wallet.id, id)) {
-      return c.json({ error: "forbidden", code: "not-a-member" }, 403);
+    // Minting a credential is a governance action (org:manage — owner only).
+    const decision = authorize(principal, id, "org:manage");
+    if (!decision.allow) {
+      return c.json({ error: "forbidden", reason: decision.reason, code: decision.code }, 403);
     }
     let body: { keyId?: string; name?: string; scopes?: string[] } = {};
     try {
@@ -262,8 +268,10 @@ export function createOrgRoutes(): Hono {
       return c.json({ error: "unauthenticated", code: "no-credential" }, 401);
     }
     const id = c.req.param("id");
-    if (!isMemberOf(principal.wallet.id, id)) {
-      return c.json({ error: "forbidden", code: "not-a-member" }, 403);
+    // Revoking a credential is a governance action (org:manage — owner only).
+    const decision = authorize(principal, id, "org:manage");
+    if (!decision.allow) {
+      return c.json({ error: "forbidden", reason: decision.reason, code: decision.code }, 403);
     }
     const keyId = c.req.param("keyId");
     const ok = revokeApiKey(keyId, id);

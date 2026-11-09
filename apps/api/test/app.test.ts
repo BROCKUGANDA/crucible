@@ -2,11 +2,12 @@ import { describe, expect, it, beforeEach } from "vitest";
 import http from "node:http";
 import { createHmac } from "node:crypto";
 import type { AddressInfo } from "node:net";
-import { replay, type EventLike } from "@crucible/indexer";
+import { replay, emptyModel, type EventLike, type TrialRow } from "@crucible/indexer";
 import { CircuitBreaker } from "@crucible/smith";
 import { createApp } from "../src/app.js";
 import { createPassportSource } from "../src/passport.js";
 import { resetStoreForTests } from "../src/trial-lifecycle.js";
+import { __resetRunsForTests, __seedRunForTests } from "../src/workloads.js";
 
 // The auth routes fail closed: a missing secret means no session is signed.
 // The test therefore asks for the development behaviour by name.
@@ -321,8 +322,9 @@ describe("routes", () => {
       const res = await app.request("/trials?minRewardWei=1000000000000000000");
       expect(res.status).toBe(200);
       const body = await res.json();
+      expect(body.trials.length).toBeGreaterThan(0);
       expect(
-        body.trials.every((t: { rewardEth: string }) => BigInt(t.rewardEth) >= 1000000000000000000n)
+        body.trials.every((t: { rewardWei: string }) => BigInt(t.rewardWei) >= 1000000000000000000n)
       ).toBe(true);
     });
 
@@ -331,7 +333,7 @@ describe("routes", () => {
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(
-        body.trials.every((t: { rewardEth: string }) => BigInt(t.rewardEth) <= 1000000000000000000n)
+        body.trials.every((t: { rewardWei: string }) => BigInt(t.rewardWei) <= 1000000000000000000n)
       ).toBe(true);
     });
 
@@ -1293,6 +1295,42 @@ describe("trial lifecycle state machine (blueprint items 101-120)", () => {
       expect(res.status).toBe(403);
     });
 
+    it("security: a non-sponsor session cannot cancel by naming the sponsor in the body", async () => {
+      // Authorization binds to the verified session address, never to a
+      // client-supplied sponsor claim.
+      const attacker = "0x2222222222222222222222222222222222222222";
+      const res = await app.request(`/trials/${trialId}/transition`, {
+        method: "POST",
+        headers: sessionHeaders(attacker),
+        body: JSON.stringify({ to: "CANCELLED", sponsor: SPONSOR }),
+      });
+      expect(res.status).toBe(403);
+      const body = await res.json();
+      expect(body.code).toBe("not-sponsor");
+    });
+
+    it("security: sponsor-gated transitions work without a body sponsor claim", async () => {
+      const res = await app.request(`/trials/${trialId}/transition`, {
+        method: "POST",
+        headers: sessionHeaders(SPONSOR),
+        body: JSON.stringify({ to: "CANCELLED" }),
+      });
+      expect(res.status).toBe(200);
+      expect((await res.json()).trial.status).toBe("CANCELLED");
+    });
+
+    it("security: a non-sponsor session cannot advance the trial lifecycle", async () => {
+      // The recorded sponsor drives every transition; another authenticated
+      // wallet cannot approve, schedule or activate someone else's trial.
+      const res = await app.request(`/trials/${trialId}/transition`, {
+        method: "POST",
+        headers: sessionHeaders("0x3333333333333333333333333333333333333333"),
+        body: JSON.stringify({ to: "REVIEW" }),
+      });
+      expect(res.status).toBe(403);
+      expect((await res.json()).code).toBe("not-sponsor");
+    });
+
     it("111: illegal state transition - DRAFT to ACTIVE rejected", async () => {
       const res = await transitionViaApp(app, trialId, "ACTIVE");
       expect(res.status).toBe(403);
@@ -1570,5 +1608,138 @@ describe("public discovery edge cases (blueprint items 81-100)", () => {
     const res = await app.request("/trials/999999");
     expect(res.status).toBe(404);
     expect((await res.json()).error).toContain("not found");
+  });
+});
+
+describe("2026-11-09 audit fixes", () => {
+  const DEV_SECRET = "crucible-local-dev-secret-not-for-production";
+
+  function cookieFor(address: string): string {
+    const now = Date.now();
+    const payload = {
+      address,
+      issuedAt: Math.floor(now / 1000),
+      expiresAt: Math.floor(now / 1000) + 60 * 60 * 24 * 7,
+      aud: "http://localhost:3000",
+    };
+    const encoded = Buffer.from(JSON.stringify(payload)).toString("base64url");
+    const sig = createHmac("sha256", DEV_SECRET).update(encoded).digest("base64url");
+    return `__Host-crucible_session=${encoded}.${sig}`;
+  }
+
+  function bareApp(model: unknown) {
+    return createApp({ getModel: () => model } as never, { rateLimit: false });
+  }
+
+  it("runs: GET /v1/runs/:runId requires a session", async () => {
+    __resetRunsForTests();
+    const app = bareApp({ trials: new Map(), agents: new Map(), runs: new Map(), disputes: new Map() });
+    const res = await app.request("/v1/runs/run-abc");
+    expect(res.status).toBe(401);
+  });
+
+  it("runs: a session that did not create the run cannot read it", async () => {
+    __resetRunsForTests();
+    __seedRunForTests({
+      runId: "run-abc",
+      attemptId: "att-run-abc",
+      tenantId: "default",
+      trialId: "trial-1",
+      workloadProfile: "SOFTWARE_ENGINEERING",
+      status: "verified",
+      createdAt: Date.now(),
+      createdBy: "0x1111111111111111111111111111111111111111",
+    });
+    const app = bareApp({ trials: new Map(), agents: new Map(), runs: new Map(), disputes: new Map() });
+
+    const stranger = await app.request("/v1/runs/run-abc", {
+      headers: { cookie: cookieFor("0x2222222222222222222222222222222222222222") },
+    });
+    expect(stranger.status).toBe(404);
+
+    const creator = await app.request("/v1/runs/run-abc", {
+      headers: { cookie: cookieFor("0x1111111111111111111111111111111111111111") },
+    });
+    expect(creator.status).toBe(200);
+    expect(((await creator.json()) as { run: { runId: string } }).run.runId).toBe("run-abc");
+  });
+
+  it("trials: a fractional ETH reward does not 500 the listing", async () => {
+    const trial: TrialRow = {
+      id: 7,
+      sponsor: "0x" + "11".repeat(20),
+      specCID: null,
+      testsCID: null,
+      specDigest: "0x" + "33".repeat(32),
+      testsDigest: "0x" + "55".repeat(32),
+      rewardWei: 10n ** 17n,
+      bondWei: 10n ** 15n,
+      payoutWei: null,
+      createdAt: 1_799_000_000,
+      deadline: 1_800_000_000,
+      breakWindow: 86_400,
+      agentId: null,
+      runHash: null,
+      runAt: null,
+      breakSkeptic: null,
+      breakStakeWei: null,
+      breakProofCID: null,
+      status: "open",
+      verdict: "none",
+      disputeOpenedAt: null,
+      settledAt: null,
+    };
+    const model = emptyModel();
+    model.trials.set(7, trial);
+    const app = bareApp(model);
+    const res = await app.request("/trials");
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.trials).toHaveLength(1);
+    expect(body.trials[0].rewardEth).toBe("0.1");
+  });
+
+  it("trials: a malformed reward filter is a 400, not a 500", async () => {
+    const app = bareApp({ trials: new Map(), agents: new Map(), runs: new Map(), disputes: new Map() });
+    const res = await app.request("/trials?minRewardWei=1e18");
+    expect(res.status).toBe(400);
+  });
+
+  it("csrf: a cookie-bearing cross-origin mutation is rejected", async () => {
+    const app = bareApp({ trials: new Map(), agents: new Map(), runs: new Map(), disputes: new Map() });
+    const res = await app.request("/trials", {
+      method: "POST",
+      headers: {
+        cookie: cookieFor("0x1111111111111111111111111111111111111111"),
+        origin: "https://evil.example",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({}),
+    });
+    expect(res.status).toBe(403);
+    expect(((await res.json()) as { code: string }).code).toBe("csrf-origin");
+  });
+
+  it("csrf: the configured origin passes the guard", async () => {
+    const app = bareApp({ trials: new Map(), agents: new Map(), runs: new Map(), disputes: new Map() });
+    const res = await app.request("/trials", {
+      method: "POST",
+      headers: {
+        cookie: cookieFor("0x1111111111111111111111111111111111111111"),
+        origin: "http://localhost:3000",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({}),
+    });
+    // The guard passed; the request fails its own body validation instead.
+    expect(res.status).toBe(400);
+  });
+
+  it("monitoring: a session without the owner role is refused", async () => {
+    const app = bareApp({ trials: new Map(), agents: new Map(), runs: new Map(), disputes: new Map() });
+    const res = await app.request("/monitoring", {
+      headers: { cookie: cookieFor("0x1111111111111111111111111111111111111111") },
+    });
+    expect(res.status).toBe(403);
   });
 });

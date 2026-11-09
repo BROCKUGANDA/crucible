@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Chrome } from "@/components/Chrome";
 import { API_BASE } from "@/lib/apiBase";
-import { formatEth } from "@/lib/forge";
+import { formatWei } from "@/lib/eth";
 
 /**
  * Bounty Calculator — recommends an economically appropriate native ETH reward
@@ -198,27 +198,27 @@ export default function BountyCalculatorPage() {
           <div className="bounty-grid">
             <div className="metric-card">
               <p className="mono faint">Minimum recommended</p>
-              <p className="mono">{formatEth(recommendation.minimumRecommended)} ETH</p>
+              <p className="mono">{formatWei(BigInt(recommendation.minimumRecommended))} ETH</p>
             </div>
             <div className="metric-card">
               <p className="mono faint">Competitive bounty</p>
-              <p className="mono">{formatEth(recommendation.competitiveBounty)} ETH</p>
+              <p className="mono">{formatWei(BigInt(recommendation.competitiveBounty))} ETH</p>
             </div>
             <div className="metric-card">
               <p className="mono faint">Premium bounty</p>
-              <p className="mono">{formatEth(recommendation.premiumBounty)} ETH</p>
+              <p className="mono">{formatWei(BigInt(recommendation.premiumBounty))} ETH</p>
             </div>
             <div className="metric-card">
               <p className="mono faint">Required bond</p>
-              <p className="mono">{formatEth(recommendation.requiredBondWei)} ETH</p>
+              <p className="mono">{formatWei(BigInt(recommendation.requiredBondWei))} ETH</p>
             </div>
             <div className="metric-card">
               <p className="mono faint">Protocol fee (5%)</p>
-              <p className="mono">{formatEth(recommendation.protocolFeeWei)} ETH</p>
+              <p className="mono">{formatWei(BigInt(recommendation.protocolFeeWei))} ETH</p>
             </div>
             <div className="metric-card">
               <p className="mono faint">Expected net payout</p>
-              <p className="mono">{formatEth(recommendation.expectedNetAgentPayoutWei)} ETH</p>
+              <p className="mono">{formatWei(BigInt(recommendation.expectedNetAgentPayoutWei))} ETH</p>
             </div>
           </div>
           <p className="mono faint">{recommendation.reason}</p>

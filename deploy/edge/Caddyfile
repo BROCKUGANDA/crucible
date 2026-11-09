@@ -139,7 +139,16 @@ crucible.svalley.tech {
 	@anvil path /anvil /anvil/*
 	handle @anvil {
 		uri strip_prefix /anvil
-		reverse_proxy rpc-gate:8791
+		reverse_proxy rpc-gate:8791 {
+			# The same treatment the /api handler gets: set the forwarded
+			# header outright so the caller's own X-Forwarded-For cannot
+			# reach the gate. The gate's limiter keys on the right-most
+			# entry; without this overwrite, a caller that prepends an
+			# entry per request mints unlimited fresh rate-limit buckets.
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Real-IP {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+		}
 	}
 
 	# The API. `handle_path` strips the `/api` prefix, which is what the

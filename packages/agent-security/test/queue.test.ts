@@ -15,6 +15,9 @@ import {
   addJob,
   getAllQueues,
   closeQueues,
+  redisOptionsFromUrl,
+  isFinalFailure,
+  buildDeadLetterRecord,
   QUEUE_NAMES,
 } from '../src/queue.js';
 import { probeRedis, skipBanner } from './support/live.js';
@@ -38,6 +41,48 @@ describe('queue module', () => {
     expect(typeof getAllQueues).toBe('function');
     expect(typeof closeQueues).toBe('function');
     expect(typeof QUEUE_NAMES).toBe('object');
+  });
+
+  it('parses REDIS_URL into host, port, credentials and db', () => {
+    // ioredis ignores a `{ url }` options object, so REDIS_URL must be parsed
+    // explicitly or every queue silently dials 127.0.0.1.
+    expect(redisOptionsFromUrl('redis://redis.internal:6380/3')).toEqual({
+      host: 'redis.internal',
+      port: 6380,
+      db: 3,
+    });
+    expect(redisOptionsFromUrl('redis://user:pass@cache:6379/0')).toEqual({
+      host: 'cache',
+      port: 6379,
+      username: 'user',
+      password: 'pass',
+      db: 0,
+    });
+    expect(redisOptionsFromUrl('redis://localhost')).toEqual({ host: 'localhost', port: 6379 });
+  });
+
+  it('dead-letters only on the final failed attempt, with the payload intact', () => {
+    expect(isFinalFailure(4, 5)).toBe(false);
+    expect(isFinalFailure(5, 5)).toBe(true);
+    // No explicit attempts: the Forge Watch default (5) decides.
+    expect(isFinalFailure(4, undefined)).toBe(false);
+    expect(isFinalFailure(5, undefined)).toBe(true);
+
+    const record = buildDeadLetterRecord(
+      'forge-watch',
+      { id: 'job-1', name: 'monitor', data: { runId: 'r1', phase: 'l0' } },
+      new Error('payload invalid'),
+      () => 1_000,
+    );
+    expect(record).toEqual({
+      source: 'forge-watch',
+      jobId: 'job-1',
+      name: 'monitor',
+      data: { runId: 'r1', phase: 'l0' },
+      error: 'payload invalid',
+      failedAt: 1_000,
+    });
+    expect(QUEUE_NAMES.FORGE_WATCH_DLQ).toBe('forge-watch-dlq');
   });
 
   it('QUEUE_NAMES has expected values', () => {

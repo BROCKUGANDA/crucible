@@ -59,4 +59,35 @@ describe("Forge Watch runtime", () => {
     if (prev === undefined) delete process.env.FORGE_WATCH_PERSIST;
     else process.env.FORGE_WATCH_PERSIST = prev;
   });
+
+  it("defaults to the durable store when a PG executor is provided", async () => {
+    const prev = process.env.FORGE_WATCH_PERSIST;
+    delete process.env.FORGE_WATCH_PERSIST;
+    const calls: string[] = [];
+    const exec = async <T = unknown>(text: string, params?: unknown[]) => {
+      calls.push(text);
+      if (text.includes("INSERT INTO forge_watch_events")) {
+        return { rows: [{ event_id: params?.[0] }] as T[] };
+      }
+      return { rows: [] as T[] };
+    };
+
+    // No opts.persist: wiring an executor is the request for durability.
+    const rt = createForgeWatchRuntime({ pgExecutor: exec });
+    expect(rt.store.constructor.name).toBe("PgEventStore");
+    await rt.emitEvent(parseForgeWatchEvent(forgeWatchEvent(base, { sequence: 1 })));
+    expect(calls.some((c) => c.includes("INSERT INTO forge_watch_events"))).toBe(true);
+
+    if (prev === undefined) delete process.env.FORGE_WATCH_PERSIST;
+    else process.env.FORGE_WATCH_PERSIST = prev;
+  });
+
+  it("an explicit FORGE_WATCH_PERSIST=false keeps the demo store even with an executor", () => {
+    const prev = process.env.FORGE_WATCH_PERSIST;
+    process.env.FORGE_WATCH_PERSIST = "false";
+    const rt = createForgeWatchRuntime({ pgExecutor: async () => ({ rows: [] }) });
+    expect(rt.store.constructor.name).toBe("InMemoryEventStore");
+    if (prev === undefined) delete process.env.FORGE_WATCH_PERSIST;
+    else process.env.FORGE_WATCH_PERSIST = prev;
+  });
 });

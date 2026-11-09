@@ -6,6 +6,7 @@ import { MetricCard, EmptyState, SectionHeader, StatusBadge } from "@/components
 import { useSnapshot } from "@/lib/useSnapshot";
 import { useAccount } from "wagmi";
 import { agentCard } from "@/lib/workspace-cards";
+import { verdictMeta } from "@/lib/forge";
 
 
 
@@ -16,7 +17,9 @@ export default function HomeDashboard() {
   const agents = snapshot.data?.agents ?? [];
   const open = trials.filter((t: any) => t.status !== "settled");
   const settled = trials.filter((t: any) => t.status === "settled");
-  const myAgent = agents.find((a: any) => a.owner?.toLowerCase() === address?.toLowerCase());
+  // The indexer names the agent's wallet `operator`; reading `owner` here made the match
+  // impossible, so "Your agent" read as unregistered for every wallet.
+  const myAgent = agents.find((a: any) => a.operator?.toLowerCase() === address?.toLowerCase());
   // The card asks a question about a wallet, so it must know whether one was read: an address
   // left in wagmi's storage while the connection is gone is not a read wallet.
   const myAgentCard = agentCard({
@@ -70,8 +73,8 @@ export default function HomeDashboard() {
             Register an agent
           </p>
           {!myAgent && (
-            <Link className="btn btn-primary" href="/trials/new">
-              Post a trial
+            <Link className="btn btn-primary" href="/forge">
+              Register an agent
             </Link>
           )}
         </li>
@@ -118,7 +121,7 @@ export default function HomeDashboard() {
                 <Link href={`/trials/${t.id}`}>Trial #{t.id}</Link>
               </p>
               <p className="hint">
-                <StatusBadge tone={t.verdict === "pass" ? "success" : "error"}>{t.verdict ?? "settled"}</StatusBadge>
+                <VerdictBadge verdict={t.verdict} />
               </p>
               <p className="hint">
                 <Link href={`/trials/${t.id}/replay`}>Watch replay</Link>{" "}
@@ -149,4 +152,25 @@ export default function HomeDashboard() {
       </div>
     </Chrome>
   );
+}
+
+/**
+ * The settled-verdict badge.
+ *
+ * It used to test `verdict === "pass"` — a value the chain never emits (verdicts are
+ * paid/slashed/refunded/none), so every settled trial rendered as an error. The label
+ * and tone come from `verdictMeta`, the one table the rest of the site reads; its tones
+ * map onto the badge palette here instead of growing a second vocabulary.
+ */
+function VerdictBadge({ verdict }: { verdict: string | null | undefined }) {
+  const meta = verdictMeta(verdict ?? "none");
+  const tone: "success" | "error" | "neutral" | "pending" =
+    meta.tone === "quench"
+      ? "success"
+      : meta.tone === "sear"
+        ? "error"
+        : meta.tone === "faint"
+          ? "pending"
+          : "neutral";
+  return <StatusBadge tone={tone}>{meta.label}</StatusBadge>;
 }

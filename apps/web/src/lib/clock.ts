@@ -26,6 +26,19 @@ import { formatWei } from "./eth";
 export const UNKNOWN = "—";
 
 /**
+ * A moment rendered the same way everywhere on the site.
+ *
+ * Pinned to ISO in UTC rather than `toLocaleString()`: the reader's locale decides how a
+ * date is written and whether "14:03" is morning or night, and two pages that format the
+ * same chain timestamp differently are two sources of truth for one fact. A missing or
+ * non-finite time renders the unknown glyph, never "Invalid Date".
+ */
+export function formatWhen(ms: number | null | undefined): string {
+  if (ms === null || ms === undefined || !Number.isFinite(ms)) return UNKNOWN;
+  return `${new Date(ms).toISOString().slice(0, 19).replace("T", " ")} UTC`;
+}
+
+/**
  * The CrucibleTrials functions this page reads. A `public constant` compiles to a getter of the
  * same name, so each entry is both the ABI function name and the label the page attributes.
  */

@@ -109,14 +109,12 @@ export class SponsorshipQueue {
  * The queue is the operator's view of who asked for the treasury's test ETH, so
  * it is not a public list. `owners` is the set of wallets allowed to see it.
  *
- * **What this gate does and does not prove.** It compares the address the
- * caller claims with the configured owner list. A caller who is not the owner
- * gets nothing; a caller who *claims* to be the owner is believed. That is
- * enough for a demo host whose queue holds applicant addresses and amounts -
- * data the applicants themselves can see - and it is not enough for a real
- * deployment, where the production gate is a signature from the owner's wallet
- * (or a session), not a claimed address. The distinction is written here
- * because a gate that looks stronger than it is is worse than no gate.
+ * **What this gate does and does not prove.** HTTP authorization is the
+ * session's: `/faucet/applications` and `/faucet/ledger` derive the wallet from
+ * the verified SIWE session and ignore a query-string address, then ask this
+ * gate whether that wallet is a configured owner. A caller who names an owner
+ * in the query is not believed. `OwnerGate.isOwner` itself only matches an
+ * address against the configured list; it is not an authenticator.
  */
 export class OwnerGate {
   private readonly owners: Set<string>;

@@ -42,6 +42,7 @@ import { makeReplaySource } from "./replay.js";
 import { dlq } from "./dlq.js";
 import { createPassportSource } from "./passport.js";
 import { resolveSecurity } from "./security.js";
+import { resolveProfile, validateProfile } from "./profile.js";
 
 /**
  * API + indexer in one process.
@@ -219,8 +220,9 @@ const voice = (() => {
  */
 const frenchy = (() => {
   if (process.env.FRENCHY_DISABLED === "1") return null;
-  const llmApiKey = process.env.FRENCHY_LLM_API_KEY?.trim();
-  const llmModel = process.env.FRENCHY_LLM_MODEL?.trim() || "gpt-4o-mini";
+  const llmApiKey =
+    process.env.FRENCHY_LLM_API_KEY?.trim() || process.env.TOKENXYZ_API_KEY?.trim();
+  const llmModel = process.env.FRENCHY_LLM_MODEL?.trim() || "deepseek/deepseek-v4-flash";
   const llmBaseUrl = process.env.FRENCHY_LLM_BASE_URL?.trim() || undefined;
   // How long the brain may take. A provider that is slow is slow, not broken,
   // and the browser says "Thinking..." the whole time - so this is a budget
@@ -339,6 +341,17 @@ function requiredChainId(): number {
 const configuredChainId = requiredChainId();
 const configuredTrialsAddress = trialsAddress;
 
+// The profile gate. Env-only: a host that has never set CRUCIBLE_PROFILE has no opinion
+// to enforce, so it boots exactly as it used to. A host that HAS set one is refused when
+// the profile contradicts its chain or its value policy — preview and production refuse
+// outright until their runbook gates exist (docs/runbooks/profiles.md). This runs before
+// the chain probe because a misconfigured profile should be refused on configuration,
+// not on a network answer.
+const configuredProfile = resolveProfile(process.env.CRUCIBLE_PROFILE);
+if (configuredProfile !== null) {
+  validateProfile(configuredProfile, { chainId: configuredChainId, env: process.env });
+}
+
 async function verifyChainAtBoot(): Promise<void> {
   let liveChainId: number;
   try {
@@ -364,7 +377,7 @@ async function verifyChainAtBoot(): Promise<void> {
 
 await verifyChainAtBoot();
 console.log(
-  `[crucible] chain verified: id ${configuredChainId}, trials at ${configuredTrialsAddress}`,
+  `[crucible]${configuredProfile !== null ? ` profile ${configuredProfile}` : ""}: chain verified: id ${configuredChainId}, trials at ${configuredTrialsAddress}`,
 );
 
 const scribe = new Scribe({

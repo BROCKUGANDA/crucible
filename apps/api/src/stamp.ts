@@ -20,12 +20,25 @@ export type StampMode = "disabled" | "sandbox" | "manual_review" | "production";
 
 export interface StampConfig {
   mode?: StampMode;
+  /**
+   * Wallets that may operate the manual-review queue. Defaults to
+   * `CRUCIBLE_STAMP_REVIEWERS` (comma-separated). Empty means the queue is
+   * closed — a signed-in wallet is not a reviewer.
+   */
+  reviewers?: readonly string[];
 }
 
 export function stampMode(): StampMode {
   const raw = (process.env.STAMP_MODE ?? "disabled").trim();
   if (raw === "sandbox" || raw === "manual_review" || raw === "production") return raw;
   return "disabled";
+}
+
+function reviewersFromEnv(): readonly string[] {
+  return (process.env.CRUCIBLE_STAMP_REVIEWERS ?? "")
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
 }
 
 /** Integer-basis-point allocation with aggregate cap (no floating point). */
@@ -97,6 +110,29 @@ function requireManualReview(c: { json: (b: unknown, s?: number) => Response }, 
 export function createStampRoutes(config: StampConfig = {}): Hono {
   const app = new Hono();
   const mode = config.mode ?? stampMode();
+  const reviewers = config.reviewers ?? reviewersFromEnv();
+
+  /**
+   * STAMP's mutations are a reviewer's decisions — the instrument lifecycle and
+   * the manual-review queue change legal status. Any authenticated wallet is
+   * not authority here: the address must be on the configured reviewer list,
+   * and an empty list closes the queue rather than opening it.
+   */
+  function requireReviewer(c: Parameters<typeof verifiedSessionFromContext>[0]): Response | null {
+    const session = verifiedSessionFromContext(c);
+    if (!session) return c.json({ error: "unauthenticated", code: "no-credential" }, 401);
+    if (reviewers.length === 0) {
+      return c.json(
+        { error: "no STAMP reviewer is configured on this host", code: "stamp_no_reviewers" },
+        403,
+      );
+    }
+    const address = session.payload.address.toLowerCase();
+    if (!reviewers.some((reviewer) => reviewer.toLowerCase() === address)) {
+      return c.json({ error: "STAMP mutations are the reviewer's view", code: "forbidden" }, 403);
+    }
+    return null;
+  }
 
   if (mode === "disabled") {
     app.all("/*", (c) => c.json({ error: "STAMP is disabled on this host", code: "stamp_disabled" }, 404));
@@ -114,8 +150,8 @@ export function createStampRoutes(config: StampConfig = {}): Hono {
 
   // Admin: create draft instrument (sandbox/manual_review only).
   app.post("/admin/instruments", async (c) => {
-    const session = verifiedSessionFromContext(c);
-    if (!session) return c.json({ error: "unauthenticated", code: "no-credential" }, 401);
+    const denied = requireReviewer(c);
+    if (denied) return denied;
     if (mode === "production") {
       return c.json({ error: "production gate: signed manifest required", code: "stamp_production_blocked" }, 403);
     }
@@ -136,8 +172,8 @@ export function createStampRoutes(config: StampConfig = {}): Hono {
   });
 
   app.get("/admin/instruments/:id", (c) => {
-    const session = verifiedSessionFromContext(c);
-    if (!session) return c.json({ error: "unauthenticated", code: "no-credential" }, 401);
+    const denied = requireReviewer(c);
+    if (denied) return denied;
     const inst = instruments.get(c.req.param("id"));
     if (!inst) return c.json({ error: "not found", code: "not-found" }, 404);
     return c.json({ instrument: inst });
@@ -145,8 +181,8 @@ export function createStampRoutes(config: StampConfig = {}): Hono {
 
   // Allocation calculator (pure, integer).
   app.post("/admin/allocate", async (c) => {
-    const session = verifiedSessionFromContext(c);
-    if (!session) return c.json({ error: "unauthenticated", code: "no-credential" }, 401);
+    const denied = requireReviewer(c);
+    if (denied) return denied;
     let body: { rawBps?: string[]; totalNetworkTokens?: string } = {};
     try { body = (await c.req.json()) as typeof body; } catch { return c.json({ error: "invalid body" }, 400); }
     const raw = (body.rawBps ?? []).map((x) => BigInt(x));
@@ -163,8 +199,8 @@ export function createStampRoutes(config: StampConfig = {}): Hono {
   // Sandbox payment observer: devnet fixtures only. Records an *observed*
   // fixture payment against a SIGNED instrument. Wrong mint/cluster → 400.
   app.post("/admin/payments/observe", async (c) => {
-    const session = verifiedSessionFromContext(c);
-    if (!session) return c.json({ error: "unauthenticated", code: "no-credential" }, 401);
+    const denied = requireReviewer(c);
+    if (denied) return denied;
     let body: { instrumentId?: string; cluster?: string; tokenMint?: string; fromAddress?: string; toApproved?: string; amountBaseUnits?: string; signature?: string } = {};
     try { body = (await c.req.json()) as typeof body; } catch { return c.json({ error: "invalid body" }, 400); }
     const inst = body.instrumentId ? instruments.get(body.instrumentId) : undefined;
@@ -191,8 +227,8 @@ export function createStampRoutes(config: StampConfig = {}): Hono {
   });
 
   app.get("/admin/payments/:id", (c) => {
-    const session = verifiedSessionFromContext(c);
-    if (!session) return c.json({ error: "unauthenticated", code: "no-credential" }, 401);
+    const denied = requireReviewer(c);
+    if (denied) return denied;
     const pay = payments.get(c.req.param("id"));
     if (!pay) return c.json({ error: "not found", code: "not-found" }, 404);
     return c.json({ payment: pay });
@@ -202,8 +238,8 @@ export function createStampRoutes(config: StampConfig = {}): Hono {
   // decision recorded). Blocked in sandbox (fixture-only) and production
   // (signed manifest required). Manual_review only.
   app.post("/admin/payments/:id/verify", async (c) => {
-    const session = verifiedSessionFromContext(c);
-    if (!session) return c.json({ error: "unauthenticated", code: "no-credential" }, 401);
+    const denied = requireReviewer(c);
+    if (denied) return denied;
     const blocked = requireManualReview(c, mode);
     if (blocked) return blocked;
     const pay = payments.get(c.req.param("id"));
@@ -217,8 +253,8 @@ export function createStampRoutes(config: StampConfig = {}): Hono {
   // Investor: delivery request (manual_review only). Destination + challenge
   // signature required; computes the 24-month integer schedule for review.
   app.post("/investor/instruments/:id/delivery-request", async (c) => {
-    const session = verifiedSessionFromContext(c);
-    if (!session) return c.json({ error: "unauthenticated", code: "no-credential" }, 401);
+    const denied = requireReviewer(c);
+    if (denied) return denied;
     const blocked = requireManualReview(c, mode);
     if (blocked) return blocked;
     const inst = instruments.get(c.req.param("id"));

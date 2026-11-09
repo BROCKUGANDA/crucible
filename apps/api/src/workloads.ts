@@ -17,6 +17,7 @@ import {
   type RunContext,
 } from "@crucible/eval";
 import { verifiedSessionFromContext } from "./auth.js";
+import { IdempotencyStore, parseIdempotencyKey } from "./idempotency.js";
 // In-memory run registry (ADR-0008; PG migration 0003 provides durable tables).
 type RunRecord = {
   runId: string;
@@ -28,9 +29,14 @@ type RunRecord = {
   scorecard?: unknown;
   report?: unknown;
   createdAt: number;
+  /** the verified session address that created the run; the only reader of the record */
+  createdBy: string;
 };
 const runs = new Map<string, RunRecord>();
+/** Creator-scoped Idempotency-Key -> runId; in-memory and restart-lossy (ADR-0008). */
+const idempotency = new IdempotencyStore();
 export function __resetRunsForTests(): void { runs.clear(); }
+export function __seedRunForTests(record: RunRecord): void { runs.set(record.runId, record); }
 
 function ctx(body: Record<string, unknown>, profile: WorkloadProfile): RunContext {
   const runId = `run-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -57,6 +63,23 @@ export function createWorkloadRoutes(): Hono {
   app.post("/runs", async (c) => {
     const session = verifiedSessionFromContext(c);
     if (!session) return c.json({ error: "unauthenticated", code: "no-credential" }, 401);
+    const creator = session.payload.address.toLowerCase();
+    const { key: idempotencyKey, error: idempotencyError } = parseIdempotencyKey(
+      c.req.header("idempotency-key") ?? null,
+    );
+    if (idempotencyError) return c.json({ error: idempotencyError, code: "bad-request" }, 400);
+    // A retried POST used to create a second run; the key makes the retry answer with
+    // the run it already created. Scoped to the creator, so a key is not transferable.
+    if (idempotencyKey) {
+      const priorRunId = idempotency.get(creator, idempotencyKey);
+      const prior = priorRunId ? runs.get(priorRunId) : undefined;
+      if (prior) {
+        return c.json(
+          { run: prior, report: prior.report, scorecard: prior.scorecard, replayed: true },
+          200,
+        );
+      }
+    }
     let body: Record<string, unknown> = {};
     try { body = (await c.req.json()) as Record<string, unknown>; } catch { return c.json({ error: "invalid body" }, 400); }
     const profile = String(body.profile ?? "SOFTWARE_ENGINEERING") as WorkloadProfile;
@@ -84,14 +107,22 @@ export function createWorkloadRoutes(): Hono {
       runId: runCtx.runId, attemptId: runCtx.attemptId, tenantId: runCtx.tenantId,
       trialId: runCtx.trialId, workloadProfile: profile,
       status: report.status, report, scorecard, createdAt: Date.now(),
+      createdBy: session.payload.address.toLowerCase(),
     };
     runs.set(runCtx.runId, record);
+    if (idempotencyKey) idempotency.set(creator, idempotencyKey, runCtx.runId);
     return c.json({ run: record, report, scorecard }, 201);
   });
 
   app.get("/runs/:runId", (c) => {
+    const session = verifiedSessionFromContext(c);
+    if (!session) return c.json({ error: "unauthenticated", code: "no-credential" }, 401);
     const r = runs.get(c.req.param("runId"));
-    if (!r) return c.json({ error: "run not found", code: "not-found" }, 404);
+    // A run record carries the creator's report and scorecard: 404 — not 403 —
+    // for a stranger, so the ID confirms nothing about existence.
+    if (!r || r.createdBy !== session.payload.address.toLowerCase()) {
+      return c.json({ error: "run not found", code: "not-found" }, 404);
+    }
     return c.json({ run: r });
   });
 
