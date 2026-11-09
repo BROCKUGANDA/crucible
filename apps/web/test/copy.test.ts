@@ -41,8 +41,11 @@ describe("live copy", () => {
     // "minted from outcomes" and "decayed" are the same builder shorthand as "soulbound": a
     // reader does not know what a mint is, and standing is not a thing that rots. The words
     // that replaced them — earned, held up, fades — are asserted on the landing page below.
+    // "Hall of Alloy" was banned as jargon; it returns deliberately (Arena Edition naming)
+    // alongside its plain gloss ("The reputation leaderboard — standings are earned, never
+    // bought"), so a reader meets the term and its meaning in the same breath.
     const banned =
-      /soulbound|Lost slag|proven lie|\bscars\b|half-life|mints? only from outcomes|minted from outcomes|outcomes that survived|Hall of Alloy|No smiths registered|\bdecay(?:ed|s)?\b/i;
+      /soulbound|Lost slag|proven lie|\bscars\b|half-life|mints? only from outcomes|minted from outcomes|outcomes that survived|No smiths registered|\bdecay(?:ed|s)?\b/i;
     for (const path of PAGES) {
       expect(visibleSource(path), path).not.toMatch(banned);
     }
