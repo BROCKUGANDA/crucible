@@ -1162,7 +1162,7 @@ describe("trial lifecycle state machine (blueprint items 101-120)", () => {
     const sig = createHmac("sha256", DEV_SECRET).update(encoded).digest("base64url");
     const token = `${encoded}.${sig}`;
     return new Headers({
-      cookie: `crucible_session=${token}`,
+      cookie: `__Host-crucible_session=${token}`,
       "content-type": "application/json",
     });
   }
@@ -1251,7 +1251,7 @@ describe("trial lifecycle state machine (blueprint items 101-120)", () => {
       const res = await app.request(`/trials/${trialId}/transition`, {
         method: "POST",
         headers: {
-          cookie: `crucible_session=${encoded}.${sig}`,
+          cookie: `__Host-crucible_session=${encoded}.${sig}`,
           "content-type": "application/json",
         },
         body: JSON.stringify({ to: "CANCELLED", sponsor: SPONSOR }),

@@ -52,7 +52,12 @@ export {
   gateMoneyNotice,
   rpcUrl,
   ZERO_ADDRESS,
+  solanaCluster,
+  solanaRpcUrl,
+  solanaMoneyNotice,
+  SOLANA_CLUSTERS,
   type SupportedChain,
+  type SolanaCluster,
 } from "./networks";
 
 import {

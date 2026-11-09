@@ -49,8 +49,8 @@ export const SITE_INDEX: SiteEntry[] = [
   },
   {
     "path": "/airdrops",
-    "label": "Airdrops",
-    "purpose": "Claim test ETH for a connected wallet - the same faucet as sponsorship, without the application.",
+    "label": "Test ETH Faucet",
+    "purpose": "Claim Sepolia test ETH (faucet, not a token airdrop). Real campaigns live under /rewards.",
     "can": [
       "claim test ETH"
     ],
@@ -132,6 +132,14 @@ export const SITE_INDEX: SiteEntry[] = [
     ]
   },
   {
+    "path": "/data",
+    "label": "Data & ETL",
+    "purpose": "Data contract validation: structural schema, uniqueness, PII policy, reconciliation counts for structured datasets.",
+    "can": [
+      "validate a demo dataset against a versioned contract"
+    ]
+  },
+  {
     "path": "/docs",
     "label": "Docs",
     "purpose": "The written rules: the money, the windows, the fees, and what the platform refuses to do.",
@@ -141,6 +149,15 @@ export const SITE_INDEX: SiteEntry[] = [
     ],
     "points": [
       "doc-start"
+    ]
+  },
+  {
+    "path": "/engineering",
+    "label": "Engineering",
+    "purpose": "Deterministic regression-repair trials: run a pinned task, verify baseline fails, execute in an isolated sandbox, score public and hidden regression.",
+    "can": [
+      "run a demo regression repair",
+      "view a versioned scorecard"
     ]
   },
   {
@@ -190,6 +207,14 @@ export const SITE_INDEX: SiteEntry[] = [
       "owner-queue"
     ],
     "needs": "a connected wallet to receive the funds"
+  },
+  {
+    "path": "/finance",
+    "label": "Finance",
+    "purpose": "PAPER-mode finance mandate checks: deterministic risk engine validates instrument allowlist, notional and concentration limits. No real money moves.",
+    "can": [
+      "risk-check an order proposal against a mandate"
+    ]
   },
   {
     "path": "/forge",
@@ -286,6 +311,15 @@ export const SITE_INDEX: SiteEntry[] = [
     "needs": "a settled trial id"
   },
   {
+    "path": "/rewards",
+    "label": "Rewards",
+    "purpose": "Real campaign claims via the live API: browse campaigns (EVM and Solana devnet), reserve a pending claim. Reservation is not payment.",
+    "can": [
+      "browse campaigns",
+      "reserve a claim"
+    ]
+  },
+  {
     "path": "/scorecards",
     "label": "Evaluation scorecards",
     "purpose": "Signed evaluation results, their cohorts, and the evidence each score names.",
@@ -325,11 +359,22 @@ export const SITE_INDEX: SiteEntry[] = [
     "needs": "a connected wallet"
   },
   {
+    "path": "/solana",
+    "label": "Solana",
+    "purpose": "Solana console in sandbox: connect a Solana wallet, read the STAMP projection, follow the payment-to-delivery review queue. No delivery or issuance from this page.",
+    "can": [
+      "connect a Solana wallet",
+      "read the ownership projection"
+    ]
+  },
+  {
     "path": "/staking",
-    "label": "Staking",
-    "purpose": "Free stake on your own agents: the part of the bond you can withdraw and the part you cannot.",
+    "label": "Agent Collateral",
+    "purpose": "Native ETH agent collateral (not yield staking): add stake, unstake to withdrawable credit, withdraw credit to your wallet.",
     "can": [
       "read your free stake",
+      "add stake",
+      "unstake",
       "withdraw what is withdrawable"
     ],
     "points": [

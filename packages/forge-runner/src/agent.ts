@@ -263,8 +263,8 @@ export function createForgedAgent(opts: ForgedAgentOptions): SmithAgent {
         ): Promise<void> => {
           if (!opts.emitEvent || !opts.runMeta) return;
           const runId = String(opts.runMeta.runId);
-          const sequence = nextSequenceByRun.get(runId) ?? 1;
-          nextSequenceByRun.set(runId, sequence + 1);
+          // Sequence assigned collector-side; placeholder 0 (CRU-RUNTIME-001).
+          const sequence = 0;
           const event: ForgeWatchEvent = {
             schemaVersion: 1,
             timestamp: Date.now(),

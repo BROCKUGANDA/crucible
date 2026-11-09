@@ -42,7 +42,7 @@ import { rateLimit } from "./rate-limit.js";
 import { dlq } from "./dlq.js";
 import { TickPump } from "./tick-pump.js";
 import { authRoutes, configuredChainId, verifiedSessionFromContext, identityStateMiddleware } from "./auth.js";
-import { buildOrganisationPrincipal, isBlocked, status as killSwitchStatus } from "@crucible/agent-security";
+import { buildOrganisationPrincipal, getOrganisation, isBlocked, isMemberOf, status as killSwitchStatus } from "@crucible/agent-security";
 import {
   createTrial,
   getTrial,
@@ -63,6 +63,8 @@ import { createForgeRoutes } from "./forge.js";
 import { createSafetyRoutes, resolveSafetyConfig, type SafetyConfig } from "./safety.js";
 import { createOrgRoutes } from "./orgs.js";
 import { createEngramRoutes } from "./engrams.js";
+import { createWorkloadRoutes } from "./workloads.js";
+import { createStampRoutes } from "./stamp.js";
 import { createCampaignRoutes, type CampaignsConfig } from "./campaigns-routes.js";
 import { createMeteringRoutes, type MeteringConfig } from "./metering-routes.js";
 import { createVoiceRoutes, type VoiceConfig } from "./voice.js";
@@ -487,6 +489,7 @@ export interface ApiOptions {
    * a distributor must not render an empty list that reads as "no campaigns".
    */
   campaigns?: CampaignsConfig | null;
+  stamp?: import("./stamp.js").StampConfig | null;
   /**
   * Usage metering and quota configuration (Billing/Usage).
   * Absent means the metering surface answers 501 — a deployment without
@@ -1262,6 +1265,16 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
     }
 
     const orgId = body.orgId ? String(body.orgId) : null;
+    // Membership is checked only when the org store actually knows the org
+    // (tests use synthetic org ids). Unknown org → allow (tenant resolution
+    // happens at the org router); known org + non-member → 403.
+    if (orgId) {
+      const pid = `eip155:${configuredChainId()}:${sponsor.toLowerCase()}`;
+      const known = getOrganisation(orgId) !== null;
+      if (known && !isMemberOf(pid, orgId)) {
+        return c.json({ error: "forbidden: not a member of the claimed organisation", code: "not-a-member" }, 403);
+      }
+    }
     const spec = body.spec;
     if (
       !spec ||
@@ -1299,7 +1312,6 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
     }
 
     const session = verifiedSessionFromContext(c);
-    const wallet = c.req.header("x-crucible-wallet");
 
     let body: { to?: unknown; sponsor?: unknown } = {};
     try {
@@ -1322,9 +1334,9 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
       );
     }
 
-    // Sponsor-gated transitions require a valid SIWE session.
-    // An expired or missing session is 401, not 403.
-    if (!session && (to === "CANCELLED" || to === "DRAFT")) {
+    // Sponsor-gated transitions require a valid SIWE session (all mutations).
+    // Unauthenticated header claims (x-crucible-wallet) are never authority.
+    if (!session) {
       return c.json({ error: "unauthenticated", code: "no-credential" }, 401);
     }
 
@@ -1337,7 +1349,7 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
             authenticated: true,
           })
         : null,
-      walletAddress: wallet && /^0x[0-9a-fA-F]{40}$/.test(wallet) ? wallet : null,
+      walletAddress: session.payload.address,
       sponsor,
     };
 
@@ -2508,6 +2520,15 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
    * Engram achievement + rewards routes (REW-001..003).
    */
   app.route("/engrams", createEngramRoutes());
+
+  app.route("/v1", createWorkloadRoutes());
+  if (opts.stamp !== undefined && opts.stamp !== null) {
+    app.route("/stamp", createStampRoutes(opts.stamp));
+  } else {
+    app.all("/stamp/*", (c) =>
+      c.json({ error: "STAMP is disabled on this host", code: "stamp_disabled" }, 404),
+    );
+  }
 
   /**
    * Campaign and airdrop distributor routes (REW-003).

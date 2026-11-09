@@ -131,7 +131,7 @@ export default function EngramsPage() {
     }
     let cancelled = false;
     fetch(`${API_BASE}/engrams/${encodeURIComponent(address)}`, {
-      credentials: "omit",
+      credentials: "include",
       headers: { Accept: "application/json" },
     })
       .then(async (res) => {
@@ -198,15 +198,21 @@ export default function EngramsPage() {
       </div>
 
       <div className="surface detail-panel">
-        <p className="hint">
+        <p className="hint hint--block">
           Held: <strong>{heldEngrams.length}</strong> · Opened:{" "}
           <strong>{openedEngrams.length}</strong> · Entitlements:{" "}
           <strong>{entitlements.length}</strong>
         </p>
+        <p className="hint hint--block" data-tone="faint">
+          Demo vault: rarity, titles and Surge come from a local deterministic
+          mixer for preview only. Real achievement state is the verified
+          entitlement list above plus on-chain ERC-1155 balances. Do not treat a
+          sealed entry as a minted NFT.
+        </p>
       </div>
 
       {!address ? (
-        <p className="hint hint--block">Connect a wallet to see your on-chain entitlements.</p>
+        <p className="hint hint--block">Connect a wallet and sign in with SIWE to see your verified entitlements (session-gated).</p>
       ) : apiError ? (
         <p className="hint hint--block">Entitlements unavailable ({apiError}). Showing local vault only.</p>
       ) : null}
@@ -214,7 +220,8 @@ export default function EngramsPage() {
       <p className="hint hint--block">
         Settled trials mint a sealed engram. Open now for the base roll, or hold
         for a Surge upgrade. Ownership comes from the API (verified
-        entitlements); open/hold state is kept locally.
+        entitlements); open/hold state is kept locally. Claim real entitlements
+        under <a href="/rewards">/rewards</a> — this page does not mint.
       </p>
 
       {snapshot.loading ? (

@@ -261,7 +261,7 @@ function sessionHeaders(address: string): HeadersInit {
   };
   const encoded = Buffer.from(JSON.stringify(payload)).toString("base64url");
   const sig = createHmac("sha256", DEV_SECRET).update(encoded).digest("base64url");
-  return { cookie: `crucible_session=${encoded}.${sig}`, "content-type": "application/json" };
+  return { cookie: `__Host-crucible_session=${encoded}.${sig}`, "content-type": "application/json" };
 }
 
 const USER = `0x${"44".repeat(20)}`;

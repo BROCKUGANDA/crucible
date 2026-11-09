@@ -527,6 +527,22 @@ contract CrucibleTrials {
         emit StakeWithdrawn(agentId, msg.sender, amount);
     }
 
+    event StakeAdded(uint256 indexed agentId, address indexed operator, uint256 amount);
+    error StakeCapExceeded();
+
+    /// @notice Operator tops up free stake on their own agent. Separate from
+    /// registration bond; cannot be called while the agent has an active trial
+    /// claim (escrowed stake is tracked separately).
+    function addStake(uint256 agentId) external payable {
+        Agent storage a = agents[agentId];
+        if (a.operator != msg.sender) revert NotOperator();
+        if (msg.value == 0) revert StakeTooSmall();
+        if (msg.value > type(uint128).max - a.stake) revert StakeCapExceeded();
+        a.stake += uint128(msg.value);
+        totalStakes += msg.value;
+        emit StakeAdded(agentId, msg.sender, msg.value);
+    }
+
     /// @notice Permissionless relay: ANY caller may submit; the EIP-712 signature authorizes it.
     /// @param runHash keccak256(JCS(RunArtifact)) — see docs/run-artifact.v1.json
     /// @param sigDeadline fresh-signed per submission; binds the sig to a time window

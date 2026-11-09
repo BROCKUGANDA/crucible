@@ -91,7 +91,67 @@ export function isUniqueViolation(err: unknown): boolean {
 export class PgEventStore implements EventStore {
   constructor(private readonly exec: PgExecutor) {}
 
+  /** Atomic event + L0 outbox insert (CRU-RUNTIME-001). Falls back to plain insert if outbox table missing. */
+  async appendWithOutbox(event: ForgeWatchEvent, phase = "L0"): Promise<boolean> {
+    const params = [
+      event.eventId,
+      event.schemaVersion,
+      event.timestamp,
+      event.runId,
+      event.trialId,
+      event.agentId,
+      event.tenantId,
+      event.parentRunId ?? null,
+      event.sequence,
+      event.eventType,
+      event.source,
+      event.providerId ?? null,
+      event.modelId ?? null,
+      event.toolId ?? null,
+      event.permission ?? null,
+      event.authorizationDecision ?? null,
+      event.environmentId ?? null,
+      event.payloadDigest ?? null,
+      event.policyDigest ?? null,
+      event.contextDigest ?? null,
+      event.correlationId ?? null,
+      JSON.stringify(event),
+    ];
+    try {
+      const inserted = await this.exec<{ event_id: string }>(
+        `WITH ins AS (
+          INSERT INTO forge_watch_events (
+            event_id, schema_version, timestamp_ms, run_id, trial_id, agent_id, tenant_id,
+            parent_run_id, sequence, event_type, source, provider_id, model_id, tool_id,
+            permission, authorization_decision, environment_id, payload_digest, policy_digest,
+            context_digest, correlation_id, envelope
+          ) VALUES (
+            $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22::jsonb
+          )
+          ON CONFLICT (event_id) DO NOTHING
+          RETURNING event_id
+        )
+        INSERT INTO forge_watch_outbox (event_id, phase, status, created_at)
+        SELECT event_id, $23, 'pending', $3 FROM ins
+        RETURNING event_id`,
+        [...params, phase],
+      );
+      if (inserted.rows.length > 0) return true;
+    } catch (err) {
+      // Outbox table may not exist in older deployments — fall back.
+      if (String((err as Error)?.message ?? "").includes("forge_watch_outbox")) {
+        return this.append(event);
+      }
+      throw err;
+    }
+    const existing = await this.find(event.eventId);
+    if (existing && sameEvent(existing, event)) return false;
+    throw new Error(`event id conflict: ${event.eventId}`);
+  }
+
   async append(event: ForgeWatchEvent): Promise<boolean> {
+    // Plain insert (kept for unit-test executors and as the single-statement
+    // fallback). The outbox CTE path is used by appendWithOutbox() callers.
     try {
       const inserted = await this.exec<{ event_id: string }>(
         `INSERT INTO forge_watch_events (
@@ -105,32 +165,17 @@ export class PgEventStore implements EventStore {
         ON CONFLICT (event_id) DO NOTHING
         RETURNING event_id`,
         [
-          event.eventId,
-          event.schemaVersion,
-          event.timestamp,
-          event.runId,
-          event.trialId,
-          event.agentId,
-          event.tenantId,
-          event.parentRunId ?? null,
-          event.sequence,
-          event.eventType,
-          event.source,
-          event.providerId ?? null,
-          event.modelId ?? null,
-          event.toolId ?? null,
-          event.permission ?? null,
-          event.authorizationDecision ?? null,
-          event.environmentId ?? null,
-          event.payloadDigest ?? null,
-          event.policyDigest ?? null,
-          event.contextDigest ?? null,
-          event.correlationId ?? null,
+          event.eventId, event.schemaVersion, event.timestamp, event.runId,
+          event.trialId, event.agentId, event.tenantId, event.parentRunId ?? null,
+          event.sequence, event.eventType, event.source, event.providerId ?? null,
+          event.modelId ?? null, event.toolId ?? null, event.permission ?? null,
+          event.authorizationDecision ?? null, event.environmentId ?? null,
+          event.payloadDigest ?? null, event.policyDigest ?? null,
+          event.contextDigest ?? null, event.correlationId ?? null,
           JSON.stringify(event),
         ],
       );
       if (inserted.rows.length > 0) return true;
-
       const existing = await this.find(event.eventId);
       if (existing && sameEvent(existing, event)) return false;
       throw new Error(`event id conflict: ${event.eventId}`);
@@ -138,9 +183,7 @@ export class PgEventStore implements EventStore {
       if (isUniqueViolation(err)) {
         const existing = await this.find(event.eventId);
         if (existing && sameEvent(existing, event)) return false;
-        throw new Error(
-          `run sequence conflict: ${event.runId}:${event.sequence}`,
-        );
+        throw new Error(`run sequence conflict: ${event.runId}:${event.sequence}`);
       }
       throw err;
     }

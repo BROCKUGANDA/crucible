@@ -174,9 +174,10 @@ describe("resolvePrincipal", () => {
 });
 
 describe("authContextFromRequest", () => {
-  it("extracts wallet address from session cookie", () => {
-    // Build a fake Hono context with a cookie header carrying a session token
-    // whose payload encodes the address.
+  it("is fail-closed: never decodes the cookie (forged-cookie fix)", () => {
+    // The old helper decoded the base64 payload and trusted its address.
+    // It now always returns unauthenticated — verification happens in
+    // apps/api/src/auth.ts via verifiedSessionFromContext().
     const addr = "0xabc12345678901234567890123456789012345678";
     const payload = Buffer.from(JSON.stringify({ address: addr })).toString("base64url");
     const token = `${payload}.sig`;
@@ -184,8 +185,8 @@ describe("authContextFromRequest", () => {
       req: { header: () => `crucible_session=${token}` },
     } as unknown as { req: { header: (name: string) => string | undefined } };
     const auth = authContextFromRequest(ctx);
-    expect(auth.walletAddress).toBe(addr);
-    expect(auth.sessionId).toBe(token);
+    expect(auth.walletAddress).toBeNull();
+    expect(auth.sessionId).toBeNull();
   });
 
   it("returns nulls when no cookie", () => {

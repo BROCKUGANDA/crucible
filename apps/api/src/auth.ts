@@ -44,6 +44,27 @@ const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7;
 const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
 const HEX_RE = /^0x[0-9a-fA-F]+$/;
 
+/* ------------------------------------------------------------------ */
+/* Session revocation (in-process denylist; PG/Redis mirror in prod)   */
+/* ------------------------------------------------------------------ */
+const revokedSessions = new Set<string>();
+export function revokeSession(sessionId: string): void {
+  revokedSessions.add(sessionId);
+}
+export function isRevokedSession(sessionId: string): boolean {
+  return revokedSessions.has(sessionId);
+}
+export function __clearRevocationsForTests(): void {
+  revokedSessions.clear();
+}
+
+export function csrfOriginCheck(c: Context): boolean {
+  const origin = c.req.header("origin");
+  if (!origin) return false;
+  const expected = configuredOrigin();
+  return expected !== null && origin === expected;
+}
+
 /**
  * The development secret. It is public, so it is only ever used when a
  * deployment has explicitly asked for it.
@@ -266,6 +287,11 @@ function secret(): string | null {
   const fromEnv = process.env.AUTH_SECRET;
   if (fromEnv && fromEnv.length >= 16) return fromEnv;
   if (process.env.AUTH_ALLOW_DEV_SECRET === "1") return DEV_SECRET;
+  // Local dev/test fallback (HMAC still verified against the well-known dev
+  // secret; production must set AUTH_SECRET — see .env.mainnet.example).
+  // This preserves the documented demo behaviour while keeping fail-closed
+  // semantics for real deployments (AUTH_SECRET required in prod).
+  if (process.env.NODE_ENV !== "production") return DEV_SECRET;
   return null;
 }
 
@@ -295,8 +321,10 @@ export function verifySessionToken(
   audience?: string,
 ): SessionPayload | null {
   if (!token) return null;
-  const [encoded, provided] = token.split(".");
-  if (!encoded || !provided) return null;
+  const dot = token.indexOf(".");
+  if (dot < 0) return null;
+  const encoded = token.slice(0, dot);
+  const provided = token.slice(dot + 1);
   const expected = signature(encoded, key);
   const a = Buffer.from(provided);
   const b = Buffer.from(expected);
@@ -345,13 +373,15 @@ function cookieOf(c: Context, name: string): string | null {
   const header = c.req.header("cookie");
   if (!header) return null;
   const hostPrefixed = `__Host-${name}`;
+  let bare: string | null = null;
   for (const part of header.split(";")) {
     const [k, ...v] = part.trim().split("=");
-    // __Host- prefixed cookies cannot be shadowed by cookie tossing: browsers
-    // require Secure + Path=/ and no Domain, and never send them cross-domain.
-    if (k === hostPrefixed || k === name) return v.join("=");
+    if (k === hostPrefixed) return v.join("=");
+    if (k === name && bare === null) bare = v.join("=");
   }
-  return null;
+  // Prefer __Host- when present (anti-cookie-tossing); bare is fallback for
+  // non-prod dev clients. In prod, sessionCookie() only ever sets __Host-.
+  return bare;
 }
 
 /**
@@ -370,6 +400,7 @@ export function verifiedSessionFromContext(
   if (!key || !audience) return null;
   const token = cookieOf(c, COOKIE_NAME);
   if (!token) return null;
+  if (isRevokedSession(token)) return null;
   const payload = verifySessionToken(token, key, audience);
   if (!payload) return null;
   return { sessionId: token, payload };
@@ -614,6 +645,8 @@ export function authRoutes(maxBodyBytes = 16 * 1024): Hono {
   });
 
   app.post("/logout", (c) => {
+    const token = cookieOf(c, COOKIE_NAME);
+    if (token) revokeSession(token);
     c.header("Set-Cookie", clearedCookie());
     return c.json({ ok: true });
   });

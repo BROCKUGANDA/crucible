@@ -82,12 +82,12 @@ contract EngramDistributorTest is Test {
     /// is the record of the distribution.
     function testClaimMintsThroughERC1155() public {
         vm.prank(admin);
-        token = new EngramERC1155();
-        // distributor is engine room: admin wires it as the minter.
+        token = new EngramERC1155(admin, "ipfs://CID/{id}.json");
+        // distributor is engine room: admin wires it as the minter role.
         vm.prank(admin);
         d = new EngramDistributor(address(token));
         vm.prank(admin);
-        token.setMinter(address(d));
+        token.setMinter(address(d), true);
 
         bytes32 leaf = _leaf(user, 3, 0, 1001);
         vm.prank(admin);

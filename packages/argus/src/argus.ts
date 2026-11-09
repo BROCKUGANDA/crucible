@@ -76,7 +76,21 @@ export class Argus {
    */
   async verifyDeterministic(input: VerifyInput): Promise<VerifyReport> {
     const steps: VerifyStep[] = [];
-    const { artifact, onChainRunHash } = input;
+    let artifact = input.artifact;
+
+    // Independently fetch artifact bytes when a cid is present — caller-supplied
+    // bytes alone are not trusted (CRU-VERIFY-002).
+    if (input.fetchArtifact && (artifact as unknown as { cid?: string }).cid) {
+      try {
+        const fetched = await input.fetchArtifact((artifact as unknown as { cid: string }).cid);
+        steps.push({ name: "fetch-artifact", passed: true, detail: "independent fetch succeeded" });
+        artifact = fetched;
+      } catch (err) {
+        steps.push({ name: "fetch-artifact", passed: false, detail: `fetch failed: ${(err as Error).message}` });
+        return { verdict: "abstain", phase: "abstain", steps, reason: "artifact could not be independently fetched" };
+      }
+    }
+    const { onChainRunHash } = input;
 
     // 3. hash integrity — the artifact must hash to what the chain recorded
     const computed = computeRunHash(artifact);
@@ -122,7 +136,8 @@ export class Argus {
         passed: false,
         detail: `signature did not recover: ${(err as Error).message}`,
       });
-      return fail(steps, "break-wins", "deterministic", "the run signature does not recover");
+      // Missing/unrecoverable signature is abstain, not fraud (CRU-VERIFY-002).
+      return { verdict: "abstain", phase: "abstain", steps, reason: "the run signature does not recover" };
     }
     const sigOk = recovered.toLowerCase() === artifact.runnerAddress.toLowerCase();
     steps.push({
@@ -240,7 +255,8 @@ export class Argus {
 }
 
 function fingerprint(results: TestResult[]): Set<string> {
-  return new Set(results.filter((r) => r.status === "pass").map((r) => r.name));
+  // Include status so failing-test diffs are visible (pass+fail, not pass-only).
+  return new Set(results.map((r) => `${r.name}:${r.status}`));
 }
 
 function fail(

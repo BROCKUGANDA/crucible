@@ -191,39 +191,16 @@ export function orgAuthzMiddleware(options: {
 }
 
 /**
- * Build an AuthContext from a Hono request: wallet address from the SIWE
- * session cookie, session id from the same cookie.
+ * Build an AuthContext from a Hono request.
  *
- * This is the integration point with apps/api/src/auth.ts. The cookie name
- * must match `crucible_session`.
+ * SECURITY: this function deliberately does NOT decode the SIWE session
+ * cookie. Verification happens in apps/api/src/auth.ts via
+ * `verifiedSessionFromContext()` / `sessionPrincipal()` (HMAC, audience,
+ * expiry). Callers must resolve the principal through that path; decoding
+ * the base64 payload here and trusting its address is a forged-cookie
+ * vulnerability (CRU-BASE-000). This helper now always returns an
+ * unauthenticated context so legacy callers fail closed until migrated.
  */
-export function authContextFromRequest(c: Context): AuthContext {
-  const cookie = c.req.header("cookie");
-  let walletAddress: string | null = null;
-  let sessionId: string | null = null;
-  if (cookie) {
-    for (const part of cookie.split(";")) {
-      const [k, ...v] = part.trim().split("=");
-      if (k === "crucible_session") {
-        sessionId = v.join("=");
-        // The session token is `base64url.payload.base64url.sig`; the payload
-        // carries the address. Decode without verification here — verification
-        // happens at the route that needs the session. This middleware only
-        // needs the address to build the principal.
-        try {
-          const encoded = sessionId.split(".")[0];
-          if (encoded) {
-            const payload = JSON.parse(
-              Buffer.from(encoded, "base64url").toString("utf8"),
-            ) as { address?: string };
-            if (payload.address) walletAddress = payload.address;
-          }
-        } catch {
-          // Malformed session cookie: unauthenticated.
-        }
-        break;
-      }
-    }
-  }
-  return { walletAddress, sessionId, chainId: "31337" };
+export function authContextFromRequest(_c: Context): AuthContext {
+  return { walletAddress: null, sessionId: null, chainId: "31337" };
 }

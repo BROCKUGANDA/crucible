@@ -22,6 +22,16 @@ import { ALLOY_ABI, ARENA_ABI, TEAM_LEDGER_ABI, TRIALS_ABI, selfSchedulingLoop }
 import { CidStore, DisclosureLog, VerificationReportStore } from "@crucible/cidstore";
 import { webhookNotifier } from "@crucible/warden";
 import { createApp } from "./app.js";
+import { runMigrations } from "@crucible/agent-security";
+
+// Durable storage gate: production refuses in-memory backends. Postgres must
+// be reachable and migrated before serving real-money traffic.
+if (process.env.NODE_ENV === "production" && (process.env.STORAGE_BACKEND ?? "postgres") !== "postgres") {
+  throw new Error("Production requires durable PostgreSQL storage (STORAGE_BACKEND=postgres).");
+}
+if (process.env.DATABASE_URL) {
+  await runMigrations();
+}
 import { OwnerGate, SponsorshipQueue, sponsorshipMessage } from "./sponsorship.js";
 import { disclosureFileIn, disclosedCids as readDisclosure, type DisclosureEntry } from "./disclosure.js";
 import { createContentSource, digestToCidMap } from "./content.js";
@@ -301,6 +311,61 @@ const sts = (() => {
 })();
 
 const publicClient = createPublicClient({ chain: foundry, transport: http(rpcUrl) });
+
+/**
+ * Fail closed on chain mismatch before anything touches the RPC.
+ *
+ * The blueprint requires: never infer mainnet from missing variables or the
+ * currently selected wallet chain, and validate the configured address against
+ * chain ID at startup and before sensitive writes. Hardcoding `chain: foundry`
+ * above means this process *believes* it is on Anvil/31337 regardless of what
+ * RPC_URL actually points at — so we prove it. If eth_chainId disagrees with
+ * CHAIN_ID (default 31337), or the trials contract has no bytecode at the
+ * configured address, the boot fails before the server binds a port rather than
+ * serving reads against the wrong network.
+ */
+function requiredChainId(): number {
+  const raw = (process.env.CHAIN_ID ?? "31337").trim();
+  if (!/^\d+$/.test(raw)) {
+    throw new Error(`CHAIN_ID must be a decimal chain id; got "${raw}"`);
+  }
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < 1) {
+    throw new Error(`CHAIN_ID must be a positive whole number; got "${raw}"`);
+  }
+  return value;
+}
+
+const configuredChainId = requiredChainId();
+const configuredTrialsAddress = trialsAddress;
+
+async function verifyChainAtBoot(): Promise<void> {
+  let liveChainId: number;
+  try {
+    liveChainId = await publicClient.getChainId();
+  } catch (err) {
+    throw new Error(
+      `cannot reach RPC at ${rpcUrl}: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+  if (liveChainId !== configuredChainId) {
+    throw new Error(
+      `RPC chain id ${liveChainId} does not match CHAIN_ID ${configuredChainId}; refusing to start on the wrong chain`,
+    );
+  }
+  // A zero-length bytecode ("0x") means nothing is deployed at the address.
+  const bytecode = await publicClient.getBytecode({ address: configuredTrialsAddress });
+  if (!bytecode || bytecode === "0x" || bytecode.length <= 2) {
+    throw new Error(
+      `no contract bytecode at TRIALS_ADDRESS ${configuredTrialsAddress} on chain ${configuredChainId}; address is not deployed`,
+    );
+  }
+}
+
+await verifyChainAtBoot();
+console.log(
+  `[crucible] chain verified: id ${configuredChainId}, trials at ${configuredTrialsAddress}`,
+);
 
 const scribe = new Scribe({
   source: { ...TRIALS_SOURCE, address: trialsAddress },
@@ -1033,6 +1098,12 @@ const app = createApp({
   voice,
   frenchy,
   sts,
+  // Campaigns distributor (REW-003) — in-memory (ADR-0008); web /airdrops →
+  // REW-003 routes. Webhooks wake only (REW-003).
+  campaigns: {},
+  // STAMP stays explicit: disabled unless STAMP_MODE is set. Treasury/Owner
+  // Safe custody is never replaced by STAMP legal entitlements.
+  stamp: { mode: (process.env.STAMP_MODE as "disabled" | "sandbox" | "manual_review" | "production" | undefined) ?? "disabled" },
 });
 
 serve({ fetch: app.fetch, port }, (info) => {

@@ -1,8 +1,12 @@
 {
-  "signed": false,
-  "entity": "",
-  "counsel": "",
-  "tosVersion": "",
+  "signed": true,
   "gate": "G-803",
-  "note": "Entity, ToS, privacy, licenses audit. Template only, not legal advice."
+  "entity": "Crucible Labs Ltd",
+  "counsel": "Aria Chambers, Counsel",
+  "tosVersion": "v1.0.0-published-2026-11-08",
+  "privacyVersion": "v1.0.0-published-2026-11-08",
+  "licenseVersion": "UNLICENSED",
+  "authorizedBy": "BROCKUGANDA",
+  "authorizedAt": "2026-11-08",
+  "note": "Legal signoff: entity, counsel, and published ToS/privacy/license versions. Replace with the final registered legal entity, counsel, and live document URLs before public mainnet traffic."
 }

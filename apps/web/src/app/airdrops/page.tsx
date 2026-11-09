@@ -71,13 +71,15 @@ export default function AirdropsPage() {
 
   return (
     <Chrome>
-      <p className="kicker">Airdrops</p>
+      <p className="kicker">Test ETH Faucet</p>
       <h1 className="page-title">
         <AirdropGlyph className="glyph--chute" /> Claim test ETH
       </h1>
       <p className="hint hint--block">
         Claim a small test allocation for a connected wallet. The funder decides
         the amount and sends it to your own wallet; CRUCIBLE never holds it.
+        This is a Sepolia/testnet faucet — not a token airdrop. Real
+        campaigns live under <a href="/rewards">/rewards</a>.
       </p>
 
       <div className="surface detail-panel">

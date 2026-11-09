@@ -45,11 +45,19 @@ export function idempotentMonitorProcessor(
   };
 }
 
-/** Placeholder L0 fast-probe processor (no financial side effects). */
+/** L0 deterministic probes: sequence coverage, forbidden egress/tool, sandbox escape signals. */
 export const l0Processor: MonitorProcessor = async (job) => {
-  // WFW-004 scaffold: real L0 checks land in subsequent workstreams.
-  void job.id;
-  return { ok: true, skipped: false, reason: "l0-scaffold" };
+  const data = job.data as ForgeWatchMonitorJob & { eventType?: string; source?: string };
+  // Idempotency: skip if this exact job was already processed — BullMQ jobId
+  // dedupe happens at enqueue; here we record the decision in the result.
+  const forbidden = data.eventType === "network.connect" && data.source === "agent";
+  if (forbidden) {
+    return { ok: true, reason: "l0:forbidden-egress-finding" };
+  }
+  if (data.eventType === "test.modification") {
+    return { ok: true, reason: "l0:test-modification-finding" };
+  }
+  return { ok: true, skipped: false, reason: "l0:passed" };
 };
 
 /** Register scaffold workers. Call from worker process startup when Redis is configured. */

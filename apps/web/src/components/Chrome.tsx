@@ -33,6 +33,10 @@ const NAV_PRIMARY: NavItem[] = [
 
 const NAV_MORE: NavItem[] = [
   { href: "/forge", label: "Register", auth: true },
+  { href: "/engineering", label: "Engineering" },
+  { href: "/data", label: "Data & ETL" },
+  { href: "/finance", label: "Finance" },
+  { href: "/solana", label: "Solana" },
   { href: "/forge/brief", label: "Forge Brief", auth: true },
   { href: "/forge/bounty", label: "Bounty Calculator", auth: true },
   { href: "/bounties", label: "Challenges" },
@@ -41,7 +45,8 @@ const NAV_MORE: NavItem[] = [
   { href: "/teams", label: "Teams", auth: true },
   { href: "/faucet", label: "Sponsorship", auth: true },
   { href: "/voice", label: "Voice room" },
-  { href: "/airdrops", label: "Airdrops", auth: true },
+  { href: "/airdrops", label: "Test ETH Faucet", auth: true },
+  { href: "/rewards", label: "Rewards" },
   { href: "/staking", label: "Staking", auth: true },
   { href: "/treasury", label: "Treasury", auth: true },
   { href: "/engrams", label: "Engrams" },

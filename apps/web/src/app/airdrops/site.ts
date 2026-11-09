@@ -10,8 +10,8 @@ import type { SiteEntry } from "@crucible/site-index";
  */
 export const siteEntry: SiteEntry = {
   path: "/airdrops",
-  label: "Airdrops",
-  purpose: "Claim test ETH for a connected wallet - the same faucet as sponsorship, without the application.",
+  label: "Test ETH Faucet",
+  purpose: "Claim Sepolia test ETH (faucet, not a token airdrop). Real campaigns live under /rewards.",
   can: ["claim test ETH"],
   needs: "a connected wallet",
 };

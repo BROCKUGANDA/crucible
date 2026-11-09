@@ -40,7 +40,7 @@ const ownerPrincipalId = `eip155:31337:${OWNER.toLowerCase()}`;
 const testOrg = newOrganisation(ORG_ID, "Test Org", "test-org", ownerPrincipalId);
 createOrganisation(testOrg);
 
-/** Build a Hono request with a SIUE session cookie for a wallet address. */
+/** Build a Hono request with a SIWE session cookie for a wallet address. */
 function sessionHeaders(address: string): Headers {
   const now = Date.now();
   const payload = {
@@ -50,12 +50,10 @@ function sessionHeaders(address: string): Headers {
     aud: "http://localhost:3000",
   };
   const encoded = Buffer.from(JSON.stringify(payload)).toString("base64url");
-  const sig = Buffer.from(
-    createHmac("sha256", DEV_SECRET).update(encoded).digest("base64url"),
-  ).toString("base64url");
+  const sig = createHmac("sha256", DEV_SECRET).update(encoded).digest("base64url");
   const token = `${encoded}.${sig}`;
   return new Headers({
-    cookie: `crucible_session=${token}`,
+    cookie: `__Host-crucible_session=${token}`,
     "content-type": "application/json",
   });
 }

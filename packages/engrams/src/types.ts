@@ -39,6 +39,8 @@ export interface VerifiedEvent {
   readonly reportDigest?: string;
   readonly agentId?: string;
   readonly operator?: string;
+  /** Frozen recipient — resolved from ownership at event time, never caller-supplied. */
+  readonly recipient?: string;
   readonly timestamp: number;
   readonly verified: boolean;
   readonly argusVerdict?: "paid" | "slashed" | "refunded";
