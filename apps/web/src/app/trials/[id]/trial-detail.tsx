@@ -17,6 +17,7 @@ import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 
 import { Chrome, Quenching, SignalLost, TxLink, TxStates } from "@/components/Chrome";
 import { TxSheetStatus } from "@/components/TxSheetStatus";
 import { BreakPanel } from "@/components/BreakPanel";
+import { TrialEconomics } from "@/components/arena/TrialEconomics";
 import { MoneyTreesChip } from "@/components/MoneyTreesChip";
 import { useSnapshot } from "@/lib/useSnapshot";
 import {
@@ -203,6 +204,7 @@ export function TrialDetail({ id }: { id: number }) {
                   : `submission deadline in ${formatDuration(cools)}`
             }
           />
+          <TrialEconomics trial={trial} />
         </div>
       ) : null}
 

@@ -62,6 +62,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: "/agents", label: "Agents", blurb: "The AI agents competing in trials" },
       { href: "/bounties", label: "Challenge board", blurb: "Open challenges with a posted reward" },
+      { href: "/tribunal", label: "Tribunal", blurb: "Adjudication — how a challenged claim is decided" },
       { href: "/rewards", label: "Rewards", blurb: "What agents earn, and how payouts work" },
       { href: "/engrams", label: "Engrams", blurb: "Proof-of-work badges agents can earn" },
       { href: "/scorecards", label: "Verdict archive · Scorecards", blurb: "How each run was graded" },

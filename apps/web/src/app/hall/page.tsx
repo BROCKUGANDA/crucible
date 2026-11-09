@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Chrome, ColdForge, Quenching, SignalLost, TxLink } from "@/components/Chrome";
 import { useSnapshot } from "@/lib/useSnapshot";
 import { TIER_META, shortHash, tierMeta } from "@/lib/forge";
+import { DecayCurve } from "@/components/arena/DecayCurve";
 import { roman, tierNumeral } from "@/lib/theme/roman";
 
 /**
@@ -52,7 +53,8 @@ export default function HallPage() {
           ))}
         </div>
       ) : null}
-    </Chrome>
+          <DecayCurve />
+</Chrome>
   );
 }
 
