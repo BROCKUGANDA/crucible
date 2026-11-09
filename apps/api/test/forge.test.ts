@@ -471,3 +471,113 @@ describe("Forge Campaign routes", () => {
     expect(res.status).toBe(401);
   });
 });
+
+describe("forge cross-tenant authorization (2026-11-09 audit)", () => {
+  const ORG_B = "org-b";
+  const MEMBER_B = `0x${"44".repeat(20)}`;
+
+  const bPrincipalId = `eip155:31337:${MEMBER_B.toLowerCase()}`;
+  createOrganisation(newOrganisation(ORG_B, "Org B", "b", bPrincipalId));
+
+  async function createBrief(app: ReturnType<typeof appWith>, orgId: string) {
+    const createRes = await app.request("/forge/brief", {
+      method: "POST",
+      headers: sessionHeaders(OWNER),
+      body: JSON.stringify({
+        orgId,
+        title: "T",
+        domain: "d",
+        problemStatement: "p",
+        intendedOutcome: "o",
+        expectedDeliverable: "e",
+        purpose: "p",
+        whyItMatters: "w",
+        verification: { deterministicTestSuite: true },
+        financialCommitment: {
+          nativeAsset: "ETH",
+          network: "31337",
+          proposedRewardWei: "50000000000000000",
+        },
+      }),
+    });
+    expect(createRes.status).toBe(201);
+    const { brief } = await createRes.json();
+    return brief.briefId as string;
+  }
+
+  it("a member of org B cannot read org A's brief by naming its id", async () => {
+    const app = appWith();
+    const briefId = await createBrief(app, ORG_ID);
+
+    const leak = await app.request(`/forge/brief/${briefId}?orgId=${ORG_B}`, {
+      headers: sessionHeaders(MEMBER_B),
+    });
+    expect(leak.status).toBe(404);
+  });
+
+  it("a member of org B cannot validate or seal org A's brief", async () => {
+    const app = appWith();
+    const briefId = await createBrief(app, ORG_ID);
+
+    const validated = await app.request(`/forge/brief/${briefId}/validate?orgId=${ORG_B}`, {
+      method: "POST",
+      headers: sessionHeaders(MEMBER_B),
+      body: JSON.stringify({ orgId: ORG_B }),
+    });
+    expect(validated.status).toBe(404);
+
+    const sealed = await app.request(`/forge/brief/${briefId}/seal?orgId=${ORG_B}`, {
+      method: "POST",
+      headers: sessionHeaders(MEMBER_B),
+      body: JSON.stringify({ orgId: ORG_B }),
+    });
+    expect(sealed.status).toBe(404);
+  });
+
+  it("a member of org B cannot fund or settle org A's campaign stage", async () => {
+    const app = appWith();
+    const campaignRes = await app.request("/forge/campaign", {
+      method: "POST",
+      headers: sessionHeaders(OWNER),
+      body: JSON.stringify({
+        orgId: ORG_ID,
+        title: "T",
+        domain: "d",
+        totalBudgetWei: "1000000000000000000",
+        nativeAsset: "ETH",
+        network: "31337",
+      }),
+    });
+    expect(campaignRes.status).toBe(201);
+    const { campaign } = await campaignRes.json();
+
+    const funded = await app.request(
+      `/forge/campaign/${campaign.campaignId}/stage/s1/fund?orgId=${ORG_B}`,
+      {
+        method: "POST",
+        headers: sessionHeaders(MEMBER_B),
+        body: JSON.stringify({ orgId: ORG_B, amountWei: "100000000000000000" }),
+      },
+    );
+    expect(funded.status).toBe(404);
+
+    const settled = await app.request(
+      `/forge/campaign/${campaign.campaignId}/stage/s1/settle?orgId=${ORG_B}`,
+      {
+        method: "POST",
+        headers: sessionHeaders(MEMBER_B),
+        body: JSON.stringify({ orgId: ORG_B }),
+      },
+    );
+    expect(settled.status).toBe(404);
+  });
+
+  it("the owning org still reads and funds its own resources", async () => {
+    const app = appWith();
+    const briefId = await createBrief(app, ORG_ID);
+    const own = await app.request(`/forge/brief/${briefId}?orgId=${ORG_ID}`, {
+      headers: sessionHeaders(OWNER),
+    });
+    expect(own.status).toBe(200);
+  });
+});

@@ -79,6 +79,8 @@ import {
   listCampaigns,
   updateCampaign,
   deleteCampaign,
+  orgOfBrief,
+  orgOfCampaign,
 } from "@crucible/agent-security";
 
 export function createForgeRoutes(): Hono {
@@ -141,6 +143,67 @@ export function createForgeRoutes(): Hono {
     (c.var as Record<string, unknown>).orgId = orgId;
     (c.var as Record<string, unknown>).orgPrincipalAddress = principal.wallet.address;
     return null;
+  }
+
+  /**
+   * Read or mutate a brief only through its owning org. `requireOrgAuthz`
+   * proves the caller may act in the org the request names; the org that
+   * actually owns the resource decides here — a member of org A naming org B's
+   * briefId gets a 404, so a foreign id confirms nothing about existence.
+   */
+  async function requireBriefAccess(
+    c: Context,
+    briefId: string,
+    permission: string,
+  ): Promise<{ brief: ForgeBrief } | Response> {
+    const principal = resolveWalletPrincipal(c);
+    if (!principal) {
+      return c.json({ error: "unauthenticated", code: "no-credential" }, 401);
+    }
+    const orgId = orgOfBrief(briefId);
+    if (!orgId) {
+      return c.json({ error: "brief not found" }, 404);
+    }
+    const decision = authorize(principal, orgId, permission);
+    if (!decision.allow) {
+      // A non-member learns nothing: a foreign id reads the same as a missing one.
+      const status = decision.code === "no-credential" ? 404 : 403;
+      return c.json({ error: "brief not found", reason: decision.reason, code: decision.code }, status);
+    }
+    const brief = getForgeBrief(briefId);
+    if (!brief) {
+      return c.json({ error: "brief not found" }, 404);
+    }
+    return { brief };
+  }
+
+  /**
+   * The campaign twin of `requireBriefAccess`.
+   */
+  async function requireCampaignAccess(
+    c: Context,
+    campaignId: string,
+    permission: string,
+  ): Promise<{ campaign: ForgeCampaign } | Response> {
+    const principal = resolveWalletPrincipal(c);
+    if (!principal) {
+      return c.json({ error: "unauthenticated", code: "no-credential" }, 401);
+    }
+    const orgId = orgOfCampaign(campaignId);
+    if (!orgId) {
+      return c.json({ error: "campaign not found" }, 404);
+    }
+    const decision = authorize(principal, orgId, permission);
+    if (!decision.allow) {
+      // A non-member learns nothing: a foreign id reads the same as a missing one.
+      const status = decision.code === "no-credential" ? 404 : 403;
+      return c.json({ error: "campaign not found", reason: decision.reason, code: decision.code }, status);
+    }
+    const campaign = getCampaign(campaignId);
+    if (!campaign) {
+      return c.json({ error: "campaign not found" }, 404);
+    }
+    return { campaign };
   }
 
   /* ------------------------------------------------------------------ */
@@ -217,32 +280,22 @@ export function createForgeRoutes(): Hono {
    * Get a Forge Brief by ID.
    */
   app.get("/brief/:briefId", async (c) => {
-    const denied = await requireOrgAuthz(c, "org:read");
-    if (denied) return denied;
+    const gate = await requireBriefAccess(c, c.req.param("briefId"), "org:read");
+    if (gate instanceof Response) return gate;
 
-    const briefId = c.req.param("briefId");
-    const brief = getForgeBrief(briefId);
-    if (!brief) {
-      return c.json({ error: "brief not found" }, 404);
-    }
-    const readiness = getBriefReadiness(briefId);
-    return jsonWithBigInt(c, { brief, readiness });
+    const readiness = getBriefReadiness(gate.brief.briefId);
+    return jsonWithBigInt(c, { brief: gate.brief, readiness });
   });
 
   /**
    * Validate a Forge Brief and produce a Challenge Readiness Report.
    */
   app.post("/brief/:briefId/validate", async (c) => {
-    const denied = await requireOrgAuthz(c, "org:read");
-    if (denied) return denied;
+    const gate = await requireBriefAccess(c, c.req.param("briefId"), "org:read");
+    if (gate instanceof Response) return gate;
 
-    const briefId = c.req.param("briefId");
-    const brief = getForgeBrief(briefId);
-    if (!brief) {
-      return c.json({ error: "brief not found" }, 404);
-    }
-    const report = validateForgeBrief(brief);
-    setBriefReadiness(briefId, report);
+    const report = validateForgeBrief(gate.brief);
+    setBriefReadiness(gate.brief.briefId, report);
     return jsonWithBigInt(c, { readiness: report });
   });
 
@@ -250,16 +303,11 @@ export function createForgeRoutes(): Hono {
    * Seal a Forge Brief (compute its content digest).
    */
   app.post("/brief/:briefId/seal", async (c) => {
-    const denied = await requireOrgAuthz(c, "benchmark:create");
-    if (denied) return denied;
+    const gate = await requireBriefAccess(c, c.req.param("briefId"), "benchmark:create");
+    if (gate instanceof Response) return gate;
 
-    const briefId = c.req.param("briefId");
-    const brief = getForgeBrief(briefId);
-    if (!brief) {
-      return c.json({ error: "brief not found" }, 404);
-    }
-    const sealed = sealBrief(brief);
-    updateForgeBrief(briefId, { digest: sealed.digest, updatedAt: sealed.updatedAt });
+    const sealed = sealBrief(gate.brief);
+    updateForgeBrief(gate.brief.briefId, { digest: sealed.digest, updatedAt: sealed.updatedAt });
     return jsonWithBigInt(c, { brief: sealed });
   });
 
@@ -271,14 +319,10 @@ export function createForgeRoutes(): Hono {
    * Compute a Trial Difficulty Profile for a brief.
    */
   app.post("/difficulty/:briefId", async (c) => {
-    const denied = await requireOrgAuthz(c, "org:read");
-    if (denied) return denied;
-
+    const gate = await requireBriefAccess(c, c.req.param("briefId"), "org:read");
+    if (gate instanceof Response) return gate;
     const briefId = c.req.param("briefId");
-    const brief = getForgeBrief(briefId);
-    if (!brief) {
-      return c.json({ error: "brief not found" }, 404);
-    }
+    const brief = gate.brief;
 
     const body = (await c.req.json()) as {
       agentRating?: { mu: number; sigma: number };
@@ -364,14 +408,9 @@ export function createForgeRoutes(): Hono {
    * Compute a Bounty Recommendation from model inputs.
    */
   app.post("/bounty/:briefId", async (c) => {
-    const denied = await requireOrgAuthz(c, "org:read");
-    if (denied) return denied;
-
+    const gate = await requireBriefAccess(c, c.req.param("briefId"), "org:read");
+    if (gate instanceof Response) return gate;
     const briefId = c.req.param("briefId");
-    const brief = getForgeBrief(briefId);
-    if (!brief) {
-      return c.json({ error: "brief not found" }, 404);
-    }
 
     const body = (await c.req.json()) as {
       nativeAsset?: "ETH" | "SOL";
@@ -415,14 +454,9 @@ export function createForgeRoutes(): Hono {
    * Assess whether a sponsor's proposed reward is adequate.
    */
   app.post("/bounty/:briefId/adequacy", async (c) => {
-    const denied = await requireOrgAuthz(c, "org:read");
-    if (denied) return denied;
-
+    const gate = await requireBriefAccess(c, c.req.param("briefId"), "org:read");
+    if (gate instanceof Response) return gate;
     const briefId = c.req.param("briefId");
-    const brief = getForgeBrief(briefId);
-    if (!brief) {
-      return c.json({ error: "brief not found" }, 404);
-    }
 
     const rec = getBountyRecommendation(briefId);
     if (!rec) {
@@ -502,30 +536,20 @@ export function createForgeRoutes(): Hono {
    * Get a Forge Campaign by ID.
    */
   app.get("/campaign/:campaignId", async (c) => {
-    const denied = await requireOrgAuthz(c, "org:read");
-    if (denied) return denied;
+    const gate = await requireCampaignAccess(c, c.req.param("campaignId"), "org:read");
+    if (gate instanceof Response) return gate;
 
-    const campaignId = c.req.param("campaignId");
-    const campaign = getCampaign(campaignId);
-    if (!campaign) {
-      return c.json({ error: "campaign not found" }, 404);
-    }
-    const valid = validateCampaign(campaign);
-    return jsonWithBigInt(c, { campaign, valid });
+    const valid = validateCampaign(gate.campaign);
+    return jsonWithBigInt(c, { campaign: gate.campaign, valid });
   });
 
   /**
    * Add a stage to a campaign.
    */
   app.post("/campaign/:campaignId/stage", async (c) => {
-    const denied = await requireOrgAuthz(c, "benchmark:create");
-    if (denied) return denied;
-
+    const gate = await requireCampaignAccess(c, c.req.param("campaignId"), "benchmark:create");
+    if (gate instanceof Response) return gate;
     const campaignId = c.req.param("campaignId");
-    const campaign = getCampaign(campaignId);
-    if (!campaign) {
-      return c.json({ error: "campaign not found" }, 404);
-    }
 
     const body = (await c.req.json()) as {
       stageId: string;
@@ -570,7 +594,7 @@ export function createForgeRoutes(): Hono {
     };
 
     try {
-      const updated = addStage(campaign, stage);
+      const updated = addStage(gate.campaign, stage);
       updateCampaign(campaignId, {
         stages: updated.stages,
         updatedAt: updated.updatedAt,
@@ -588,22 +612,18 @@ export function createForgeRoutes(): Hono {
    * Fund a campaign stage.
    */
   app.post("/campaign/:campaignId/stage/:stageId/fund", async (c) => {
-    const denied = await requireOrgAuthz(c, "org:budget:set");
-    if (denied) return denied;
+    const gate = await requireCampaignAccess(c, c.req.param("campaignId"), "org:budget:set");
+    if (gate instanceof Response) return gate;
 
     const campaignId = c.req.param("campaignId");
     const stageId = c.req.param("stageId");
-    const campaign = getCampaign(campaignId);
-    if (!campaign) {
-      return c.json({ error: "campaign not found" }, 404);
-    }
 
     const body = (await c.req.json()) as {
       amountWei: string;
     };
 
     try {
-      const updated = fundStage(campaign, stageId, BigInt(body.amountWei));
+      const updated = fundStage(gate.campaign, stageId, BigInt(body.amountWei));
       updateCampaign(campaignId, {
         fundedBudgetWei: updated.fundedBudgetWei,
         stages: updated.stages,
@@ -622,18 +642,14 @@ export function createForgeRoutes(): Hono {
    * Settle a campaign stage.
    */
   app.post("/campaign/:campaignId/stage/:stageId/settle", async (c) => {
-    const denied = await requireOrgAuthz(c, "org:budget:set");
-    if (denied) return denied;
+    const gate = await requireCampaignAccess(c, c.req.param("campaignId"), "org:budget:set");
+    if (gate instanceof Response) return gate;
 
     const campaignId = c.req.param("campaignId");
     const stageId = c.req.param("stageId");
-    const campaign = getCampaign(campaignId);
-    if (!campaign) {
-      return c.json({ error: "campaign not found" }, 404);
-    }
 
     try {
-      const updated = settleStage(campaign, stageId);
+      const updated = settleStage(gate.campaign, stageId);
       updateCampaign(campaignId, {
         stages: updated.stages,
         status: updated.status,
@@ -654,16 +670,11 @@ export function createForgeRoutes(): Hono {
   app.get(
     "/campaign/:campaignId/stage/:stageId/eligible",
     async (c) => {
-      const denied = await requireOrgAuthz(c, "org:read");
-      if (denied) return denied;
+      const gate = await requireCampaignAccess(c, c.req.param("campaignId"), "org:read");
+      if (gate instanceof Response) return gate;
 
-      const campaignId = c.req.param("campaignId");
       const stageId = c.req.param("stageId");
-      const campaign = getCampaign(campaignId);
-      if (!campaign) {
-        return c.json({ error: "campaign not found" }, 404);
-      }
-      return jsonWithBigInt(c, { eligible: isStageEligible(campaign, stageId) });
+      return jsonWithBigInt(c, { eligible: isStageEligible(gate.campaign, stageId) });
     },
   );
 
