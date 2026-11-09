@@ -1586,6 +1586,23 @@ guards is the decoration it exists to detect.
   closed. **Mutation-proven:** reintroducing body-derived signals turns the regression red
   (asserted `trialCount: 99` yields a 201 claim). `5eb5242`.
 
+- **2026-11-09 — The 2026-11-09 deep audit (register in `CRUCIBLE_AUDIT.md`) closed its critical
+  and high authorization findings in three slices, each with red-first regressions.** A
+  four-part parallel audit (API authz matrix, money integrity, web access-state, runtime/keys)
+  filed the register; the first two slices closed: the unauthenticated `POST /forge/__reset`
+  destructive wipe (`5541acb`); `GET /v1/runs/:runId` serving private run records to anyone
+  with a guessable id, now session-gated and creator-bound (`5541acb`); `GET /trials` 500ing on
+  any fractional `rewardEth` because `BigInt` cannot parse a display string — `ApiTrial` now
+  carries exact `rewardWei`, the filter compares it, and the query filters were measured
+  **vacuous** before (the display string parsed as wei excluded every sane trial, so the old
+  min-reward test passed on an empty set) (`5541acb`); the `/engrams/evaluate` keeper bearer
+  compared in constant time over sha256 digests with a 32-byte floor (`5541acb`); trial
+  transitions sponsor-gated for every target, not just cancel/draft (`5541acb`); and the forge
+  cross-tenant IDOR — authorization bound to the request's `orgId` while lookups were global,
+  so a member of org A could read and `fund`/`settle` org B's briefs and campaigns by naming
+  their ids — now authorizes against the resource's owning org, with 404 (not 403) for
+  non-members so a foreign id confirms nothing about existence (`0c442ff`).
+
 ## Unresolved from the 2026-10-27 pass (continues the open list)
 
 23. **`apps/api` reported one failing test once, inside a saturated fan-out, and it has not been

@@ -153,18 +153,18 @@ includes coverage floors, gitleaks full history, Trivy exit-code gates, and depl
 
 | ID | Sev | Finding | Where | Status |
 |---|---|---|---|---|
-| AUTHZ-F1 | CRITICAL | `POST /forge/__reset` wipes all org briefs/campaigns with no credential | `apps/api/src/forge.ts:688` | Open |
-| AUTHZ-F2 | CRITICAL | `GET /v1/runs/:runId` serves private run records with no session; ID is ~31 bits + timestamp | `apps/api/src/workloads.ts:92` | Open |
-| AUTHZ-F3 | HIGH | Forge authorizes against the request's `orgId`, never the resource's owning org — cross-tenant read and `fund`/`settle` | `apps/api/src/forge.ts:120-145,591-650` | Open |
+| AUTHZ-F1 | CRITICAL | `POST /forge/__reset` wipes all org briefs/campaigns with no credential | `apps/api/src/forge.ts:688` | Fixed `5541acb` |
+| AUTHZ-F2 | CRITICAL | `GET /v1/runs/:runId` serves private run records with no session; ID is ~31 bits + timestamp | `apps/api/src/workloads.ts:92` | Fixed `5541acb` |
+| AUTHZ-F3 | HIGH | Forge authorizes against the request's `orgId`, never the resource's owning org — cross-tenant read and `fund`/`settle` | `apps/api/src/forge.ts:120-145,591-650` | Fixed `0c442ff` |
 | AUTHZ-F4 | HIGH | Metering reads/writes any `tenantId` with session only; `POST /quota` unbounded (latent: surface not mounted) | `apps/api/src/metering-routes.ts:24-94` | Open |
 | AUTHZ-F5 | HIGH | Production CSRF: `SameSite=None` session cookie; `csrfOriginCheck()` exported but never called | `apps/api/src/auth.ts:61,352` | Open |
-| AUTHZ-F6 | HIGH | Keeper bearer compared with `!==`, no key-length floor | `apps/api/src/engrams.ts:68` | Open |
-| AUTHZ-F7 | MEDIUM | Transition sponsor gate covers 2 of 12 targets; any session can walk a stranger's trial through off-chain states | `apps/api/src/trial-lifecycle.ts:277` | Open |
+| AUTHZ-F6 | HIGH | Keeper bearer compared with `!==`, no key-length floor | `apps/api/src/engrams.ts:68` | Fixed `5541acb` |
+| AUTHZ-F7 | MEDIUM | Transition sponsor gate covers 2 of 12 targets; any session can walk a stranger's trial through off-chain states | `apps/api/src/trial-lifecycle.ts:277` | Fixed `5541acb` |
 | AUTHZ-F8 | MEDIUM | `/trials/:id/events` SSE: no stream ceiling, per-connection RPC | `apps/api/src/app.ts:2426` | Open |
 | AUTHZ-F9 | MEDIUM | Org budgets/api-keys gated by mere membership; scopes client-chosen | `apps/api/src/orgs.ts:164-274` | Open |
 | AUTHZ-F10 | MEDIUM | `GET /monitoring`: any session reads host SLO/error internals | `apps/api/src/app.ts:1142` | Open |
 | AUTHZ-F11 | LOW | STAMP admin routes session-only in sandbox/manual-review modes (production fail-closes) | `apps/api/src/stamp.ts:116` | Open |
-| MONEY-H1 | HIGH | `GET /trials` 500s on any fractional `rewardEth` (`BigInt("0.1")` throws; wizard default is 0.1); query `BigInt()` unguarded | `apps/api/src/app.ts:1180-1195` | Open |
+| MONEY-H1 | HIGH | `GET /trials` 500s on any fractional `rewardEth` (`BigInt("0.1")` throws; wizard default is 0.1); query `BigInt()` unguarded | `apps/api/src/app.ts:1180-1195` | Fixed `5541acb` |
 | MONEY-H3 | HIGH | Funder cap: non-`settled` transfer frees reserved room; expired reservation drops the grant record | `apps/funder/src/server.ts:172`, `cap.ts:196` | Open |
 | MONEY-M1 | MEDIUM | Forge brief budget computed `parseFloat(eth) * 1e18` — the exact float the repo bans | `apps/web/src/app/forge/brief/page.tsx:98` | Open |
 | MONEY-M2 | MEDIUM | Faucet "one allocation per 24h" reason describes a control nothing enforces | `apps/api/src/identity.ts:372` | Open |
