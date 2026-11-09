@@ -11,6 +11,7 @@ import {
 import {
   buildEscrowView,
   buildSnapshot,
+  snapshotSignature,
   type AlloyState,
   type ApiEscrow,
   type ApiSnapshot,
@@ -20,6 +21,7 @@ import {
   type TeamLedgerModel,
   type TrialStatus,
 } from "@crucible/indexer";
+import { paginate, paginateByKey, parseKeyPage, parsePage } from "./pagination.js";
 import {
   campaignEligibilitySignals,
   decide,
@@ -42,7 +44,7 @@ import { createMcpHandler, type TrialLimits } from "./mcp.js";
 import { rateLimit } from "./rate-limit.js";
 import { dlq } from "./dlq.js";
 import { TickPump } from "./tick-pump.js";
-import { authRoutes, configuredChainId, verifiedSessionFromContext, identityStateMiddleware } from "./auth.js";
+import { authRoutes, configuredChainId, csrfOriginCheck, verifiedSessionFromContext, identityStateMiddleware } from "./auth.js";
 import { buildOrganisationPrincipal, getOrganisation, isBlocked, isMemberOf, status as killSwitchStatus } from "@crucible/agent-security";
 import {
   createTrial,
@@ -276,88 +278,8 @@ function positiveId(raw: string | undefined): number | null {
   return value;
 }
 
-/** The largest page a caller may ask for. A "limit" is not a licence to ask for everything. */
-const MAX_PAGE = 500;
-
-interface PageRequest {
-  limit: number | null;
-  after: number | null;
-  error: string | null;
-}
-
-/**
- * Cursor pagination over the list routes.
- *
- * The cursor is an item id, not an offset. An offset is wrong the moment anything is added
- * above it — the page shifts under a client that is already looking at one, and on a chain
- * that only ever grows, "row 10 onward" is a different set of rows on every request.
- *
- * No limit means the whole list, deliberately rather than lazily. A silent default cap is
- * a lie of omission: a monitor that counts trials would read a truncated page as a shorter
- * chain and call it healthy. Callers who want a page ask for one, and `truncated` plus
- * `nextCursor` say out loud that there is more.
- */
-function parsePage(query: Record<string, string | undefined>): PageRequest {
-  let limit: number | null = null;
-  const rawLimit = query.limit;
-  if (rawLimit !== undefined && rawLimit !== "") {
-    if (!/^\d+$/.test(rawLimit)) {
-      return { limit: null, after: null, error: "limit must be a whole number of items" };
-    }
-    limit = Number(rawLimit);
-    if (limit < 1 || limit > MAX_PAGE) {
-      return {
-        limit: null,
-        after: null,
-        error: `limit must be between 1 and ${MAX_PAGE}`,
-      };
-    }
-  }
-  let after: number | null = null;
-  const rawAfter = query.after;
-  if (rawAfter !== undefined && rawAfter !== "") {
-    if (!/^\d+$/.test(rawAfter)) {
-      return { limit: null, after: null, error: "after must be an item id from a previous page" };
-    }
-    after = Number(rawAfter);
-  }
-  return { limit, after, error: null };
-}
-
-function paginate<T>(
-  items: T[],
-  idOf: (item: T) => number,
-  page: PageRequest,
-): { items: T[]; page: Record<string, unknown> } {
-  let start = 0;
-  let cursorStale = false;
-  if (page.after !== null) {
-    const found = items.findIndex((item) => idOf(item) === page.after);
-    if (found === -1) {
-      // Legitimate, not an error: a filtered list loses members as the chain settles
-      // trials, so a cursor can age out between pages. Resuming from the start with the
-      // flag set is honest; a 400 would blame the client for the chain moving.
-      cursorStale = true;
-    } else {
-      start = found + 1;
-    }
-  }
-  const rest = items.slice(start);
-  const slice = page.limit === null ? rest : rest.slice(0, page.limit);
-  const more = start + slice.length < items.length;
-  return {
-    items: slice,
-    page: {
-      limit: page.limit,
-      after: page.after,
-      returned: slice.length,
-      total: items.length,
-      truncated: page.limit !== null && more,
-      nextCursor: page.limit !== null && more && slice.length ? idOf(slice[slice.length - 1]!) : null,
-      cursorStale,
-    },
-  };
-}
+/* List pagination lives in ./pagination.ts: one semantic (an item id as the cursor, no
+   default cap) shared by every list route, in both the numeric and opaque-key shapes. */
 
 /**
  * How many live streams this process will hold at once.
@@ -624,24 +546,11 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
       tick = {
         builtAt: now,
         version,
-        // The signature is what decides whether a subscriber gets a new frame,
-        // so it has to name everything the payload can change. It used to be
-        // the trial counts and the length: a registry tier that moved, or a
-        // settlement fee that changed, did not move it, so no frame was sent
-        // and the live view showed a stale tier indefinitely while a refresh
-        // showed the new one — the exact disagreement this cache was built to
-        // end.
-        signature: [
-          snap.counts.open,
-          snap.counts.assigned,
-          snap.counts.judging,
-          snap.counts.challenged,
-          snap.counts.settled,
-          snap.trials.length,
-          snap.economics.feesEth,
-          snap.economics.paidOutEth,
-          snap.agents.map((a) => `${a.id}:${a.tier ?? "?"}`).join(","),
-        ].join(":"),
+        // The signature is what decides whether a subscriber gets a new frame. It lives in
+        // @crucible/indexer so this process and the replica gate cannot disagree about it:
+        // while the list was inlined here, a payload field could move without moving the
+        // frame (the stale-tier disagreement this cache exists to end).
+        signature: snapshotSignature(snap),
         payload: JSON.stringify(snap),
         snapshot: snap,
       };
@@ -740,6 +649,27 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
 
   /** Resolve the caller's seven-state identity on every request. */
   app.use("*", identityStateMiddleware());
+
+  /**
+   * CSRF guard for state-changing, cookie-bearing requests.
+   *
+   * The production session cookie is `SameSite=None`, so it travels on
+   * cross-site requests; CORS stops the attacker reading a response, not
+   * sending the mutation. Browsers attach `Origin` to every cross-site form or
+   * fetch POST, so a request that carries the session cookie and an Origin that
+   * is not the configured one is rejected. A request with no Origin is not
+   * browser-originated (CLI, keeper, server-to-server) and carries no ambient
+   * credential the browser attached for us.
+   */
+  app.use("*", async (c, next) => {
+    const method = c.req.method.toUpperCase();
+    if (method === "GET" || method === "HEAD" || method === "OPTIONS") return next();
+    if (!verifiedSessionFromContext(c)) return next();
+    if (c.req.header("origin") !== undefined && !csrfOriginCheck(c)) {
+      return c.json({ error: "cross-origin request rejected", code: "csrf-origin" }, 403);
+    }
+    return next();
+  });
 
   /**
    * Tag every response with the truth domain it primarily serves, so the
@@ -1140,9 +1070,13 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
    * A public endpoint would expose internal metrics to attackers.
    */
   app.get("/monitoring", (c) => {
+    const owners = deps.sponsorship?.owners;
     const session = verifiedSessionFromContext(c);
-    if (!session) {
-      return c.json({ error: "unauthenticated", code: "no-credential" }, 401);
+    const wallet = session?.payload.address ?? "";
+    // Operational intelligence — error rates, uptime, alert counts — is the
+    // owner's view, not every signed-in wallet's.
+    if (!owners || !wallet || !owners.isOwner(wallet)) {
+      return c.json({ error: "monitoring is the owner's view", code: "forbidden" }, 403);
     }
     const health = getSystemHealth();
     return c.json(health);
@@ -1614,9 +1548,12 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
    * the same agent — and the hall papered over the gap with a hardcoded `alloyLocked`.
    */
   app.get("/hall", (c) => {
+    const page = parsePage(c.req.query());
+    if (page.error) return c.json({ error: page.error }, 400);
     const snap = sharedTick().snapshot;
+    const paged = paginate(snap.hall, (row) => row.agentId, page);
     return c.json({
-      data: { hall: snap.hall },
+      data: { hall: paged.items },
       meta: {
         readModel: "scribe",
         chain: deps.proofSource?.chain ?? null,
@@ -1627,7 +1564,9 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
         // would not be. "registry" means the host was asked — a row can still carry a null
         // tier when that read failed or had not landed yet, and null is not tier 0.
         alloyLock: deps.alloyState ? "registry" : "not-read",
+        // `count` is the whole list; `page.returned` is what this answer carried.
         count: snap.hall.length,
+        page: paged.page,
         asOf: snap.now,
       },
     });
@@ -1641,6 +1580,8 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
    * decimal string because JSON has no bigint, and a float would lose the low digits.
    */
   app.get("/arena", (c) => {
+    const page = parsePage(c.req.query());
+    if (page.error) return c.json({ error: page.error }, 400);
     const model = deps.arena?.();
     if (!model) {
       return c.json({
@@ -1648,7 +1589,7 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
         meta: { readModel: "arena", projected: false, reason: "no arena address on this host" },
       });
     }
-    const trials = [...model.trials.values()]
+    const rows = [...model.trials.values()]
       .sort((a, b) => a.id - b.id)
       .map((t) => ({
         id: t.id,
@@ -1664,9 +1605,16 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
         specDigest: t.specDigest,
         postedAtBlock: t.postedAtBlock.toString(),
       }));
+    const paged = paginate(rows, (t) => t.id, page);
     return c.json({
-      data: { trials },
-      meta: { readModel: "arena", projected: true, count: trials.length, version: model.version },
+      data: { trials: paged.items },
+      meta: {
+        readModel: "arena",
+        projected: true,
+        count: rows.length,
+        page: paged.page,
+        version: model.version,
+      },
     });
   });
 
@@ -1678,6 +1626,8 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
    * reading TeamLedger on this host. Wei crosses as a decimal string because JSON has no bigint.
    */
   app.get("/teams", (c) => {
+    const page = parseKeyPage(c.req.query());
+    if (page.error) return c.json({ error: page.error }, 400);
     const model = deps.team?.();
     if (!model) {
       return c.json({
@@ -1685,7 +1635,7 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
         meta: { readModel: "team-ledger", projected: false, reason: "no TeamLedger address on this host" },
       });
     }
-    const teams = [...model.teams.values()]
+    const rows = [...model.teams.values()]
       .sort((a, b) => (a.teamKey < b.teamKey ? -1 : 1))
       .map((t) => ({
         teamKey: t.teamKey,
@@ -1713,13 +1663,22 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
             }
           : null,
       }));
+    const paged = paginateByKey(rows, (t) => t.teamKey, page);
     return c.json({
       data: {
-        teams,
+        teams: paged.items,
+        // The totals describe the whole ledger, not the page — a page of team credit
+        // summed against a page of teams would read as a smaller ledger than exists.
         totalCredit: model.totalCredit.toString(),
         heldTotal: model.heldTotal.toString(),
       },
-      meta: { readModel: "team-ledger", projected: true, count: teams.length, version: model.version },
+      meta: {
+        readModel: "team-ledger",
+        projected: true,
+        count: rows.length,
+        page: paged.page,
+        version: model.version,
+      },
     });
   });
 
@@ -2249,11 +2208,16 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
       );
     }
 
+    const page = parsePage(c.req.query());
+    if (page.error) return c.json({ error: page.error }, 400);
+
     c.header("Cache-Control", "no-store");
+    const paged = paginate(sponsorship.queue.list(), (application) => application.id, page);
     return c.json({
       owner: true,
       configured: true,
-      applications: sponsorship.queue.list(),
+      applications: paged.items,
+      page: paged.page,
     });
   });
 

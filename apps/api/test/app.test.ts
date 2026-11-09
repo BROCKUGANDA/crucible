@@ -1704,4 +1704,42 @@ describe("2026-11-09 audit fixes", () => {
     const res = await app.request("/trials?minRewardWei=1e18");
     expect(res.status).toBe(400);
   });
+
+  it("csrf: a cookie-bearing cross-origin mutation is rejected", async () => {
+    const app = bareApp({ trials: new Map(), agents: new Map(), runs: new Map(), disputes: new Map() });
+    const res = await app.request("/trials", {
+      method: "POST",
+      headers: {
+        cookie: cookieFor("0x1111111111111111111111111111111111111111"),
+        origin: "https://evil.example",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({}),
+    });
+    expect(res.status).toBe(403);
+    expect(((await res.json()) as { code: string }).code).toBe("csrf-origin");
+  });
+
+  it("csrf: the configured origin passes the guard", async () => {
+    const app = bareApp({ trials: new Map(), agents: new Map(), runs: new Map(), disputes: new Map() });
+    const res = await app.request("/trials", {
+      method: "POST",
+      headers: {
+        cookie: cookieFor("0x1111111111111111111111111111111111111111"),
+        origin: "http://localhost:3000",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({}),
+    });
+    // The guard passed; the request fails its own body validation instead.
+    expect(res.status).toBe(400);
+  });
+
+  it("monitoring: a session without the owner role is refused", async () => {
+    const app = bareApp({ trials: new Map(), agents: new Map(), runs: new Map(), disputes: new Map() });
+    const res = await app.request("/monitoring", {
+      headers: { cookie: cookieFor("0x1111111111111111111111111111111111111111") },
+    });
+    expect(res.status).toBe(403);
+  });
 });

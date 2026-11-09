@@ -372,7 +372,9 @@ export function decide(score: RiskScore): Decision {
   if (p >= 0.40) {
     return {
       action: "rate-limit",
-      reason: "One faucet allocation per 24h",
+      // What the funder actually enforces: a drip sized down by risk and capped
+      // per wallet and per day. There is no separate 24h allocation rule.
+      reason: "Faucet drip sized by risk, capped per wallet and per day",
     };
   }
   return { action: "deny", reason: "Insufficient evidence of humanity" };

@@ -8,6 +8,8 @@ import { privateKeyToAccount, type PrivateKeyAccount } from "viem/accounts";
 import { createApp } from "../src/app.js";
 import {
   createOrganisation,
+  createMembership,
+  newMembership,
   newOrganisation,
   __resetForgeStoreForTests,
 } from "@crucible/agent-security";
@@ -132,5 +134,43 @@ describe("Org routes", () => {
     const app = appWith();
     const res = await app.request(`/orgs/${ORG_ID}`, { headers: await signIn(app, strangerAccount) });
     expect(res.status).toBe(403);
+  });
+
+  it("a readonly member cannot create budgets or mint API keys (role matrix, not membership)", async () => {
+    const readonlyAccount = privateKeyToAccount(
+      "0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a",
+    );
+    createMembership(
+      newMembership(
+        `mem-readonly-${ORG_ID}`,
+        ORG_ID,
+        `eip155:31337:${readonlyAccount.address.toLowerCase()}`,
+        "org.readonly.analyst",
+        ownerPrincipalId,
+      ),
+    );
+
+    const app = appWith();
+    const headers = await signIn(app, readonlyAccount);
+
+    const budget = await app.request(`/orgs/${ORG_ID}/budgets`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        budgetId: "b-readonly",
+        category: "evaluation_spend",
+        totalUnits: "100",
+        periodStart: 1,
+        periodEnd: 2,
+      }),
+    });
+    expect(budget.status).toBe(403);
+
+    const key = await app.request(`/orgs/${ORG_ID}/api-keys`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ keyId: "k-readonly", name: "n" }),
+    });
+    expect(key.status).toBe(403);
   });
 });

@@ -99,7 +99,7 @@ export function BreakPanel({
 
           <dt className="kicker">If you are wrong</dt>
           <dd className="mono" data-tone="sear">
-            Half your stake goes to the agent. The other half is burned.
+            Half your stake goes to the agent. The other half goes to the treasury.
           </dd>
         </dl>
 
