@@ -24,12 +24,9 @@
 #
 # A full `up` is only for a fresh chain — take the stack down first.
 #
-# This override deliberately touches ONLY the published ports. It does not override `restart:`
-# or `logging:`, so the deployed services inherit both policies from compose.yaml: compose
-# merges per-service mappings, and a service the override re-declares just to `!reset` its ports
-# keeps everything else. That is why the keeper restart fix reaches the real deployment even
-# though `keeper` is not named here at all — it inherits, it is not redefined. `anvil`, `api` and
-# `web` are re-declared only to un-publish their host ports.
+# This override keeps published ports closed and adds VPS-specific API runtime
+# wiring. It does not override `restart:` or `logging:`; services inherit those
+# from compose.yaml (compose merges per-service mappings).
 services:
   anvil:
     # `ports` reset only; `restart: unless-stopped` and `logging` are inherited (see above).
@@ -37,6 +34,12 @@ services:
 
   api:
     ports: !reset []
+    volumes:
+      - deployed:/run/crucible:ro
+      - content:/content:ro
+      - ./migrations:/repo/migrations:ro
+    environment:
+      CRUCIBLE_MIGRATIONS_DIR: /repo/migrations
 
   web:
     ports: !reset []

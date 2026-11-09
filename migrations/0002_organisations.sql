@@ -47,8 +47,11 @@ CREATE TABLE IF NOT EXISTS memberships (
   created_by   TEXT NOT NULL,
   revoked_at   BIGINT,
   expires_at   BIGINT,
-  CONSTRAINT memberships_one_active_per_principal_org UNIQUE (org_id, principal_id) WHERE revoked_at IS NULL AND (expires_at IS NULL OR expires_at > EXTRACT(EPOCH FROM NOW()) * 1000)
+  CONSTRAINT memberships_one_active_per_principal_org UNIQUE (org_id, principal_id)
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS memberships_one_active_per_principal_org_uq
+  ON memberships (org_id, principal_id) WHERE revoked_at IS NULL;
 
 CREATE INDEX IF NOT EXISTS memberships_org_id_idx ON memberships (org_id);
 CREATE INDEX IF NOT EXISTS memberships_principal_id_idx ON memberships (principal_id);
@@ -104,7 +107,8 @@ ALTER TABLE invitations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE resources ENABLE ROW LEVEL SECURITY;
 
 -- Organisations: readable only by members of that org.
-CREATE POLICY IF NOT EXISTS organisations_member_read
+DROP POLICY IF EXISTS organisations_member_read ON organisations;
+CREATE POLICY organisations_member_read
   ON organisations FOR SELECT
   USING (
     owner_id = current_setting('crucible.current_principal_id', true)
@@ -117,7 +121,8 @@ CREATE POLICY IF NOT EXISTS organisations_member_read
     )
   );
 
-CREATE POLICY IF NOT EXISTS organisations_owner_write
+DROP POLICY IF EXISTS organisations_owner_write ON organisations;
+CREATE POLICY organisations_owner_write
   ON organisations FOR ALL
   USING (
     owner_id = current_setting('crucible.current_principal_id', true)
@@ -127,7 +132,8 @@ CREATE POLICY IF NOT EXISTS organisations_owner_write
   );
 
 -- Workspaces: readable by org members, writable by org owners/admins.
-CREATE POLICY IF NOT EXISTS workspaces_member_read
+DROP POLICY IF EXISTS workspaces_member_read ON workspaces;
+CREATE POLICY workspaces_member_read
   ON workspaces FOR SELECT
   USING (
     EXISTS (
@@ -139,7 +145,8 @@ CREATE POLICY IF NOT EXISTS workspaces_member_read
     )
   );
 
-CREATE POLICY IF NOT EXISTS workspaces_admin_write
+DROP POLICY IF EXISTS workspaces_admin_write ON workspaces;
+CREATE POLICY workspaces_admin_write
   ON workspaces FOR ALL
   USING (
     EXISTS (
@@ -163,7 +170,8 @@ CREATE POLICY IF NOT EXISTS workspaces_admin_write
   );
 
 -- Memberships: readable by org members, writable by org owners.
-CREATE POLICY IF NOT EXISTS memberships_member_read
+DROP POLICY IF EXISTS memberships_member_read ON memberships;
+CREATE POLICY memberships_member_read
   ON memberships FOR SELECT
   USING (
     EXISTS (
@@ -175,7 +183,8 @@ CREATE POLICY IF NOT EXISTS memberships_member_read
     )
   );
 
-CREATE POLICY IF NOT EXISTS memberships_owner_write
+DROP POLICY IF EXISTS memberships_owner_write ON memberships;
+CREATE POLICY memberships_owner_write
   ON memberships FOR ALL
   USING (
     EXISTS (
@@ -199,7 +208,8 @@ CREATE POLICY IF NOT EXISTS memberships_owner_write
   );
 
 -- Invitations: readable by org members, writable by org owners.
-CREATE POLICY IF NOT EXISTS invitations_member_read
+DROP POLICY IF EXISTS invitations_member_read ON invitations;
+CREATE POLICY invitations_member_read
   ON invitations FOR SELECT
   USING (
     EXISTS (
@@ -211,7 +221,8 @@ CREATE POLICY IF NOT EXISTS invitations_member_read
     )
   );
 
-CREATE POLICY IF NOT EXISTS invitations_owner_write
+DROP POLICY IF EXISTS invitations_owner_write ON invitations;
+CREATE POLICY invitations_owner_write
   ON invitations FOR ALL
   USING (
     EXISTS (
@@ -235,11 +246,13 @@ CREATE POLICY IF NOT EXISTS invitations_owner_write
   );
 
 -- Resources: public resources readable by all, org/private resources restricted.
-CREATE POLICY IF NOT EXISTS resources_public_read
+DROP POLICY IF EXISTS resources_public_read ON resources;
+CREATE POLICY resources_public_read
   ON resources FOR SELECT
   USING (visibility = 'public');
 
-CREATE POLICY IF NOT EXISTS resources_org_member_read
+DROP POLICY IF EXISTS resources_org_member_read ON resources;
+CREATE POLICY resources_org_member_read
   ON resources FOR SELECT
   USING (
     visibility IN ('org','public')
@@ -252,7 +265,8 @@ CREATE POLICY IF NOT EXISTS resources_org_member_read
     )
   );
 
-CREATE POLICY IF NOT EXISTS resources_owner_write
+DROP POLICY IF EXISTS resources_owner_write ON resources;
+CREATE POLICY resources_owner_write
   ON resources FOR ALL
   USING (
     owner_principal_id = current_setting('crucible.current_principal_id', true)

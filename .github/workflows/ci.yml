@@ -515,6 +515,41 @@ jobs:
           set -euo pipefail
           docker compose -f compose.yaml -f compose.vps.yaml build web api keeper funder 2>&1 | tail -20
 
+      # The api image must carry its SQL migrations: the API reads /repo/migrations at
+      # boot, and an image without them boot-loops (2026-11-09). The deploy asserts this
+      # again before swapping; this keeps a regression from ever passing the gate.
+      - name: assert the api image carries its migrations
+        run: |
+          set -euo pipefail
+          if ! docker run --rm --entrypoint sh crucible-api:latest -c \
+            'ls /repo/migrations/*.sql >/dev/null 2>&1'; then
+            echo "::error::the api image contains no /repo/migrations/*.sql; it would boot-loop. Check apps/api/Dockerfile."
+            exit 1
+          fi
+          echo "the api image carries /repo/migrations/*.sql"
+
+      # Only the edge may publish a host port on the VPS. A manual `docker compose up`
+      # without compose.vps.yaml once published the whole stack (2026-11-09); this
+      # asserts the merged VPS config keeps every service unpublished, so a compose
+      # regression fails the gate instead of the firewall.
+      - name: assert no crucible service publishes a host port
+        run: |
+          set -euo pipefail
+          docker compose -f compose.yaml -f compose.vps.yaml config --format json > "$RUNNER_TEMP/crucible-compose.json"
+          node -e '
+            const cfg = require(process.env.RUNNER_TEMP + "/crucible-compose.json");
+            let fail = 0;
+            for (const [name, svc] of Object.entries(cfg.services ?? {})) {
+              const published = (svc.ports ?? []).filter((p) => p.published !== undefined && p.published !== null && p.published !== 0);
+              if (published.length > 0) {
+                console.error(`::error::${name} would publish host port(s) ${published.map((p) => p.published).join(", ")}; only the edge may be reachable on the VPS.`);
+                fail = 1;
+              }
+            }
+            if (fail) process.exit(1);
+            console.log("no crucible service publishes a host port in the VPS compose config");
+          '
+
       # Trivy scans each image for OS-level and language-level vulnerabilities. The scan
       # exits non-zero on CRITICAL/HIGH by default; .trivyignore documents accepted risks.
       # `--severity` can be tightened to CRITICAL-only if the noise is too high initially.

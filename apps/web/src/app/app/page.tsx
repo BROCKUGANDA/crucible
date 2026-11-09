@@ -20,17 +20,16 @@ export default function AppPage() {
 
       {!authed ? (
         <p className="hint hint--block" role="status">
-          The operator console is behind a session. What is true without one: this
-          deployment is profile-gated by <span className="mono">CRUCIBLE_PROFILE</span>{" "}
-          and refuses <span className="mono">preview</span> and{" "}
-          <span className="mono">production</span> until their gates exist.
-          Sign in to read the rest.
+          This is the control room for the people who run the platform. It
+          needs an account — connect your wallet and sign in to enter. Without
+          signing in, the only thing you can see is this page: a demo that
+          refuses to touch real money until every safety check has passed.
         </p>
       ) : (
         <p className="hint hint--block">
-          The console is open to this session. The links below reach the rollout
-          checklist, the evidence bundle, and the go/no-go record the named
-          operator signs.
+          The console is open to your account. The links below reach the launch
+          checklist, the evidence bundle, and the go/no-go record the operator
+          signs before anything goes live.
         </p>
       )}
 
@@ -50,8 +49,9 @@ export default function AppPage() {
       </ul>
 
       <p className="hint hint--block">
-        No page here can mint an approval. A profile switch that &quot;works&quot; is a
-        profile switch that can point a demo at mainnet.
+        No page here can approve a launch on its own. A switch that
+        &quot;conveniently&quot; lets the demo touch real money is exactly the
+        kind this platform refuses to have.
       </p>
     </Chrome>
   );
