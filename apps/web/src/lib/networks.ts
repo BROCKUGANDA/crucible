@@ -142,6 +142,10 @@ export interface Deployment {
   chainId: number;
   trials: Address;
   alloy: Address;
+  /** EngramERC1155 — achievement collection; zero when unwired (claims refuse). */
+  engram: Address;
+  /** EngramDistributor — Merkle claim entry point; zero when unwired. */
+  distributor: Address;
   /** false when the addresses are absent — reads still work, writes do not. */
   configured: boolean;
 }
@@ -178,19 +182,36 @@ function address(name: string, value: string | undefined): Address {
  * expression on purpose: that is what webpack inlines into the client bundle (see the
  * comment on `address` above), so each branch has to name its variables spelled out.
  */
-function addressRecord(): Record<SupportedChain, { trials: string | undefined; alloy: string | undefined }> {
+function addressRecord(): Record<
+  SupportedChain,
+  {
+    trials: string | undefined;
+    alloy: string | undefined;
+    engram: string | undefined;
+    distributor: string | undefined;
+  }
+> {
   return {
     mainnet: {
       trials: process.env.NEXT_PUBLIC_MAINNET_TRIALS_ADDRESS ?? process.env.NEXT_PUBLIC_TRIALS_ADDRESS,
       alloy: process.env.NEXT_PUBLIC_MAINNET_ALLOY_ADDRESS ?? process.env.NEXT_PUBLIC_ALLOY_ADDRESS,
+      engram: process.env.NEXT_PUBLIC_MAINNET_ENGRAM_ADDRESS ?? process.env.NEXT_PUBLIC_ENGRAM_ADDRESS,
+      distributor:
+        process.env.NEXT_PUBLIC_MAINNET_DISTRIBUTOR_ADDRESS ?? process.env.NEXT_PUBLIC_DISTRIBUTOR_ADDRESS,
     },
     sepolia: {
       trials: process.env.NEXT_PUBLIC_SEPOLIA_TRIALS_ADDRESS ?? process.env.NEXT_PUBLIC_TRIALS_ADDRESS,
       alloy: process.env.NEXT_PUBLIC_SEPOLIA_ALLOY_ADDRESS ?? process.env.NEXT_PUBLIC_ALLOY_ADDRESS,
+      engram: process.env.NEXT_PUBLIC_SEPOLIA_ENGRAM_ADDRESS ?? process.env.NEXT_PUBLIC_ENGRAM_ADDRESS,
+      distributor:
+        process.env.NEXT_PUBLIC_SEPOLIA_DISTRIBUTOR_ADDRESS ?? process.env.NEXT_PUBLIC_DISTRIBUTOR_ADDRESS,
     },
     foundry: {
       trials: process.env.NEXT_PUBLIC_ANVIL_TRIALS_ADDRESS ?? process.env.NEXT_PUBLIC_TRIALS_ADDRESS,
       alloy: process.env.NEXT_PUBLIC_ANVIL_ALLOY_ADDRESS ?? process.env.NEXT_PUBLIC_ALLOY_ADDRESS,
+      engram: process.env.NEXT_PUBLIC_ANVIL_ENGRAM_ADDRESS ?? process.env.NEXT_PUBLIC_ENGRAM_ADDRESS,
+      distributor:
+        process.env.NEXT_PUBLIC_ANVIL_DISTRIBUTOR_ADDRESS ?? process.env.NEXT_PUBLIC_DISTRIBUTOR_ADDRESS,
     },
   };
 }
@@ -211,10 +232,14 @@ function deploymentFor(chain: SupportedChain): Deployment {
   const rec = addressRecord()[chain];
   const trials = address("trials address", rec.trials);
   const alloy = address("alloy address", rec.alloy);
+  const engram = address("engram address", rec.engram);
+  const distributor = address("engram distributor address", rec.distributor);
   return {
     chainId: CHAIN_IDS[chain],
     trials,
     alloy,
+    engram,
+    distributor,
     configured: trials !== ZERO_ADDRESS && alloy !== ZERO_ADDRESS,
   };
 }
@@ -224,7 +249,7 @@ export function deployment(chainId?: number): Deployment {
   if (chainId === undefined) return deploymentFor(activeChain());
   const chain = chainFromId(chainId);
   if (chain === null) {
-    return { chainId, trials: ZERO_ADDRESS, alloy: ZERO_ADDRESS, configured: false };
+    return { chainId, trials: ZERO_ADDRESS, alloy: ZERO_ADDRESS, engram: ZERO_ADDRESS, distributor: ZERO_ADDRESS, configured: false };
   }
   return deploymentFor(chain);
 }

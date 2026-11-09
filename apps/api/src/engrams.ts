@@ -8,6 +8,9 @@ import {
   AchievementEngine,
   newAchievementRule,
   buildMerkleTree,
+  getProof,
+  leafFor,
+  type MerkleLeaf,
   type VerifiedEvent,
 } from "@crucible/engrams";
 import { verifiedSessionFromContext, configuredChainId } from "./auth.js";
@@ -146,12 +149,56 @@ export function createEngramRoutes(): Hono {
       }
       leaves.push({ recipient: l.recipient as `0x${string}`, amount, campaignId, tokenId });
     }
-    const tree = buildMerkleTree(leaves, BigInt(configuredChainId()));
+    const tree = buildMerkleTree(leaves as MerkleLeaf[], BigInt(configuredChainId()));
     const proofs: Record<string, string[]> = {};
     for (const [leaf, proof] of tree.proofs.entries()) {
       proofs[leaf] = proof;
     }
     return c.json({ root: tree.root, leaves: tree.leaves, proofs });
+  });
+
+  /**
+   * The caller's proof for one on-chain campaign.
+   *
+   * Session-gated and self-only: the leaf is rebuilt from the caller's entitlements
+   * (tokenId + amount from the entitlement, campaign index from the request),
+   * so a caller can only ever collect their own proof and a proof cannot be
+   * produced for anyone else. The 404 case is "no entitlement here" — the same
+   * answer a stranger gets for another wallet's entitlements, so nothing about
+   * campaign membership leaks.
+   */
+  app.get("/merkle-proof", (c) => {
+    const session = verifiedSessionFromContext(c);
+    if (!session) {
+      return c.json({ error: "unauthenticated", code: "no-credential" }, 401);
+    }
+    const campaignIndex = c.req.query("campaignId");
+    if (!campaignIndex || !/^\d+$/.test(campaignIndex)) {
+      return c.json({ error: "campaignId must be a non-negative integer", code: "bad-request" }, 400);
+    }
+    const campaignId = BigInt(campaignIndex);
+    const recipient = session.payload.address.toLowerCase() as `0x${string}`;
+    const chainId = BigInt(configuredChainId());
+
+    const entitlements = engine.entitlementsFor(session.payload.address);
+    if (entitlements.length === 0) {
+      return c.json({ error: "no entitlement for this wallet", code: "not-eligible" }, 404);
+    }
+    const entitlement = entitlements[0]!;
+    const leaf: MerkleLeaf = {
+      recipient,
+      amount: BigInt(entitlement.amount),
+      campaignId,
+      tokenId: BigInt(entitlement.tokenId),
+    };
+    const tree = buildMerkleTree([leaf], chainId);
+
+    return c.json({
+      campaignId: campaignIndex,
+      amount: leaf.amount.toString(),
+      proof: getProof(tree, leafFor(leaf, chainId)),
+      root: tree.root,
+    });
   });
 
   return app;

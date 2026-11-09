@@ -4,6 +4,9 @@ import { useEffect, useState } from "react";
 import { Chrome, Quenching } from "@/components/Chrome";
 import { Payload } from "@/components/Payload";
 import { API_BASE } from "@/lib/apiBase";
+import { deployment } from "@/lib/networks";
+import { buildClaimEngram, useTx } from "@/lib/useTx";
+import { useAccount } from "wagmi";
 
 interface Campaign {
   campaignId: string;
@@ -24,6 +27,8 @@ export default function RewardsPage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
+  const { address, chainId } = useAccount();
+  const { send } = useTx();
 
   async function load() {
     setError(null);
@@ -43,17 +48,21 @@ export default function RewardsPage() {
     setBusy(true);
     setError(null);
     setClaimId(null);
+    setDetail(null);
     try {
-      const res = await fetch(`${API_BASE}/campaigns/${campaignId}/claim`, {
-        method: "POST",
+      if (!address) throw new Error("Connect a wallet to claim.");
+      const dep = deployment(chainId);
+      if (dep.distributor === "0x0000000000000000000000000000000000000000") {
+        throw new Error("Engram distribution is not wired on this network.");
+      }
+      const res = await fetch(`${API_BASE}/campaigns/${campaignId}/merkle-proof`, {
         credentials: "include",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({}),
       });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error((body as { error?: string }).error ?? `claim ${res.status}`);
-      setClaimId((body as { claim?: { claimId?: string } }).claim?.claimId ?? "reserved");
-      setDetail(body);
+      if (!res.ok) throw new Error(`proof ${res.status}`);
+      const { amount, proof } = (await res.json()) as { amount: string; proof: `0x${string}`[] };
+      const data = buildClaimEngram({ campaignId: BigInt(campaignId), amount: BigInt(amount), proof });
+      send(data as `0x${string}`, dep.distributor);
+      setClaimId(`${campaignId}:${address.toLowerCase()}`);
     } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
     finally { setBusy(false); }
   }
@@ -63,9 +72,10 @@ export default function RewardsPage() {
       <p className="kicker">Rewards</p>
       <h1 className="page-title">Campaigns — real claims via the live API</h1>
       <p className="hint hint--block">
-        Browse campaigns, check eligibility, reserve a claim. A 201 reserves a
-        pending budget slot — it is not payment. Completion requires the
-        on-chain transfer and indexer reconciliation.
+        Browse campaigns, check eligibility, then claim on-chain in one wallet
+        transaction — the Merkle claim mints the Engram (ERC-1155) and records
+        the campaign as claimed. A reservation alone is not payment; the
+        transaction is.
       </p>
       {error && <p className="hint" role="alert">{error}</p>}
       {loading ? <Quenching label="reading campaigns" /> : null}
@@ -78,14 +88,14 @@ export default function RewardsPage() {
             <p><strong>{c.name}</strong> — {c.status} · {(c.chain ?? "evm").toUpperCase()}{c.chain === "solana" ? ` (${c.cluster ?? "devnet"})` : ""}</p>
             <p className="hint">{c.description} — budget {c.totalBudget}{c.assetSymbol ? ` ${c.assetSymbol}` : ""}, per claim {c.perClaimAmount}</p>
             <button className="btn" disabled={busy} onClick={() => claim(c.campaignId)}>
-              {busy ? "Reserving…" : c.chain === "solana" ? "Reserve SOL claim (devnet)" : "Reserve claim"}
+              {busy ? "Claiming…" : c.chain === "solana" ? "Reserve SOL claim (devnet)" : "Claim on-chain"}
             </button>
           </li>
         ))}
       </ul>
-      {claimId && <p className="hint" data-tone="quench" role="status">Reserved claim {claimId} (pending — not paid).</p>}
+      {claimId && <p className="hint" data-tone="quench" role="status">Claimed — {claimId}. The Merkle claim mints through the Engram distributor; the chain balance is the record.</p>}
       {detail !== null && detail !== undefined && (
-        <Payload value={detail} title="Claim reservation" />
+        <Payload value={detail} title="Claim" />
       )}
     </Chrome>
   );
