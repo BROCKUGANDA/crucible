@@ -1,5 +1,5 @@
 -- CRU-RUNTIME-001 / REW-001 durable tables.
--- Atomic event+outbox lives in 0001; this adds the outbox table, run registry,
+-- Atomic event+outbox lives in 0001 this adds the outbox table, run registry,
 -- incidents, and reward entitlements. All idempotent (CREATE TABLE IF NOT EXISTS).
 
 CREATE TABLE IF NOT EXISTS forge_watch_outbox (
