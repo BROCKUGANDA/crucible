@@ -33,6 +33,7 @@ export function SearchPanel({
         id="search-input"
         className="input"
         type="search"
+        aria-label="Search trials"
         placeholder={placeholder}
         value={query}
         onChange={(e) => setQuery(e.target.value)}
