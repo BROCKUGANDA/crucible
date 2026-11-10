@@ -34,18 +34,29 @@ standing + TrialCard/board wiring), ecb2c9e (indexer `settledAt`/`disputeOpenedA
 
 ## Claims that are NOT true, plainly
 
-- **Not browser-verified.** The shared production `next start` (PID 22296) on
-  port 3000 serves the pre-redesign build; nothing here ran in a browser.
-- **Not merged, not deployed, not pushed to origin.** `develop` remains the
-  deploy gate and carries only the parallel session's arena work + merge of this
-  branch is pending review.
-- **Not accessibility-complete.** No axe sweep, no keyboard walk, no contrast
+- **NOT merged.** As of this commit the branch is not merged to `develop`;
+  merge and verification are what the follow-up release step does.
+- **NOT deployed.** Nothing in this branch has shipped to any host.
+- **Accessibility-complete? No.** No axe sweep, no keyboard walk, no contrast
   measurement of the new surfaces was executed.
-- **Not performance-measured.** No Lighthouse/CWV numbers exist.
+- **Performance-measured? No.** No Lighthouse/CWV numbers exist.
 - **Not the full directive.** Strategium/PayoffMatrix, decay visualization,
   execution-room wiring, and the case-queue sort order are specified or partial,
   not complete.
-- **No E2E coverage added.** No Playwright spec exists for the new routes.
+- **Not E2E.** No Playwright spec covers the new routes.
+- **Browser-verified in degraded states only** (API not running): `/`, `/trials`,
+  `/trials/1`, `/tribunal/cases/1` render correctly end-to-end; chain-backed
+  rendering was not exercised against a live local stack.
+- The :3000 production server was not disturbed; the verification build ran
+  from a detached worktree on port 3100.
+
+## What WAS verified (2026-11-10, build 9d00019, port 3100)
+
+`next build --webpack` green (all routes incl. `/tribunal/cases/[id]`,
+static + dynamic split). Browser: homepage renders hero + acts + CTAs; arena
+listing renders header, search, filters, honest empty state; trial detail and
+case route render the honest chain-down panel with full chrome and no JS
+errors beyond the API being unreachable.
 
 ## Rollback
 

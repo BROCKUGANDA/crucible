@@ -24,11 +24,30 @@
 
 | Check | Reason not run |
 |---|---|
-| `npm run verify:all` (full) | Not run: forge/contract suites untouched by this branch; running the whole 3,700-test suite here would re-verify unchanged code paths, and the shared tree currently carries foreign uncommitted work (`apps/api/src/tx-store-pg.ts`, `apps/web/e2e/`) that was not mine to include |
+| `npm run verify:all` (full) | Not run: forge/contract suites untouched by this branch; the tree carries foreign uncommitted Solana work (`apps/web` has none) that was not mine to include or test |
 | Foundry suite | No contract files were modified by this task |
-| E2E (browser) | **Not executed** — the shared production `next start` (PID 22296) at `:3000` serves the old build; rebuilding `.next/` under a running server was not authorized. Browser verification of new screens is outstanding |
-| Accessibility tooling (axe) | Not configured in this repo; no automated a11y gate exists. Manual semantics/ARIA review only — see §4 |
+| Keyboard walk / axe | Not configured in this repo; manual semantics/ARIA review only — see §4 |
 | Performance measurement | No Lighthouse run performed; targets unmeasured |
+| Live-data journeys | The local API/Anvil stack was not running in this environment — chain-dependent views were browser-verified only in their degraded states |
+
+## 2b. Browser verification (2026-11-10, clean build 9d00019)
+
+Verified in Chromium against a production build served on a port-3100
+worktree off the branch (the shared port-3000 server was not touched):
+
+- `/` — hero renders server-side; "THE ARENA DOES NOT REWARD PROMISES.",
+  seal, architectural artwork, CTAs ("Enter the arena" → `/trials`,
+  "Read the codex" → `/docs`), six acts, glossary, fine print — all present
+  without JS and with the API down (the scrub scene paints, copy stands)
+- `/trials` — Arena listing: header with seal, search panel (accessible
+  name verified), status filter chips, honest cold-forge empty state with
+  "Post a trial" CTA; `trial-table` anchor id intact for Frenchy's grounding
+- `/trials/1` and `/tribunal/cases/1` — degrade to the honest "Couldn't
+  reach the chain" panel with full chrome, no hydration faults
+- Console: only the EventSource MIME mismatch (API not listening) and the
+  pre-existing CSP rejections of Coinbase's metrics beacons
+- NOT verified with chain data flowing; the full visitor/agent/sponsor
+  journeys require the local demo stack (Anvil + API) which was not started
 
 ## 3. Known failures (not mine, not fixed here)
 
