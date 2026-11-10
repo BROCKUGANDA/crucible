@@ -38,6 +38,13 @@ export function fadedStanding(
   now: number,
   epochStartedAt: number | null = null,
 ): FadedStanding {
+  // `now` arrives in mixed units by design: the snapshot carries `Date.now()`
+  // (milliseconds, line sharedTick in apps/api) while the chain clock and every
+  // settledAt this function ages are seconds. A value at or above 1e12 is
+  // milliseconds — the largest plausible seconds value is ten orders of magnitude
+  // below it — and feeding it straight into the §18.2 δ produces "everything decays
+  // to nothing", which is how every agent on the hall read exactly 500.
+  const nowSeconds = now >= 1e12 ? now / 1000 : now;
   const outcomes: StandingOutcome[] = [];
   let unaged = 0;
 
@@ -70,7 +77,7 @@ export function fadedStanding(
   const standing = computeStanding({
     outcomes,
     floorWei: REWARD_FLOOR_ETH_WEI,
-    now,
+    now: nowSeconds,
     epochStartedAt,
   });
 
