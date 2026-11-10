@@ -38,6 +38,15 @@ function trial(overrides: Partial<ApiTrial> = {}): ApiTrial {
 }
 
 describe("fadedStanding", () => {
+  it("ages outcomes identically whether `now` arrives in milliseconds or seconds", () => {
+    // The snapshot carries `Date.now()` (ms) while settledAt is chain seconds — a
+    // mixed-unit age must not silently zero out every outcome (the hall read exactly 500).
+    const seconds = fadedStanding([trial()], 7, NOW);
+    const millis = fadedStanding([trial()], 7, NOW * 1000);
+    expect(millis.display).toEqual(seconds.display);
+    expect(millis.counted).toBe(seconds.counted);
+  });
+
   it("matches §18.2 arithmetic for one floor-sized win 45 days old", () => {
     // δ = 2^(−45/45) = 0.5; weight = log2(1 + 1) = 1; value = 1.0 (unchallenged pass).
     // standing = (1 · 1 · 0.5 · 0.5) / (1 · 1 · 0.5 · 0.5 + 3) = 0.25 / 3.25 ≈ 0.0769
