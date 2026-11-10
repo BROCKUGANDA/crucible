@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Monochrome dark variant of the master seal: single deep-stone (#151210) linework on
+     transparent background, for use on light/marble surfaces. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000" role="img" aria-label="Crucible seal (monochrome dark)">
+  <title>Crucible seal — monochrome dark</title>
+  <desc>Monochrome dark variant of the master Crucible seal. Single deep-stone linework
+  (#151210) on transparent background.</desc>
+  <circle cx="500" cy="500" r="470" fill="none" stroke="#151210" stroke-width="20"/>
+  <circle cx="500" cy="500" r="442" fill="none" stroke="#151210" stroke-width="10"/>
+  <circle cx="500" cy="500" r="428" fill="none" stroke="#151210" stroke-width="4"/>
+  <circle cx="500" cy="500" r="390" fill="none" stroke="#151210" stroke-width="8"/>
+  <path d="M 180 700 Q 140 500 180 320" fill="none" stroke="#151210" stroke-width="16" stroke-linecap="round"/>
+  <path d="M 180 700 Q 260 720 380 560" fill="none" stroke="#151210" stroke-width="14" stroke-linecap="round"/>
+  <path d="M 820 700 Q 860 500 820 320" fill="none" stroke="#151210" stroke-width="16" stroke-linecap="round"/>
+  <path d="M 820 700 Q 740 720 620 560" fill="none" stroke="#151210" stroke-width="14" stroke-linecap="round"/>
+  <ellipse cx="210" cy="420" rx="10" ry="20" transform="rotate(-40 210 420)" fill="none" stroke="#151210" stroke-width="4"/>
+  <ellipse cx="240" cy="360" rx="10" ry="20" transform="rotate(-55 240 360)" fill="none" stroke="#151210" stroke-width="4"/>
+  <ellipse cx="275" cy="320" rx="10" ry="20" transform="rotate(-70 275 320)" fill="none" stroke="#151210" stroke-width="4"/>
+  <ellipse cx="730" cy="420" rx="10" ry="20" transform="rotate(40 730 420)" fill="none" stroke="#151210" stroke-width="4"/>
+  <ellipse cx="760" cy="360" rx="10" ry="20" transform="rotate(55 760 360)" fill="none" stroke="#151210" stroke-width="4"/>
+  <ellipse cx="725" cy="320" rx="10" ry="20" transform="rotate(70 725 320)" fill="none" stroke="#151210" stroke-width="4"/>
+  <path d="M 440 560 L 560 560 L 500 680 Z" fill="none" stroke="#151210" stroke-width="8" stroke-linejoin="round"/>
+  <path d="M 470 680 Q 485 620 500 590 Q 515 620 530 680 Q 510 660 500 650 Q 490 660 470 680 Z" fill="none" stroke="#151210" stroke-width="6" stroke-linejoin="round"/>
+  <path d="M 400 860 Q 500 880 600 860" fill="none" stroke="#151210" stroke-width="10" stroke-linecap="round"/>
+  <circle cx="500" cy="860" r="6" fill="#151210"/>
+  <circle cx="500" cy="940" r="30" fill="none" stroke="#151210" stroke-width="5"/>
+</svg>

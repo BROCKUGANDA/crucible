@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Verdict stamp: PAID. Quench green (#4FBFAE), wax-seal style circular stamp. viewBox 0 0 400 400. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" role="img" aria-label="Verdict stamp: Paid">
+  <title>Verdict stamp — Paid</title>
+  <desc>Verdict stamp for a verified run that survived every strike. Quench green wax-seal
+  style: circular rim, "PAID" across center, verification check beneath.</desc>
+  <circle cx="200" cy="200" r="170" fill="none" stroke="#4FBFAE" stroke-width="14" stroke-linecap="round"/>
+  <circle cx="200" cy="200" r="150" fill="none" stroke="#0B0A09" stroke-width="4"/>
+  <text x="200" y="195" font-family="Cinzel, serif" font-size="64" fill="#4FBFAE" text-anchor="middle" letter-spacing="8">PAID</text>
+  <path d="M 160 250 L 190 280 L 240 220" fill="none" stroke="#4FBFAE" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M 200 260 Q 200 280 200 300" fill="none" stroke="#4FBFAE" stroke-width="6" stroke-linecap="round"/>
+</svg>

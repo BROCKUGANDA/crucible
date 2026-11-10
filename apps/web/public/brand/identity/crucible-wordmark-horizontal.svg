@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Horizontal wordmark: CRUCIBLE in inscriptional Roman capitals with a subtle seal mark
+     at left. viewBox 0 0 1200 240. Designed for header use at wide sizes. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 240" role="img" aria-label="Crucible wordmark">
+  <title>Crucible wordmark (horizontal)</title>
+  <desc>Horizontal wordmark: small seal mark at left, "CRUCIBLE" in Cinzel inscriptional
+  capitals, letterspaced, molten-metal gradient fill (ember to gold to hot). Designed for
+  dark obsidian backgrounds.</desc>
+  <defs>
+    <linearGradient id="wm-gradient" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#E2612F"/>
+      <stop offset="52%" stop-color="#E3B25C"/>
+      <stop offset="100%" stop-color="#FBEEDA"/>
+    </linearGradient>
+    <filter id="wm-shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="#000000" flood-opacity="0.5"/>
+    </filter>
+  </defs>
+
+  <!-- Seal mark at left (simplified circular seal) -->
+  <circle cx="90" cy="120" r="52" fill="none" stroke="#A07E49" stroke-width="10"/>
+  <circle cx="90" cy="120" r="42" fill="none" stroke="#151210" stroke-width="6"/>
+  <path d="M 55 120 Q 75 95 125 120" fill="none" stroke="#E2612F" stroke-width="8" stroke-linecap="round"/>
+  <path d="M 125 120 Q 75 145 55 120" fill="none" stroke="#E2612F" stroke-width="8" stroke-linecap="round"/>
+  <circle cx="90" cy="120" r="5" fill="#FBEEDA"/>
+
+  <!-- Wordmark -->
+  <text x="190" y="150" font-family="Cinzel, Trajan Pro, Georgia, serif" font-size="96"
+        font-weight="700" fill="url(#wm-gradient)" letter-spacing="12" filter="url(#wm-shadow)">
+    CRUCIBLE
+  </text>
+</svg>

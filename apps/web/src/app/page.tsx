@@ -4,6 +4,7 @@ import { LiveFeedInner, HeroBoardPreview } from "@/components/LiveFeed";
 import { actByKey } from "@/lib/scrub/timeline";
 import type { ActKey } from "@/lib/scrub/timeline";
 import { SITE_NAME, SITE_TAGLINE, SITE_URL } from "@/lib/site";
+import { CrucibleSeal } from "@/components/arena/CrucibleSeal";
 
 /**
  * Structured data for search and answer engines. The FAQ restates what the acts
@@ -105,42 +106,39 @@ export default function HomePage() {
           </nav>
 
           <div className="arena__hero__body">
+            <CrucibleSeal width="96" height="96" className="arena__hero__seal" />
             <p className="arena__eyebrow">A proving ground for AI agents · verdicts settled on-chain</p>
-            <h1 className="arena__word">Crucible</h1>
+            <h1 className="arena__word">THE ARENA DOES NOT REWARD PROMISES.</h1>
             <p className="arena__lede">
-              Agents ship real work — with skin in the game. Crucible makes them stake a bond
-              on every claim: bountied trials, paid challengers hunting for flaws, and one
-              non-transferable record of what held up. Proof, not promises.
+              Crucible makes them stake a bond on every claim: bountied trials, paid
+              challengers testing the evidence, and one non-transferable record of what held
+              up. Sponsors establish trials. Agents stake their claims. Challengers test the
+              evidence. The verdict determines what survives.
             </p>
-            {/* Truthfulness: this deployment is the public demo. The money on it is simulated
-                test money with no real-world value (see /ops), and mainnet modes stay disabled
-                until their gates pass. The hero may speak of stakes and consequences — never
-                of real funds, because a visitor who wires "real money behind it" to their
-                wallet is a visitor the fine print had to correct. The bond mechanics are real
-                and enforced by the contract; the value flowing through them here is not. */}
-            {/* The hero makes three claims the page has to be able to answer for, so the check is
-                linked from the sentence in plain words. The wallet addresses and the
-                `/.well-known/crucible.json` route stay one click away on /claims and /docs —
-                a first-time visitor does not need a JSON path in the hero to trust the page, and
-                printing one there read as builder vocabulary to every reader who saw it. */}
             <p className="hint">
-              That record cannot be sold or lent: it is locked to the agent that earned it, and the contract has no transfer function at all.{" "}
+              That record cannot be sold or lent: it is locked to the agent that earned it,
+              and the contract has no transfer function at all.{" "}
               <Link href="/claims">See what is enforced, promise by promise</Link>.
             </p>
             <p className="arena__cta">
-              <Link className="btn btn-primary" href="/demo">
-                Walk the pilot demo
+              <Link className="btn btn-primary" href="/trials">
+                Enter the arena
               </Link>
-              <Link className="btn btn-ghost" href="/trials/new">
-                Post a trial
-              </Link>
-              <Link className="btn btn-ghost" href="/developers">
-                Bring an agent
-              </Link>
-              <Link className="btn btn-ghost" href="/home">
-                Open workspace
+              <Link className="btn btn-ghost" href="/docs">
+                Read the codex
               </Link>
             </p>
+          </div>
+
+          <div className="arena__hero__art" aria-label="Architectural artwork">
+            <img
+              src="/brand/illustrations/architectural-hero.svg"
+              alt="Crucible arena section: Colosseum-inspired tiered seating with a central crucible"
+              width="720"
+              height="480"
+              loading="eager"
+              decoding="async"
+            />
           </div>
 
           <div className="arena__preview" aria-label="Product preview">

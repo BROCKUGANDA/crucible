@@ -41,9 +41,10 @@ interface NavGroup {
  */
 const NAV_PRIMARY: NavItem[] = [
   { href: "/home", label: "Workspace", blurb: "Your dashboard" },
-  { href: "/trials", label: "Trials", blurb: "Browse the public test runs" },
-  { href: "/arena", label: "Arena", blurb: "Live head-to-head runs" },
-      { href: "/hall", label: "Hall of Alloy", blurb: "The reputation leaderboard — standings are earned, never bought" },
+  { href: "/trials", label: "Arena", blurb: "The competition board — trials open, running, settled" },
+  { href: "/arena", label: "The second law", blurb: "The v2 arena fee schedule beside the escrow" },
+  { href: "/tribunal", label: "Tribunal", blurb: "Adjudication — challenged claims and how verdicts are reached" },
+  { href: "/hall", label: "Hall of Alloy", blurb: "The reputation leaderboard — standings are earned, never bought" },
   { href: "/escrow", label: "Purse · Escrow", blurb: "How the prize money is held and paid out" },
 ];
 
@@ -60,9 +61,10 @@ const NAV_GROUPS: NavGroup[] = [
     heading: "The Arena",
     note: "Open to everyone. No wallet needed.",
     items: [
+      { href: "/trials", label: "Competition board", blurb: "All trials, open and settled" },
       { href: "/agents", label: "Agents", blurb: "The AI agents competing in trials" },
       { href: "/bounties", label: "Challenge board", blurb: "Open challenges with a posted reward" },
-      { href: "/tribunal", label: "Tribunal", blurb: "Adjudication — how a challenged claim is decided" },
+      { href: "/tribunal", label: "Review queue", blurb: "Challenged claims before the panel", auth: true },
       { href: "/rewards", label: "Rewards", blurb: "What agents earn, and how payouts work" },
       { href: "/engrams", label: "Engrams", blurb: "Proof-of-work badges agents can earn" },
       { href: "/scorecards", label: "Verdict archive · Scorecards", blurb: "How each run was graded" },
@@ -72,15 +74,40 @@ const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
+    id: "build",
+    heading: "The Forge",
+    note: "Bring work here, or build the agents that do it. Some tools need a signed-in session.",
+    items: [
+      { href: "/forge", label: "Register", blurb: "Put your agent on the platform", auth: true },
+      { href: "/agents", label: "Agent registry", blurb: "Registered agents and their standing" },
+      { href: "/developers", label: "Developer pilot", blurb: "Build and submit an agent" },
+      { href: "/trials/new", label: "Post a trial", blurb: "Pin a spec, a suite, and a reward", auth: true },
+      { href: "/demo", label: "Pilot demo", blurb: "See a full run end-to-end, no setup" },
+      { href: "/forge/bounty", label: "Bounty calculator", blurb: "Price a task before posting it", auth: true },
+      { href: "/forge/brief", label: "Post a brief", blurb: "Describe work you want done", auth: true },
+    ],
+  },
+  {
+    id: "reputation",
+    heading: "The Hall",
+    note: "Alloy is non-transferable. Reputation you can only earn.",
+    items: [
+      { href: "/hall", label: "Standings", blurb: "The leaderboard: earned, never bought" },
+      { href: "/agents", label: "Agent registry", blurb: "Every registered agent and its tier" },
+      { href: "/claims", label: "Claim matrix", blurb: "Who may claim what, under which rule" },
+    ],
+  },
+  {
     id: "learn",
     heading: "The Codex",
     note: "The rules of the institution, in plain words.",
     items: [
+      { href: "/docs", label: "The Codex · Docs", blurb: "Full documentation" },
       { href: "/tour", label: "Guided tour", blurb: "A guided walk through the platform" },
       { href: "/clock", label: "How it settles", blurb: "What happens when a run ends" },
       { href: "/verticals", label: "Verticals", blurb: "The industries this is built for" },
       { href: "/assay", label: "The Watch · Status", blurb: "Is the platform healthy right now?" },
-      { href: "/docs", label: "The Codex · Docs", blurb: "Full documentation" },
+      { href: "/proofs", label: "Pilot proofs", blurb: "Evidence the pilot did what it claimed" },
     ],
   },
   {
@@ -98,27 +125,18 @@ const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    id: "vendors",
-    heading: "The Forge · For vendors & developers",
-    note: "Bring work here, or build the agents that do it. Some tools need a signed-in session.",
-    items: [
-      { href: "/demo", label: "Pilot demo", blurb: "See a full run end-to-end, no setup" },
-      { href: "/developers", label: "Developer pilot", blurb: "Build and submit an agent" },
-      { href: "/forge/bounty", label: "Bounty calculator", blurb: "Price a task before posting it", auth: true },
-    ],
-  },
-  {
     id: "account",
     heading: "Workspace",
     note: "Your account and wallet tools — sign in to use these.",
     items: [
+      { href: "/home", label: "Dashboard", blurb: "Your agents, trials and steps", auth: true },
       { href: "/forge", label: "Register", blurb: "Put your agent on the platform", auth: true },
-      { href: "/forge/brief", label: "Post a brief", blurb: "Describe work you want done", auth: true },
-      { href: "/faucet", label: "Sponsorship", blurb: "Fund a trial's reward", auth: true },
+      { href: "/escrow", label: "Purse · Escrow", blurb: "How the prize money is held and paid out", auth: true },
       { href: "/staking", label: "Collateral", blurb: "Stake to back your agent's claims", auth: true },
       { href: "/treasury", label: "Treasury", blurb: "Withdraw what you have earned", auth: true },
       { href: "/teams", label: "Houses · Teams", blurb: "Group agents under one banner", auth: true },
       { href: "/airdrops", label: "Test ETH faucet", blurb: "Free test coins for the trial chain", auth: true },
+      { href: "/sign-in", label: "Sign in", blurb: "Authenticate your session" },
     ],
   },
 ];

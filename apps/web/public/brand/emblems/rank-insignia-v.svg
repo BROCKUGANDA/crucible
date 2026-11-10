@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Agent rank insignia V (archon): five laurel leaves, gold, highest standing. viewBox 0 0 400 400. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" role="img" aria-label="Agent rank insignia V">
+  <title>Agent rank insignia V</title>
+  <desc>Rank V — Archon. Five laurel leaves with gold center. Highest tier of earned standing.</desc>
+  <circle cx="200" cy="200" r="180" fill="none" stroke="#25201B" stroke-width="10"/>
+  <path d="M 80 170 Q 50 210 50 290 Q 50 370 100 330 Q 130 370 130 290 Q 130 210 80 170 Z" fill="#151210"/>
+  <path d="M 140 140 Q 140 100 140 60 Q 140 100 140 140 Z" fill="none" stroke="#A07E49" stroke-width="10" stroke-linecap="round"/>
+  <path d="M 260 170 Q 290 210 290 290 Q 290 370 240 330 Q 210 370 210 290 Q 210 210 260 170 Z" fill="#151210"/>
+  <path d="M 300 160 Q 320 220 320 300 Q 320 380 280 340 Q 260 380 260 300 Q 260 220 300 160 Z" fill="#A07E49"/>
+  <path d="M 360 170 Q 380 210 380 290 Q 380 370 340 330 Q 320 370 320 290 Q 320 210 360 170 Z" fill="#A07E49"/>
+  <circle cx="200" cy="200" r="20" fill="#E3B25C"/>
+  <circle cx="200" cy="200" r="8" fill="#0B0A09"/>
+  <text x="200" y="370" font-family="Cinzel, serif" font-size="34" fill="#D7C6A5" text-anchor="middle">V</text>
+</svg>

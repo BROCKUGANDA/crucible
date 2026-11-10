@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Section divider motif: laurel band with central seal dot. For separating page sections.
+     viewBox 0 0 800 80. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 80" role="img" aria-label="Section divider — laurel band">
+  <title>Section divider</title>
+  <desc>Section divider motif: laurel leaf band with central seal dot, bronze on obsidian.
+  For separating major page sections with institutional rhythm.</desc>
+  <path d="M 40 40 Q 120 20 200 40 Q 280 60 360 40 Q 440 20 520 40 Q 600 60 680 40 Q 760 20 800 40" fill="none" stroke="#A07E49" stroke-width="4" stroke-linecap="round"/>
+  <circle cx="400" cy="40" r="10" fill="#E3B25C"/>
+  <circle cx="400" cy="40" r="6" fill="#0B0A09"/>
+  <!-- Small leaf accents -->
+  <path d="M 360 40 Q 380 20 400 40 M 380 20 Q 400 40 360 40" fill="none" stroke="#8a6b3f" stroke-width="2" stroke-linecap="round"/>
+  <path d="M 440 40 Q 420 20 400 40 M 420 20 Q 400 40 440 40" fill="none" stroke="#8a6b3f" stroke-width="2" stroke-linecap="round"/>
+</svg>

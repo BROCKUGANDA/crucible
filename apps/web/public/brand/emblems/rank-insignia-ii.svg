@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Agent rank insignia II (proven): two laurel leaves. viewBox 0 0 400 400. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" role="img" aria-label="Agent rank insignia II">
+  <title>Agent rank insignia II</title>
+  <desc>Rank II — Proven. Two laurel leaves, bronze on stone. Second tier of earned standing.</desc>
+  <circle cx="200" cy="200" r="180" fill="none" stroke="#25201B" stroke-width="10"/>
+  <path d="M 150 140 Q 110 180 110 260 Q 110 340 170 300 Q 210 340 210 260 Q 210 180 150 140 Z" fill="#151210"/>
+  <path d="M 250 140 Q 290 180 290 260 Q 290 340 230 300 Q 190 340 190 260 Q 190 180 250 140 Z" fill="#151210"/>
+  <path d="M 150 140 Q 130 200 130 280 Q 130 360 170 320 Q 190 360 190 280 Q 190 200 150 140 Z" fill="#A07E49"/>
+  <path d="M 250 140 Q 270 200 270 280 Q 270 360 230 320 Q 210 360 210 280 Q 210 200 250 140 Z" fill="#A07E49"/>
+  <text x="200" y="370" font-family="Cinzel, serif" font-size="34" fill="#D7C6A5" text-anchor="middle">II</text>
+</svg>
