@@ -22,7 +22,7 @@ import {
   type EventLike,
   type ReadModel,
 } from "../src/index.js";
-import { toApiHallEntry } from "../src/api.js";
+import { toApiHallEntry, toApiTrial } from "../src/api.js";
 
 const SPONSOR = "0x1111111111111111111111111111111111111111";
 const OPERATOR = "0x2222222222222222222222222222222222222222";
@@ -213,6 +213,59 @@ describe("hydrateTimestamps", () => {
     const after = m.version;
     hydrateTimestamps(m, new Map([[100n, 1_699_000_000]]));
     expect(m.version).toBe(after);
+  });
+});
+
+describe("toApiTrial — settlement time and dispute projection", () => {
+  it("carries the settlement block before hydrate, seconds after", () => {
+    const m = replay(fullStory());
+    // Pre-hydrate the field holds the block number — the same rule `runAt` uses.
+    expect(toApiTrial(m.trials.get(1)!, m).settledAt).toBe(105);
+
+    hydrateTimestamps(m, new Map([[105n, 1_700_000_205]]));
+    const t = toApiTrial(m.trials.get(1)!, m);
+    expect(t.settledAt).toBe(1_700_000_205);
+    // The dispute clock hydrates on the same pass.
+    expect(t.disputeOpenedAt).toBe(104); // 104 was not in the map, so it stays a block number
+  });
+
+  it("names the seats the vote logs published, and only those", () => {
+    const SEAT_A = "0x" + "AA".repeat(20);
+    const SEAT_B = "0x" + "bb".repeat(20);
+    const m = replay([
+      ...fullStory(),
+      ev("VoteCommitted", { id: 1n, judge: SEAT_A }, 106n),
+      ev("VoteCommitted", { id: 1n, judge: SEAT_B }, 107n),
+      ev("VoteRevealed", { id: 1n, judge: SEAT_A }, 108n),
+    ]);
+    const t = toApiTrial(m.trials.get(1)!, m);
+    // Seats are stored lowercased — a reader is never told a seat twice because of checksum.
+    expect(t.dispute).toEqual({
+      committed: [SEAT_A.toLowerCase(), SEAT_B],
+      revealed: [SEAT_A.toLowerCase()],
+    });
+  });
+
+  it("reports an empty seat list when a break was filed and no votes arrived", () => {
+    const m = replay(fullStory());
+    const t = toApiTrial(m.trials.get(1)!, m);
+    expect(t.dispute).toEqual({ committed: [], revealed: [] });
+  });
+
+  it("is null when no break was filed — there was never a vote to count", () => {
+    const m = replay(fullStory().filter((e) => e.eventName !== "BreakFiled"));
+    const t = toApiTrial(m.trials.get(1)!, m);
+    expect(t.dispute).toBeNull();
+    expect(t.breakSkeptic).toBeNull();
+  });
+
+  it("hands the snapshot fresh seat lists, not the projection's own arrays", () => {
+    const SEAT_A = "0x" + "AA".repeat(20);
+    const m = replay([...fullStory(), ev("VoteCommitted", { id: 1n, judge: SEAT_A }, 106n)]);
+    const t = toApiTrial(m.trials.get(1)!, m);
+    t.dispute!.committed.push("0xevil");
+    // The model underneath is untouched by what a consumer did to its copy.
+    expect(m.disputes.get(1)!.committed).toEqual([SEAT_A.toLowerCase()]);
   });
 });
 

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Loading emblem: rotating crucible bowl with flame, for loading states.
+     viewBox 0 0 400 400. Designed to be animated via CSS transform rotate. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" role="img" aria-label="Crucible loading emblem">
+  <title>Crucible loading emblem</title>
+  <desc>Loading emblem: crucible bowl with flame inside a rotating stone ring, for
+  loading states. Animate the outer ring via CSS transform rotate for a forge-motion
+  loading indicator. Respects prefers-reduced-motion.</desc>
+  <defs>
+    <g id="bowl">
+      <path d="M 160 240 L 240 240 L 200 320 Z" fill="none" stroke="#A07E49" stroke-width="10" stroke-linejoin="round"/>
+      <path d="M 180 320 Q 195 270 200 250 Q 205 270 220 320 Q 210 305 200 300 Q 190 305 180 320 Z" fill="#E2612F"/>
+    </g>
+  </defs>
+  <!-- Outer rotating ring -->
+  <circle cx="200" cy="200" r="160" fill="none" stroke="#25201B" stroke-width="14"/>
+  <circle cx="200" cy="200" r="145" fill="none" stroke="#A07E49" stroke-width="6"/>
+  <!-- Inner bowl (the rotating element) -->
+  <use href="#bowl" x="0" y="0"/>
+</svg>

@@ -3,25 +3,22 @@
 import { useState } from "react";
 import Link from "next/link";
 import type { TrialStatus } from "@crucible/indexer";
-import { Chrome, ColdForge, Quenching, SignalLost } from "@/components/Chrome";
-import { TrialTable } from "@/components/TrialTable";
+import { Chrome, Quenching, SignalLost } from "@/components/Chrome";
 import { useSnapshot } from "@/lib/useSnapshot";
 import { TRIALS_PAGE, windowed, windowLabel } from "@/lib/paging";
+import { TrialCard } from "@/components/arena/TrialCard";
+import { TrialSeal } from "@/components/arena/TrialSeal";
+import { SearchPanel } from "@/components/arena/SearchPanel";
+import { FilterBar } from "@/components/arena/FilterBar";
+import { EmptyState } from "@/components/arena/EmptyState";
+import { StaleDataIndicator } from "@/components/arena/StaleDataIndicator";
 
 /**
- * The board of trials.
+ * The board of trials — the Arena listing.
  *
- * The filter row used to be a strip of chips that were labelled "Filter trials" but selected
- * nothing: the chips were `<span>`s, and the row filter underneath was `t.status !== "open" ||
- * true`, which is always true — so every trial was always shown no matter what a reader tapped.
- * A control that looks like a filter and is not one is worse than no control: it teaches the
- * reader that nothing on this page responds to them. They are real buttons now, they set state,
- * and the list reads from that state.
- *
- * `settled` is labelled "Verified" here rather than "Settled": a settled trial is the thing a
- * first-time reader is looking for — the jobs that held up — and `statusMeta` already calls a
- * settled trial "Settled" on the row itself, so the filter and the row would otherwise use two
- * words for the one state.
+ * Real data from the snapshot stream: every trial, its status, reward, bond,
+ * deadline, and verification method. Filtering, search, and pagination are real
+ * client-side operations over the live snapshot — no simulated activity.
  */
 const FILTERS: { key: TrialStatus | "all"; label: string }[] = [
   { key: "all", label: "All" },
@@ -35,117 +32,108 @@ const FILTERS: { key: TrialStatus | "all"; label: string }[] = [
 export default function TrialsPage() {
   const { data, error, loading, chainNowMs } = useSnapshot();
   const [active, setActive] = useState<TrialStatus | "all">("all");
+  const [query, setQuery] = useState("");
   const [shown, setShown] = useState(TRIALS_PAGE);
 
-  const rows = data ? data.trials.filter((t) => active === "all" || t.status === active) : [];
-  const page = windowed(rows, shown);
+  const all = data ? data.trials : [];
+  const filtered = all.filter((t) => {
+    const byStatus = active === "all" || t.status === active;
+    const byQuery =
+      !query ||
+      String(t.id).includes(query) ||
+      t.sponsor?.toLowerCase().includes(query.toLowerCase()) ||
+      t.specDigest?.toLowerCase().includes(query.toLowerCase()) ||
+      (t.specCID ?? "").toLowerCase().includes(query.toLowerCase());
+    return byStatus && byQuery;
+  });
+  const page = windowed(filtered, shown);
 
   return (
     <Chrome>
       <header className="trials-head">
-        <h1 className="page-title">Trials</h1>
-        <Link className="btn btn-primary" href="/trials/new">
-          Light a trial
-        </Link>
+        <div className="trials-head__brand">
+          <TrialSeal width="32" height="32" aria-label="Arena" />
+          <h1 className="page-title">The Arena</h1>
+          <p className="lede">Trials posted to the proving ground. Filter, search, and inspect.</p>
+        </div>
+        <div className="trials-head__actions">
+          <SearchPanel placeholder="Search by id, sponsor, spec digest or CID" onSearch={setQuery} />
+          <Link className="btn btn-primary" href="/trials/new">
+            Post a trial
+          </Link>
+        </div>
       </header>
 
-      <div className="filter-row" role="group" aria-label="Filter trials by where they stand">
-        {FILTERS.map((f) => {
-          const count = data ? data.counts[f.key] : null;
-          const selected = f.key === active;
-          return (
-            <button
-              key={f.key}
-              type="button"
-              className="filter-chip"
-              data-selected={selected || undefined}
-              aria-pressed={selected}
-              onClick={() => {
-                // Switching filters is a new question, so it gets a fresh window rather than
-                // inheriting however far the reader had scrolled on the previous one.
-                setActive(f.key);
-                setShown(TRIALS_PAGE);
-              }}
-            >
-              {f.label}
-              {count !== null ? <span className="filter-chip__count">{count}</span> : null}
-            </button>
-          );
-        })}
+      <div className="trials-meta">
+        <FilterBar
+          options={FILTERS}
+          activeKey={active}
+          onChange={(key) => {
+            setActive((key ?? "all") as TrialStatus | "all");
+            setShown(TRIALS_PAGE);
+          }}
+          groupLabel="Filter trials by where they stand"
+        />
+        <div className="trials-meta__count">
+          {data ? (
+            <>
+              <span className="mono figures">{data.counts.all ?? all.length}</span>{" "}
+              trials posted ·
+              <StaleDataIndicator
+                state={chainNowMs ? "live" : "cached"}
+                lastUpdated={chainNowMs ? new Date(chainNowMs).toISOString() : undefined}
+              />
+            </>
+          ) : (
+            <>
+              <span className="mono figures">—</span> trials posted
+            </>
+          )}
+        </div>
       </div>
 
-      {loading ? <Quenching label="reading the board from the chain…" /> : null}
-      {error ? <SignalLost message={error} /> : null}
-      {data && rows.length === 0 && active === "all" ? (
-        <ColdForge
-          line="Cold forge. No trials burning yet — a sponsor lights one, and the anvil fills."
-          cta="Light the first one"
-          href="/trials/new"
-        />
-      ) : null}
-      {data && rows.length === 0 && active !== "all" ? (
-        // A filter that matches nothing is not a cold forge — the trials exist, they are
-        // simply elsewhere. The clear-the-filter button is a real action here, so a reader is
-        // never stranded on an empty tab with no way back to the whole board.
-        <div className="surface cold-forge" id="trial-table">
-          <p className="cold-forge__line">{emptyFor(active)}</p>
-          <button
-            type="button"
-            className="btn btn-primary"
-            onClick={() => {
-              setActive("all");
-              setShown(TRIALS_PAGE);
-            }}
-          >
-            Show every trial
-          </button>
-        </div>
-      ) : null}
-      {data && page.visible.length > 0 ? (
-        <TrialTable trials={page.visible} chainNowMs={chainNowMs} />
-      ) : null}
+      {loading ? (
+        <Quenching label="reading the board from the chain…" />
+      ) : (
+        <>
+          {error ? <SignalLost message={error} /> : null}
 
-      {data && page.total > 0 ? (
-        // The count is stated whether or not anything is being withheld. A board that shows 50
-        // rows and says nothing reads as the whole board, and the missing trials are the ones a
-        // reader would otherwise assume were never posted.
-        <div className="board-foot">
-          <p className="board-foot__count" aria-live="polite">
-            {windowLabel(page)}
-          </p>
-          {page.hasMore ? (
-            <button
-              type="button"
-              className="btn btn-ghost"
-              onClick={() => setShown((s) => s + TRIALS_PAGE)}
-            >
-              Show {Math.min(TRIALS_PAGE, page.withheld)} more
-            </button>
-          ) : null}
-        </div>
-      ) : null}
+          {filtered.length === 0 ? (
+            <EmptyState
+              line={
+                active === "all"
+                  ? "Cold forge. No trials burning yet — a sponsor lights one, and the anvil fills."
+                  : `No ${active} trials. The trials exist — they are simply elsewhere.`
+              }
+              cta={active === "all" ? "Post a trial" : "Show every trial"}
+              href={active === "all" ? "/trials/new" : undefined}
+            />
+          ) : (
+            <>
+              <div className="trial-grid" id="trial-table">
+                {page.visible.map((t) => (
+                  <TrialCard key={t.id} trial={t} chainNowMs={chainNowMs ?? null} />
+                ))}
+              </div>
+
+              <div className="board-foot">
+                <p className="board-foot__count" aria-live="polite">
+                  {windowLabel({ ...page, total: filtered.length })}
+                </p>
+                {page.hasMore ? (
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    onClick={() => setShown((s) => s + TRIALS_PAGE)}
+                  >
+                    Show {Math.min(TRIALS_PAGE, page.withheld)} more
+                  </button>
+                ) : null}
+              </div>
+            </>
+          )}
+        </>
+      )}
     </Chrome>
   );
-}
-
-/**
- * A filtered list coming back empty is a different sentence from a forge with nothing in it:
- * the trials exist, they are simply not in this state. Saying which — and what the state means —
- * is what makes the empty state read as designed rather than broken.
- */
-function emptyFor(active: TrialStatus | "all"): string {
-  switch (active) {
-    case "open":
-      return "No open trials. Every job here has been claimed — new ones appear when a sponsor lights one.";
-    case "assigned":
-      return "Nothing is at the anvil right now — no claimed trial is waiting on its work.";
-    case "judging":
-      return "Nothing is being judged — no handed-in run is inside its skeptic window.";
-    case "challenged":
-      return "No trial is under challenge — no run has been broken and sent to the committee.";
-    case "settled":
-      return "Nothing has settled yet. Paid and caught trials are recorded here as they quench.";
-    default:
-      return "Cold forge. No trials burning yet.";
-  }
 }

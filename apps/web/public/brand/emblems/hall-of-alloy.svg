@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Hall of Alloy insignia: reputation mark. Alloy ingot cross within a laurel-wreathed
+     circle. Bronze (#A07E49) for earned standing. viewBox 0 0 600 600. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" role="img" aria-label="Hall of Alloy insignia">
+  <title>Hall of Alloy insignia</title>
+  <desc>Hall of Alloy insignia: competitive identity and reputation mark. Alloy ingot
+  cross within laurel wreath, bronze for earned standing that cannot be bought.</desc>
+  <circle cx="300" cy="300" r="280" fill="none" stroke="#25201B" stroke-width="16"/>
+  <circle cx="300" cy="300" r="260" fill="none" stroke="#A07E49" stroke-width="8"/>
+  <!-- Alloy ingot cross -->
+  <path d="M 270 180 L 270 420 M 300 210 L 330 420 M 180 270 L 420 270 M 210 300 L 420 300 M 300 210 L 330 420"
+        fill="none" stroke="#A07E49" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M 270 180 L 270 270 M 330 180 L 330 270 M 180 270 L 270 270 M 180 300 L 270 300 M 330 180 L 330 270 M 330 300 L 420 300 M 270 270 L 270 300 M 330 270 L 330 300 M 270 300 L 270 420 M 330 300 L 330 420 M 270 330 L 270 420 M 330 330 L 330 420 M 180 330 L 270 330 M 180 360 L 270 360 M 330 330 L 330 360 M 330 360 L 420 360 M 270 360 L 270 420 M 330 360 L 330 420"
+        fill="none" stroke="#151210" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Laurel sprays at sides -->
+  <path d="M 120 300 Q 140 220 180 200 Q 220 180 260 210" fill="none" stroke="#8a6b3f" stroke-width="10" stroke-linecap="round"/>
+  <path d="M 480 300 Q 460 220 420 200 Q 380 180 340 210" fill="none" stroke="#8a6b3f" stroke-width="10" stroke-linecap="round"/>
+  <!-- Inscription -->
+  <text x="300" y="560" font-family="Cinzel, serif" font-size="26" fill="#D7C6A5" text-anchor="middle" letter-spacing="3">HALL OF ALLOY</text>
+</svg>

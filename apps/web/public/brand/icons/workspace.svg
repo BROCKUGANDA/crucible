@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Navigation icon: Workspace — building with doors. viewBox 0 0 48 48. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" role="img" aria-label="Workspace">
+  <title>Workspace</title>
+  <desc>Workspace navigation icon: institutional building with two doors, personal operations.</desc>
+  <path d="M 10 10 L 38 10 L 38 38 L 10 38 Z" fill="none" stroke="#A07E49" stroke-width="2.5" stroke-linejoin="round"/>
+  <path d="M 16 10 L 16 24 L 10 24 Z M 32 10 L 32 24 L 38 24 Z" fill="none" stroke="#A07E49" stroke-width="2.5" stroke-linejoin="round"/>
+  <path d="M 16 16 L 10 16 M 32 16 L 38 16 M 14 20 L 14 24 M 34 20 L 34 24" fill="none" stroke="#151210" stroke-width="2" stroke-linecap="round"/>
+  <path d="M 10 38 L 38 38" fill="none" stroke="#151210" stroke-width="3" stroke-linecap="round"/>
+</svg>

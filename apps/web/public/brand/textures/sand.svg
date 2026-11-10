@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Arena sand texture: fine granular pattern for ground surfaces.
+     viewBox 0 0 200 200. Tileable. Arena sand (#C8A878) base. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <defs>
+    <filter id="sand-grain" x="0%" y="0%" width="100%" height="100%">
+      <feTurbulence type="fractalNoise" baseFrequency="1.2" numOctaves="4" stitchTiles="stitch" result="noise"/>
+      <feColorMatrix type="matrix" values="1 0 0 0 0  0.8 0.66 0.47 0 0  0.6 0.45 0.3 0 0  0 0 0 0.45 0" in="noise" result="coloredNoise"/>
+      <feBlend mode="multiply" in="coloredNoise" in2="SourceGraphic"/>
+    </filter>
+  </defs>
+  <rect width="200" height="200" fill="#C8A878" filter="url(#sand-grain)"/>
+</svg>

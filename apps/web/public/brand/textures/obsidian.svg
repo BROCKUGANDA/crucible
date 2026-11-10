@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Obsidian stone texture: subtle dark grain pattern for backgrounds.
+     viewBox 0 0 200 200. Tileable. Use as background-image or pattern fill. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <defs>
+    <filter id="obs-grain" x="0%" y="0%" width="100%" height="100%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.6" numOctaves="3" stitchTiles="stitch" result="noise"/>
+      <feColorMatrix type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 0.4 0" in="noise" result="coloredNoise"/>
+      <feBlend mode="multiply" in="coloredNoise" in2="SourceGraphic"/>
+    </filter>
+  </defs>
+  <rect width="200" height="200" fill="#0B0A09" filter="url(#obs-grain)"/>
+  <path d="M 0 40 L 200 60 M 40 0 L 60 200 M 120 0 L 140 200 M 180 80 L 200 100" stroke="#151210" stroke-width="1" opacity="0.3"/>
+</svg>

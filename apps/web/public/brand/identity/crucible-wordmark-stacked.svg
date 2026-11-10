@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Stacked wordmark: seal mark above "CRUCIBLE" on two lines. viewBox 0 0 400 480.
+     For use in narrow vertical spaces (mobile footer, sidebars). -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 480" role="img" aria-label="Crucible wordmark (stacked)">
+  <title>Crucible wordmark (stacked)</title>
+  <desc>Stacked wordmark: seal mark above "CRUCIBLE" on two lines. Cinzel inscriptional
+  capitals, molten-metal gradient, for narrow vertical placements.</desc>
+  <defs>
+    <linearGradient id="swm-gradient" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#E2612F"/>
+      <stop offset="52%" stop-color="#E3B25C"/>
+      <stop offset="100%" stop-color="#FBEEDA"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Seal mark -->
+  <circle cx="200" cy="140" r="62" fill="none" stroke="#A07E49" stroke-width="12"/>
+  <circle cx="200" cy="140" r="50" fill="none" stroke="#151210" stroke-width="7"/>
+  <path d="M 155 140 Q 200 105 245 140" fill="none" stroke="#E2612F" stroke-width="9" stroke-linecap="round"/>
+  <path d="M 245 140 Q 200 175 155 140" fill="none" stroke="#E2612F" stroke-width="9" stroke-linecap="round"/>
+  <circle cx="200" cy="140" r="6" fill="#FBEEDA"/>
+
+  <!-- Wordmark stacked -->
+  <text x="200" y="290" font-family="Cinzel, Trajan Pro, Georgia, serif" font-size="72"
+        font-weight="700" fill="url(#swm-gradient)" letter-spacing="10" text-anchor="middle">
+    CRUCIBLE
+  </text>
+  <text x="200" y="380" font-family="Cinzel, Trajan Pro, Georgia, serif" font-size="28"
+        fill="#D7C6A5" letter-spacing="4" text-anchor="middle">ARENA OF PROOF</text>
+</svg>

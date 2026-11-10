@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Verdict stamp: SLASHED. Seared red (#DE5243), wax-seal style circular stamp. viewBox 0 0 400 400. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" role="img" aria-label="Verdict stamp: Slashed">
+  <title>Verdict stamp — Slashed</title>
+  <desc>Verdict stamp for a broken run. Seared red wax-seal style: circular rim, "SLASHED"
+  across center, fracture line beneath.</desc>
+  <circle cx="200" cy="200" r="170" fill="none" stroke="#DE5243" stroke-width="14" stroke-linecap="round"/>
+  <circle cx="200" cy="200" r="150" fill="none" stroke="#0B0A09" stroke-width="4"/>
+  <text x="200" y="195" font-family="Cinzel, serif" font-size="56" fill="#DE5243" text-anchor="middle" letter-spacing="8">SLASHED</text>
+  <path d="M 150 260 Q 200 300 250 260" fill="none" stroke="#DE5243" stroke-width="10" stroke-linecap="round"/>
+  <path d="M 200 260 Q 200 240 200 220" fill="none" stroke="#DE5243" stroke-width="6" stroke-linecap="round"/>
+</svg>

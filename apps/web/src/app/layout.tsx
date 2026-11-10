@@ -9,6 +9,7 @@ import "@/styles/motion.css";
 import "@/styles/components.css";
 import "@/styles/scrub.css";
 import "@/styles/arena.css";
+import "@/styles/arena-components.css";
 import "@/styles/console.css";
 import "@/styles/pages.css";
 import "@/styles/trials.css";

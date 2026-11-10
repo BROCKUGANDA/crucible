@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Trial seal: circular seal marking a posted trial. Smaller ring, central "T" trial
+     mark, flame beneath. viewBox 0 0 600 600. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" role="img" aria-label="Trial seal">
+  <title>Trial seal</title>
+  <desc>Trial seal: circular seal marking a posted trial on the arena board. Outer stone
+  ring, inner "T" trial mark over flame. Obsidian, laurel bronze, verdict gold.</desc>
+  <circle cx="300" cy="300" r="280" fill="none" stroke="#25201B" stroke-width="16"/>
+  <circle cx="300" cy="300" r="260" fill="none" stroke="#A07E49" stroke-width="8"/>
+  <circle cx="300" cy="300" r="245" fill="none" stroke="#0B0A09" stroke-width="5"/>
+  <!-- Central T mark -->
+  <path d="M 265 215 L 335 215 M 300 215 L 300 385" fill="none" stroke="#A07E49" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Flame beneath T -->
+  <path d="M 280 385 Q 290 340 300 315 Q 310 340 320 385 Q 305 370 300 365 Q 295 370 280 385 Z" fill="#E2612F"/>
+  <!-- Inscription arc -->
+  <text x="300" y="140" font-family="Cinzel, serif" font-size="30" fill="#F2EAD9" text-anchor="middle" letter-spacing="4">TRIAL POSTED</text>
+</svg>

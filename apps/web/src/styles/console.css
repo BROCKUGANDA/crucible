@@ -133,6 +133,131 @@ a.tx-link {
   color: var(--faint);
 }
 
+/* ── trial cards ─────────────────────────────────────────── */
+
+.trial-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr));
+  gap: var(--s-3);
+}
+
+.trial-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  padding: var(--s-4);
+  color: inherit;
+  text-decoration: none;
+  transition: border-color var(--t-tap) var(--ease-ignite);
+}
+
+.trial-card:hover,
+.trial-card:focus-visible {
+  border-color: var(--bronze);
+}
+
+.trial-card__head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+}
+
+.trial-card__seal {
+  color: var(--bronze);
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+}
+
+.trial-card__meta {
+  min-width: 0;
+}
+
+.trial-card__id {
+  margin: 0;
+  color: var(--faint);
+}
+
+.trial-card__sponsor {
+  margin: 2px 0 0;
+  display: flex;
+  gap: var(--s-2);
+  align-items: baseline;
+  color: var(--dim);
+  overflow-wrap: anywhere;
+}
+
+.trial-card__sponsor__label {
+  color: var(--faint);
+  font-size: var(--fs-small);
+}
+
+.trial-card__spec {
+  margin: 2px 0 0;
+  color: var(--faint);
+  font-size: var(--fs-small);
+  overflow-wrap: anywhere;
+}
+
+.trial-card__body {
+  flex: 1;
+}
+
+.trial-card__facts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--s-2) var(--s-3);
+}
+
+.trial-card__fact {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.trial-card__fact--wide {
+  grid-column: 1 / -1;
+}
+
+.trial-card__fact__label {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--faint);
+}
+
+.trial-card__fact__value {
+  font-size: var(--fs-small);
+  color: var(--text);
+}
+
+.trial-card__fact__value.mono {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.trial-card__foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--s-3);
+  border-top: 1px solid var(--bg2);
+  padding-top: var(--s-3);
+}
+
+.trial-card__cta {
+  color: var(--dim);
+  font-size: var(--fs-small);
+  transition: color var(--t-tap) var(--ease-ignite);
+  white-space: nowrap;
+}
+
+.trial-card:hover .trial-card__cta {
+  color: var(--text);
+}
+
 /* ── break filing ─────────────────────────────────────────── */
 
 .break {

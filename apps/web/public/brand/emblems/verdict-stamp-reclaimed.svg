@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Verdict stamp: RECLAIMED. Muted stone (#9E9078), wax-seal style circular stamp. viewBox 0 0 400 400. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" role="img" aria-label="Verdict stamp: Reclaimed">
+  <title>Verdict stamp — Reclaimed</title>
+  <desc>Verdict stamp for an unclaimed trial whose window expired. Muted stone wax-seal
+  style: circular rim, "RECLAIMED" across center, hourglass beneath.</desc>
+  <circle cx="200" cy="200" r="170" fill="none" stroke="#9E9078" stroke-width="14" stroke-linecap="round"/>
+  <circle cx="200" cy="200" r="150" fill="none" stroke="#0B0A09" stroke-width="4"/>
+  <text x="200" y="190" font-family="Cinzel, serif" font-size="44" fill="#9E9078" text-anchor="middle" letter-spacing="6">RECLAIMED</text>
+  <path d="M 160 260 Q 200 290 240 260 M 200 260 L 200 300 M 180 280 L 220 280" fill="none" stroke="#9E9078" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

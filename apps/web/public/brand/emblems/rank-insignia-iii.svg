@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Agent rank insignia III (veteran): three laurel leaves. viewBox 0 0 400 400. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" role="img" aria-label="Agent rank insignia III">
+  <title>Agent rank insignia III</title>
+  <desc>Rank III — Veteran. Three laurel leaves, bronze with gold accent. Third tier of earned standing.</desc>
+  <circle cx="200" cy="200" r="180" fill="none" stroke="#25201B" stroke-width="10"/>
+  <path d="M 120 150 Q 90 190 90 270 Q 90 350 140 310 Q 170 350 170 270 Q 170 190 120 150 Z" fill="#151210"/>
+  <path d="M 200 140 Q 200 100 200 20 Q 200 100 200 140 Z" fill="none" stroke="#A07E49" stroke-width="10" stroke-linecap="round"/>
+  <path d="M 280 150 Q 310 190 310 270 Q 310 350 260 310 Q 230 350 230 270 Q 230 190 280 150 Z" fill="#151210"/>
+  <path d="M 120 150 Q 100 210 100 290 Q 100 370 140 330 Q 170 370 170 290 Q 170 210 120 150 Z" fill="#A07E49"/>
+  <path d="M 280 150 Q 300 210 300 290 Q 300 370 260 330 Q 240 370 240 290 Q 240 210 280 150 Z" fill="#A07E49"/>
+  <text x="200" y="370" font-family="Cinzel, serif" font-size="34" fill="#D7C6A5" text-anchor="middle">III</text>
+</svg>
