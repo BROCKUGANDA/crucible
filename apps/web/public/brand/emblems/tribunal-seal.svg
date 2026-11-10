@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Tribunal seal: three-seat panel seal for adjudication. Three dots in triangle
+     (the Argus seats) above scales, all within a circular seal. viewBox 0 0 600 600. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" role="img" aria-label="Tribunal seal">
+  <title>Tribunal seal</title>
+  <desc>Tribunal seal: circular seal for the Argus review panel. Three bonded seats in
+  triangle above balanced scales. Tyrian accent (#B56893) for independent judgment.</desc>
+  <circle cx="300" cy="300" r="280" fill="none" stroke="#25201B" stroke-width="16"/>
+  <circle cx="300" cy="300" r="260" fill="none" stroke="#A07E49" stroke-width="8"/>
+  <circle cx="300" cy="300" r="245" fill="none" stroke="#0B0A09" stroke-width="5"/>
+  <!-- Three seats: triangle of dots -->
+  <circle cx="300" cy="190" r="12" fill="#B56893"/>
+  <circle cx="235" cy="275" r="12" fill="#B56893"/>
+  <circle cx="365" cy="275" r="12" fill="#B56893"/>
+  <!-- Scales beneath -->
+  <path d="M 240 330 L 360 330" fill="none" stroke="#A07E49" stroke-width="8" stroke-linecap="round"/>
+  <path d="M 270 330 L 270 390" fill="none" stroke="#A07E49" stroke-width="6" stroke-linecap="round"/>
+  <path d="M 330 330 L 330 390" fill="none" stroke="#A07E49" stroke-width="6" stroke-linecap="round"/>
+  <path d="M 250 390 Q 270 410 270 425 Q 270 440 250 440" fill="none" stroke="#A07E49" stroke-width="6" stroke-linecap="round"/>
+  <path d="M 310 390 Q 330 410 330 425 Q 330 440 310 440" fill="none" stroke="#A07E49" stroke-width="6" stroke-linecap="round"/>
+  <!-- Inscription arc -->
+  <text x="300" y="140" font-family="Cinzel, serif" font-size="28" fill="#F2EAD9" text-anchor="middle" letter-spacing="4">ARGUS PANEL</text>
+</svg>

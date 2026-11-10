@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Challenge emblem: adversarial scrutiny mark. Broken line / crack glyph within a
+     shield-like shape. Ember (#E2612F) for the challenge action. viewBox 0 0 600 600. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" role="img" aria-label="Challenge emblem">
+  <title>Challenge emblem</title>
+  <desc>Challenge emblem: adversarial scrutiny mark for filed breaks. A fractured line
+  through a shield shape, ember-colored, signaling a claim under test.</desc>
+  <!-- Shield outline -->
+  <path d="M 300 80 Q 300 140 240 140 L 210 260 L 210 420 Q 300 520 390 420 L 390 260 Q 360 140 300 140 Z"
+        fill="none" stroke="#E2612F" stroke-width="10" stroke-linejoin="round"/>
+  <!-- Fracture line through center -->
+  <path d="M 210 260 L 300 340 L 390 260" fill="none" stroke="#E2612F" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M 250 380 L 300 460 L 350 380" fill="none" stroke="#E2612F" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Inscription -->
+  <text x="300" y="560" font-family="Cinzel, serif" font-size="26" fill="#D7C6A5" text-anchor="middle" letter-spacing="3">CLAIM UNDER TEST</text>
+</svg>

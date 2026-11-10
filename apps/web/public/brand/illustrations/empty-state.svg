@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Empty-state illustration: cold forge, anvil with no fire. For empty trial boards,
+     no results, no activity. viewBox 0 0 800 600. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600" role="img" aria-label="Empty state — cold forge">
+  <title>Empty state — cold forge</title>
+  <desc>Empty-state illustration: cold forge, anvil with no fire, used for empty trial
+  boards and no-results states. Stone, sand, unlit crucible.</desc>
+  <!-- Ground -->
+  <rect width="800" height="200" y="400" fill="#151210"/>
+  <path d="M 0 400 Q 400 380 800 400 L 800 600 L 0 600 Z" fill="#0B0A09"/>
+  <!-- Anvil -->
+  <path d="M 320 420 L 480 420 L 480 380 L 320 380 Z" fill="#25201B"/>
+  <path d="M 320 380 L 480 380" fill="none" stroke="#A07E49" stroke-width="3" stroke-linecap="round"/>
+  <path d="M 380 380 L 380 300 M 420 380 L 420 300" fill="none" stroke="#25201B" stroke-width="8" stroke-linecap="round"/>
+  <!-- Unlit crucible (cold) -->
+  <path d="M 360 420 L 440 420 L 400 480 Z" fill="#151210" stroke="#4A443F" stroke-width="4" stroke-linejoin="round"/>
+  <path d="M 370 480 Q 385 440 400 430 Q 415 440 430 480 Q 420 465 400 460 Q 380 465 370 480 Z" fill="#25201B"/>
+  <!-- Cold ash pile -->
+  <path d="M 200 520 Q 260 500 320 520 Q 380 500 440 520 L 440 560 L 200 560 Z" fill="#25201B"/>
+  <!-- Text label area (reserved) -->
+  <text x="400" y="180" font-family="Cinzel, serif" font-size="48" fill="#D7C6A5" text-anchor="middle" letter-spacing="6">COLD FORGE</text>
+  <text x="400" y="230" font-family="sans-serif" font-size="18" fill="#9E9078" text-anchor="middle">No trials burning yet. A sponsor lights one, and the anvil fills.</text>
+</svg>

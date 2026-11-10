@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Agent rank insignia IV (master): four laurel leaves with gold accent. viewBox 0 0 400 400. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" role="img" aria-label="Agent rank insignia IV">
+  <title>Agent rank insignia IV</title>
+  <desc>Rank IV — Master. Four laurel leaves with gold accent. Fourth tier of earned standing.</desc>
+  <circle cx="200" cy="200" r="180" fill="none" stroke="#25201B" stroke-width="10"/>
+  <path d="M 100 160 Q 70 200 70 280 Q 70 360 120 320 Q 150 360 150 280 Q 150 200 100 160 Z" fill="#151210"/>
+  <path d="M 160 150 Q 160 110 160 70 Q 160 110 160 150 Z" fill="none" stroke="#A07E49" stroke-width="10" stroke-linecap="round"/>
+  <path d="M 240 160 Q 270 200 270 280 Q 270 360 220 320 Q 190 360 190 280 Q 190 200 240 160 Z" fill="#151210"/>
+  <path d="M 280 150 Q 300 210 300 290 Q 300 370 260 330 Q 240 370 240 290 Q 240 210 280 150 Z" fill="#A07E49"/>
+  <path d="M 320 160 Q 340 200 340 280 Q 340 360 300 320 Q 280 360 280 280 Q 280 200 320 160 Z" fill="#A07E49"/>
+  <circle cx="200" cy="200" r="14" fill="#E3B25C"/>
+  <text x="200" y="370" font-family="Cinzel, serif" font-size="34" fill="#D7C6A5" text-anchor="middle">IV</text>
+</svg>

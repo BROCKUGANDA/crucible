@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Navigation icon: Hall of Alloy — alloy ingot cross. viewBox 0 0 48 48. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" role="img" aria-label="Hall of Alloy">
+  <title>Hall of Alloy</title>
+  <desc>Hall of Alloy navigation icon: alloy ingot cross, earned reputation.</desc>
+  <path d="M 22 10 L 22 38 M 10 22 L 38 22 M 24 10 L 26 38 M 12 22 L 36 22 M 22 10 L 22 18 M 26 10 L 26 18 M 10 22 L 18 22 M 10 24 L 18 24 M 26 10 L 26 18 M 26 22 L 36 22 M 26 24 L 36 24 M 22 18 L 22 24 M 26 18 L 26 24 M 22 24 L 22 38 M 26 24 L 26 38 M 22 30 L 22 38 M 26 30 L 26 38 M 10 30 L 22 30 M 10 32 L 22 32 M 26 30 L 26 32 M 26 32 L 36 32 M 22 32 L 22 38 M 26 32 L 26 38"
+        fill="none" stroke="#A07E49" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

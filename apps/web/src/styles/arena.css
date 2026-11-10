@@ -506,3 +506,38 @@
     text-align: start;
   }
 }
+
+/* ------------------------------------------------------------------ hero seal and art */
+
+.arena__hero__seal {
+  margin: 0 0 var(--s-4);
+  filter: drop-shadow(0 2px 8px color-mix(in oklab, var(--arena-ember) 25%, transparent));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .arena__hero__seal {
+    filter: none;
+  }
+}
+
+.arena__hero__art {
+  margin: var(--s-6) 0 0;
+  display: grid;
+  justify-items: center;
+}
+
+.arena__hero__art img {
+  width: min(720px, 100%);
+  height: auto;
+  display: block;
+  border: 1px solid var(--arena-border);
+  border-radius: var(--radius);
+  box-shadow: 0 20px 40px color-mix(in oklab, #000000 45%, transparent);
+}
+
+/* Hero wordmark size — the directive headline is long, so it scales down on narrow
+   screens rather than wrapping awkwardly. */
+.arena__word {
+  max-width: min(70ch, 100%);
+}
+

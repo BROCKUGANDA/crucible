@@ -143,6 +143,55 @@
   color: var(--dim);
 }
 
+/* ── the committee's clock ─────────────────────────────────── */
+
+.tribunal-clock {
+  padding: var(--s-5);
+  margin-top: var(--s-4);
+}
+
+.tribunal-clock__steps {
+  list-style: none;
+  margin: var(--s-3) 0;
+  padding: 0;
+  display: grid;
+  gap: var(--s-3);
+  counter-reset: step;
+}
+
+.tribunal-clock__step {
+  display: grid;
+  gap: 2px;
+  padding-left: var(--s-4);
+  border-left: 2px solid var(--bg2);
+}
+
+.tribunal-clock__step[data-done] {
+  border-left-color: var(--quench);
+}
+
+.tribunal-clock__title {
+  font-family: var(--font-mono);
+  font-size: var(--fs-small);
+  color: var(--dim);
+}
+
+.tribunal-clock__step[data-done] .tribunal-clock__title {
+  color: var(--text);
+}
+
+.tribunal-clock__note {
+  font-size: var(--fs-small);
+  color: var(--faint);
+}
+
+.tribunal-clock__seats {
+  display: block;
+  margin-top: 2px;
+  overflow-wrap: anywhere;
+  color: var(--dim);
+}
+
 /* ── the break board ──────────────────────────────────────── */
 
 .how-panel {

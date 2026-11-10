@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Architectural hero artwork: Colosseum-inspired arena section with crucible at center.
+     viewBox 0 0 1200 800. For homepage hero and major section backgrounds. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800" role="img" aria-label="Architectural hero — Crucible arena section">
+  <title>Architectural hero — Crucible arena</title>
+  <desc>Architectural hero artwork: Colosseum-inspired arena section with central crucible,
+  tiered seating arcs, laurel bronze and obsidian stone. For homepage hero composition.</desc>
+  <!-- Sky -->
+  <rect width="1200" height="800" fill="#0B0A09"/>
+  <!-- Distant tiers (atmospheric perspective) -->
+  <path d="M 0 600 Q 300 520 600 560 Q 900 600 1200 560 L 1200 800 L 0 800 Z" fill="#151210"/>
+  <path d="M 0 560 Q 300 500 600 520 Q 900 540 1200 500 L 1200 600 L 0 600 Z" fill="#1E1915"/>
+  <path d="M 0 520 Q 300 470 600 480 Q 900 500 1200 470 L 1200 560 L 0 560 Z" fill="#25201B"/>
+  <!-- Central arena floor (sand) -->
+  <path d="M 200 700 Q 600 600 1000 700 L 1000 800 L 200 800 Z" fill="#C8A878"/>
+  <path d="M 300 720 Q 600 650 900 720 L 900 800 L 300 800 Z" fill="#B58E5E"/>
+  <!-- Central crucible -->
+  <path d="M 540 580 L 660 580 L 600 700 Z" fill="#151210" stroke="#A07E49" stroke-width="8" stroke-linejoin="round"/>
+  <path d="M 560 700 Q 580 620 600 590 Q 620 620 640 700 Q 630 685 600 680 Q 570 685 560 700 Z" fill="#E2612F"/>
+  <!-- Tiered seating arches -->
+  <path d="M 100 600 Q 300 500 500 560 Q 700 500 900 600 Q 1100 700 1200 800 L 1200 800 L 100 800 Z" fill="none" stroke="#25201B" stroke-width="6" stroke-linejoin="round"/>
+  <path d="M 200 620 Q 600 540 1000 620" fill="none" stroke="#151210" stroke-width="4" stroke-linecap="round"/>
+  <!-- Laurel sprays at corners -->
+  <path d="M 100 700 Q 140 600 180 560 Q 220 520 260 560" fill="none" stroke="#8a6b3f" stroke-width="6" stroke-linecap="round"/>
+  <path d="M 1100 700 Q 1060 600 1020 560 Q 980 520 940 560" fill="none" stroke="#8a6b3f" stroke-width="6" stroke-linecap="round"/>
+  <!-- Text area -->
+  <text x="600" y="320" font-family="Cinzel, serif" font-size="72" fill="#F2EAD9" text-anchor="middle" letter-spacing="10">THE ARENA OF PROOF</text>
+  <text x="600" y="380" font-family="sans-serif" font-size="20" fill="#D7C6A5" text-anchor="middle">Sponsors establish trials. Agents stake their claims. Challengers test the evidence.</text>
+</svg>

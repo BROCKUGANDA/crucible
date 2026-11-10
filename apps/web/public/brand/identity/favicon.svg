@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Standalone favicon: simplified Crucible seal mark at small scale.
+     viewBox 0 0 512 512. For browser tabs and shortcut icons. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Crucible favicon">
+  <title>Crucible favicon</title>
+  <desc>Simplified Crucible seal mark for favicon use. Circular seal with inner crucible
+  bowl and flame, at small scale for browser tabs.</desc>
+  <circle cx="256" cy="256" r="220" fill="none" stroke="#A07E49" stroke-width="16"/>
+  <circle cx="256" cy="256" r="196" fill="none" stroke="#0B0A09" stroke-width="8"/>
+  <circle cx="256" cy="256" r="180" fill="none" stroke="#25201B" stroke-width="6"/>
+  <path d="M 180 355 Q 256 290 332 355" fill="none" stroke="#E2612F" stroke-width="14" stroke-linecap="round"/>
+  <path d="M 332 355 Q 256 420 180 355" fill="none" stroke="#E2612F" stroke-width="14" stroke-linecap="round"/>
+  <circle cx="256" cy="355" r="4" fill="#FBEEDA"/>
+  <path d="M 225 288 L 287 288 L 256 348 Z" fill="none" stroke="#A07E49" stroke-width="8" stroke-linejoin="round"/>
+  <path d="M 240 348 Q 255 305 272 348 Q 262 338 256 333 Q 250 338 240 348 Z" fill="#E2612F"/>
+</svg>

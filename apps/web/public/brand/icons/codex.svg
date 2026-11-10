@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Navigation icon: Codex — open book / scroll. viewBox 0 0 48 48. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" role="img" aria-label="Codex">
+  <title>Codex</title>
+  <desc>Codex navigation icon: open book with ruled lines, institutional knowledge.</desc>
+  <path d="M 10 10 L 10 38 L 24 38 L 24 10 Z M 24 10 L 24 38 L 38 38 L 38 10 Z" fill="none" stroke="#A07E49" stroke-width="2.5" stroke-linejoin="round"/>
+  <path d="M 14 16 L 20 16 M 14 22 L 20 22 M 14 28 L 22 28 M 28 16 L 34 16 M 28 22 L 34 22 M 28 28 L 36 28" fill="none" stroke="#25201B" stroke-width="2" stroke-linecap="round"/>
+  <path d="M 24 10 L 24 38" fill="none" stroke="#A07E49" stroke-width="1.5" stroke-linecap="round"/>
+</svg>

@@ -7,6 +7,7 @@ const ROUTES = [
   "/trials",
   "/trials/new",
   "/bounties",
+  "/tribunal",
   "/agents",
   "/scorecards",
   "/hall",

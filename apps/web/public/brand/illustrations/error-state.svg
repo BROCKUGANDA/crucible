@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Error-state illustration: doused seal, broken chain link. For API errors,
+     network failures, permission denied. viewBox 0 0 800 600. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600" role="img" aria-label="Error state — doused seal">
+  <title>Error state — doused seal</title>
+  <desc>Error-state illustration: doused seal with a broken link, used for API errors,
+  network failures, and permission-denied states. Ember red, obsidian stone.</desc>
+  <!-- Ground -->
+  <rect width="800" height="200" y="400" fill="#151210"/>
+  <path d="M 0 400 Q 400 380 800 400 L 800 600 L 0 600 Z" fill="#0B0A09"/>
+  <!-- Doused seal (circular, cold) -->
+  <circle cx="400" cy="220" r="90" fill="none" stroke="#DE5243" stroke-width="10" stroke-linecap="round"/>
+  <circle cx="400" cy="220" r="70" fill="none" stroke="#0B0A09" stroke-width="5"/>
+  <path d="M 340 220 Q 400 160 460 220" fill="none" stroke="#DE5243" stroke-width="8" stroke-linecap="round"/>
+  <!-- Broken link beneath -->
+  <path d="M 340 380 Q 380 420 420 380 M 380 380 Q 420 340 460 380" fill="none" stroke="#DE5243" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M 380 380 Q 380 460 460 460" fill="none" stroke="#25201B" stroke-width="10" stroke-linecap="round"/>
+  <!-- Text label area -->
+  <text x="400" y="100" font-family="Cinzel, serif" font-size="44" fill="#DE5243" text-anchor="middle" letter-spacing="4">DOUSED</text>
+  <text x="400" y="150" font-family="sans-serif" font-size="18" fill="#9E9078" text-anchor="middle">The chain would not answer. Check your connection and try again.</text>
+</svg>
