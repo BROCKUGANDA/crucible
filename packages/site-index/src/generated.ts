@@ -529,6 +529,20 @@ export const SITE_INDEX: SiteEntry[] = [
     ]
   },
   {
+    "path": "/tribunal/cases/[id]",
+    "label": "Tribunal case",
+    "purpose": "One challenged claim in full: the charge, the claim, the challenge, the committee and the verdict.",
+    "can": [
+      "see what was posted and by whom",
+      "see the break filed against the claim",
+      "see the seat seals and unseals",
+      "see the verdict"
+    ],
+    "points": [
+      "case-charge"
+    ]
+  },
+  {
     "path": "/verify",
     "label": "Verify a receipt",
     "purpose": "Check a verification receipt against the chain: the verdict it holds and who minted it.",

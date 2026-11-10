@@ -54,11 +54,11 @@ export default function TribunalPage() {
 
       <div className="board" id="tribunal-cases">
         {challenged.map((t) => (
-          <article key={t.id} className="surface detail-panel">
+          <article key={t.id} className="surface detail-panel tribunal-case-card">
             <p className="kv">
               <span className="kv__key">Trial</span>
               <span className="mono">
-                <Link href={`/trials/${t.id}`}>#{t.id}</Link>
+                <Link href={`/tribunal/cases/${t.id}`}>#{t.id}</Link>
               </span>
             </p>
             <p className="kv">
@@ -69,6 +69,9 @@ export default function TribunalPage() {
               <span className="kv__key">Verdict</span>
               <span className="mono">{t.verdict || "pending"}</span>
             </p>
+            <Link href={`/tribunal/cases/${t.id}`} className="tribunal-case-card__cta">
+              Open case file →
+            </Link>
           </article>
         ))}
       </div>

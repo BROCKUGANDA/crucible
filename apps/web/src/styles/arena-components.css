@@ -755,6 +755,81 @@
   }
 }
 
+/* ── tribunal case page ─────────────────────────────────────── */
+
+.case-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 460px), 1fr));
+  gap: var(--s-4);
+  margin-top: var(--s-4);
+}
+
+.case-panel {
+  display: grid;
+  gap: var(--s-2);
+  padding: var(--s-4);
+  border-radius: var(--radius);
+  align-content: start;
+}
+
+.case-panel__kicker {
+  margin: 0;
+  font-size: var(--fs-micro);
+  text-transform: uppercase;
+  letter-spacing: var(--track-micro);
+  color: var(--arena-bronze);
+}
+
+.case-panel--wide {
+  grid-column: 1 / -1;
+}
+
+.case-seats {
+  margin: 0;
+  font-size: var(--fs-micro);
+  color: var(--arena-muted);
+  overflow-wrap: anywhere;
+}
+
+.case-provenance {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  margin-top: var(--s-4);
+}
+
+.case-provenance__link {
+  font-size: var(--fs-small);
+  color: var(--arena-ember);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.tribunal-case-card__cta {
+  font-size: var(--fs-small);
+  color: var(--arena-ember);
+  margin-top: var(--s-2);
+}
+
+/* EvidencePacket/VerdictPanel inside the case page grid inherit width. */
+.case-panel--wide .evidence-packet,
+.case-panel--wide .verdict-panel {
+  width: 100%;
+}
+
+@media (max-width: 700px) {
+  .case-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .case-provenance {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--s-2);
+  }
+}
+
 /* ── trials page layout ─────────────────────────────────────── */
 
 .trials-head {
