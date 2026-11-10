@@ -26,7 +26,7 @@ export function SearchPanel({
 
   return (
     <form className="search-panel" onSubmit={handleSubmit} role="search" aria-label="Search">
-      <label className="search-panel__label" htmlWith="search-input">
+      <label className="search-panel__label" htmlFor="search-input">
         Search
       </label>
       <input

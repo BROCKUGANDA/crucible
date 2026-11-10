@@ -1,6 +1,7 @@
 "use client";
 
-import { ColdForge } from "@/components/Chrome";
+import Link from "next/link";
+import type { ReactNode } from "react";
 
 /**
  * EmptyState — an empty state with an honest label and a clear next action.
@@ -17,14 +18,16 @@ export function EmptyState({
   line: string;
   cta?: string;
   href?: string;
-  illustration?: JSX.Element;
+  illustration?: ReactNode;
 }) {
   return (
     <div className="surface empty-state" role="region" aria-label="Empty state">
       {illustration ? <div className="empty-state__illustration">{illustration}</div> : null}
       <p className="empty-state__line">{line}</p>
       {cta && href ? (
-        <ColdForge line={line} cta={cta} href={href} />
+        <Link className="btn btn-primary" href={href}>
+          {cta}
+        </Link>
       ) : null}
     </div>
   );

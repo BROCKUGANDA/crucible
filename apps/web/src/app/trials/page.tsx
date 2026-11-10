@@ -3,12 +3,10 @@
 import { useState } from "react";
 import Link from "next/link";
 import type { TrialStatus } from "@crucible/indexer";
-import { Chrome, ColdForge, Quenching, SignalLost } from "@/components/Chrome";
+import { Chrome, Quenching, SignalLost } from "@/components/Chrome";
 import { useSnapshot } from "@/lib/useSnapshot";
 import { TRIALS_PAGE, windowed, windowLabel } from "@/lib/paging";
 import { TrialCard } from "@/components/arena/TrialCard";
-import { TrialStatus } from "@/components/arena/TrialStatus";
-import { TrialCountdown } from "@/components/arena/TrialCountdown";
 import { TrialSeal } from "@/components/arena/TrialSeal";
 import { SearchPanel } from "@/components/arena/SearchPanel";
 import { FilterBar } from "@/components/arena/FilterBar";
@@ -44,7 +42,8 @@ export default function TrialsPage() {
       !query ||
       String(t.id).includes(query) ||
       t.sponsor?.toLowerCase().includes(query.toLowerCase()) ||
-      (t.objective ?? "").toLowerCase().includes(query.toLowerCase());
+      t.specDigest?.toLowerCase().includes(query.toLowerCase()) ||
+      (t.specCID ?? "").toLowerCase().includes(query.toLowerCase());
     return byStatus && byQuery;
   });
   const page = windowed(filtered, shown);
@@ -58,7 +57,7 @@ export default function TrialsPage() {
           <p className="lede">Trials posted to the proving ground. Filter, search, and inspect.</p>
         </div>
         <div className="trials-head__actions">
-          <SearchPanel placeholder="Search trials by id, sponsor or objective" onSearch={setQuery} />
+          <SearchPanel placeholder="Search by id, sponsor, spec digest or CID" onSearch={setQuery} />
           <Link className="btn btn-primary" href="/trials/new">
             Post a trial
           </Link>
@@ -70,7 +69,7 @@ export default function TrialsPage() {
           options={FILTERS}
           activeKey={active}
           onChange={(key) => {
-            setActive(key);
+            setActive((key ?? "all") as TrialStatus | "all");
             setShown(TRIALS_PAGE);
           }}
           groupLabel="Filter trials by where they stand"
@@ -81,12 +80,14 @@ export default function TrialsPage() {
               <span className="mono figures">{data.counts.all ?? all.length}</span>{" "}
               trials posted ·
               <StaleDataIndicator
-                state={data.chainNowMs ? "live" : "cached"}
-                lastUpdated={data.chainNowMs ? new Date(data.chainNowMs).toISOString() : undefined}
+                state={chainNowMs ? "live" : "cached"}
+                lastUpdated={chainNowMs ? new Date(chainNowMs).toISOString() : undefined}
               />
             </>
           ) : (
-            <span className="mono figures">—</span> trials posted
+            <>
+              <span className="mono figures">—</span> trials posted
+            </>
           )}
         </div>
       </div>
@@ -111,7 +112,7 @@ export default function TrialsPage() {
             <>
               <div className="trial-grid" id="trial-table">
                 {page.visible.map((t) => (
-                  <TrialCard key={t.id} trial={t} />
+                  <TrialCard key={t.id} trial={t} chainNowMs={chainNowMs ?? null} />
                 ))}
               </div>
 

@@ -32,7 +32,7 @@ export function DataTable({
   if (rows.length === 0) {
     return (
       <div className="scroll-x" aria-label="Data table">
-        <table className="data-table" role="grid" aria-rowcount="0">
+        <table className="data-table" role="grid" aria-rowcount={0}>
           <thead>
             <tr>
               {columns.map((c) => (
