@@ -127,6 +127,9 @@ pub const YIELD_FORFEIT_BPS: u64 = ${P.yield_forfeit_bps};
 pub const YIELD_COOLDOWN_SECONDS: u64 = ${P.yield_cooldown_seconds};
 pub const STANDING_HALF_LIFE_DAYS: u64 = ${P.standing_half_life_days};
 pub const REWARD_FLOOR_ETH_WEI: u128 = ${P.reward_floor.eth};
+// The same floor in lamports, for the Solana program: amounts there are lamports, and
+// comparing a lamport balance against the wei floor priced the minimum trial at 10M SOL.
+pub const REWARD_FLOOR_SOL_LAMPORTS: u64 = ${P.reward_floor.sol};
 pub const SEASON_LENGTH_DAYS: u64 = ${P.season_length_days};
 
 // v1 frozen records (ADR-0002 / RewardMath.sol): the legacy law, not v2 parameters.
@@ -166,6 +169,8 @@ export const YIELD_COOLDOWN_SECONDS = ${P.yield_cooldown_seconds}n;
 export const STANDING_HALF_LIFE_DAYS = ${P.standing_half_life_days}n;
 // The floor standing is measured in: a trial worth one floor weighs log2(2) = 1.
 export const REWARD_FLOOR_ETH_WEI = ${P.reward_floor.eth}n;
+// The same floor in lamports, for the Solana program — see the note in params.rs.
+export const REWARD_FLOOR_SOL_LAMPORTS = ${P.reward_floor.sol}n;
 export const SEASON_LENGTH_DAYS = ${P.season_length_days}n;
 
 // v1 frozen records (ADR-0002 / RewardMath.sol): the legacy law, not v2 parameters.

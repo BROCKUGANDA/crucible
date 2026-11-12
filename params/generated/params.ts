@@ -30,6 +30,8 @@ export const YIELD_COOLDOWN_SECONDS = 86400n;
 export const STANDING_HALF_LIFE_DAYS = 45n;
 // The floor standing is measured in: a trial worth one floor weighs log2(2) = 1.
 export const REWARD_FLOOR_ETH_WEI = 10000000000000000n;
+// The same floor in lamports, for the Solana program — see the note in params.rs.
+export const REWARD_FLOOR_SOL_LAMPORTS = 100000000n;
 export const SEASON_LENGTH_DAYS = 42n;
 
 // v1 frozen records (ADR-0002 / RewardMath.sol): the legacy law, not v2 parameters.
