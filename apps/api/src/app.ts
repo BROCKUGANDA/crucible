@@ -1373,7 +1373,7 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
     }
 
     // Build the new spec: current revision spec overlaid with editable fields.
-    const currentSpec = trial.currentRevision?.spec ?? {
+    const currentSpec = trial.currentRevision?.spec ?? trial.draftSpec ?? {
       title: "",
       objective: "",
       rewardWei: "0",
