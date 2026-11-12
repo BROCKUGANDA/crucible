@@ -282,16 +282,17 @@ async function rememberSessionToken(challengeId: string, nonce: string, sessionT
  *
  * The dev secret now has to be asked for by name. Failing closed is the
  * default; the local demo opts in.
+ *
+ * The old `NODE_ENV !== "production"` branch is gone. `NODE_ENV` is not a
+ * secret-management control: a host that simply never sets it (or sets
+ * `NODE_ENV=staging`) is exactly the deployment this refuses to sign for. The
+ * gate is whether the operator supplied a secret, not what the process calls
+ * itself.
  */
 function secret(): string | null {
   const fromEnv = process.env.AUTH_SECRET;
   if (fromEnv && fromEnv.length >= 16) return fromEnv;
   if (process.env.AUTH_ALLOW_DEV_SECRET === "1") return DEV_SECRET;
-  // Local dev/test fallback (HMAC still verified against the well-known dev
-  // secret; production must set AUTH_SECRET — see .env.mainnet.example).
-  // This preserves the documented demo behaviour while keeping fail-closed
-  // semantics for real deployments (AUTH_SECRET required in prod).
-  if (process.env.NODE_ENV !== "production") return DEV_SECRET;
   return null;
 }
 

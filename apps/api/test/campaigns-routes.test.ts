@@ -13,6 +13,11 @@ import type { Hono } from "hono";
 import { createCampaignRoutes, type CampaignEligibilitySignals } from "../src/campaigns-routes";
 import { CampaignDistributor, type EligibilityCriterion } from "../src/campaigns";
 
+// This file mints session cookies against the published development secret, so it
+// has to ask for that secret by name. Relying on the old `NODE_ENV !== "production"`
+// fallback was relying on a deployment that forgets AUTH_SECRET being able to sign.
+process.env.AUTH_ALLOW_DEV_SECRET = "1";
+
 const DEV_SECRET = "crucible-local-dev-secret-not-for-production";
 const WALLET = "0x1111111111111111111111111111111111111111";
 const CAMPAIGN_SPONSOR = "0x9999999999999999999999999999999999999999";

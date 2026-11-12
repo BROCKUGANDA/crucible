@@ -408,3 +408,48 @@ describe("auth: one signature, one session, even concurrently", () => {
     expect(second.headers.get("Set-Cookie")).toBe(first.headers.get("Set-Cookie"));
   });
 });
+
+describe("auth: the secret is supplied, not inferred from the environment", () => {
+  /**
+   * The regression this file exists to prevent: `secret()` used to answer the
+   * dev constant whenever `NODE_ENV !== "production"`, so any host that never
+   * set NODE_ENV — or set it to "staging" — signed sessions with a key
+   * published in the repository. `.env.example` says the opposite: no secret,
+   * 503. Both shapes of the old bug are asserted here.
+   */
+  it("refuses to sign when AUTH_SECRET is unset, whatever NODE_ENV says", async () => {
+    const saved = {
+      secret: process.env.AUTH_SECRET,
+      dev: process.env.AUTH_ALLOW_DEV_SECRET,
+      nodeEnv: process.env.NODE_ENV,
+    };
+    const call = () =>
+      app.request("/auth/nonce", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ address: ADDRESS }),
+      });
+    try {
+      delete process.env.AUTH_SECRET;
+      delete process.env.AUTH_ALLOW_DEV_SECRET;
+
+      // A host that never sets NODE_ENV at all.
+      delete process.env.NODE_ENV;
+      const bare = await call();
+      expect(bare.status).toBe(503);
+      expect(((await bare.json()) as { error: string }).error).toBe("auth_unconfigured");
+
+      // A host that sets a non-production NODE_ENV — the branch that signed.
+      process.env.NODE_ENV = "development";
+      const development = await call();
+      expect(development.status).toBe(503);
+      expect(((await development.json()) as { error: string }).error).toBe("auth_unconfigured");
+    } finally {
+      for (const [key, value] of Object.entries(saved)) {
+        const name = key === "secret" ? "AUTH_SECRET" : key === "dev" ? "AUTH_ALLOW_DEV_SECRET" : "NODE_ENV";
+        if (value === undefined) delete process.env[name];
+        else process.env[name] = value;
+      }
+    }
+  });
+});

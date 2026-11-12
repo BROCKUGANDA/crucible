@@ -113,6 +113,21 @@ describe("rate limiting", () => {
     expect(stream.status).toBe(200);
   });
 
+  it("gives the faucet its own bucket on top of the global one", async () => {
+    // The global bucket is deliberately enormous, so a refusal here can only come
+    // from the faucet's own bucket. The faucet is the one route that asks the funder
+    // to move treasury funds; the app-wide budget is not a substitute for a cap on
+    // how often the treasury may be asked.
+    const limited = createApp({ getModel: () => model }, { rateLimit: { limit: 1000, windowMs: 60_000 } });
+    const headers = { "content-type": "application/json", "x-forwarded-for": "10.0.7.7" };
+    const body = JSON.stringify({ wallet: `0x${"11".repeat(20)}`, amountEth: 0.001 });
+    const statuses: number[] = [];
+    for (let i = 0; i < 12; i++) {
+      statuses.push((await limited.request("/faucet", { method: "POST", headers, body })).status);
+    }
+    expect(statuses).toContain(429);
+  });
+
   it("keys buckets per client when it is told to trust the proxy", async () => {
     const opts = { rateLimit: { limit: 1, windowMs: 60_000, trustProxy: true } };
     const limited = createApp({ getModel: () => model }, opts);
