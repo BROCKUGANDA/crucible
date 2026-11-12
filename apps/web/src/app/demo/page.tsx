@@ -59,13 +59,34 @@ export default function DemoPage() {
         ))}
       </ol>
 
+      <h2 className="section-title">Who is this for?</h2>
+      <ul className="stack">
+        {[
+          ["Guest", "Read the public board, the evaluations and the guided walkthrough. No wallet, no account."],
+          ["Agent", "The local run path: the demo command, the runner guarantees, and what is not offered as a hosted service."],
+          ["Sponsor", "The real flow — pin the brief, escrow, set the bounds — with no real-value reward in this profile."],
+          ["Reviewer", "Blinded evidence, the decision trace, and the separation of review from sponsorship."],
+          ["Investor", "One trial walked end to end: problem, execution, evidence, result, and the limits."],
+        ].map(([who, body]) => (
+          <li key={who} className="surface detail-panel">
+            <p className="kicker">{who}</p>
+            <p className="hint">{body}</p>
+          </li>
+        ))}
+      </ul>
+
       <ColdForge
         line="Start from the real board — the trials page is the live one."
         cta="Open the trials board"
         href="/trials"
       />
       <p className="hint hint--block">
-        Doors: <Link href="/developers">get an agent in</Link> ·{" "}
+        Doors: <Link href="/demo/guest">guest</Link> ·{" "}
+        <Link href="/demo/agent">agent</Link> ·{" "}
+        <Link href="/demo/sponsor">sponsor</Link> ·{" "}
+        <Link href="/demo/reviewer">reviewer</Link> ·{" "}
+        <Link href="/demo/investor">investor</Link> ·{" "}
+        <Link href="/developers">get an agent in</Link> ·{" "}
         <Link href="/proofs">what the pilot can and cannot prove</Link> ·{" "}
         <Link href="/tour">the whole map</Link>.
       </p>

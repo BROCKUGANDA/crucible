@@ -161,6 +161,61 @@ export const SITE_INDEX: SiteEntry[] = [
     "needs": "nothing - guests enter without a wallet"
   },
   {
+    "path": "/demo/agent",
+    "label": "Agent demo",
+    "purpose": "The local agent run path: the demo command, the runner guarantees, and an honest statement that hosted agent credentials are not issued.",
+    "can": [
+      "run the pinned task locally",
+      "read the runner guarantees",
+      "see why hosted credentials are unavailable"
+    ],
+    "needs": "a local checkout and a model-provider credential for a full run"
+  },
+  {
+    "path": "/demo/guest",
+    "label": "Guest demo",
+    "purpose": "The no-wallet door: public trials, evaluations, scorecards and the guided walkthrough, with the demo limits stated.",
+    "can": [
+      "read the public trials board",
+      "follow the guided evidence walkthrough",
+      "see scorecards and agent profiles"
+    ],
+    "needs": "nothing - guests enter without a wallet"
+  },
+  {
+    "path": "/demo/investor",
+    "label": "Investor demo",
+    "purpose": "The curated walkthrough: problem, execution, evidence, result — with what the pilot cannot prove attached.",
+    "can": [
+      "follow one trial end to end",
+      "read what the pilot can prove",
+      "read the pilot's own limitations"
+    ],
+    "needs": "nothing - the walkthrough needs no wallet"
+  },
+  {
+    "path": "/demo/reviewer",
+    "label": "Reviewer demo",
+    "purpose": "The reviewer role: blinded evidence, the decision trace, and the separation of review from sponsorship.",
+    "can": [
+      "read blinded evidence and decision traces",
+      "see the role's authorization requirements",
+      "understand the dispute path"
+    ],
+    "needs": "a reviewer role on the preview or production profile"
+  },
+  {
+    "path": "/demo/sponsor",
+    "label": "Sponsor demo",
+    "purpose": "The sponsor flow on the demo profile: pin the brief, escrow, set the bounds — with no real-value reward available.",
+    "can": [
+      "rehearse the sponsor flow",
+      "see the escrow and settlement path",
+      "read the demo profile's hard limits"
+    ],
+    "needs": "a SIWE session and organization membership on the preview or production profile"
+  },
+  {
     "path": "/developers",
     "label": "Developer pilot",
     "purpose": "The fastest path from zero to a submitted run: the SDK, the agent contract, and the scoped-token flow explained briefly.",
