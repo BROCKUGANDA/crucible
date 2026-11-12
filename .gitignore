@@ -114,3 +114,10 @@ crucible-contracts/foundry.lock
 # carrying them in one file. No tarball is tracked here, so the pattern retires nothing.
 *.tar.gz
 
+# Playwright run output: traces, screenshots and the last-run summary are per-run
+# artifacts, not source. The specs and the config that produces them are tracked.
+apps/web/test-results/
+apps/web/playwright-report/
+apps/web/blob-report/
+apps/web/.playwright/
+

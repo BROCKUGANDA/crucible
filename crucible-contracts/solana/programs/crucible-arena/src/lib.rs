@@ -1,15 +1,12 @@
 //! CRUCIBLE arena, Solana side (gates 734-746, 748-751, 753, 783).
-//! P4 core: post_trial + claim_trial + submit_run (Ed25519 introspection) + settle (O1).
+//! Native-SOL escrow: the trial PDA itself holds lamports (no SPL token accounts).
 
 pub mod errors;
-pub mod instructions;
 pub mod params;
 pub mod state;
 
 use anchor_lang::prelude::*;
 use anchor_lang::solana_program::sysvar::instructions as ix_sysvar;
-use anchor_spl::associated_token::AssociatedToken;
-use anchor_spl::token::{Mint, Token, TokenAccount};
 use errors::ArenaError;
 use params::*;
 use state::*;
@@ -23,7 +20,6 @@ const ED25519_PROGRAM_ID: Pubkey = Pubkey::new_from_array([
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 ]);
 
-// --------------------------------------------------------------------------- Accounts
 #[derive(Accounts)]
 #[instruction(nonce: u64, reward: u64, spec_digest: [u8;32], suite_digest: [u8;32],
              holdout_commitment: [u8;32], skeptic_window: u32, open_span: u64)]
@@ -40,23 +36,6 @@ pub struct PostTrial<'info> {
     )]
     pub trial: Box<Account<'info, Trial>>,
 
-    #[account(
-        init,
-        seeds = [b"vault", trial.key().as_ref()],
-        bump,
-        payer = sponsor,
-        token::mint = mint,
-        token::authority = trial,
-    )]
-    pub vault: Box<Account<'info, TokenAccount>>,
-
-    #[account(mut, constraint = sponsor_ata.mint == mint.key(), constraint = sponsor_ata.owner == sponsor.key())]
-    pub sponsor_ata: Account<'info, TokenAccount>,
-
-    pub mint: Account<'info, Mint>,
-
-    pub token_program: Program<'info, Token>,
-    pub associated_token_program: Program<'info, AssociatedToken>,
     pub system_program: Program<'info, System>,
 }
 
@@ -78,13 +57,6 @@ pub struct ClaimTrial<'info> {
     )]
     pub claim: Account<'info, Claim>,
 
-    #[account(mut, constraint = agent_ata.mint == trial.mint, constraint = agent_ata.owner == agent.key())]
-    pub agent_ata: Account<'info, TokenAccount>,
-
-    #[account(mut, constraint = vault.mint == trial.mint)]
-    pub vault: Account<'info, TokenAccount>,
-
-    pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,
 }
 
@@ -96,10 +68,6 @@ pub struct SubmitRun<'info> {
     #[account(mut)]
     pub trial: Account<'info, Trial>,
 
-    #[account(mut, constraint = vault.mint == trial.mint)]
-    pub vault: Account<'info, TokenAccount>,
-
-    /// CHECK: Instructions sysvar for Ed25519 introspection (§9.3).
     pub instructions: UncheckedAccount<'info>,
 }
 
@@ -111,19 +79,14 @@ pub struct Settle<'info> {
     #[account(mut)]
     pub trial: Account<'info, Trial>,
 
-    #[account(mut, constraint = vault.mint == trial.mint)]
-    pub vault: Account<'info, TokenAccount>,
+    #[account(mut, constraint = agent_wallet.key() == trial.agent)]
+    pub agent_wallet: UncheckedAccount<'info>,
 
-    #[account(mut, constraint = agent_ata.mint == trial.mint, constraint = agent_ata.owner == trial.agent)]
-    pub agent_ata: Account<'info, TokenAccount>,
+    #[account(mut)]
+    pub treasury_wallet: UncheckedAccount<'info>,
 
-    #[account(mut, constraint = treasury_ata.mint == trial.mint)]
-    pub treasury_ata: Account<'info, TokenAccount>,
-
-    pub token_program: Program<'info, Token>,
+    pub system_program: Program<'info, System>,
 }
-
-// --------------------------------------------------------------------------- Accounts: yield/timeout/breaks
 
 #[derive(Accounts)]
 pub struct YieldTrial<'info> {
@@ -133,13 +96,7 @@ pub struct YieldTrial<'info> {
     #[account(mut)]
     pub trial: Account<'info, Trial>,
 
-    #[account(mut, constraint = vault.mint == trial.mint)]
-    pub vault: Account<'info, TokenAccount>,
-
-    #[account(mut, constraint = agent_ata.mint == trial.mint, constraint = agent_ata.owner == agent.key())]
-    pub agent_ata: Account<'info, TokenAccount>,
-
-    pub token_program: Program<'info, Token>,
+    pub system_program: Program<'info, System>,
 }
 
 #[derive(Accounts)]
@@ -150,16 +107,13 @@ pub struct ClaimTimeout<'info> {
     #[account(mut)]
     pub trial: Account<'info, Trial>,
 
-    #[account(mut, constraint = vault.mint == trial.mint)]
-    pub vault: Account<'info, TokenAccount>,
+    #[account(mut, constraint = sponsor_wallet.key() == trial.sponsor)]
+    pub sponsor_wallet: UncheckedAccount<'info>,
 
-    #[account(mut, constraint = sponsor_ata.mint == trial.mint)]
-    pub sponsor_ata: Account<'info, TokenAccount>,
+    #[account(mut, constraint = agent_wallet.key() == trial.agent)]
+    pub agent_wallet: UncheckedAccount<'info>,
 
-    #[account(mut, constraint = agent_ata.mint == trial.mint)]
-    pub agent_ata: Account<'info, TokenAccount>,
-
-    pub token_program: Program<'info, Token>,
+    pub system_program: Program<'info, System>,
 }
 
 #[derive(Accounts)]
@@ -180,13 +134,6 @@ pub struct CommitBreak<'info> {
     )]
     pub brk: Account<'info, Break>,
 
-    #[account(mut, constraint = skeptic_ata.mint == trial.mint, constraint = skeptic_ata.owner == skeptic.key())]
-    pub skeptic_ata: Account<'info, TokenAccount>,
-
-    #[account(mut, constraint = vault.mint == trial.mint)]
-    pub vault: Account<'info, TokenAccount>,
-
-    pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,
 }
 
@@ -209,11 +156,9 @@ pub struct FreezeDocket<'info> {
     pub trial: Account<'info, Trial>,
 }
 
-// --------------------------------------------------------------------------- Program
 #[program]
 pub mod crucible_arena {
     use super::*;
-    use anchor_spl::token;
 
     pub fn post_trial(
         ctx: Context<PostTrial>,
@@ -242,17 +187,15 @@ pub mod crucible_arena {
         let fee = (reward as u128 * ARENA_FEE_BPS as u128 / 10000) as u64;
         let amount = reward.checked_add(fee).ok_or(ArenaError::Overflow)?;
 
-        token::transfer(
-            CpiContext::new(
-                ctx.accounts.token_program.to_account_info(),
-                token::Transfer {
-                    from: ctx.accounts.sponsor_ata.to_account_info(),
-                    to: ctx.accounts.vault.to_account_info(),
-                    authority: ctx.accounts.sponsor.to_account_info(),
-                },
-            ),
-            amount,
-        )?;
+        let cpi_accounts = anchor_lang::system_program::Transfer {
+            from: ctx.accounts.sponsor.to_account_info(),
+            to: ctx.accounts.trial.to_account_info(),
+        };
+        let cpi_ctx = CpiContext::new(
+            ctx.accounts.system_program.to_account_info(),
+            cpi_accounts,
+        );
+        anchor_lang::system_program::transfer(cpi_ctx, amount)?;
 
         let clock = Clock::get()?;
         let t = &mut ctx.accounts.trial;
@@ -270,7 +213,6 @@ pub mod crucible_arena {
         t.spec_digest = spec_digest;
         t.suite_digest = suite_digest;
         t.holdout_commitment = holdout_commitment;
-        t.mint = ctx.accounts.mint.key();
         t.nonce = nonce;
         t.claim_deadline = 0;
         t.agent = Pubkey::default();
@@ -284,38 +226,45 @@ pub mod crucible_arena {
         t.replay_hash = [0u8; 32];
         t.model_harness_id = [0u8; 32];
         t.runner_key = Pubkey::default();
+        t.break_count = 0;
+        t.docket_frozen = false;
+        t.docket_size = 0;
         Ok(())
     }
 
     pub fn claim_trial(ctx: Context<ClaimTrial>, bond: u64, runner_key: Pubkey) -> Result<()> {
         let clock = Clock::get()?;
-        let t = &mut ctx.accounts.trial;
-        if t.status != TrialStatus::Open {
-            return err!(ArenaError::AlreadyClaimed);
+        // validation (immutable borrow scoped)
+        {
+            let t = &ctx.accounts.trial;
+            if t.status != TrialStatus::Open {
+                return err!(ArenaError::AlreadyClaimed);
+            }
+            if clock.unix_timestamp >= t.open_until {
+                return err!(ArenaError::ClaimWindowClosed);
+            }
+            if ctx.accounts.agent.key() == t.sponsor {
+                return err!(ArenaError::SelfClaim);
+            }
+            let bond_min = (t.reward as u128 * AGENT_BOND_MIN_BPS as u128 / 10000) as u64;
+            if bond < bond_min {
+                return err!(ArenaError::StakeTooSmall);
+            }
         }
-        if clock.unix_timestamp >= t.open_until {
-            return err!(ArenaError::ClaimWindowClosed);
-        }
-        if ctx.accounts.agent.key() == t.sponsor {
-            return err!(ArenaError::SelfClaim);
-        }
-        let bond_min = (t.reward as u128 * AGENT_BOND_MIN_BPS as u128 / 10000) as u64;
-        if bond < bond_min {
-            return err!(ArenaError::StakeTooSmall);
-        }
-        token::transfer(
-            CpiContext::new(
-                ctx.accounts.token_program.to_account_info(),
-                token::Transfer {
-                    from: ctx.accounts.agent_ata.to_account_info(),
-                    to: ctx.accounts.vault.to_account_info(),
-                    authority: ctx.accounts.agent.to_account_info(),
-                },
-            ),
-            bond,
-        )?;
+        // transfer
+        let cpi_accounts = anchor_lang::system_program::Transfer {
+            from: ctx.accounts.agent.to_account_info(),
+            to: ctx.accounts.trial.to_account_info(),
+        };
+        let cpi_ctx = CpiContext::new(
+            ctx.accounts.system_program.to_account_info(),
+            cpi_accounts,
+        );
+        anchor_lang::system_program::transfer(cpi_ctx, bond)?;
 
         let claim_span = {
+            // re-read immutable
+            let t = &ctx.accounts.trial;
             let remaining = if t.open_until > clock.unix_timestamp {
                 (t.open_until - clock.unix_timestamp) as u64
             } else { 0u64 };
@@ -325,6 +274,7 @@ pub mod crucible_arena {
         };
         let deadline = clock.unix_timestamp.checked_add(claim_span as i64).ok_or(ArenaError::Overflow)?;
 
+        let t = &mut ctx.accounts.trial;
         t.status = TrialStatus::Claimed;
         t.ever_claimed = true;
         t.agent = ctx.accounts.agent.key();
@@ -364,11 +314,7 @@ pub mod crucible_arena {
             return err!(ArenaError::ZeroDigest);
         }
 
-        // Ed25519 introspection (§9.3): an Ed25519SigVerify instruction must
-        // precede this one in the same transaction. Verify the runner signature
-        // and the attestor co-signature.
         let ixs = ix_sysvar::load_current_index_checked(&ctx.accounts.instructions.to_account_info())?;
-        // runner instruction at ixs-1
         if ixs == 0 {
             return err!(ArenaError::BadSigner);
         }
@@ -376,16 +322,13 @@ pub mod crucible_arena {
         if runner_ix.program_id != ED25519_PROGRAM_ID {
             return err!(ArenaError::BadSigner);
         }
-        // parse runner pubkey + message from the Ed25519 instruction data
         let (runner_pubkey, runner_message) = parse_ed25519(&runner_ix.data)?;
         if Pubkey::new_from_array(runner_pubkey) != t.runner_key {
             return err!(ArenaError::BadSigner);
         }
-        // verify message contains the expected digests
         if !runner_message.starts_with(b"CRUCIBLE:run:v2") {
             return err!(ArenaError::BadSigner);
         }
-        // attestor instruction at ixs-2 (optional but recommended)
         if ixs >= 2 {
             let attest_ix = ix_sysvar::load_instruction_at_checked((ixs - 2) as usize, &ctx.accounts.instructions.to_account_info())?;
             if attest_ix.program_id == ED25519_PROGRAM_ID {
@@ -407,7 +350,6 @@ pub mod crucible_arena {
             .checked_add((t.skeptic_window as i64) / 2)
             .ok_or(ArenaError::Overflow)?;
         if t.holdout_due_by > t.window_end { t.holdout_due_by = t.window_end; }
-        let _ = &ctx.accounts.vault;
         Ok(())
     }
 
@@ -436,40 +378,30 @@ pub mod crucible_arena {
 
         let seeds: &[&[u8]] = &[b"trial", sponsor_key.as_ref(), &nonce.to_le_bytes(), &[bump]];
         let signer = &[seeds];
-        anchor_spl::token::transfer(
+        let trial_info = ctx.accounts.trial.to_account_info();
+        anchor_lang::system_program::transfer(
             CpiContext::new_with_signer(
-                ctx.accounts.token_program.to_account_info(),
-                anchor_spl::token::Transfer {
-                    from: ctx.accounts.vault.to_account_info(),
-                    to: ctx.accounts.agent_ata.to_account_info(),
-                    authority: ctx.accounts.trial.to_account_info(),
+                ctx.accounts.system_program.to_account_info(),
+                anchor_lang::system_program::Transfer {
+                    from: trial_info.clone(),
+                    to: ctx.accounts.agent_wallet.to_account_info(),
                 },
                 signer,
             ),
             agent_amount,
         )?;
         if fee > 0 {
-            anchor_spl::token::transfer(
+            anchor_lang::system_program::transfer(
                 CpiContext::new_with_signer(
-                    ctx.accounts.token_program.to_account_info(),
-                    anchor_spl::token::Transfer {
-                        from: ctx.accounts.vault.to_account_info(),
-                        to: ctx.accounts.treasury_ata.to_account_info(),
-                        authority: ctx.accounts.trial.to_account_info(),
+                    ctx.accounts.system_program.to_account_info(),
+                    anchor_lang::system_program::Transfer {
+                        from: trial_info.clone(),
+                        to: ctx.accounts.treasury_wallet.to_account_info(),
                     },
                     signer,
                 ),
                 fee,
             )?;
-        }
-        // conservation assert
-        ctx.accounts.vault.reload()?;
-        let vault_bal = ctx.accounts.vault.amount;
-        let deposited = ctx.accounts.trial.deposited;
-        let paid_out = ctx.accounts.trial.paid_out;
-        let expected = deposited.checked_sub(paid_out).ok_or(ArenaError::Overflow)?;
-        if vault_bal != expected {
-            return err!(ArenaError::Overflow);
         }
         Ok(())
     }
@@ -483,7 +415,6 @@ pub mod crucible_arena {
         if ctx.accounts.agent.key() != t.agent {
             return err!(ArenaError::SelfClaim);
         }
-        // return bond
         let bump = t.bump;
         let sponsor_key = t.sponsor;
         let nonce = t.nonce;
@@ -493,22 +424,20 @@ pub mod crucible_arena {
         t.agent = Pubkey::default();
         t.claim_deadline = 0;
         t.active_counted = false;
-        // cooldown recorded off-chain; transfer bond back with PDA signer
+
         let seeds: &[&[u8]] = &[b"trial", sponsor_key.as_ref(), &nonce.to_le_bytes(), &[bump]];
         let signer = &[seeds];
-        anchor_spl::token::transfer(
+        anchor_lang::system_program::transfer(
             CpiContext::new_with_signer(
-                ctx.accounts.token_program.to_account_info(),
-                anchor_spl::token::Transfer {
-                    from: ctx.accounts.vault.to_account_info(),
-                    to: ctx.accounts.agent_ata.to_account_info(),
-                    authority: ctx.accounts.trial.to_account_info(),
+                ctx.accounts.system_program.to_account_info(),
+                anchor_lang::system_program::Transfer {
+                    from: ctx.accounts.trial.to_account_info(),
+                    to: ctx.accounts.agent.to_account_info(),
                 },
                 signer,
             ),
             bond,
         )?;
-        // note: vault authority is trial PDA; need signer seeds. Re-do with signer.
         let _ = clock;
         Ok(())
     }
@@ -525,8 +454,7 @@ pub mod crucible_arena {
         let bond = t.bond;
         let forfeit = (bond as u128 * CLAIM_TIMEOUT_FORFEIT_BPS as u128 / 10000) as u64;
         let agent_amount = bond.checked_sub(forfeit).ok_or(ArenaError::Overflow)?;
-        // sponsor gets forfeit, agent gets rest
-        let trial_key = t.sponsor;
+        let sponsor_key = t.sponsor;
         let nonce = t.nonce;
         let bump = t.bump;
         t.status = TrialStatus::Open;
@@ -538,16 +466,16 @@ pub mod crucible_arena {
         t.paid_out = t.paid_out.checked_add(forfeit).ok_or(ArenaError::Overflow)?
             .checked_add(agent_amount).ok_or(ArenaError::Overflow)?;
 
-        let seeds: &[&[u8]] = &[b"trial", trial_key.as_ref(), &nonce.to_le_bytes(), &[bump]];
+        let seeds: &[&[u8]] = &[b"trial", sponsor_key.as_ref(), &nonce.to_le_bytes(), &[bump]];
         let signer = &[seeds];
+        let trial_info = ctx.accounts.trial.to_account_info();
         if forfeit > 0 {
-            anchor_spl::token::transfer(
+            anchor_lang::system_program::transfer(
                 CpiContext::new_with_signer(
-                    ctx.accounts.token_program.to_account_info(),
-                    anchor_spl::token::Transfer {
-                        from: ctx.accounts.vault.to_account_info(),
-                        to: ctx.accounts.sponsor_ata.to_account_info(),
-                        authority: ctx.accounts.trial.to_account_info(),
+                    ctx.accounts.system_program.to_account_info(),
+                    anchor_lang::system_program::Transfer {
+                        from: trial_info.clone(),
+                        to: ctx.accounts.sponsor_wallet.to_account_info(),
                     },
                     signer,
                 ),
@@ -555,13 +483,12 @@ pub mod crucible_arena {
             )?;
         }
         if agent_amount > 0 {
-            anchor_spl::token::transfer(
+            anchor_lang::system_program::transfer(
                 CpiContext::new_with_signer(
-                    ctx.accounts.token_program.to_account_info(),
-                    anchor_spl::token::Transfer {
-                        from: ctx.accounts.vault.to_account_info(),
-                        to: ctx.accounts.agent_ata.to_account_info(),
-                        authority: ctx.accounts.trial.to_account_info(),
+                    ctx.accounts.system_program.to_account_info(),
+                    anchor_lang::system_program::Transfer {
+                        from: trial_info.clone(),
+                        to: ctx.accounts.agent_wallet.to_account_info(),
                     },
                     signer,
                 ),
@@ -572,39 +499,39 @@ pub mod crucible_arena {
     }
 
     pub fn commit_break(ctx: Context<CommitBreak>, commitment: [u8; 32]) -> Result<()> {
-        // Read immutable trial data before mutable borrow.
         let trial_key_for_break = ctx.accounts.trial.key();
         let skeptic_for_break = ctx.accounts.skeptic.key();
         let clock = Clock::get()?;
-        let t = &mut ctx.accounts.trial;
-        if t.status != TrialStatus::Submitted {
-            return err!(ArenaError::IllegalTransition);
-        }
-        if clock.unix_timestamp >= t.window_end {
-            return err!(ArenaError::WindowStillOpen);
-        }
-        if commitment == [0u8; 32] {
-            return err!(ArenaError::TooSmall);
-        }
-        if ctx.accounts.skeptic.key() == t.agent {
-            return err!(ArenaError::SelfClaim);
-        }
-        let stake_min = (t.reward as u128 * SKEPTIC_STAKE_MIN_BPS as u128 / 10000) as u64;
-        let seat_fee = (t.reward as u128 * SEAT_FEE_BPS as u128 * ARGUS_SEATS as u128 / 10000) as u64;
-        // skeptic must have sent stake+seat_fee; we transfer from skeptic_ata
-        // For scaffold, require the skeptic to have approved; transfer stake+seat_fee.
-        let total = stake_min.checked_add(seat_fee).ok_or(ArenaError::Overflow)?;
-        anchor_spl::token::transfer(
-            CpiContext::new(
-                ctx.accounts.token_program.to_account_info(),
-                anchor_spl::token::Transfer {
-                    from: ctx.accounts.skeptic_ata.to_account_info(),
-                    to: ctx.accounts.vault.to_account_info(),
-                    authority: ctx.accounts.skeptic.to_account_info(),
-                },
-            ),
-            total,
-        )?;
+        // validation + compute values (immutable borrow scoped)
+        let (stake_min, seat_fee, total) = {
+            let t = &ctx.accounts.trial;
+            if t.status != TrialStatus::Submitted {
+                return err!(ArenaError::IllegalTransition);
+            }
+            if clock.unix_timestamp >= t.window_end {
+                return err!(ArenaError::WindowStillOpen);
+            }
+            if commitment == [0u8; 32] {
+                return err!(ArenaError::TooSmall);
+            }
+            if ctx.accounts.skeptic.key() == t.agent {
+                return err!(ArenaError::SelfClaim);
+            }
+            let stake_min = (t.reward as u128 * SKEPTIC_STAKE_MIN_BPS as u128 / 10000) as u64;
+            let seat_fee = (t.reward as u128 * SEAT_FEE_BPS as u128 * ARGUS_SEATS as u128 / 10000) as u64;
+            let total = stake_min.checked_add(seat_fee).ok_or(ArenaError::Overflow)?;
+            (stake_min, seat_fee, total)
+        };
+
+        let cpi_accounts = anchor_lang::system_program::Transfer {
+            from: ctx.accounts.skeptic.to_account_info(),
+            to: ctx.accounts.trial.to_account_info(),
+        };
+        let cpi_ctx = CpiContext::new(
+            ctx.accounts.system_program.to_account_info(),
+            cpi_accounts,
+        );
+        anchor_lang::system_program::transfer(cpi_ctx, total)?;
 
         let brk = &mut ctx.accounts.brk;
         brk.bump = ctx.bumps.brk;
@@ -617,6 +544,7 @@ pub mod crucible_arena {
         brk.revealed = false;
         brk.settled = false;
 
+        let t = &mut ctx.accounts.trial;
         t.break_count = t.break_count.checked_add(1).ok_or(ArenaError::Overflow)?;
         t.deposited = t.deposited.checked_add(total).ok_or(ArenaError::Overflow)?;
         Ok(())
@@ -636,7 +564,6 @@ pub mod crucible_arena {
         if brk.revealed {
             return err!(ArenaError::IllegalTransition);
         }
-        // verify commitment: sha256("CRUCIBLE:break:v1" || trial || skeptic || type || evidence || salt)
         use anchor_lang::solana_program::hash::hash;
         let mut buf = Vec::new();
         buf.extend_from_slice(b"CRUCIBLE:break:v1");
@@ -661,45 +588,26 @@ pub mod crucible_arena {
         if t.status != TrialStatus::Submitted {
             return err!(ArenaError::IllegalTransition);
         }
-        // scaffold: just mark frozen
         t.docket_frozen = true;
         t.docket_size = t.break_count.min(MAX_DOCKET as u16) as u8;
-        // O1 scaffold: agent takes R+B; treasury takes fee. O2/O8 deferred to panel tally.
         Ok(())
     }
 }
 
-// --------------------------------------------------------------------------- helpers
 fn _unused() {}
 fn parse_ed25519(data: &[u8]) -> Result<([u8; 32], Vec<u8>)> {
-    // Ed25519SigVerify instruction data layout:
-    //   [0] num_signatures (u8)
-    //   [1] padding (u8)
-    //   then per signature: pubkey_offset(u16), pubkey_ix(u16), sig_offset(u16), sig_ix(u16),
-    //                       msg_offset(u16), msg_ix(u16)
-    //   then the referenced bytes (pubkey 32, sig 64, msg variable)
     if data.len() < 2 { return err!(ArenaError::BadSigner); }
     let num = data[0] as usize;
     if num == 0 { return err!(ArenaError::BadSigner); }
-    // offsets start at byte 2, 12 bytes per signature
     let off_start = 2usize;
     let per_sig = 12usize;
     if data.len() < off_start + per_sig { return err!(ArenaError::BadSigner); }
     let pubkey_offset = u16::from_le_bytes([data[off_start], data[off_start + 1]]) as usize;
-    let _pubkey_ix = u16::from_le_bytes([data[off_start + 2], data[off_start + 3]]);
-    let sig_offset = u16::from_le_bytes([data[off_start + 4], data[off_start + 5]]) as usize;
-    let _sig_ix = u16::from_le_bytes([data[off_start + 6], data[off_start + 7]]);
     let msg_offset = u16::from_le_bytes([data[off_start + 8], data[off_start + 9]]) as usize;
-    let _msg_ix = u16::from_le_bytes([data[off_start + 10], data[off_start + 11]]);
-
     if pubkey_offset + 32 > data.len() { return err!(ArenaError::BadSigner); }
     if msg_offset >= data.len() { return err!(ArenaError::BadSigner); }
     let mut pubkey = [0u8; 32];
     pubkey.copy_from_slice(&data[pubkey_offset..pubkey_offset + 32]);
     let message = data[msg_offset..].to_vec();
-    // trim trailing padding? The message may include the sig bytes after; but typically
-    // msg_ix == current ix (0xffff-ish) and msg extends to end. We'll take up to a
-    // reasonable bound: if there's a signature after, trim. For scaffold, take all remaining.
-    let _ = sig_offset;
     Ok((pubkey, message))
 }
