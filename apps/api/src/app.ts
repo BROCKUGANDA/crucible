@@ -866,6 +866,26 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
   app.route("/frenchy", createFrenchyRoutes(opts.frenchy ?? null, { getModel: deps.getModel }));
 
   /**
+   * The faucet is the one route that asks the funder to move treasury funds, so it
+   * carries a bucket of its own on top of the global one.
+   *
+   * The global bucket is keyed per source address like every other. A caller
+   * rotating addresses would therefore hold the treasury's attention
+   * indefinitely, and each application is recorded and owner-notified — so the
+   * noise is not free either. The cap the funder enforces is about how much one
+   * wallet may receive; this is about how often the treasury may be asked.
+   */
+  {
+    const faucetLimiter = rateLimit({
+      limit: 6,
+      windowMs: 60_000,
+      burst: 2,
+      trustProxy: opts.trustProxy ?? false,
+    });
+    app.use("/faucet", faucetLimiter);
+  }
+
+  /**
    * Safety screening (Qwen3Guard). The policy and benchmark catalogue are
    * public disclosures; moderate/health/benchmark-run spend inference credits
    * or report host state, so they get their own bucket — an evaluation spike
