@@ -431,6 +431,16 @@ jobs:
           fi
           if ! pg_ready; then
             echo "::error::ephemeral postgres did not become ready after 3 attempts; refusing to run server-backed tests as skips" >&2
+            # The refusal is the point, but a refusal nobody can act on is just a red
+            # build. Dump the container's own answer before exiting.
+            echo "--- docker ps -a ---" >&2
+            docker ps -a >&2 || true
+            echo "--- crucible-ci-pg logs ---" >&2
+            docker logs crucible-ci-pg >&2 || true
+            echo "--- crucible-ci-pg inspect (state + exit code) ---" >&2
+            docker inspect crucible-ci-pg >&2 || true
+            echo "--- docker info (space + driver) ---" >&2
+            docker info >/dev/null 2>&1 && docker system df >&2 || true
             exit 1
           fi
           echo "REDIS_URL=redis://127.0.0.1:16379" >> "$GITHUB_ENV"
