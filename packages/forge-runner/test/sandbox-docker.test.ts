@@ -67,7 +67,13 @@ async function ensureImage(image: string): Promise<boolean> {
  */
 async function containersStillRunning(label: string): Promise<string> {
   let last = "";
-  for (let attempt = 0; attempt < 20; attempt += 1) {
+  // 25s, not 10s. The runner is a shared VPS carrying ~40 containers from six
+  // projects; under that load `docker rm -f` is queued behind everything else and
+  // the container can still read `running` well past the old 20×500ms window — a
+  // false red on the one test that exists to catch a real leak. The claim is about
+  // the workload being gone, so a slower runtime is exactly what the poll must
+  // absorb rather than report.
+  for (let attempt = 0; attempt < 25; attempt += 1) {
     const ps = await execIn(
       "docker",
       ["ps", "--filter", `label=${SANDBOX_LABEL}=${label}`, "--format", "{{.ID}} {{.State}}"],
@@ -76,7 +82,7 @@ async function containersStillRunning(label: string): Promise<string> {
     );
     last = ps.stdout.trim();
     if (last === "") return "";
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
   }
   return last;
 }

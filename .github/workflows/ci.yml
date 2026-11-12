@@ -405,19 +405,21 @@ jobs:
           set -euo pipefail
           docker rm -f crucible-ci-redis crucible-ci-pg >/dev/null 2>&1 || true
           docker run -d --name crucible-ci-redis -p 127.0.0.1:16379:6379 redis:7-alpine >/dev/null
-          # Postgres gets a bounded retry. On the self-hosted runners a container can
-          # answer `pg_isready` once and then be killed under memory pressure — seen
-          # four times on 2026-11-12, each failure landing ~12s into an otherwise green
-          # run. Waiting longer on a dead container does not help; recreating it is the
-          # only remedy available from this step. All three attempts failing still
-          # refuses the gate below rather than letting the suite skip.
-          pg_ready() { docker exec crucible-ci-pg pg_isready -U postgres >/dev/null 2>&1; }
+          # Readiness is the host's TCP port, not `docker exec`. On the self-hosted
+          # runners the shared VPS is heavily loaded (2026-11-12: ~40 containers from
+          # six projects, several crash-looping), postgres can take seconds to init,
+          # and `docker exec … pg_isready` proved flaky under that load — on the
+          # 2026-11-12 main run it answered no while the container's own log read
+          # "database system is ready to accept connections". The tests connect over
+          # TCP to 127.0.0.1:15432, so that is what this waits for.
+          pg_ready() { (exec 3<>"/dev/tcp/127.0.0.1/15432") >/dev/null 2>&1; }
+          deadline=$(( $(date +%s) + 150 ))
           for attempt in 1 2 3; do
             docker rm -f crucible-ci-pg >/dev/null 2>&1 || true
             docker run -d --name crucible-ci-pg -e POSTGRES_PASSWORD=ci -e POSTGRES_DB=crucible -p 127.0.0.1:15432:5432 postgres:16-alpine >/dev/null
-            for _ in $(seq 1 40); do
+            while [ "$(date +%s)" -lt "$deadline" ]; do
               if pg_ready; then break 2; fi
-              sleep 1
+              sleep 2
             done
             echo "postgres attempt ${attempt} did not become ready; recreating the container" >&2
           done
