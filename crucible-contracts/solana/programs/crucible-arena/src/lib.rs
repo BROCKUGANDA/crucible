@@ -13,11 +13,19 @@ use state::*;
 
 declare_id!("AikvHhtXSuZ8PuKoqYG5WASJGWTEu4RQYmYbeSzoPLJV");
 
+// The ed25519 precompile (`Ed25519SigVerify111111111111111111111111111`), verified
+// against https://solana.com/docs/core/programs/precompiles.
+//
+// This was previously a placeholder — `0xED, 0x25, 0x51, 0x90, 0…` — that matches no
+// program on any Solana cluster. `submit_run` compares the instruction it introspects
+// against this constant, so with the placeholder every genuine ed25519 instruction was
+// rejected as a bad signer: no run could be submitted, and a posted bond or reward could
+// never reach settlement. Nothing caught it because the arena had no test suite.
 const ED25519_PROGRAM_ID: Pubkey = Pubkey::new_from_array([
-    0xED, 0x25, 0x51, 0x90, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x03, 0x7d, 0x46, 0xd6, 0x7c, 0x93, 0xfb, 0xbe,
+    0x12, 0xf9, 0x42, 0x8f, 0x83, 0x8d, 0x40, 0xff,
+    0x05, 0x70, 0x74, 0x49, 0x27, 0xf4, 0x8a, 0x64,
+    0xfc, 0xca, 0x70, 0x44, 0x80, 0x00, 0x00, 0x00,
 ]);
 
 #[derive(Accounts)]
@@ -610,4 +618,54 @@ fn parse_ed25519(data: &[u8]) -> Result<([u8; 32], Vec<u8>)> {
     pubkey.copy_from_slice(&data[pubkey_offset..pubkey_offset + 32]);
     let message = data[msg_offset..].to_vec();
     Ok((pubkey, message))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /**
+     * The constant this program introspects against, pinned to the documented
+     * precompile id.
+     *
+     * It was a placeholder (`0xED, 0x25, 0x51, 0x90, 0…`) that matches no program
+     * on any cluster, so every genuine ed25519 instruction was rejected and no run
+     * could ever be submitted. A byte literal cannot be checked against the docs by
+     * reading it; the base58 form can.
+     */
+    #[test]
+    fn ed25519_precompile_id_is_the_documented_one() {
+        assert_eq!(
+            ED25519_PROGRAM_ID.to_string(),
+            "Ed25519SigVerify111111111111111111111111111",
+            "the ed25519 precompile id drifted from the documented program id"
+        );
+    }
+
+    /// `parse_ed25519` reads the offsets the precompile actually writes: a signature
+    /// count, then per-signature offsets, then the key and the message.
+    #[test]
+    fn parse_ed25519_reads_a_well_formed_instruction() {
+        // Layout: [count, pad] [12 bytes of offsets] [pubkey] [message].
+        let mut data = vec![1u8, 0];
+        data.extend_from_slice(&14u16.to_le_bytes()); // pubkey offset, at byte 2
+        data.extend_from_slice(&0u16.to_le_bytes());
+        data.extend_from_slice(&0u16.to_le_bytes());
+        data.extend_from_slice(&0u16.to_le_bytes());
+        data.extend_from_slice(&46u16.to_le_bytes()); // message offset, at byte 10
+        data.extend_from_slice(&[0u8; 2]); // the rest of the 12-byte offset block
+        data.extend_from_slice(&[7u8; 32]); // pubkey at byte 14
+        data.extend_from_slice(b"claim"); // message at byte 46
+
+        let (pubkey, message) = parse_ed25519(&data).expect("well-formed instruction");
+        assert_eq!(pubkey, [7u8; 32]);
+        assert_eq!(message, b"claim");
+    }
+
+    #[test]
+    fn parse_ed25519_refuses_a_truncated_instruction() {
+        assert!(parse_ed25519(&[]).is_err());
+        assert!(parse_ed25519(&[1]).is_err());
+        assert!(parse_ed25519(&[0, 0]).is_err());
+    }
 }
