@@ -1,11 +1,10 @@
 //! Account state for crucible-arena (§9.1). Layouts are minimal but typed; fields
-//! grow as handlers land. All amounts are in the trial mint's base units.
+//! grow as handlers land. The trial PDA holds native SOL, so all amounts are in
+//! lamports and there is no mint.
 
 use anchor_lang::prelude::*;
-use anchor_spl::token::TokenAccount;
 
 pub const TRIAL_SEED: &[u8] = b"trial";
-pub const VAULT_SEED: &[u8] = b"vault";
 pub const CLAIM_SEED: &[u8] = b"claim";
 pub const CONFIG_SEED: &[u8] = b"config";
 
@@ -68,7 +67,6 @@ pub struct Trial {
     pub docket_frozen: bool,
     pub docket_size: u8,
     pub round: u8,
-    pub mint: Pubkey,
     pub claim_span_override: u32,
 }
 
@@ -118,6 +116,3 @@ pub struct Panel {
     pub replay_hashes: [[u8; 32]; 3],
     pub vote_count: u8,
 }
-
-// Vault is a TokenAccount (PDA-owned); no separate struct needed.
-pub type Vault = TokenAccount;
