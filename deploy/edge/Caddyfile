@@ -208,3 +208,44 @@ crucible.svalley.tech {
 crucible.57.130.80.158.sslip.io {
 	redir https://crucible.svalley.tech{uri} permanent
 }
+
+# ── crucible.aiazimara.com (Cloudflare-proxied; zone not Full) ─────────────
+# The front door sends this name (and www) to THIS edge over loopback HTTP,
+# and the upstream senders (orzaryn caddy) relay with Host: crucible.aiazimara.com.
+# Serving the app over plain http for this name is what lets a Flexible
+# Cloudflare zone work. Under Full (Strict) these blocks are unreachable.
+http://crucible.aiazimara.com, http://www.crucible.aiazimara.com {
+	import secure_defaults
+
+	# The chain RPC, behind a path prefix. `/anvil` is stripped before the
+	# request is forwarded, because anvil serves the root path.
+	@anvil path /anvil /anvil/*
+	handle @anvil {
+		uri strip_prefix /anvil
+		reverse_proxy rpc-gate:8791 {
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Real-IP {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+		}
+	}
+
+	# The API. `handle_path` strips the `/api` prefix.
+	handle_path /api/* {
+		reverse_proxy api:8787 {
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Real-IP {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+			flush_interval -1
+		}
+	}
+
+	# Everything else is the web app.
+	handle {
+		reverse_proxy web:3000 {
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Real-IP {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+			flush_interval -1
+		}
+	}
+}
