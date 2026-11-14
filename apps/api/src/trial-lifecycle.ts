@@ -152,6 +152,10 @@ export interface TrialRecord {
   sponsor: string; // wallet address that created the trial
   orgId: string | null; // tenant context, resolved server-side
   status: TrialLifeStatus;
+  /** The spec as submitted, before anything is published. Not a revision: revisions
+   * are published snapshots and numbering starts at the first publication. Consumed by
+   * the first accepted transition, which turns it into revision 1. */
+  draftSpec: TrialSpec | null;
   currentRevision: TrialRevision | null;
   revisions: TrialRevision[];
   /** Chain state mirror (Open/Assigned/Judging/Challenged/Settled), or null
@@ -432,11 +436,19 @@ export interface CreateTrialInput {
 export function createTrial(input: CreateTrialInput): TrialRecord {
   const now = Date.now();
   const id = store.nextId++;
+  // The submitted spec is kept as `draftSpec`, not as a revision: revisions are
+  // published snapshots and numbering starts at the first publication. It used to be
+  // dropped on the floor here, and the first accepted transition then rebuilt the
+  // revision from an all-zeros fallback — so every title, objective and reward a
+  // sponsor submitted was silently discarded. Nothing caught it because the revision
+  // route rejects DRAFT trials, leaving creation as the only place a spec could ever
+  // be supplied, and the create test asserted everything except the spec.
   const record: TrialRecord = {
     id,
     sponsor: input.sponsor,
     orgId: input.orgId,
     status: "DRAFT",
+    draftSpec: { ...input.spec },
     currentRevision: null,
     revisions: [],
     chainStatus: null,
@@ -463,7 +475,7 @@ export function applyTransition(
       status: trial.status,
       publishedAt: trial.updatedAt,
       spec: {
-        ...(trial.currentRevision?.spec ?? {
+        ...(trial.currentRevision?.spec ?? trial.draftSpec ?? {
           title: "",
           objective: "",
           rewardWei: "0",
@@ -477,6 +489,8 @@ export function applyTransition(
     };
     trial.revisions.push(revision);
     trial.currentRevision = revision;
+    // The draft has been published; later revisions branch from it.
+    trial.draftSpec = null;
   }
 
   store.trials.set(trial.id, trial);
