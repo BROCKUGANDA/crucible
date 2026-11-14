@@ -28,6 +28,18 @@ const ED25519_PROGRAM_ID: Pubkey = Pubkey::new_from_array([
     0xfc, 0xca, 0x70, 0x44, 0x80, 0x00, 0x00, 0x00,
 ]);
 
+/// The protocol treasury: a PDA this program owns, never a caller-supplied address.
+///
+/// `Settle.treasury_wallet` was an `UncheckedAccount` with no constraint while `settle`
+/// transferred the 15% arena fee to it, so any caller could pass an arbitrary address
+/// and drain the fee — the EVM Arena uses an immutable treasury for exactly this reason.
+///
+/// Withdrawing from this PDA is not implemented. The constraint stops theft; it does not
+/// make the fee spendable, and a treasury-withdraw instruction is the missing piece.
+fn treasury_pda() -> Pubkey {
+    Pubkey::find_program_address(&[b"treasury"], &crate::ID).0
+}
+
 #[derive(Accounts)]
 #[instruction(nonce: u64, reward: u64, spec_digest: [u8;32], suite_digest: [u8;32],
              holdout_commitment: [u8;32], skeptic_window: u32, open_span: u64)]
@@ -87,10 +99,16 @@ pub struct Settle<'info> {
     #[account(mut)]
     pub trial: Account<'info, Trial>,
 
-    #[account(mut, constraint = agent_wallet.key() == trial.agent)]
+    #[account(
+        mut,
+        constraint = agent_wallet.key() == trial.agent
+    )]
     pub agent_wallet: UncheckedAccount<'info>,
 
-    #[account(mut)]
+    #[account(
+        mut,
+        constraint = treasury_wallet.key() == treasury_pda()
+    )]
     pub treasury_wallet: UncheckedAccount<'info>,
 
     pub system_program: Program<'info, System>,
@@ -189,7 +207,9 @@ pub mod crucible_arena {
         if open_span == 0 || open_span > TRIAL_OPEN_MAX_SECONDS {
             return err!(ArenaError::BadOpenSpan);
         }
-        if reward < REWARD_FLOOR_ETH_WEI as u64 {
+        // Lamports, not wei: the trial PDA holds native SOL. Comparing the reward
+        // against REWARD_FLOOR_ETH_WEI priced the minimum trial at 10,000,000 SOL.
+        if reward < REWARD_FLOOR_SOL_LAMPORTS {
             return err!(ArenaError::RewardTooSmall);
         }
         let fee = (reward as u128 * ARENA_FEE_BPS as u128 / 10000) as u64;
@@ -603,21 +623,49 @@ pub mod crucible_arena {
 }
 
 fn _unused() {}
+/// Parse the ed25519 precompile instruction data.
+///
+/// Layout, from `solana_ed25519_program` 3.0.0 (`Ed25519SignatureOffsets`):
+///
+/// ```text
+/// bytes 0-1    num_signatures (u16 LE; the reference builder writes u8 + padding)
+/// bytes 2-15   offsets, 14 bytes per signature, every field u16 LE:
+///                +0   signature_offset
+///                +2   signature_instruction_index
+///                +4   public_key_offset
+///                +6   public_key_instruction_index
+///                +8   message_data_offset
+///                +10  message_data_size
+///                +12  message_instruction_index
+/// byte 16+      the verification data those offsets point at
+/// ```
+///
+/// This read `public_key_offset` from bytes 2-3 — which is `signature_offset` —
+/// so the program compared the runner key against the first 32 bytes of the
+/// signature, and every honest run failed `BadSigner`. It also used a 12-byte
+/// per-signature stride and ignored `message_data_size`.
 fn parse_ed25519(data: &[u8]) -> Result<([u8; 32], Vec<u8>)> {
-    if data.len() < 2 { return err!(ArenaError::BadSigner); }
-    let num = data[0] as usize;
-    if num == 0 { return err!(ArenaError::BadSigner); }
-    let off_start = 2usize;
-    let per_sig = 12usize;
-    if data.len() < off_start + per_sig { return err!(ArenaError::BadSigner); }
-    let pubkey_offset = u16::from_le_bytes([data[off_start], data[off_start + 1]]) as usize;
-    let msg_offset = u16::from_le_bytes([data[off_start + 8], data[off_start + 9]]) as usize;
-    if pubkey_offset + 32 > data.len() { return err!(ArenaError::BadSigner); }
-    if msg_offset >= data.len() { return err!(ArenaError::BadSigner); }
+    const HEADER: usize = 2;
+    const PER_SIG: usize = 14;
+    if data.len() < HEADER + PER_SIG {
+        return err!(ArenaError::BadSigner);
+    }
+    let num = u16::from_le_bytes([data[0], data[1]]) as usize;
+    if num == 0 {
+        return err!(ArenaError::BadSigner);
+    }
+    let pubkey_offset = u16::from_le_bytes([data[HEADER + 4], data[HEADER + 5]]) as usize;
+    let msg_offset = u16::from_le_bytes([data[HEADER + 8], data[HEADER + 9]]) as usize;
+    let msg_size = u16::from_le_bytes([data[HEADER + 10], data[HEADER + 11]]) as usize;
+    if pubkey_offset + 32 > data.len() {
+        return err!(ArenaError::BadSigner);
+    }
+    if msg_size == 0 || msg_offset + msg_size > data.len() {
+        return err!(ArenaError::BadSigner);
+    }
     let mut pubkey = [0u8; 32];
     pubkey.copy_from_slice(&data[pubkey_offset..pubkey_offset + 32]);
-    let message = data[msg_offset..].to_vec();
-    Ok((pubkey, message))
+    Ok((pubkey, data[msg_offset..msg_offset + msg_size].to_vec()))
 }
 
 #[cfg(test)]
@@ -642,30 +690,96 @@ mod tests {
         );
     }
 
-    /// `parse_ed25519` reads the offsets the precompile actually writes: a signature
-    /// count, then per-signature offsets, then the key and the message.
+    /// The floor the Solana program enforces must be denominated in lamports.
+    ///
+    /// It used to compare the reward against `REWARD_FLOOR_ETH_WEI` — the EVM wei
+    /// floor, 1e16 — against a lamport balance, which priced the minimum trial at
+    /// 10,000,000 SOL and made the arena unusable.
+    #[test]
+    fn reward_floor_is_denominated_in_lamports() {
+        assert_eq!(REWARD_FLOOR_SOL_LAMPORTS, 100_000_000, "0.1 SOL");
+        assert!(
+            REWARD_FLOOR_SOL_LAMPORTS < 1_000_000_000,
+            "the floor must be under 1 SOL, not the 1e16 wei floor"
+        );
+    }
+
+    /// The fee destination must be program-derived, not a caller-supplied address.
+    #[test]
+    fn treasury_is_program_derived() {
+        let (pda, _bump) = Pubkey::find_program_address(&[b"treasury"], &crate::ID);
+        assert_eq!(treasury_pda(), pda, "treasury PDA must be deterministic");
+        assert_ne!(
+            treasury_pda(),
+            crate::ID,
+            "the treasury must not be the program itself"
+        );
+    }
+
+    /// Built exactly the way `solana_ed25519_program::new_ed25519_instruction_with_signature`
+    /// builds it: a 2-byte count, a 14-byte offsets block, then key, signature, message.
+    /// `signature_offset` and `public_key_offset` point at different bytes on purpose —
+    /// the old parser read the public key from `signature_offset`.
     #[test]
     fn parse_ed25519_reads_a_well_formed_instruction() {
-        // Layout: [count, pad] [12 bytes of offsets] [pubkey] [message].
-        let mut data = vec![1u8, 0];
-        data.extend_from_slice(&14u16.to_le_bytes()); // pubkey offset, at byte 2
-        data.extend_from_slice(&0u16.to_le_bytes());
-        data.extend_from_slice(&0u16.to_le_bytes());
-        data.extend_from_slice(&0u16.to_le_bytes());
-        data.extend_from_slice(&46u16.to_le_bytes()); // message offset, at byte 10
-        data.extend_from_slice(&[0u8; 2]); // the rest of the 12-byte offset block
-        data.extend_from_slice(&[7u8; 32]); // pubkey at byte 14
-        data.extend_from_slice(b"claim"); // message at byte 46
+        let mut data = Vec::new();
+        data.extend_from_slice(&1u16.to_le_bytes()); // num_signatures
+        data.extend_from_slice(&48u16.to_le_bytes()); // signature_offset   (+0)
+        data.extend_from_slice(&u16::MAX.to_le_bytes()); // signature_ix     (+2)
+        data.extend_from_slice(&16u16.to_le_bytes()); // public_key_offset  (+4)
+        data.extend_from_slice(&u16::MAX.to_le_bytes()); // public_key_ix    (+6)
+        data.extend_from_slice(&112u16.to_le_bytes()); // message_offset     (+8)
+        data.extend_from_slice(&5u16.to_le_bytes()); // message_size         (+10)
+        data.extend_from_slice(&u16::MAX.to_le_bytes()); // message_ix       (+12)
+        assert_eq!(data.len(), 16, "header must be 2 + 14 bytes");
+
+        data.extend_from_slice(&[7u8; 32]); // public key at 16
+        data.extend_from_slice(&[9u8; 64]); // signature at 48
+        data.extend_from_slice(b"claim"); // message at 112
 
         let (pubkey, message) = parse_ed25519(&data).expect("well-formed instruction");
-        assert_eq!(pubkey, [7u8; 32]);
+        assert_eq!(pubkey, [7u8; 32], "key must come from public_key_offset");
+        assert_eq!(message, b"claim");
+    }
+
+    /// The message is `message_data_size` bytes, not "everything to the end" — a
+    /// trailing blob must not be read into the signed message.
+    #[test]
+    fn parse_ed25519_honours_the_declared_message_size() {
+        let mut data = Vec::new();
+        data.extend_from_slice(&1u16.to_le_bytes());
+        data.extend_from_slice(&48u16.to_le_bytes());
+        data.extend_from_slice(&u16::MAX.to_le_bytes());
+        data.extend_from_slice(&16u16.to_le_bytes());
+        data.extend_from_slice(&u16::MAX.to_le_bytes());
+        data.extend_from_slice(&112u16.to_le_bytes());
+        data.extend_from_slice(&5u16.to_le_bytes());
+        data.extend_from_slice(&u16::MAX.to_le_bytes());
+        data.extend_from_slice(&[7u8; 32]);
+        data.extend_from_slice(&[9u8; 64]);
+        data.extend_from_slice(b"claim");
+        data.extend_from_slice(b"TRAILING BYTES THAT MUST NOT BE READ");
+
+        let (_pubkey, message) = parse_ed25519(&data).expect("well-formed instruction");
         assert_eq!(message, b"claim");
     }
 
     #[test]
-    fn parse_ed25519_refuses_a_truncated_instruction() {
+    fn parse_ed25519_refuses_a_truncated_or_oversized_instruction() {
         assert!(parse_ed25519(&[]).is_err());
         assert!(parse_ed25519(&[1]).is_err());
-        assert!(parse_ed25519(&[0, 0]).is_err());
+        assert!(parse_ed25519(&[0, 0]).is_err(), "zero signatures");
+        // One byte short of the 16-byte header.
+        assert!(parse_ed25519(&[0u8; 15]).is_err());
+        // Header claims a key past the end of the buffer.
+        let mut bad = vec![0u8; 16];
+        bad[0] = 1;
+        bad[6..8].copy_from_slice(&1000u16.to_le_bytes());
+        assert!(parse_ed25519(&bad).is_err(), "key offset out of range");
+        // Message size larger than the buffer.
+        let mut bad_msg = vec![0u8; 16];
+        bad_msg[0] = 1;
+        bad_msg[12..14].copy_from_slice(&1000u16.to_le_bytes());
+        assert!(parse_ed25519(&bad_msg).is_err(), "message size out of range");
     }
 }

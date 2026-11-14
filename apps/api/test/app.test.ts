@@ -1223,6 +1223,40 @@ describe("trial lifecycle state machine (blueprint items 101-120)", () => {
       expect(trial.runHash).toBeNull();
     });
 
+    it("keeps the sponsor's spec — creation and the first transition", async () => {
+      // createTrial used to drop the spec on the floor and the first transition rebuilt
+      // the revision from an all-zeros fallback, so the sponsor's title, objective and
+      // reward were silently replaced with ""/0. The revision route rejects DRAFT
+      // trials, so creation was the only place a spec could be supplied.
+      const app = createApp({ getModel: () => ({ trials: new Map(), agents: new Map(), runs: new Map(), disputes: new Map() }) as any }, { rateLimit: false });
+      const trial = await createTrialViaApp(app);
+
+      // Held as the submitted draft, not yet a published revision.
+      expect(trial.draftSpec?.title).toBe(SPEC.title);
+      expect(trial.draftSpec?.objective).toBe(SPEC.objective);
+      expect(trial.draftSpec?.rewardWei).toBe(SPEC.rewardWei);
+      expect(trial.currentRevision).toBeNull();
+
+      // REVIEW does not publish; the draft is carried, not consumed.
+      const review = await transitionViaApp(app, trial.id, "REVIEW");
+      expect(review.status).toBe(200);
+      const reviewBody = await review.json();
+      expect(reviewBody.trial.draftSpec?.title).toBe(SPEC.title);
+      expect(reviewBody.trial.currentRevision).toBeNull();
+
+      // APPROVED publishes revision 1 — and it must be the sponsor's spec.
+      const res = await transitionViaApp(app, trial.id, "APPROVED");
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.trial.currentRevision.spec.title).toBe(SPEC.title);
+      expect(body.trial.currentRevision.spec.objective).toBe(SPEC.objective);
+      expect(body.trial.currentRevision.spec.rewardWei).toBe(SPEC.rewardWei);
+      expect(body.trial.currentRevision.spec.bondBps).toBe(SPEC.bondBps);
+      expect(body.trial.draftSpec).toBeNull();
+      // Revision numbering still starts at the first publication.
+      expect(body.trial.currentRevision.revision).toBe(1);
+    });
+
     it("rejects unauthenticated creation", async () => {
       const app = createApp({ getModel: () => ({ trials: new Map(), agents: new Map(), runs: new Map(), disputes: new Map() }) as any }, { rateLimit: false });
       const res = await app.request("/trials", {

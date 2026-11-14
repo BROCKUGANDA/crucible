@@ -33,6 +33,9 @@ pub const YIELD_FORFEIT_BPS: u64 = 0;
 pub const YIELD_COOLDOWN_SECONDS: u64 = 86400;
 pub const STANDING_HALF_LIFE_DAYS: u64 = 45;
 pub const REWARD_FLOOR_ETH_WEI: u128 = 10000000000000000;
+// The same floor in lamports, for the Solana program: amounts there are lamports, and
+// comparing a lamport balance against the wei floor priced the minimum trial at 10M SOL.
+pub const REWARD_FLOOR_SOL_LAMPORTS: u64 = 100000000;
 pub const SEASON_LENGTH_DAYS: u64 = 42;
 
 // v1 frozen records (ADR-0002 / RewardMath.sol): the legacy law, not v2 parameters.
