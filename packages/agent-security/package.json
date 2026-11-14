@@ -23,7 +23,7 @@
   "dependencies": {
     "@crucible/eval": "*",
     "bullmq": "^6.7.0",
-    "ioredis": "^5.11.1",
+    "ioredis": "^6.0.0",
     "pg": "^8.23.1",
     "pg-hstore": "^2.3.4",
     "viem": "^2.57.7"
