@@ -1,5 +1,16 @@
 # Hardening record
 
+## Helius configuration slice — 2026-11-19, not released
+
+Locally verified: server-only fixed mainnet RPC/WS URL derivation and the
+configuration-only health route; absent/malformed keys and unsupported overrides
+fail closed. Bypassing the three guards together caused 14 test failures, then
+the guards were restored. See `docs/runbooks/helius.md` for scope and evidence.
+Still open: credential revocation/rotation, authenticated RPC/WS connectivity,
+treasury account authority, exact-release verification and mandatory parent join.
+No existing finding is declared closed, no production sign-off changed, and no
+deployment or financial operation was performed.
+
 This is a demonstration project, not an audited escrow system. This file records what the
 current tree actually verifies, what it deliberately does not, and what is still open.
 

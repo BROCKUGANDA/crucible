@@ -453,3 +453,50 @@ describe("auth: the secret is supplied, not inferred from the environment", () =
     }
   });
 });
+
+describe("auth: production cookie hardening", () => {
+  it("ignores a bare session cookie in production", async () => {
+    const saved = {
+      node: process.env.NODE_ENV,
+      secret: process.env.AUTH_SECRET,
+      origin: process.env.AUTH_ORIGIN,
+      dev: process.env.AUTH_ALLOW_DEV_SECRET,
+    };
+    try {
+      process.env.NODE_ENV = "production";
+      process.env.AUTH_SECRET = "a-long-enough-production-secret-1234";
+      process.env.AUTH_ORIGIN = "http://localhost:3000";
+      delete process.env.AUTH_ALLOW_DEV_SECRET;
+
+      const { message, nonce, cookie } = await issueNonce(ADDRESS);
+      const signature = await account.signMessage({ message });
+      const verified = await app.request("/auth/verify", {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie },
+        body: JSON.stringify({ address: ADDRESS, nonce, signature }),
+      });
+      expect(verified.status).toBe(200);
+      const hostSession = verified.headers.get("Set-Cookie")!.split(";")[0];
+      expect(hostSession.startsWith("__Host-crucible_session=")).toBe(true);
+
+      const token = hostSession.split("=").slice(1).join("=");
+      const read = await app.request("/auth/session", {
+        headers: { cookie: `crucible_session=${token}` },
+      });
+      expect((await read.json()).address).toBeNull();
+    } finally {
+      for (const [key, value] of Object.entries(saved)) {
+        const name =
+          key === "node"
+            ? "NODE_ENV"
+            : key === "secret"
+              ? "AUTH_SECRET"
+              : key === "origin"
+                ? "AUTH_ORIGIN"
+                : "AUTH_ALLOW_DEV_SECRET";
+        if (value === undefined) delete process.env[name];
+        else process.env[name] = value;
+      }
+    }
+  });
+});

@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { foundry } from "viem/chains";
 import { createPublicClient, http, keccak256, toHex, type Address, type Hex } from "viem";
+import { loadRevokedSessions } from "./auth.js";
 import {
   ARENA_EVENT_NAMES,
   TEAM_LEDGER_EVENTS,
@@ -350,6 +351,11 @@ const configuredTrialsAddress = trialsAddress;
 const configuredProfile = resolveProfile(process.env.CRUCIBLE_PROFILE);
 if (configuredProfile !== null) {
   validateProfile(configuredProfile, { chainId: configuredChainId, env: process.env });
+}
+
+// Restore the SIWE session denylist across restarts when a database is configured.
+if (process.env.DATABASE_URL) {
+  await loadRevokedSessions().catch(() => {});
 }
 
 async function verifyChainAtBoot(): Promise<void> {
@@ -1116,7 +1122,18 @@ const app = createApp({
   campaigns: {},
   // STAMP stays explicit: disabled unless STAMP_MODE is set. Treasury/Owner
   // Safe custody is never replaced by STAMP legal entitlements.
-  stamp: { mode: (process.env.STAMP_MODE as "disabled" | "sandbox" | "manual_review" | "production" | undefined) ?? "disabled" },
+  //
+  // The Solana RPC is the read-only observer the delivery verifier uses. It is
+  // optional and it holds no key: with it set, a delivery is checked against the
+  // chain; without it, the route says the reviewer's attestations were used
+  // rather than pretending a chain read happened.
+  stamp: {
+    mode: (process.env.STAMP_MODE as "disabled" | "sandbox" | "manual_review" | "production" | undefined) ?? "disabled",
+    solanaRpc: process.env.STAMP_SOLANA_RPC_URL
+      ? { url: process.env.STAMP_SOLANA_RPC_URL, cluster: process.env.STAMP_SOLANA_CLUSTER ?? "devnet" }
+      : null,
+    manifestPath: process.env.STAMP_MANIFEST_PATH ?? null,
+  },
 });
 
 serve({ fetch: app.fetch, port }, (info) => {

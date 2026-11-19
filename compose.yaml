@@ -217,6 +217,34 @@ services:
       # Comma-separated wallets allowed to operate the STAMP manual-review queue.
       # Empty closes the queue; a signed-in wallet is not a reviewer.
       CRUCIBLE_STAMP_REVIEWERS: ${CRUCIBLE_STAMP_REVIEWERS:-}
+      # The Solana cluster the STAMP payment gate and delivery verification compare
+      # against. Absent, the gate refuses every payment: "we could not tell" is a
+      # refusal, never a default.
+      STAMP_SOLANA_CLUSTER: ${STAMP_SOLANA_CLUSTER:-}
+      # The read-only Solana endpoint the delivery verifier reads. Empty means the
+      # route states that no chain read happened instead of claiming one did.
+      STAMP_SOLANA_RPC_URL: ${STAMP_SOLANA_RPC_URL:-}
+      # The signed, secret-free preflight manifest. `STAMP_MODE=production` is a
+      # request granted only when this file's fields match the live configuration
+      # below; with it absent, every irreversible STAMP action stays refused.
+      STAMP_MANIFEST_PATH: ${STAMP_MANIFEST_PATH:-}
+      STAMP_ISSUER_LEGAL_ENTITY_ID: ${STAMP_ISSUER_LEGAL_ENTITY_ID:-}
+      STAMP_ISSUER_JURISDICTION: ${STAMP_ISSUER_JURISDICTION:-}
+      STAMP_LEGAL_AGREEMENT_SHA256: ${STAMP_LEGAL_AGREEMENT_SHA256:-}
+      STAMP_COUNSEL_APPROVAL_REF: ${STAMP_COUNSEL_APPROVAL_REF:-}
+      STAMP_META_DAO_PROJECT_REF: ${STAMP_META_DAO_PROJECT_REF:-}
+      STAMP_SOLANA_GENESIS_HASH: ${STAMP_SOLANA_GENESIS_HASH:-}
+      STAMP_ACCEPTABLE_STABLECOIN_MINT: ${STAMP_ACCEPTABLE_STABLECOIN_MINT:-}
+      STAMP_APPROVED_WALLET: ${STAMP_APPROVED_WALLET:-}
+      STAMP_TOKEN_MINT: ${STAMP_TOKEN_MINT:-}
+      STAMP_TOKEN_PROGRAM_ID: ${STAMP_TOKEN_PROGRAM_ID:-}
+      STAMP_DAO_TREASURY_ADDRESS: ${STAMP_DAO_TREASURY_ADDRESS:-}
+      STAMP_VESTING_MECHANISM: ${STAMP_VESTING_MECHANISM:-}
+      STAMP_VESTING_ACCOUNT_REF: ${STAMP_VESTING_ACCOUNT_REF:-}
+      STAMP_IP_ASSIGNMENT_MANIFEST_SHA256: ${STAMP_IP_ASSIGNMENT_MANIFEST_SHA256:-}
+      STAMP_INVESTOR_RESERVE_BPS: ${STAMP_INVESTOR_RESERVE_BPS:-}
+      STAMP_TEAM_ALLOCATION_BPS: ${STAMP_TEAM_ALLOCATION_BPS:-}
+      STAMP_TOTAL_NETWORK_TOKENS: ${STAMP_TOTAL_NETWORK_TOKENS:-}
       # Solana asset intelligence (Tokens API, server-only). Empty = adapter refuses.
       TOKENS_API_KEY: ${TOKENS_API_KEY:-}
       # token.xyz — the OpenAI-compatible exchange that serves Frenchy's brain and the

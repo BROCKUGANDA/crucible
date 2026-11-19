@@ -1,6 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import {
   activeChain,
+  allowedChains,
   chainConfigured,
   chainFromId,
   chainLabel,
@@ -38,6 +39,7 @@ const ENV_VARS = [
   "NEXT_PUBLIC_SEPOLIA_ALLOY_ADDRESS",
   "NEXT_PUBLIC_ANVIL_TRIALS_ADDRESS",
   "NEXT_PUBLIC_ANVIL_ALLOY_ADDRESS",
+  "NEXT_PUBLIC_ALLOWED_CHAINS",
 ] as const;
 
 const SAVED = new Map(ENV_VARS.map((k) => [k, process.env[k]]));
@@ -175,6 +177,15 @@ describe("wallet registration", () => {
     const config = buildConfig();
     const ids = config.chains.map((c) => c.id).sort((a, b) => a - b);
     expect(ids).toEqual([1, 31337, 11155111]);
+  });
+});
+
+describe("allowed chains", () => {
+  it("restricts wallet registration and deployment when configured", () => {
+    process.env.NEXT_PUBLIC_ALLOWED_CHAINS = "foundry";
+    expect([...allowedChains()]).toEqual(["foundry"]);
+    expect(buildConfig().chains.map((c) => c.id)).toEqual([31337]);
+    expect(deployment(1).configured).toBe(false);
   });
 });
 

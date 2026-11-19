@@ -28,6 +28,8 @@ COPY packages/forge-watch/package.json packages/forge-watch/
 COPY packages/indexer/package.json packages/indexer/
 COPY packages/smith-sdk/package.json packages/smith-sdk/
 COPY packages/warden/package.json packages/warden/
+COPY packages/stamp-core/package.json packages/stamp-core/
+COPY packages/stamp-solana/package.json packages/stamp-solana/
 COPY grader/package.json grader/
 COPY packages/site-index/package.json packages/site-index/
 COPY apps/api/package.json apps/api/
@@ -46,6 +48,7 @@ RUN npm run build:libs
 # network names. They arrive as build args from compose.
 ARG NEXT_PUBLIC_API_URL
 ARG NEXT_PUBLIC_CHAIN
+ARG NEXT_PUBLIC_ALLOWED_CHAINS
 ARG NEXT_PUBLIC_TRIALS_ADDRESS
 ARG NEXT_PUBLIC_ALLOY_ADDRESS
 ARG NEXT_PUBLIC_ANVIL_RPC
@@ -53,6 +56,7 @@ ARG NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID
 ARG NEXT_PUBLIC_ONRAMP_URL
 ENV NEXT_PUBLIC_API_URL="$NEXT_PUBLIC_API_URL" \
     NEXT_PUBLIC_CHAIN="$NEXT_PUBLIC_CHAIN" \
+    NEXT_PUBLIC_ALLOWED_CHAINS="$NEXT_PUBLIC_ALLOWED_CHAINS" \
     NEXT_PUBLIC_TRIALS_ADDRESS="$NEXT_PUBLIC_TRIALS_ADDRESS" \
     NEXT_PUBLIC_ALLOY_ADDRESS="$NEXT_PUBLIC_ALLOY_ADDRESS" \
     NEXT_PUBLIC_ANVIL_RPC="$NEXT_PUBLIC_ANVIL_RPC" \
@@ -76,6 +80,11 @@ ENV NODE_ENV=production \
 COPY --from=build /repo/apps/web/.next/standalone ./
 COPY --from=build /repo/apps/web/.next/static ./apps/web/.next/static
 COPY --from=build /repo/apps/web/public ./apps/web/public
+
+# Run as a non-root user. The standalone server only reads its traced files and
+# writes to its own cache directory, so no privilege is needed at runtime.
+RUN chown -R node:node /app
+USER node
 
 EXPOSE 3000
 CMD ["node", "apps/web/server.js"]

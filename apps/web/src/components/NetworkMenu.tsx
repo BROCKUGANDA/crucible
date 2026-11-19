@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useAccount } from "wagmi";
 import {
   activeChain,
+  allowedChains,
   CHAIN_IDS,
   chainConfigured,
   chainForWallets,
@@ -30,7 +31,9 @@ import { ensureChain, type Eip1193Provider } from "@/lib/chainSwitch";
  * "reads only" so nobody switches expecting to stake a bond into nothing.
  */
 
-const NETWORKS: SupportedChain[] = ["sepolia", "mainnet", "foundry"];
+const NETWORKS: SupportedChain[] = (["sepolia", "mainnet", "foundry"] as SupportedChain[]).filter((chain) =>
+  allowedChains().has(chain),
+);
 
 export function NetworkMenu() {
   const { chainId, connector } = useAccount();

@@ -22,6 +22,8 @@ COPY packages/forge-watch/package.json packages/forge-watch/
 COPY packages/indexer/package.json packages/indexer/
 COPY packages/smith-sdk/package.json packages/smith-sdk/
 COPY packages/warden/package.json packages/warden/
+COPY packages/stamp-core/package.json packages/stamp-core/
+COPY packages/stamp-solana/package.json packages/stamp-solana/
 COPY grader/package.json grader/
 COPY packages/site-index/package.json packages/site-index/
 COPY apps/api/package.json apps/api/
@@ -78,6 +80,11 @@ COPY apps/juror/docker-entrypoint.sh /usr/local/bin/crucible-juror-entrypoint.sh
 # root on that host. On this machine the box also runs other projects, so the trade is not this
 # service's to make silently: see the `juror` service in compose.yaml for what each option costs.
 RUN mkdir -p /state /content && chmod 0777 /state /content
+
+# Run as a non-root user. The state and content directories are created
+# node-owned so the named volumes inherit that ownership on first use.
+RUN chown -R node:node /state /content
+USER node
 
 EXPOSE 8790
 ENTRYPOINT ["/usr/local/bin/crucible-juror-entrypoint.sh"]

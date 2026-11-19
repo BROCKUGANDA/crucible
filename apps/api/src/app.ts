@@ -68,6 +68,7 @@ import { createOrgRoutes } from "./orgs.js";
 import { createEngramRoutes } from "./engrams.js";
 import { createWorkloadRoutes } from "./workloads.js";
 import { createStampRoutes } from "./stamp.js";
+import { createHeliusRoutes } from "./helius.js";
 import { createCampaignRoutes, type CampaignsConfig } from "./campaigns-routes.js";
 import { createMeteringRoutes, type MeteringConfig } from "./metering-routes.js";
 import { createVoiceRoutes, type VoiceConfig } from "./voice.js";
@@ -1022,6 +1023,7 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
   };
   app.get("/health", health);
   app.get("/healthz", health);
+  app.route("/v1/integrations/helius", createHeliusRoutes());
 
   /**
    * Readiness, which is not health.

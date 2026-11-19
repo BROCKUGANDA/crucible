@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  assertRunTransition,
   canTransition,
+  RunTransitionError,
+  runStateForVerification,
   validateManifest,
   getAdapter,
   listAdapters,
@@ -34,6 +37,23 @@ describe("workload contracts (WP0)", () => {
     expect(canTransition("FAILED_INFRASTRUCTURE", "QUEUED")).toBe(false); // terminal
   });
 
+  it("refuses an illegal transition instead of recording it", () => {
+    // `canTransition` was called by nothing, so the machine described a
+    // lifecycle no code enforced. This is the guard the API uses.
+    expect(() => assertRunTransition("QUEUED", "PROVISIONAL_RESULT")).toThrow(RunTransitionError);
+    expect(() => assertRunTransition("VERIFYING", "PUBLISHED")).toThrow(RunTransitionError);
+    expect(() => assertRunTransition("QUEUED", "ADMITTED")).not.toThrow();
+  });
+
+  it("maps a verdict to the state that verdict settles into", () => {
+    // A failing participant is scored; a missing or unconfirmed verdict is not.
+    expect(runStateForVerification("PASS")).toBe("SCORING");
+    expect(runStateForVerification("FAIL")).toBe("SCORING");
+    expect(runStateForVerification("INCOMPLETE")).toBe("EVIDENCE_INCOMPLETE");
+    expect(runStateForVerification("ABSTAIN")).toBe("ABSTAINED");
+    expect(runStateForVerification("NEEDS_REVIEW")).toBe("NEEDS_REVIEW");
+  });
+
   it("manifest pins all required fields", () => {
     expect(validateManifest({
       runId: "r", attemptId: "a", tenantId: "t", trialId: "tr", trialRevisionId: "v",
@@ -57,7 +77,7 @@ describe("software engineering (WP1)", () => {
   it("validates a regression-repair task package", () => {
     const ok = {
       slug: "worker-idempotency-repair", version: "1.0.0",
-      repositorySnapshot: "sha256:abc", baseCommit: "deadbeef",
+      repositorySnapshot: "sha256:" + "a".repeat(64), baseCommit: "deadbeef",
       baselineCommand: ["pnpm", "test"], expectedExitCode: 1,
       checks: [
         { id: "baseline_reproduction", required: true },
@@ -74,7 +94,7 @@ describe("software engineering (WP1)", () => {
   it("adapter prepares a manifest with pinned digests", async () => {
     const a = getAdapter("SOFTWARE_ENGINEERING");
     const prep = await a.prepare({
-      slug: "s", version: "1", repositorySnapshot: "sha256:x", baseCommit: "c",
+      slug: "s", version: "1", repositorySnapshot: "sha256:" + "b".repeat(64), baseCommit: "c",
       baselineCommand: ["t"], expectedExitCode: 1,
       checks: [
         { id: "baseline_reproduction", required: true },
@@ -134,13 +154,23 @@ describe("autonomous finance (WP8)", () => {
 
   it("risk engine enforces notional, daily, concentration, allowlist", () => {
     const proposal = { intentId: "i1", canonicalHash: "h", instrument: "ABC", side: "buy" as const, notional: 500, orderType: "LIMIT", payload: {} };
-    const ok = riskCheck(mandate, proposal, { dailyNotionalSoFar: 0, positionPct: 5 });
-    expect(ok.every((c) => c.passed)).toBe(true);
+    const context = {
+      dailyNotionalSoFar: 0,
+      positionPct: 5,
+      resultingLeverage: 1,
+      inputAgeMinutes: 1,
+    };
+    const ok = riskCheck(mandate, proposal, context);
+    expect(ok.filter((c) => c.required).every((c) => c.passed)).toBe(true);
 
-    const over = riskCheck(mandate, { ...proposal, notional: 9999 }, { dailyNotionalSoFar: 0, positionPct: 5 });
+    const over = riskCheck(mandate, { ...proposal, notional: 9999 }, context);
     expect(over.find((c) => c.id === "notional_within_limit")!.passed).toBe(false);
 
-    const badInstr = riskCheck(mandate, { ...proposal, instrument: "XYZ" }, { dailyNotionalSoFar: 0, positionPct: 5 });
+    const badInstr = riskCheck(mandate, { ...proposal, instrument: "XYZ" }, context);
     expect(badInstr.find((c) => c.id === "instrument_allowed")!.passed).toBe(false);
+
+    // A stale input blocks the action: "we could not tell" is a refusal.
+    const stale = riskCheck(mandate, proposal, { ...context, inputAgeMinutes: null });
+    expect(stale.find((c) => c.id === "inputs_fresh")!.passed).toBe(false);
   });
 });

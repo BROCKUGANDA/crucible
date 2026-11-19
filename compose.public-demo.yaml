@@ -21,3 +21,8 @@ services:
 
   web:
     ports: !reset []
+    build:
+      args:
+        # Public demo is a valueless Anvil chain: the browser must not be able to
+        # switch onto a chain that carries real value, even if a wallet is connected.
+        NEXT_PUBLIC_ALLOWED_CHAINS: foundry

@@ -24,6 +24,8 @@ COPY packages/forge-watch/package.json packages/forge-watch/
 COPY packages/indexer/package.json packages/indexer/
 COPY packages/smith-sdk/package.json packages/smith-sdk/
 COPY packages/warden/package.json packages/warden/
+COPY packages/stamp-core/package.json packages/stamp-core/
+COPY packages/stamp-solana/package.json packages/stamp-solana/
 COPY grader/package.json grader/
 COPY packages/site-index/package.json packages/site-index/
 COPY apps/api/package.json apps/api/
@@ -54,6 +56,11 @@ COPY --from=build /repo/apps/keeper/package.json ./apps/keeper/package.json
 COPY --from=build /repo/apps/keeper/dist ./apps/keeper/dist
 COPY --from=build /repo/apps/keeper/docker-entrypoint.sh ./apps/keeper/docker-entrypoint.sh
 RUN chmod +x ./apps/keeper/docker-entrypoint.sh
+
+# Run as a non-root user. The entrypoint only execs node, so no privilege is
+# needed at runtime; the trace volume is created node-owned on first use.
+RUN mkdir -p /trace && chown -R node:node /repo /trace
+USER node
 
 EXPOSE 8789
 ENTRYPOINT ["./apps/keeper/docker-entrypoint.sh"]
