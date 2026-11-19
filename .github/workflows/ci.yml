@@ -567,6 +567,16 @@ jobs:
           fi
           echo "the api runtime image excludes the TypeScript compiler and Go-built binary"
 
+      - name: assert the keeper image excludes the TypeScript compiler
+        run: |
+          set -euo pipefail
+          if ! docker run --rm --read-only --network none --entrypoint sh crucible-keeper:latest -c \
+            'test ! -e /repo/node_modules/typescript && test ! -e /repo/node_modules/@typescript/typescript-linux-x64/lib/tsc'; then
+            echo "::error::the keeper runtime image contains the build-only TypeScript compiler; check apps/keeper/Dockerfile."
+            exit 1
+          fi
+          echo "the keeper runtime image excludes the TypeScript compiler and Go-built binary"
+
       # Only the edge may publish a host port on the VPS. A manual `docker compose up`
       # without compose.vps.yaml once published the whole stack (2026-11-09); this
       # asserts the merged VPS config keeps every service unpublished, so a compose

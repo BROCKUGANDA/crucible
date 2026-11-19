@@ -37,13 +37,13 @@ COPY apps/fork-host/package.json apps/fork-host/
 RUN npm ci --ignore-scripts
 
 COPY . .
-# See apps/api/Dockerfile: `@web3auth/modal` lists `vitest` as a production
-# dependency, so the prune keeps vite -> esbuild, and esbuild is a Go binary that
-# puts Go's standard library in front of Trivy. The keeper has no web app and no
-# build tooling at runtime.
+# See apps/api/Dockerfile: the workspace install retains some development tools
+# after pruning. The keeper runs compiled Node output and does not need TypeScript's
+# Go-built compiler at runtime.
 RUN npm run build:libs \
   && npm run build --workspace @crucible/keeper \
   && npm prune --omit=dev --ignore-scripts \
+  && rm -rf node_modules/typescript node_modules/@typescript/typescript-linux-x64 \
   && rm -rf apps/web \
   && find node_modules -type d \( -name esbuild -o -name "@esbuild" -o -name vite -o -name vitest -o -name "@vitest" -o -name tsx \) -prune -exec rm -rf {} \;
 
