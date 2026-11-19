@@ -52,6 +52,18 @@ const FAMILIES = [
   { prefix: "@wagmi/", ceiling: "high" },
   { prefix: "@base-org/", ceiling: "moderate" },
   { prefix: "@gemini-wallet/", ceiling: "moderate" },
+  // Web3Auth's modal (ADR-0026) is an optional connector: the package is loaded
+  // by dynamic `import()` inside the connector, and the connector exists only
+  // when NEXT_PUBLIC_WEB3AUTH_CLIENT_ID is configured. Its chain carries two
+  // moderate severities inherited from the @metamask connect/delegation
+  // packages it bundles, and five low ones from the XRP/BTC signing libraries
+  // it ships. npm's only suggested "fix" is a semver-major *downgrade* of
+  // @web3auth/modal to 9.7.0, which removes the integration rather than
+  // patching it. The ceilings are the severities measured on 2026-11-19; a new
+  // high anywhere in this chain stops the build. See the README's "Known
+  // limits" and ADR-0026 for the scope that keeps it optional.
+  { prefix: "@web3auth/", ceiling: "moderate" },
+  { prefix: "@toruslabs/", ceiling: "moderate" },
 ];
 
 const EXACT = [
@@ -90,6 +102,17 @@ const EXACT = [
   // a moderate advisory npm scores on the range, and the 1.x consumers (minimatch@3) cannot
   // take 2.x. Dev-chain severity; the shipped images are gated by Trivy separately.
   { name: "brace-expansion", ceiling: "moderate" },
+  // Web3Auth's XRP/BTC signing chain: `xrpl` -> `bip32` -> `tiny-secp256k1`,
+  // and `ripple-keypairs` -> `elliptic` (GHSA-848j-6mx2-7j84, "Elliptic Uses a
+  // Cryptographic Primitive with a Risky Implementation", low). These are only
+  // fetched when the optional Web3Auth connector is used; Ethereum signing in
+  // this app does not go through them. Ceiling `low` means any escalation
+  // stops the build rather than being absorbed by the family ceiling.
+  { name: "bip32", ceiling: "low" },
+  { name: "elliptic", ceiling: "low" },
+  { name: "ripple-keypairs", ceiling: "low" },
+  { name: "tiny-secp256k1", ceiling: "low" },
+  { name: "xrpl", ceiling: "low" },
 ];
 
 function ceilingFor(name) {
