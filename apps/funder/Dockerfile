@@ -37,6 +37,7 @@ COPY . .
 RUN npm run build:libs \
   && npm run build --workspace @crucible/funder \
   && npm prune --omit=dev --ignore-scripts \
+  && rm -rf node_modules/typescript node_modules/@typescript/typescript-linux-x64 \
   && rm -rf apps/web \
   && find node_modules -type d \( -name esbuild -o -name "@esbuild" -o -name vite -o -name vitest -o -name "@vitest" -o -name tsx \) -prune -exec rm -rf {} \;
 

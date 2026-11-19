@@ -229,11 +229,14 @@ describe(`Docker sandbox enforcement${enforcementReady ? "" : " — SKIPPED (nee
       expect(leftover.length, `a container from this run is still RUNNING: ${leftover}`).toBe(0);
 
       // The sandbox is not poisoned by an expired run: it accepts the next job.
+      // The short budget above is the behavior under test; give this separate recovery
+      // probe more startup time so load on the shared Docker host is not a false failure.
+      sandbox.spec.timeoutSec = 60;
       const follow = await sandbox.runSuite('python3 -c "print(3)"');
       expect(follow.code).toBe(0);
       expect(follow.stdout).toContain("3");
     },
-    90_000,
+    150_000,
   );
 
   testEnforce(
