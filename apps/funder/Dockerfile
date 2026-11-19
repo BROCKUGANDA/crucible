@@ -21,6 +21,8 @@ COPY packages/arena-events/package.json packages/arena-events/
 COPY packages/indexer/package.json packages/indexer/
 COPY packages/smith-sdk/package.json packages/smith-sdk/
 COPY packages/warden/package.json packages/warden/
+COPY packages/stamp-core/package.json packages/stamp-core/
+COPY packages/stamp-solana/package.json packages/stamp-solana/
 COPY grader/package.json grader/
 COPY packages/site-index/package.json packages/site-index/
 COPY apps/api/package.json apps/api/
@@ -58,6 +60,11 @@ COPY --from=build /repo/apps/funder/package.json ./apps/funder/package.json
 COPY --from=build /repo/apps/funder/dist ./apps/funder/dist
 COPY apps/funder/docker-entrypoint.sh /usr/local/bin/crucible-funder-entrypoint.sh
 RUN chmod +x /usr/local/bin/crucible-funder-entrypoint.sh
+
+# Run as a non-root user. The entrypoint only execs node, so no privilege is
+# needed at runtime.
+RUN chown -R node:node /repo
+USER node
 
 EXPOSE 8788
 ENTRYPOINT ["/usr/local/bin/crucible-funder-entrypoint.sh"]

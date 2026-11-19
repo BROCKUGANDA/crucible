@@ -21,6 +21,8 @@
     "@crucible/indexer": "*",
     "@crucible/site-index": "*",
     "@crucible/smith": "*",
+    "@crucible/stamp-core": "*",
+    "@crucible/stamp-solana": "*",
     "@crucible/warden": "*",
     "@hono/node-server": "^2.1.8",
     "@modelcontextprotocol/sdk": "^1.32.2",

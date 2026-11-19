@@ -43,6 +43,7 @@ import type { ChainDescription } from "./chainSwitch";
 
 export {
   activeChain,
+  allowedChains,
   chainFromId,
   chainLabel,
   chainConfigured,
@@ -62,6 +63,7 @@ export {
 
 import {
   activeChain,
+  allowedChains,
   chainFromId,
   deployment,
   rpcUrl,
@@ -188,9 +190,18 @@ const CHAINS = [sepolia, mainnet, foundry] as const;
 export function buildConfig() {
   const projectId = rainbowKitProjectId();
 
+  // A build may be restricted to a subset of chains (e.g. a valueless demo
+  // profile). Register only the allowed ones; fall back to all of them when the
+  // allowlist is empty so the wallet is never left with nothing to switch to.
+  const registeredChains = CHAINS.filter((chain) => {
+    const network = chainFromId(chain.id);
+    return network !== null && allowedChains().has(network);
+  });
+  const chainsToRegister = (registeredChains.length > 0 ? registeredChains : [...CHAINS]) as unknown as [Chain, ...Chain[]];
+
   /** One transport per registered chain — each network is reached on its own RPC. */
   const transports = Object.fromEntries(
-    CHAINS.map((chain) => {
+    chainsToRegister.map((chain) => {
       const network = chainFromId(chain.id);
       if (network === null) {
         // A chain in CHAINS that networks.ts does not know would read contracts from
@@ -206,7 +217,7 @@ export function buildConfig() {
     return getDefaultConfig({
       appName: "Crucible",
       projectId,
-      chains: [...CHAINS],
+      chains: [...chainsToRegister],
       transports,
       wallets: rainbowWalletGroups(),
       ssr: true,
@@ -216,7 +227,7 @@ export function buildConfig() {
   // No project id: injected wallets still work and the app degrades to a plain button
   // rather than failing to load. Cookie storage keeps the session across SSR passes.
   return createConfig({
-    chains: [...CHAINS],
+    chains: [...chainsToRegister],
     connectors: [
       injectedConnector({ shimDisconnect: true }),
       // Binance Wallet is named explicitly because it does not reliably answer through

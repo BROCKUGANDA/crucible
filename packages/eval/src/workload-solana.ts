@@ -22,6 +22,13 @@ import type {
   WorkloadAdapter,
 } from "./workload-contracts.js";
 import { validateManifest } from "./workload-contracts.js";
+import {
+  HARD_GATE_DIMENSIONS,
+  computeVerdict,
+  scoreVerdict,
+  type CheckEvidence,
+  type RequiredCheck,
+} from "./verification.js";
 
 export type SolanaChallengeKind =
   | "anchor_audit"
@@ -76,6 +83,58 @@ export function validateSolanaTask(task: unknown): ValidationReport {
   return { valid: errors.length === 0, errors, warnings: t.kind === "gosvm_compile" ? ["gosvm is experimental alpha — benchmark only, never production"] : [] };
 }
 
+/**
+ * The checks a Solana challenge requires, by kind.
+ *
+ * Every kind requires a reproducible SBF build and an isolated local chain: a
+ * build that cannot be reproduced cannot be graded, and a challenge that names
+ * a public cluster is refused outright (see `validateSolanaTask`).
+ */
+export const SOLANA_REQUIREMENTS: readonly RequiredCheck[] = [
+  {
+    id: "sbf_reproducibility",
+    required: true,
+    dimension: "build_reproducibility",
+    expectation: "two independent SBF builds produce byte-identical programs",
+  },
+  {
+    id: "local_chain_only",
+    required: true,
+    dimension: "evidence_quality",
+    expectation: "the challenge ran against a local, isolated chain and never a public cluster",
+  },
+  {
+    id: "anchor_missing_signer_check",
+    required: true,
+    dimension: "vuln_detection",
+    expectation: "missing signer checks are detected and confirmed",
+  },
+  {
+    id: "anchor_missing_owner_check",
+    required: true,
+    dimension: "vuln_detection",
+    expectation: "missing owner checks are detected and confirmed",
+  },
+  {
+    id: "account_robustness",
+    required: false,
+    dimension: "robustness",
+    expectation: "malformed accounts and invalid signers are refused by the program",
+  },
+  {
+    id: "compute_efficiency",
+    required: false,
+    dimension: "compute_efficiency",
+    expectation: "compute units stay inside the declared budget",
+  },
+  {
+    id: "evidence_recorded",
+    required: true,
+    dimension: "evidence_quality",
+    expectation: "the program digest, the PoC transcript and the run manifest are all recorded",
+  },
+];
+
 export function anchorAuditChecks(findings: { class: string; confirmed: boolean }[]): CheckResult[] {
   return ANCHOR_VULN_CLASSES.map((cls) => {
     const f = findings.find((x) => x.class === cls);
@@ -118,28 +177,33 @@ export class SolanaEngineeringAdapter implements WorkloadAdapter<SolanaTaskPacka
     return { artifacts: [], logs: ["adapter:delegated-to-forge-runner:solana"], outcome: "completed" };
   }
 
-  async verify(_result: ExecutionResult, _context: RunContext): Promise<VerificationReport> {
-    return {
-      status: "INCOMPLETE",
-      checks: [
-        { id: "sbf_reproducibility", passed: false, required: true, detail: "two independent SBF builds not yet compared" },
-        { id: "anchor_missing_signer_check", passed: false, required: true, detail: "pending audit" },
-        { id: "anchor_missing_owner_check", passed: false, required: true, detail: "pending audit" },
-      ],
-      reportDigest: "sha256:placeholder",
+  /**
+   * Verify from the runner's observations.
+   *
+   * This used to return INCOMPLETE with three hard-coded failures and a
+   * placeholder digest, which is the worst of both shapes: it could never pass
+   * (so the task family was unusable) and it could never be turned red (so it
+   * proved nothing). Now it reads what the runner observed and refuses only
+   * what is genuinely missing.
+   */
+  async verify(result: ExecutionResult, _context: RunContext): Promise<VerificationReport> {
+    const verdict = computeVerdict({
+      requirements: SOLANA_REQUIREMENTS,
+      evidence: (result.evidence ?? []) as CheckEvidence[],
+      outcome: result.outcome,
+      infrastructureFailure: result.infrastructureFailure,
       verifierVersion: this.version,
-    };
+    });
+    return verdict.report;
   }
 
   async score(report: VerificationReport, rubric: VersionedRubric): Promise<Scorecard> {
-    const passed = report.checks.filter((c) => c.passed).length;
-    return {
-      scorecardId: `sc-${Date.now().toString(36)}`,
-      rubricVersion: `${rubric.id}/${rubric.version}`,
-      metrics: {},
-      aggregate: passed / Math.max(1, report.checks.length),
-      createdAt: Date.now(),
-    };
+    return scoreVerdict({
+      report,
+      rubric,
+      requirements: SOLANA_REQUIREMENTS,
+      hardGateDimensions: HARD_GATE_DIMENSIONS.software,
+    }).scorecard;
   }
 
   async cleanup(_context: RunContext): Promise<void> {}

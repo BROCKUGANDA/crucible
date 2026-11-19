@@ -86,6 +86,35 @@ export function chainFromId(chainId: number): SupportedChain | null {
 }
 
 /**
+ * The set of chains this build is allowed to act on.
+ *
+ * A profile switch must never be a front-end-only toggle, but a build that was
+ * produced for a valueless demo chain must not suddenly become a writable
+ * mainnet client just because the visitor connected a mainnet wallet. The
+ * allowlist is build-time configuration (`NEXT_PUBLIC_ALLOWED_CHAINS`, comma
+ * or space separated); when it is unset every supported chain stays available,
+ * which is the behaviour every existing deployment relies on.
+ *
+ * An invalid entry is dropped rather than crashing the build, and a value that
+ * names no supported chain falls back to the build's default chain only, so a
+ * typo cannot widen the policy into "all chains".
+ */
+export function allowedChains(): ReadonlySet<SupportedChain> {
+  const raw = process.env.NEXT_PUBLIC_ALLOWED_CHAINS;
+  if (!raw || raw.trim() === "") {
+    return new Set(Object.keys(CHAIN_IDS) as SupportedChain[]);
+  }
+  const parsed = raw
+    .split(/[,\s]+/)
+    .map((s) => s.trim().toLowerCase())
+    .filter((s): s is SupportedChain => s in CHAIN_IDS) as SupportedChain[];
+  if (parsed.length === 0) {
+    return new Set([activeChain()]);
+  }
+  return new Set(parsed);
+}
+
+/**
  * The chain this build talks to, named — not a raw cast of an env var.
  *
  * The first version cast `NEXT_PUBLIC_CHAIN` straight to `SupportedChain`, so a typo
@@ -229,6 +258,16 @@ function addressRecord(): Record<
  * failure mode worse than a broken page.
  */
 function deploymentFor(chain: SupportedChain): Deployment {
+  if (!allowedChains().has(chain)) {
+    return {
+      chainId: CHAIN_IDS[chain],
+      trials: ZERO_ADDRESS,
+      alloy: ZERO_ADDRESS,
+      engram: ZERO_ADDRESS,
+      distributor: ZERO_ADDRESS,
+      configured: false,
+    };
+  }
   const rec = addressRecord()[chain];
   const trials = address("trials address", rec.trials);
   const alloy = address("alloy address", rec.alloy);
