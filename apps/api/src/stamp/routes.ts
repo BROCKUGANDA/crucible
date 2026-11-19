@@ -305,6 +305,50 @@ export function createStampRoutes(config: StampConfig = {}): Hono {
     return c.json({ issuers: [...getModel().issuers.values()] });
   });
 
+  /**
+   * The console's lists.
+   *
+   * The admin surface had a GET for one instrument and one payment, and no way
+   * to enumerate either — so a console could only act on ids it already knew,
+   * which meant a human had to read them out of the audit log. These are the
+   * same records, filtered by the issuer the caller names and gated on the same
+   * reviewer list; they add no write and no new authority.
+   */
+  app.get("/admin/holders", (c) => {
+    const denied = requireReviewer(c);
+    if (denied) return denied;
+    const issuerId = c.req.query("issuer");
+    if (!issuerId) return badRequest(c, "issuer query parameter is required");
+    return c.json({
+      holders: [...getModel().holders.values()].filter((h) => h.issuerId === issuerId),
+    });
+  });
+
+  app.get("/admin/instruments", (c) => {
+    const denied = requireReviewer(c);
+    if (denied) return denied;
+    const issuerId = c.req.query("issuer");
+    if (!issuerId) return badRequest(c, "issuer query parameter is required");
+    return c.json({
+      instruments: [...getModel().instruments.values()].filter((i) => i.issuerId === issuerId),
+    });
+  });
+
+  app.get("/admin/payments", (c) => {
+    const denied = requireReviewer(c);
+    if (denied) return denied;
+    const issuerId = c.req.query("issuer");
+    if (!issuerId) return badRequest(c, "issuer query parameter is required");
+    const instrumentIds = new Set(
+      [...getModel().instruments.values()]
+        .filter((i) => i.issuerId === issuerId)
+        .map((i) => i.id),
+    );
+    return c.json({
+      payments: [...getModel().payments.values()].filter((p) => instrumentIds.has(p.instrumentId)),
+    });
+  });
+
   app.post("/admin/issuer/transition", async (c) => {
     const denied = requireReviewer(c);
     if (denied) return denied;
@@ -1017,6 +1061,25 @@ export function createStampRoutes(config: StampConfig = {}): Hono {
   /* Investor                                                             */
   /* ------------------------------------------------------------------ */
 
+  /**
+   * The holder's entitlement, as decimal strings, or `null` when no snapshot
+   * names them.
+   *
+   * `null` is the honest answer and the portal prints `—`: a holder whose
+   * allocation has not been frozen has no portion, and zero would be a
+   * measurement nobody made. The numbers are the same ones the approve route
+   * checks a delivery against, so a holder sees exactly what a reviewer sees.
+   */
+  const portionView = (instrumentId: string) => {
+    const portion = availablePortionForInstrument(instrumentId);
+    if (!portion) return null;
+    return {
+      holderPortionTokens: portion.holderPortionTokens.toString(),
+      priorDeliveredTokens: portion.priorDeliveredTokens.toString(),
+      availableTokens: portion.availableTokens.toString(),
+    };
+  };
+
   app.get("/investor/instruments", (c) => {
     const holder = investorHolder(c);
     if (holder instanceof Response) return holder;
@@ -1029,6 +1092,11 @@ export function createStampRoutes(config: StampConfig = {}): Hono {
         instrument,
         expiration: instrumentExpiration(instrument.id, now()),
         vesting: vestingForInstrument(instrument.id),
+        // The holder's entitlement, from the frozen snapshot — the same numbers
+        // the approve route checks a delivery against. Without this the portal
+        // could show a status and a schedule but never the portion they are
+        // entitled to, which is the one figure a holder actually needs.
+        portion: portionView(instrument.id),
       })),
     });
   });
@@ -1046,6 +1114,7 @@ export function createStampRoutes(config: StampConfig = {}): Hono {
       instrument,
       expiration: instrumentExpiration(instrument.id, now()),
       vesting: vestingForInstrument(instrument.id),
+      portion: portionView(instrument.id),
     });
   });
 

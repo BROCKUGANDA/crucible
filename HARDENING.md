@@ -1,5 +1,58 @@
 # Hardening record
 
+## STAMP issuer console and investor portal — 2026-11-19, released in v0.1.43
+
+The register shipped in v0.1.42 as an API and a public projection; a human
+could not use it. This slice adds the two private surfaces and the reads they
+need, with no new authority:
+
+- **`/protocol/issuer`** — issuer readiness, holders and the wallet binding,
+  instruments (approve / offer / record signature), the frozen Schedule 2
+  snapshot, observed payments (observe / verify), notices (schedule / deliver
+  with evidence), the structuring event (prepare / reconcile), and the
+  reconciliation + audit reads.
+- **`/protocol/investor`** — the holder's own instruments, the portion from the
+  frozen snapshot, the 24-month lock-up with released/locked per month, the
+  delivery request and the address proof.
+- **API reads the console needs and did not have:** `GET /stamp/admin/holders`,
+  `/admin/instruments`, `/admin/payments`, all reviewer-gated and filtered by
+  the issuer the caller names. The investor instrument reads now carry
+  `portion` (holder / prior-delivered / available), from the same function the
+  delivery approve route checks — `null` when no snapshot names the holder.
+- **One `.table` rule** in `base.css`; the site's `.row` lists wrap four columns
+  of figures into an unreadable block.
+
+**A defect the browser check caught, and the fix.** The first build rendered
+"No issuer exists on this host yet" *after failing to read the issuer list*, and
+the investor portal said "No instruments are issued to this holder yet" after
+the same failure. Both are fabricated states — the page had measured nothing.
+They now distinguish "loaded and empty" from "not read", and the mode banner
+distinguishes an unreachable API from a host whose `STAMP_MODE` is `disabled`
+(previously both said "switched off"). `modeBanner` has a test for each of the
+four modes, `null`, and an unrecognised value.
+
+**Browser-verified**, against the built standalone server with the API stubbed
+at the context level (the service worker blocks `page.route`, so the checks use
+`context.route` and `serviceWorkers: "block"`): five states — API unreachable,
+signed out (401), populated register, portal with no snapshot, portal with an
+unbound wallet — each asserted on the text a person reads, with no page errors.
+Screenshots: issuer-unreadable, issuer-denied, issuer-populated,
+investor-populated, investor-unbound.
+
+**Also recorded from this session's disk work, because it was not what it
+looked like:** `/var/lib/docker` is a bind mount from `/dev/sdb` (1.8 TB, 1.6 TB
+free), so Docker was never on the full root filesystem; the 96 GB root was full
+of project directories under `/home`. Six stale `crucible-*` rollback
+generations (24 tags) were removed before that was known — harmless, the last
+two generations and `:latest` remain — and the CI work dirs and caches freed
+about 5 GB, leaving 8.7 GB free.
+
+Not claimed: the console has no dual-control approval (one reviewer can approve
+an instrument), no `If-Match` preconditions, no document upload or signed URLs,
+and no delivery-approval UI (the approve and reconcile routes are still API-only
+because they need a reviewer's chain read). The store remains in memory
+(ADR-0008), so the surfaces are labelled sandbox/manual review.
+
 ## Blueprint gap-closure slice — 2026-11-19, released in v0.1.41
 
 Shipped through the ladder on 2026-11-19: develop `7f4e7d4` → staging `6962422`
