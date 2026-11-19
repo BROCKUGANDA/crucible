@@ -380,6 +380,8 @@ jobs:
             --workspace @crucible/argus \
             --workspace @crucible/indexer \
             --workspace @crucible/warden \
+            --workspace @crucible/stamp-core \
+            --workspace @crucible/stamp-solana \
             --workspace @crucible/agent-security \
             --workspace @crucible/cidstore \
             --workspace @crucible/forge-watch \
@@ -457,6 +459,8 @@ jobs:
             --workspace @crucible/argus \
             --workspace @crucible/indexer \
             --workspace @crucible/warden \
+            --workspace @crucible/stamp-core \
+            --workspace @crucible/stamp-solana \
             --workspace @crucible/agent-security \
             --workspace @crucible/cidstore \
             --workspace @crucible/forge-watch \

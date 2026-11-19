@@ -5,18 +5,74 @@ export {
   nextStates,
   isTerminal,
   validateManifest,
+  assertRunTransition,
+  runStateForVerification,
+  RunTransitionError,
 } from "./workload-contracts.js";
+export type { RunTransition } from "./workload-contracts.js";
 export {
   validateEngineeringTask,
+  requirementsForMode,
   SoftwareEngineeringAdapter,
   softwareEngineeringAdapter,
+  ENGINEERING_RUBRIC,
+  ENGINEERING_REQUIREMENTS,
+  engineeringCheckIds,
+  isEngineeringPass,
 } from "./workload-software.js";
+export {
+  computeVerdict,
+  scoreVerdict,
+  checksDigest,
+  withheldReasonFor,
+  HARD_GATE_DIMENSIONS,
+} from "./verification.js";
+export type { CheckEvidence, RequiredCheck, VerificationInput, Verdict, ScoredResult } from "./verification.js";
+export {
+  normalisePatchPath,
+  matchGlob,
+  isTestPath,
+  isHarnessPath,
+  validatePatchPolicy,
+  checkPatchPolicy,
+  describePatchViolations,
+} from "./patch-policy.js";
+export type { ChangedFile, PatchPolicy, PatchPolicyResult, PatchViolation, PatchViolationCode } from "./patch-policy.js";
+export {
+  PIPELINE_STATES,
+  PIPELINE_FAILURE_STATES,
+  canTransitionPipeline,
+  nextPipelineStates,
+  assertPipelineTransition,
+  isPipelineFailure,
+  isTerminalPipelineState,
+  failPipeline,
+  canPublishOutput,
+  PipelineTransitionError,
+} from "./pipeline.js";
+export type {
+  PipelineState,
+  PipelineFailureState,
+  PipelineStatus,
+  PipelineStep,
+} from "./pipeline.js";
 export {
   validateDataContract,
   checkRows,
+  checkCompatibility,
+  previewContract,
   StructuredDataAdapter,
   structuredDataAdapter,
   DATA_RUBRIC,
+  DATA_REQUIREMENTS,
+} from "./workload-data.js";
+export type {
+  DataContract as DataContractFull,
+  FieldSpec,
+  FieldType,
+  RowCheckOptions,
+  CompatibilityReport,
+  PipelineEvidence,
 } from "./workload-data.js";
 export {
   validateMandate,
@@ -24,9 +80,26 @@ export {
   dvpCheck,
   stablecoinPegCheck,
   quantChecks,
+  canonicalIntentHash,
+  approvalStillValid,
+  preExecutionVerdict,
+  emptyKillSwitches,
+  engagedSwitch,
   AutonomousFinanceAdapter,
   autonomousFinanceAdapter,
   FINANCE_RUBRIC,
+  FINANCE_REQUIREMENTS,
+  MATERIAL_FIELDS,
+} from "./workload-finance.js";
+export type {
+  MandateMode,
+  KillSwitchState,
+  RiskContext,
+  HumanApproval,
+  ApprovalCheck,
+  FinanceEvidence,
+  PreExecutionInput,
+  PreExecutionVerdict,
 } from "./workload-finance.js";
 export {
   validateSolanaTask,
@@ -34,8 +107,53 @@ export {
   SolanaEngineeringAdapter,
   solanaEngineeringAdapter,
   SOLANA_RUBRIC,
+  SOLANA_REQUIREMENTS,
   ANCHOR_VULN_CLASSES,
 } from "./workload-solana.js";
+export {
+  assertAllowedUrl,
+  normaliseHttpError,
+  parseRetryAfter,
+  redactForLog,
+  backoffMs,
+  withRetry,
+  ConnectorRateLimiter,
+  validateCursorShape,
+  pageSetDigest,
+  planRead,
+  ConnectorError,
+} from "./connector.js";
+export type {
+  ConnectorCapabilities,
+  ConnectorConfig,
+  ConnectorErrorCode,
+  ConnectionTest,
+  DataConnector,
+  ReadPage,
+  ReadRequest,
+  RetryPolicy,
+  SecretReference,
+} from "./connector.js";
+
+export {
+  startEvent,
+  completeEvent,
+  lineageGaps,
+  validateRunEvent,
+  eventDigest,
+  LINEAGE_PRODUCER,
+  LINEAGE_SCHEMA_URL,
+} from "./lineage.js";
+export type {
+  DatasetFacet,
+  DatasetIdentifier,
+  JobFacet,
+  ProvenanceInput,
+  RunEvent,
+  RunEventType,
+  RunFacet,
+} from "./lineage.js";
+
 export { getAdapter, listAdapters } from "./workload.js";
 export type { WorkloadKind } from "./workload.js";
 export {

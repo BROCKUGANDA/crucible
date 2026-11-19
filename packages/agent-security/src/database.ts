@@ -209,12 +209,13 @@ function splitSqlStatements(sql: string): string[] {
     }
 
     if (inDollarQuote) {
-      current += ch;
-      if (dollarTag && sql.startsWith('$' + dollarTag + '$', i)) {
+      if (sql.startsWith('$' + dollarTag + '$', i)) {
         current += '$' + dollarTag + '$';
         i += dollarTag.length + 1;
         inDollarQuote = false;
         dollarTag = '';
+      } else {
+        current += ch;
       }
       continue;
     }
@@ -233,22 +234,31 @@ function splitSqlStatements(sql: string): string[] {
       continue;
     }
 
-    if (ch === '$' && next && /[a-zA-Z_]/.test(next)) {
-      // Potential dollar-quoted string
-      let tag = '';
-      let j = i + 1;
-      while (j < sql.length) {
-        const chj = sql[j];
-        if (!chj || !/[a-zA-Z_0-9]/.test(chj)) break;
-        tag += chj;
-        j++;
-      }
-      if (j < sql.length && sql[j] === '$') {
-        dollarTag = tag;
+    if (ch === '$') {
+      if (next === '$') {
+        dollarTag = '';
         inDollarQuote = true;
-        current += ch + tag + '$';
-        i = j;
+        current += '$$';
+        i += 1;
         continue;
+      }
+      if (next && /[a-zA-Z_]/.test(next)) {
+        // Potential dollar-quoted string
+        let tag = '';
+        let j = i + 1;
+        while (j < sql.length) {
+          const chj = sql[j];
+          if (!chj || !/[a-zA-Z_0-9]/.test(chj)) break;
+          tag += chj;
+          j++;
+        }
+        if (j < sql.length && sql[j] === '$') {
+          dollarTag = tag;
+          inDollarQuote = true;
+          current += ch + tag + '$';
+          i = j;
+          continue;
+        }
       }
     }
 

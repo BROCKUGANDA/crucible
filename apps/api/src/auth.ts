@@ -26,7 +26,7 @@
  */
 import { Hono } from "hono";
 import type { Context } from "hono";
-import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { keccak256, recoverAddress, recoverMessageAddress, toBytes } from "viem";
 import {
   buildOrganisationPrincipal,
@@ -34,6 +34,7 @@ import {
   createNonceStore,
   type NonceStore,
   type StoredChallenge,
+  getPool,
 } from "@crucible/agent-security";
 
 const CHALLENGE_TTL_MS = 5 * 60_000;
@@ -45,17 +46,49 @@ const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
 const HEX_RE = /^0x[0-9a-fA-F]+$/;
 
 /* ------------------------------------------------------------------ */
-/* Session revocation (in-process denylist; PG/Redis mirror in prod)   */
+/* Session revocation (in-memory fast path + Postgres mirror)          */
 /* ------------------------------------------------------------------ */
-const revokedSessions = new Set<string>();
+const revokedSessionHashes = new Set<string>();
+
+function hashSessionToken(token: string): string {
+  return createHash("sha256").update(token).digest("hex");
+}
+
+async function persistRevocation(token: string): Promise<void> {
+  if (!process.env.DATABASE_URL) return;
+  try {
+    const pool = getPool();
+    await pool.query(
+      "INSERT INTO session_revocations (token_hash) VALUES ($1) ON CONFLICT DO NOTHING",
+      [hashSessionToken(token)],
+    );
+  } catch {
+    // Revocation still holds in memory for this process; persistence is best-effort.
+  }
+}
+
 export function revokeSession(sessionId: string): void {
-  revokedSessions.add(sessionId);
+  revokedSessionHashes.add(hashSessionToken(sessionId));
+  void persistRevocation(sessionId);
 }
+
 export function isRevokedSession(sessionId: string): boolean {
-  return revokedSessions.has(sessionId);
+  return revokedSessionHashes.has(hashSessionToken(sessionId));
 }
+
+export async function loadRevokedSessions(): Promise<void> {
+  if (!process.env.DATABASE_URL) return;
+  try {
+    const pool = getPool();
+    const res = await pool.query<{ token_hash: string }>("SELECT token_hash FROM session_revocations");
+    for (const row of res.rows) revokedSessionHashes.add(row.token_hash);
+  } catch {
+    // No database (or no migration yet): keep the in-memory set empty.
+  }
+}
+
 export function __clearRevocationsForTests(): void {
-  revokedSessions.clear();
+  revokedSessionHashes.clear();
 }
 
 export function csrfOriginCheck(c: Context): boolean {
@@ -346,8 +379,9 @@ export function verifySessionToken(
 
 function sessionCookie(token: string): string {
   const secure = process.env.NODE_ENV === "production";
+  const name = secure ? `__Host-${COOKIE_NAME}` : COOKIE_NAME;
   const parts = [
-    `__Host-${COOKIE_NAME}=${token}`,
+    `${name}=${token}`,
     "HttpOnly",
     secure ? "Secure" : "",
     secure ? "SameSite=None" : "SameSite=Lax",
@@ -359,8 +393,9 @@ function sessionCookie(token: string): string {
 
 function clearedCookie(): string {
   const secure = process.env.NODE_ENV === "production";
+  const name = secure ? `__Host-${COOKIE_NAME}` : COOKIE_NAME;
   const parts = [
-    `__Host-${COOKIE_NAME}=`,
+    `${name}=`,
     "HttpOnly",
     secure ? "Secure" : "",
     secure ? "SameSite=None" : "SameSite=Lax",
@@ -370,7 +405,7 @@ function clearedCookie(): string {
   return parts.join("; ");
 }
 
-function cookieOf(c: Context, name: string): string | null {
+function cookieOf(c: Context, name: string, allowBare = true): string | null {
   const header = c.req.header("cookie");
   if (!header) return null;
   const hostPrefixed = `__Host-${name}`;
@@ -378,10 +413,10 @@ function cookieOf(c: Context, name: string): string | null {
   for (const part of header.split(";")) {
     const [k, ...v] = part.trim().split("=");
     if (k === hostPrefixed) return v.join("=");
-    if (k === name && bare === null) bare = v.join("=");
+    if (allowBare && k === name && bare === null) bare = v.join("=");
   }
-  // Prefer __Host- when present (anti-cookie-tossing); bare is fallback for
-  // non-prod dev clients. In prod, sessionCookie() only ever sets __Host-.
+  // In production a session cookie must carry the __Host- prefix; a bare
+  // cookie is never authority there, so cookie-tossing cannot mint a session.
   return bare;
 }
 
@@ -399,7 +434,8 @@ export function verifiedSessionFromContext(
   const key = secret();
   const audience = configuredOrigin();
   if (!key || !audience) return null;
-  const token = cookieOf(c, COOKIE_NAME);
+  const allowBare = process.env.NODE_ENV !== "production";
+  const token = cookieOf(c, COOKIE_NAME, allowBare);
   if (!token) return null;
   if (isRevokedSession(token)) return null;
   const payload = verifySessionToken(token, key, audience);
@@ -640,13 +676,15 @@ export function authRoutes(maxBodyBytes = 16 * 1024): Hono {
     if (!key) return c.json({ error: "auth_unconfigured" }, 503);
     const origin = configuredOrigin();
     if (!origin) return c.json({ error: "auth_unconfigured" }, 503);
-    const payload = verifySessionToken(cookieOf(c, COOKIE_NAME), key, origin);
+    const allowBare = process.env.NODE_ENV !== "production";
+    const payload = verifySessionToken(cookieOf(c, COOKIE_NAME, allowBare), key, origin);
     if (!payload) return c.json({ address: null });
     return c.json({ address: payload.address, session: { expiresAt: payload.expiresAt } });
   });
 
   app.post("/logout", (c) => {
-    const token = cookieOf(c, COOKIE_NAME);
+    const allowBare = process.env.NODE_ENV !== "production";
+    const token = cookieOf(c, COOKIE_NAME, allowBare);
     if (token) revokeSession(token);
     c.header("Set-Cookie", clearedCookie());
     return c.json({ ok: true });

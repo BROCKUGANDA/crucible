@@ -43,3 +43,8 @@ services:
 
   web:
     ports: !reset []
+    build:
+      args:
+        # The VPS hosts the valueless demo by default. A deployment that targets a
+        # real chain sets NEXT_PUBLIC_ALLOWED_CHAINS explicitly in its build env.
+        NEXT_PUBLIC_ALLOWED_CHAINS: ${NEXT_PUBLIC_ALLOWED_CHAINS:-foundry}

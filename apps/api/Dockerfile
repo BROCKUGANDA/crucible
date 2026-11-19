@@ -29,6 +29,8 @@ COPY packages/forge-watch/package.json packages/forge-watch/
 COPY packages/indexer/package.json packages/indexer/
 COPY packages/smith-sdk/package.json packages/smith-sdk/
 COPY packages/warden/package.json packages/warden/
+COPY packages/stamp-core/package.json packages/stamp-core/
+COPY packages/stamp-solana/package.json packages/stamp-solana/
 COPY grader/package.json grader/
 COPY packages/site-index/package.json packages/site-index/
 COPY apps/api/package.json apps/api/
@@ -60,6 +62,11 @@ COPY --from=build /repo/migrations ./migrations
 COPY --from=build /repo/apps/api/package.json ./apps/api/package.json
 COPY --from=build /repo/apps/api/dist ./apps/api/dist
 COPY apps/api/docker-entrypoint.sh /usr/local/bin/crucible-api-entrypoint.sh
+
+# Run as a non-root user. The entrypoint only sources an env file and execs node,
+# so no privilege is needed at runtime.
+RUN chown -R node:node /repo
+USER node
 
 EXPOSE 8787
 ENTRYPOINT ["/usr/local/bin/crucible-api-entrypoint.sh"]

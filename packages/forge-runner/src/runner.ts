@@ -12,7 +12,12 @@ import {
   type WorkContext,
   type WorkResult,
 } from "@crucible/smith";
-import { touchesTests } from "./agent.js";
+import { filesTouched, touchesTests } from "./agent.js";
+import {
+  checkPatchPolicy,
+  describePatchViolations,
+  type PatchPolicy,
+} from "@crucible/eval";
 import { emitManifest, type EmittedManifest, type ManifestInputs } from "./manifest.js";
 import {
   Sandbox,
@@ -160,6 +165,15 @@ export interface RunRequest {
   tier?: TrialTier;
   /** absolute deadline, unix ms - the trial's own, not a fresh budget */
   deadlineMs: number;
+  /**
+   * What this task's patch may touch.
+   *
+   * The runner enforces it before `git apply`, beside the built-in
+   * tests/evaluator refusal. Absent means the built-in refusal only — the
+   * default is unchanged for every existing caller, and a task that wants a
+   * narrower scope says so.
+   */
+  patchPolicy?: PatchPolicy;
 }
 
 export interface RunOutcome {
@@ -387,7 +401,7 @@ export class ForgeRunner {
           toolId: "apply_patch",
           correlationId: String(state.iterations),
         });
-        await this.applyStep(sandbox, step);
+        await this.applyStep(sandbox, step, req.patchPolicy);
 
         // run the pinned suite
         await watch({
@@ -699,7 +713,7 @@ private async collectEditableFiles(
   }
 
   /** A patch that fails to apply is a normal iteration outcome, not a crash. */
-  private async applyStep(sandbox: Sandbox, step: WorkResult): Promise<void> {
+  private async applyStep(sandbox: Sandbox, step: WorkResult, policy?: PatchPolicy): Promise<void> {
     if (step.patch.trim().length === 0) return;
     // The prompt tells the agent not to edit the pinned suite, and the built-in agent
     // checks its own output — but a runner cannot trust the agent it is driving. The
@@ -707,6 +721,20 @@ private async collectEditableFiles(
     // cannot pass even when the prompt is ignored.
     if (touchesTests(step.patch)) {
       throw new ForgeFailure("tests-modified", FAILURE_COPY["tests-modified"]);
+    }
+    // A task can narrow the scope further. The built-in refusal above is the floor,
+    // never the ceiling: a policy cannot re-enable a test edit.
+    if (policy) {
+      const scope = checkPatchPolicy(
+        filesTouched(step.patch).map((path) => ({ path })),
+        policy,
+      );
+      if (!scope.ok) {
+        throw new ForgeFailure(
+          "patch-outside-scope",
+          `${FAILURE_COPY["patch-outside-scope"]} (${describePatchViolations(scope.violations)})`,
+        );
+      }
     }
     const applied = await sandbox.applyPatch(step.patch);
     if (!applied.ok) {

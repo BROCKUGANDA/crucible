@@ -24,6 +24,7 @@
   "dependencies": {
     "@crucible/agent-security": "*",
     "@crucible/cidstore": "*",
+    "@crucible/eval": "*",
     "@crucible/forge-watch": "*",
     "@crucible/smith": "*",
     "json-canonicalize": "^3.0.1",

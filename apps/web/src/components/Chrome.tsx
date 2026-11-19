@@ -122,6 +122,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/data", label: "Data & ETL", blurb: "Data pipeline workload suite" },
       { href: "/finance", label: "Finance", blurb: "Finance workload suite" },
       { href: "/solana", label: "Solana", blurb: "The Solana-side console" },
+      { href: "/protocol", label: "Protocol · Ownership", blurb: "The STAMP register: issuer, investor and public views" },
     ],
   },
   {
