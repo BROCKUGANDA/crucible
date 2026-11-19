@@ -1,5 +1,54 @@
 # Hardening record
 
+## Blueprint gap-closure slice — 2026-11-19, not released
+
+The three blueprint documents in `~/Downloads` were audited against the tree
+line by line. What the audit found missing, and what is now enforced:
+
+- **Patch scope was declared and never read** (`allowedPaths`,
+  `forbiddenPaths` on `EngineeringTaskPackage`). ForgeRunner now checks the
+  diff before `git apply`, beside the built-in tests/evaluator refusal, and
+  `validateEngineeringTask` refuses a policy that escapes the workspace. A
+  task cannot re-enable a test edit, an evaluator edit or a `.git` edit.
+- **`NEEDS_REVIEW` had no path to it.** A required check marked
+  `reviewOnFailure` now produces that status when every failure is one a
+  machine cannot settle; the score is withheld with its own reason. A
+  `contract_detect` task reaches it; a `regression_repair` task with the same
+  evidence still FAILs.
+- **The run state machine had no caller.** Every API move now goes through
+  `assertRunTransition`, and `GET /v1/runs/:id/events` serves the recorded
+  path. A scored run stops at `PROVISIONAL_RESULT` — the dispute window has not
+  opened, and there is no code that opens it.
+- **§4.4's pipeline lifecycle did not exist.** `packages/eval/src/pipeline.ts`
+  has one edge into `PUBLISHED_OUTPUT` (from `VERIFIED`); no failure state has
+  an edge into it at all.
+- **Delivery had no portion check.** The approve route took the reviewer's
+  `deliveredAmountBaseUnits` and wrote a vesting schedule for it. It now reads
+  the frozen Schedule 2 portion, subtracts prior deliveries, and refuses with
+  the available figure in the body. A missing snapshot is a refusal, not
+  "unlimited".
+- **The team-allocation band was checked against a constant.** The structuring
+  reconcile compared `2000n` to itself. It reads `STAMP_TEAM_ALLOCATION_BPS`
+  and refuses when the value is absent.
+- **`NEXT_PUBLIC_ALLOWED_CHAINS` never reached the web build.**
+  `compose.public-demo.yaml` passed it; `apps/web/Dockerfile` did not declare
+  it. The demo image therefore still offered Mainnet and Sepolia as writable
+  networks. Fixed, with a test that reads the overlay and the Dockerfile.
+
+Mutation-proven individually (each guard deleted or inverted, its own test red,
+then restored): the runner's patch-scope check, the `NEEDS_REVIEW` branch, the
+run-transition guard, and the delivery-portion gate. `npm run verify:all`
+(typecheck, all workspace suites, edge 25/25) is green on `e26bac2`, which also
+lands the previously-uncommitted STAMP and workload domains.
+
+Still open, unchanged by this slice: preview and production profiles (both
+refuse to boot), interactive guest sessions and quotas, hosted agent
+credentials, the issuer console and investor portal UI, durable STAMP/workload
+persistence and outbox consumers, `compose.preview.yaml` /
+`compose.production.yaml`, `/status` as a distinct route (`/assay` is the
+service-status view), Cloudflare Tunnel/Access, and every mainnet gate in
+`docs/runbooks/mainnet.md`.
+
 ## Helius configuration slice — 2026-11-19, not released
 
 Locally verified: server-only fixed mainnet RPC/WS URL derivation and the
