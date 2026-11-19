@@ -1,6 +1,10 @@
 # Hardening record
 
-## Blueprint gap-closure slice — 2026-11-19, not released
+## Blueprint gap-closure slice — 2026-11-19, released in v0.1.41
+
+Shipped through the ladder on 2026-11-19: develop `7f4e7d4` → staging `6962422`
+→ main `327fa7d` → deploy (all probes green) → tag **v0.1.41**. Measured after
+the deploy: `https://crucible.aiazimara.com/` 200 and `/protocol` 200.
 
 The three blueprint documents in `~/Downloads` were audited against the tree
 line by line. What the audit found missing, and what is now enforced:
@@ -55,6 +59,21 @@ persistence and outbox consumers, `compose.preview.yaml` /
 `compose.production.yaml`, `/status` as a distinct route (`/assay` is the
 service-status view), Cloudflare Tunnel/Access, and every mainnet gate in
 `docs/runbooks/mainnet.md`.
+
+Two infrastructure facts found while getting this release through, both
+measured rather than assumed:
+
+- **The CI host had a full disk (96G/96G, 0 available) and all four runners had
+  gone offline.** Freeing 11.58 GB of build cache, 4.68 GB of stopped
+  containers, 0.66 GB of dangling images, the npm cache and `~/.cache`, then
+  restarting the four `actions.runner.BROCKUGANDA-crucible.*` units brought them
+  back. Restarting them while jobs were queued killed those jobs — the first
+  re-run's three failures were that, not the code.
+- **IPv6 to Docker Hub is intermittently unreachable from that host** (`curl -6`
+  to `auth.docker.io` returned 000 while `curl -4` returned 200). The Trivy job
+  failed once with `network is unreachable` on the registry token, then passed
+  on retry with no code change. This will recur; the host's IPv6 route is the
+  thing to fix, and it is not fixed.
 
 ## Helius configuration slice — 2026-11-19, not released
 
