@@ -52,4 +52,11 @@ describe("the web image accepts every public build arg its overlay passes", () =
     // Named explicitly because its absence is the bug this test exists for.
     expect(buildArgsPassedBy("compose.public-demo.yaml")).toContain("NEXT_PUBLIC_ALLOWED_CHAINS");
   });
+
+  it("passes the optional Web3Auth client id through the deployment compose file", () => {
+    const name = "NEXT_PUBLIC_WEB3AUTH_CLIENT_ID";
+    expect(buildArgsPassedBy("compose.yaml")).toContain(name);
+    expect(DOCKERFILE).toMatch(new RegExp(`^ARG ${name}$`, "m"));
+    expect(DOCKERFILE).toMatch(new RegExp(`${name}="\\$${name}"`));
+  });
 });

@@ -417,6 +417,31 @@ export const SITE_INDEX: SiteEntry[] = [
     "needs": "The issuer's published identifier. The issuer and investor surfaces need their own authority, not a wallet."
   },
   {
+    "path": "/protocol/investor",
+    "label": "Investor portal",
+    "purpose": "The holder's own view of the STAMP register: their instruments, their frozen portion, the 24-month lock-up and the delivery request.",
+    "can": [
+      "read the instruments issued to this wallet",
+      "see the portion from the frozen Schedule 2 snapshot",
+      "submit a signed delivery request and prove the destination address",
+      "follow the monthly release schedule once a delivery is approved"
+    ],
+    "needs": "a signed-in wallet a reviewer has bound to a holder record"
+  },
+  {
+    "path": "/protocol/issuer",
+    "label": "Issuer console",
+    "purpose": "The private issuer surface: instruments, the frozen Schedule 2 snapshot, observed payments, notices and the structuring event, all authorised against the API's reviewer list.",
+    "can": [
+      "create an issuer, holders and draft instruments",
+      "freeze a Schedule 2 allocation snapshot",
+      "record and verify an observed payment",
+      "schedule and deliver a contractual notice",
+      "prepare and reconcile the token structuring event"
+    ],
+    "needs": "a signed-in wallet on the host's reviewer list"
+  },
+  {
     "path": "/replay/[id]",
     "label": "Replay Theater",
     "purpose": "Re-enact any settled trial on a scrubbable timeline.",

@@ -37,7 +37,9 @@ RUN npm ci --ignore-scripts
 COPY . .
 RUN npm run build:libs \
   && npm run build --workspace @crucible/juror \
-  && npm prune --omit=dev --ignore-scripts
+  && npm prune --omit=dev --ignore-scripts \
+  && rm -rf apps/web \
+  && find node_modules -type d \( -name esbuild -o -name "@esbuild" -o -name vite -o -name vitest -o -name "@vitest" -o -name tsx \) -prune -exec rm -rf {} \;
 
 FROM node:22-alpine AS runner
 WORKDIR /repo

@@ -198,6 +198,34 @@ p {
   -webkit-overflow-scrolling: touch;
 }
 
+/*
+ * Console tables: a record set, not a dashboard.
+ *
+ * The protocol console and investor portal list instruments, payments and
+ * notices, and the site's `.row` lists are wrong for four columns of figures —
+ * they wrap mid-row and the numbers stop lining up. Borders use the existing
+ * `--bg2` line so a table reads as the same material as the panels around it.
+ */
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+  display: block;
+  overflow-x: auto;
+}
+.table th,
+.table td {
+  text-align: left;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--bg2);
+  vertical-align: top;
+  white-space: nowrap;
+}
+.table th {
+  font-weight: 600;
+  opacity: 0.75;
+}
+
 .skip-link {
   position: absolute;
   left: -9999px;

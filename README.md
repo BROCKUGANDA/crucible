@@ -436,7 +436,8 @@ unnoticed.
 
 The web app signs for real, through **wagmi v2 + RainbowKit**: injected wallets
 (MetaMask, Rabby, Brave, anything EIP-6963), **Coinbase Wallet** (the classic
-Coinbase Wallet SDK connector) and WalletConnect for mobile.
+Coinbase Wallet SDK connector), WalletConnect for mobile, and optional **Web3Auth**
+email/social login as a user-controlled EOA.
 
 Four surfaces sign, all from the connected wallet — the API deliberately holds no keys
 and cannot submit a transaction on an operator's behalf:
@@ -450,10 +451,23 @@ and cannot submit a transaction on an operator's behalf:
 
 Setup: copy `apps/web/.env.example` to `.env.local`. A
 `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` (free, from cloud.walletconnect.com) turns on
-RainbowKit's modal; without one the app falls back to plain injected and
-Coinbase Wallet buttons rather than breaking. Absent contract addresses degrade to read-only with a visible
-notice — the build never depends on secrets, because a demo that will not render
-without them is a demo that fails on stage.
+RainbowKit's modal; without one the app falls back to the wallet chooser. Set
+`NEXT_PUBLIC_WEB3AUTH_CLIENT_ID` from the Web3Auth dashboard to expose its login option;
+configure the allowed EVM chains and login methods in that dashboard. The client id is
+public configuration, not a secret. Web3Auth login only connects a wallet: API sessions
+still require the existing SIWE flow, and Crucible never asks Web3Auth to export a private
+key. Read the provider's recovery and privacy terms before enabling it in production.
+Absent contract addresses degrade to read-only with a visible notice — the build never
+depends on secrets, because a demo that will not render without them is a demo that fails
+on stage.
+
+The treasury page uses **Safe Protocol Kit** to check an EOA against the contract-selected
+Treasury Safe, read its owners/threshold and build an unsigned local `withdraw()` Safe
+draft. Credit is shown to an EOA only after on-chain owner verification. The page does not
+collect Safe signatures, submit a proposal to a Safe Transaction Service, broadcast, or
+execute; only the Safe can withdraw its own credit. Mainnet draft creation is deliberately
+disabled while ADR-0020's audit, Safe, legal and operational release gates remain incomplete.
+See [`docs/adr/0026-web3auth-safe-protocol-kit.md`](docs/adr/0026-web3auth-safe-protocol-kit.md).
 
 **Phantom is absent on purpose.** Phantom Portal, the route the pasted docs describe,
 is not accepting new applications, so Phantom Connect is not available to this project.
@@ -624,11 +638,12 @@ Two properties it checks that a stub could not:
   their identity with the ERC-8004 Identity registry themselves (`register(agentURI)`
   mints to the caller), and Crucible records the association via `linkIdentity`.
   Verified on mainnet in `ForkTests.test_Fork_OperatorLinksARealIdentityRegistration`.
-- **30 npm advisories remain** (2 low, 12 moderate, 16 high, 0 critical — the gate reconciles its own walk
+- **47 npm advisories remain** (6 low, 24 moderate, 17 high, 0 critical — the gate reconciles its own walk
   against npm's summary and fails if the two disagree), and CI's audit passes them because each one
   is inside the documented set in `scripts/audit-gate.mjs` with a written ceiling. They reduce to
   **six advisories in four leaf packages, every one of them reached through the wallet connector
-  tree** — not the "two" an earlier version of this list claimed, which missed the last two:
+  tree** — not the "two" an earlier version of this list claimed, which missed the last two — plus
+  **eight packages in Web3Auth's optional chain** (below):
   - **`ws` — uninitialized memory disclosure (GHSA-58qx-3vcg-4xpx) and memory-exhaustion DoS
     (GHSA-96hv-2xvq-fx4p), high.** Reached through `@walletconnect/ethereum-provider` →
     `@walletconnect/utils` → `viem@2.23.2` → `ws@8.18.0`, all of them pinned exactly. The
@@ -656,6 +671,21 @@ Two properties it checks that a stub could not:
     the package is now scored **high** rather than moderate and the ceiling moved with it.
     This one decodes URIs, and a wallet deep-link is exactly the attacker-visible string
     that reaches a decoder — the input is the connect URI, not a chain response.
+  - **Web3Auth's modal chain — eight packages, 2 moderate and 6 low, reached only through the
+    optional connector (ADR-0026).** `@web3auth/modal` 11.4.3 is imported dynamically, inside the
+    connector, and the connector is only constructed when `NEXT_PUBLIC_WEB3AUTH_CLIENT_ID` is
+    configured — so this tree is not in the default wallet path and not in the initial bundle.
+    `@web3auth/no-modal` and `@toruslabs/ethereum-controllers` score **moderate** because they
+    bundle `@metamask/connect-evm`, `@metamask/connect-multichain`, `@metamask/delegation-core` and
+    `@metamask/smart-accounts-kit`, whose advisories the gate already documents; the six **low**
+    ones are the modal itself plus its XRP/BTC signing libraries — `xrpl`, `bip32`,
+    `tiny-secp256k1`, `ripple-keypairs` and `elliptic` (GHSA-848j-6mx2-7j84, "risky primitive
+    implementation"). Ethereum signing here does not pass through them. **npm's only suggested fix
+    is a semver-major *downgrade* of `@web3auth/modal` to 9.7.0**, which deletes the integration
+    rather than patching it; the ceilings are the severities measured on 2026-11-19, so any
+    escalation stops the build. Dropping the connector
+    (`apps/web/src/lib/web3auth-connector.ts` and its `wagmi` entry) removes all eight if the
+    feature is not wanted.
   npm offers the same fix for all four: `wagmi` `3.7.9`, a semver-major. **That was measured, not
   assumed** — the upgrade was installed, built, typechecked, tested and `next build`ed green on
   2026-10-25, and it cleared **none** of these five while adding `abitype` and `zod` to the tree as
