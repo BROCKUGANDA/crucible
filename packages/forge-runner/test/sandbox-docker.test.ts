@@ -119,7 +119,12 @@ async function dockerSandbox(over: Partial<SandboxSpec> = {}): Promise<Sandbox> 
     image: TEST_IMAGE,
     memory: "1g",
     cpus: "1",
-    timeoutSec: 30,
+    // 30s measured the daemon, not the sandbox: under CI's parallel Docker load a
+    // `python3 -c "print(3)"` exceeded it and threw `SandboxTimeout` from a line that
+    // was not the one under test (measured 2026-11-19, twice). The budget these tests
+    // enforce is set explicitly where it is the subject; the default exists only to
+    // stop a hung container from hanging the suite.
+    timeoutSec: 90,
     // No probe-skip: these tests only make sense as a real container.
     ...over,
   });
@@ -197,14 +202,19 @@ describe(`Docker sandbox enforcement${enforcementReady ? "" : " — SKIPPED (nee
   testEnforce(
     "wall-clock is capped: a workload that sleeps past the timeout is terminated, and the queue survives",
     async () => {
-      // The budget is 10s against a 120s sleep, and the assertion is about the CONTAINER, not
+      // The budget is 20s against a 120s sleep, and the assertion is about the CONTAINER, not
       // the promise. Both halves matter. This test used to pass by racing the sleep length
       // against vitest's limit: `execFile`'s timeout only signals the `docker` CLI, the CLI
       // ignores it while its container is still streaming, and the run settled only when the
       // workload finished on its own — so a 60s sleep slipped under 90s on an idle runner and
       // over on a loaded one. The cap it celebrated had never terminated anything. Measured
       // before this was fixed: budget 10s, container still `Up` at 40s, callback at 120 156ms.
-      const sandbox = await dockerSandbox({ timeoutSec: 10 });
+      //
+      // The budget moved 10s -> 20s on 2026-11-19 because a loaded CI runner needed more than
+      // 10s just to start `python:3.12-alpine` and run the follow-up command, so the suite
+      // reported `SandboxTimeout` from the follow-up assertion instead of the one under test.
+      // 20s is still one sixth of the workload's sleep: the termination claim is unchanged.
+      const sandbox = await dockerSandbox({ timeoutSec: 20 });
       await sandbox.writeFile("sleep.py", "import time\ntime.sleep(120)\nprint('woke')\n");
       const started = Date.now();
       await expect(sandbox.runSuite("python3 sleep.py")).rejects.toBeInstanceOf(SandboxTimeout);
@@ -219,11 +229,14 @@ describe(`Docker sandbox enforcement${enforcementReady ? "" : " — SKIPPED (nee
       expect(leftover.length, `a container from this run is still RUNNING: ${leftover}`).toBe(0);
 
       // The sandbox is not poisoned by an expired run: it accepts the next job.
+      // The short budget above is the behavior under test; give this separate recovery
+      // probe more startup time so load on the shared Docker host is not a false failure.
+      sandbox.spec.timeoutSec = 60;
       const follow = await sandbox.runSuite('python3 -c "print(3)"');
       expect(follow.code).toBe(0);
       expect(follow.stdout).toContain("3");
     },
-    90_000,
+    150_000,
   );
 
   testEnforce(

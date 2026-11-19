@@ -100,6 +100,7 @@ function InjectedConnect() {
   const injected = connectors.find((c) => c.type === "injected" && c.id !== "wallet.binance.com");
   const binanceConnector = connectors.find((c) => c.id === "wallet.binance.com");
   const coinbase = connectors.find((c) => c.type === "coinbaseWallet");
+  const web3Auth = connectors.find((c) => c.id === "web3auth");
 
   const busy = isPending || landing;
 
@@ -110,6 +111,7 @@ function InjectedConnect() {
   const walletOptions = [
     ...(injected ? [{ id: "injected", connector: injected, label: "Browser wallet" }] : []),
     ...(coinbase ? [{ id: "coinbase", connector: coinbase, label: "Coinbase Wallet" }] : []),
+    ...(web3Auth ? [{ id: "web3auth", connector: web3Auth, label: "Email or social sign-in · Web3Auth" }] : []),
     ...(binance && binanceConnector
       ? [{ id: "binance", connector: binanceConnector, label: "Binance Wallet" }]
       : []),

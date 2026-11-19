@@ -12,12 +12,14 @@ import {
   walletConnectWallet,
 } from "@rainbow-me/rainbowkit/wallets";
 import { bitgetConnector } from "./bitget";
+import { web3AuthClientId, web3AuthConnector, web3AuthEnabled } from "./web3auth-connector";
 import type { Chain } from "viem/chains";
 import type { ChainDescription } from "./chainSwitch";
 
 /**
  * Wallet configuration: injected wallets (MetaMask, Rabby, Brave, and anything
- * EIP-1193 / EIP-6963), Coinbase Wallet, Bitget Wallet, and WalletConnect for mobile.
+ * EIP-1193 / EIP-6963), Coinbase Wallet, Bitget Wallet, WalletConnect, and optional
+ * Web3Auth embedded EOA login when a public client id is configured.
  *
  * Phantom is deliberately absent. Phantom Portal — the route for Phantom Connect, which
  * offers embedded wallets via Google/Apple sign-in — is not accepting new applications,
@@ -149,6 +151,15 @@ export function walletConnectEnabled(): boolean {
   return rainbowKitProjectId().length > 0;
 }
 
+export const web3AuthRainbowWallet: typeof injectedWallet = () => ({
+  id: "web3auth",
+  name: "Web3Auth",
+  iconUrl:
+    "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%231f4fd6'/%3E%3Cpath d='M13 18l6 28h7l6-17 6 17h7l6-28h-8l-3 15-6-15h-5l-6 15-3-15z' fill='white'/%3E%3C/svg%3E",
+  iconBackground: "#1f4fd6",
+  createConnector: () => web3AuthConnector(),
+});
+
 /**
  * The wallet list handed to RainbowKit when a WalletConnect project id exists.
  *
@@ -171,6 +182,7 @@ export function rainbowWalletGroups() {
         rainbowBitgetWallet,
         walletConnectWallet,
         injectedWallet,
+        ...(web3AuthEnabled() ? [web3AuthRainbowWallet] : []),
       ],
     },
   ];
@@ -247,6 +259,7 @@ export function buildConfig() {
       // and mobile app are a real path for the Base audience, and the classic SDK
       // connector does not need a WalletConnect project id.
       coinbaseWallet({ appName: "Crucible", preference: "all" }),
+      ...(web3AuthClientId() ? [web3AuthConnector()] : []),
       ...(projectId ? [walletConnect({ projectId })] : []),
     ],
     transports,

@@ -210,13 +210,14 @@ export default function ProtocolPage() {
         <ul className="hint hint--block">
           <li>
             <strong>Issuer console.</strong> A configured reviewer records counsel approval, payments, notices and
-            delivery decisions. Every route refuses an unconfigured reviewer list. Open it at{" "}
-            <span className="mono">/stamp/admin/issuer</span> with a reviewer session.
+            delivery decisions. Every route refuses an unconfigured reviewer list.{" "}
+            <Link href="/protocol/issuer">Open the issuer console</Link> with a reviewer session.
           </li>
           <li>
             <strong>Investor portal.</strong> A holder sees only their own instrument, and only after a reviewer has
             bound their verified address to the holder record. The API answers <span className="mono">403</span> for a
-            signed-in wallet with no binding, rather than an empty list.
+            signed-in wallet with no binding, rather than an empty list.{" "}
+            <Link href="/protocol/investor">Open the investor portal</Link>.
           </li>
           <li>
             <strong>Public transparency.</strong> The figures above, and the governance links below.

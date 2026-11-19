@@ -499,6 +499,29 @@ describe("investor portal", () => {
     expect(second.status).toBe(409);
   });
 
+  it("shows the holder their frozen portion, and null before a snapshot exists", async () => {
+    const instance = createStampRoutes({ mode: "manual_review", reviewers: [REVIEWER] });
+    const setup = await seed(instance);
+
+    const before = await get(instance, "/investor/instruments", HOLDER_PRINCIPAL);
+    const beforeBody = (await before.json()) as { instruments: { portion: unknown }[] };
+    // No snapshot yet: unknown, never zero.
+    expect(beforeBody.instruments[0]!.portion).toBeNull();
+
+    await post(instance, "/admin/allocations", {
+      issuerId: setup.issuerId,
+      totalNetworkTokens: "1000000000000",
+      holders: [{ holderId: setup.holderId, proRataBps: "500" }],
+    });
+
+    const after = await get(instance, "/investor/instruments", HOLDER_PRINCIPAL);
+    const afterBody = (await after.json()) as {
+      instruments: { portion: { holderPortionTokens: string; availableTokens: string } }[];
+    };
+    expect(afterBody.instruments[0]!.portion.holderPortionTokens).toBe("50000000000");
+    expect(afterBody.instruments[0]!.portion.availableTokens).toBe("50000000000");
+  });
+
   it("requires the holder to prove the destination address before approval", async () => {
     const { instance, instrumentId } = await funded();
     const created = await post(
@@ -695,6 +718,60 @@ describe("delivery reconciliation", () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { deliveryRequest: { status: string } };
     expect(body.deliveryRequest.status).toBe("RECONCILED");
+  });
+});
+
+describe("console lists", () => {
+  it("returns the issuer's holders, instruments and payments to a reviewer", async () => {
+    const instance = app();
+    const setup = await seed(instance);
+    await post(instance, "/admin/payments/observe", {
+      instrumentId: setup.instrumentId,
+      cluster: "devnet",
+      tokenMint: MINT,
+      fromAddress: "from",
+      toApproved: "APPROVED_WALLET",
+      amountBaseUnits: "100000000",
+      signature: `sig-list-${setup.instrumentId}`,
+      finalityStatus: "finalized",
+      canonicalityStatus: "canonical",
+    });
+
+    const holders = await get(instance, `/admin/holders?issuer=${setup.issuerId}`);
+    expect(holders.status).toBe(200);
+    expect(((await holders.json()) as { holders: { id: string }[] }).holders.map((h) => h.id)).toContain(
+      setup.holderId,
+    );
+
+    const instruments = await get(instance, `/admin/instruments?issuer=${setup.issuerId}`);
+    expect(instruments.status).toBe(200);
+    expect(
+      ((await instruments.json()) as { instruments: { id: string }[] }).instruments.map((i) => i.id),
+    ).toEqual([setup.instrumentId]);
+
+    const payments = await get(instance, `/admin/payments?issuer=${setup.issuerId}`);
+    expect(payments.status).toBe(200);
+    expect(((await payments.json()) as { payments: unknown[] }).payments).toHaveLength(1);
+  });
+
+  it("does not leak another issuer's records through the filter", async () => {
+    const instance = app();
+    const first = await seed(instance);
+    const second = await seed(instance);
+
+    const res = await get(instance, `/admin/instruments?issuer=${first.issuerId}`);
+    const ids = ((await res.json()) as { instruments: { id: string }[] }).instruments.map((i) => i.id);
+    expect(ids).toEqual([first.instrumentId]);
+    expect(ids).not.toContain(second.instrumentId);
+  });
+
+  it("requires the issuer and refuses a stranger", async () => {
+    const instance = app();
+    const setup = await seed(instance);
+    expect((await get(instance, "/admin/instruments")).status).toBe(400);
+
+    const stranger = await get(instance, `/admin/instruments?issuer=${setup.issuerId}`, STRANGER);
+    expect(stranger.status).toBe(403);
   });
 });
 
