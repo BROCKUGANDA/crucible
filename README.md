@@ -436,7 +436,8 @@ unnoticed.
 
 The web app signs for real, through **wagmi v2 + RainbowKit**: injected wallets
 (MetaMask, Rabby, Brave, anything EIP-6963), **Coinbase Wallet** (the classic
-Coinbase Wallet SDK connector) and WalletConnect for mobile.
+Coinbase Wallet SDK connector), WalletConnect for mobile, and optional **Web3Auth**
+email/social login as a user-controlled EOA.
 
 Four surfaces sign, all from the connected wallet — the API deliberately holds no keys
 and cannot submit a transaction on an operator's behalf:
@@ -450,10 +451,23 @@ and cannot submit a transaction on an operator's behalf:
 
 Setup: copy `apps/web/.env.example` to `.env.local`. A
 `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` (free, from cloud.walletconnect.com) turns on
-RainbowKit's modal; without one the app falls back to plain injected and
-Coinbase Wallet buttons rather than breaking. Absent contract addresses degrade to read-only with a visible
-notice — the build never depends on secrets, because a demo that will not render
-without them is a demo that fails on stage.
+RainbowKit's modal; without one the app falls back to the wallet chooser. Set
+`NEXT_PUBLIC_WEB3AUTH_CLIENT_ID` from the Web3Auth dashboard to expose its login option;
+configure the allowed EVM chains and login methods in that dashboard. The client id is
+public configuration, not a secret. Web3Auth login only connects a wallet: API sessions
+still require the existing SIWE flow, and Crucible never asks Web3Auth to export a private
+key. Read the provider's recovery and privacy terms before enabling it in production.
+Absent contract addresses degrade to read-only with a visible notice — the build never
+depends on secrets, because a demo that will not render without them is a demo that fails
+on stage.
+
+The treasury page uses **Safe Protocol Kit** to check an EOA against the contract-selected
+Treasury Safe, read its owners/threshold and build an unsigned local `withdraw()` Safe
+draft. Credit is shown to an EOA only after on-chain owner verification. The page does not
+collect Safe signatures, submit a proposal to a Safe Transaction Service, broadcast, or
+execute; only the Safe can withdraw its own credit. Mainnet draft creation is deliberately
+disabled while ADR-0020's audit, Safe, legal and operational release gates remain incomplete.
+See [`docs/adr/0026-web3auth-safe-protocol-kit.md`](docs/adr/0026-web3auth-safe-protocol-kit.md).
 
 **Phantom is absent on purpose.** Phantom Portal, the route the pasted docs describe,
 is not accepting new applications, so Phantom Connect is not available to this project.

@@ -10,6 +10,14 @@ import { formatWei } from "@/lib/eth";
 import { buildWithdraw } from "@/lib/useTx";
 import { treasuryConnectionState } from "@/lib/treasury-view";
 import { WrongNetworkNotice } from "@/components/Wallet";
+import {
+  prepareSafeWithdrawalDraft,
+  SafeDraftError,
+  verifySafeOwner,
+  type SafeEip1193Provider,
+  type SafeOwnerVerification,
+  type SafeWithdrawalDraft,
+} from "@/lib/safe-withdrawal";
 
 export default function TreasuryPage() {
   const dep = useDeployment();
@@ -100,13 +108,26 @@ export default function TreasuryPage() {
           </p>
         </section>
       ) : gate === "wrong-wallet" ? (
-        <section className="surface detail-panel" role="alert">
-          <h2>Wrong wallet for treasury operations</h2>
-          <p className="hint hint--block">
-            The connected account is not the Treasury Safe returned by the contract. The treasury
-            credit is hidden here and no withdrawal action is offered.
-          </p>
-        </section>
+        <>
+          <section className="surface detail-panel" role="status">
+            <h2>Connected account is not the Treasury Safe</h2>
+            <p className="hint hint--block">
+              This account cannot withdraw the credit directly. No direct withdrawal is offered. If
+              it is an owner of the Treasury Safe returned by the contract, you can verify ownership
+              and prepare an unsigned Safe transaction draft below.
+            </p>
+          </section>
+          {chainId !== undefined && !correctChain ? <WrongNetworkNotice requiredChainId={dep.chainId} /> : null}
+          {address && treasury ? (
+            <SafeOwnerDraftPanel
+              connectedAddress={address}
+              connectedChainId={chainId}
+              expectedChainId={dep.chainId}
+              treasuryAddress={treasury}
+              escrowAddress={dep.trials}
+            />
+          ) : null}
+        </>
       ) : gate === "treasury" ? (
         <>
           {!correctChain ? <WrongNetworkNotice requiredChainId={dep.chainId} /> : null}
@@ -189,5 +210,203 @@ export default function TreasuryPage() {
         This UI gate is not transaction privacy. Never enter or paste a seed phrase or private key.
       </p>
     </Chrome>
+  );
+}
+
+function SafeOwnerDraftPanel({
+  connectedAddress,
+  connectedChainId,
+  expectedChainId,
+  treasuryAddress,
+  escrowAddress,
+}: {
+  connectedAddress: Address;
+  connectedChainId: number | undefined;
+  expectedChainId: number;
+  treasuryAddress: Address;
+  escrowAddress: Address;
+}) {
+  const { connector } = useAccount();
+  const [ownerProof, setOwnerProof] = useState<{ key: string; value: SafeOwnerVerification } | null>(null);
+  const [draftState, setDraftState] = useState<{ key: string; value: SafeWithdrawalDraft } | null>(null);
+  const [working, setWorking] = useState<"verify" | "draft" | null>(null);
+  const [failureState, setFailureState] = useState<{ key: string; message: string } | null>(null);
+  const ownerKey = [
+    connectedAddress.toLowerCase(),
+    connectedChainId ?? "unknown",
+    expectedChainId,
+    treasuryAddress.toLowerCase(),
+    escrowAddress.toLowerCase(),
+  ].join(":");
+
+  const verified = ownerProof?.key === ownerKey ? ownerProof.value : null;
+  const draft = draftState?.key === ownerKey ? draftState.value : null;
+  const failure = failureState?.key === ownerKey ? failureState.message : null;
+  const creditRead = useReadContract({
+    abi: TRIALS_ABI,
+    address: escrowAddress,
+    functionName: "credit",
+    args: [treasuryAddress],
+    query: {
+      enabled: expectedChainId !== 1 && Boolean(verified && connectedChainId === expectedChainId),
+      refetchInterval: 15_000,
+    },
+  });
+  const credit = creditRead.data as bigint | undefined;
+  const mainnetDisabled = expectedChainId === 1;
+
+  const getProvider = async (): Promise<SafeEip1193Provider> => {
+    if (!connector) throw new SafeDraftError("Connect an EVM owner wallet to continue.");
+    const provider = await connector.getProvider();
+    if (!provider || typeof provider !== "object" || typeof (provider as { request?: unknown }).request !== "function") {
+      throw new SafeDraftError("The connected wallet did not expose an EVM provider.");
+    }
+    return provider as SafeEip1193Provider;
+  };
+
+  const messageFor = (error: unknown) =>
+    error instanceof SafeDraftError
+      ? error.message
+      : "Could not verify or prepare the Safe draft through this wallet. No signature or transaction was sent.";
+
+  const verifyOwner = async () => {
+    const requestedKey = ownerKey;
+    setWorking("verify");
+    setFailureState(null);
+    try {
+      const value = await verifySafeOwner({
+        provider: await getProvider(),
+        connectedAddress,
+        connectedChainId,
+        expectedChainId,
+        treasuryAddress,
+        escrowAddress,
+      });
+      setOwnerProof({ key: requestedKey, value });
+      setDraftState(null);
+    } catch (error) {
+      setFailureState({ key: requestedKey, message: messageFor(error) });
+    } finally {
+      setWorking(null);
+    }
+  };
+
+  const buildDraft = async () => {
+    const requestedKey = ownerKey;
+    setWorking("draft");
+    setFailureState(null);
+    try {
+      const value = await prepareSafeWithdrawalDraft({
+        provider: await getProvider(),
+        connectedAddress,
+        connectedChainId,
+        expectedChainId,
+        treasuryAddress,
+        escrowAddress,
+        creditWei: credit,
+      });
+      setDraftState({ key: requestedKey, value });
+    } catch (error) {
+      setFailureState({ key: requestedKey, message: messageFor(error) });
+    } finally {
+      setWorking(null);
+    }
+  };
+
+  if (mainnetDisabled) {
+    return (
+      <section className="surface detail-panel" role="status">
+        <h2>Mainnet Safe drafts are disabled</h2>
+        <p className="hint hint--block">
+          Crucible&apos;s mainnet release gates remain incomplete. This page will not prepare a
+          mainnet withdrawal draft until the ADR-0020 evidence is approved and verified.
+        </p>
+      </section>
+    );
+  }
+
+  return (
+    <section className="surface detail-panel" aria-live="polite">
+      <h2>Safe owner tools</h2>
+      <p className="hint hint--block">
+        Verify this account against the deployed Safe&apos;s on-chain owner list. A personal account
+        cannot withdraw treasury credit; only the Safe can call the escrow, subject to its owner
+        threshold.
+      </p>
+      {!verified ? (
+        <button
+          className="btn btn-primary"
+          type="button"
+          disabled={working !== null || connectedChainId !== expectedChainId}
+          onClick={() => void verifyOwner()}
+        >
+          {working === "verify" ? "Verifying Safe owner…" : "Verify Safe ownership"}
+        </button>
+      ) : (
+        <>
+          <p className="kv">
+            <span className="kv__key">On-chain owner check</span>
+            <strong>Verified · {verified.threshold} of {verified.ownerCount} approvals required</strong>
+          </p>
+          <p className="kv">
+            <span className="kv__key">Treasury Safe</span>
+            <span className="mono">{verified.safeAddress}</span>
+          </p>
+          <p className="kv">
+            <span className="kv__key">Connected owner EOA</span>
+            <span className="mono">{verified.ownerAddress}</span>
+          </p>
+          <p className="kv">
+            <span className="kv__key">Configured chain id</span>
+            <span className="mono">{verified.chainId}</span>
+          </p>
+          {creditRead.isPending ? (
+            <p className="hint hint--block" role="status">Reading the Safe&apos;s current credit…</p>
+          ) : creditRead.error || credit === undefined ? (
+            <p className="hint hint--block" data-tone="sear" role="alert">
+              The Safe&apos;s credit is unknown, not zero. No draft can be prepared until the chain read succeeds.
+            </p>
+          ) : credit === 0n ? (
+            <p className="hint hint--block">The verified Safe currently has no withdrawable credit.</p>
+          ) : (
+            <>
+              <p className="kv">
+                <span className="kv__key">Current on-chain credit</span>
+                <strong className="mono">{formatWei(credit, 18)} ETH</strong>
+              </p>
+              <button
+                className="btn btn-primary"
+                type="button"
+                disabled={working !== null}
+                onClick={() => void buildDraft()}
+              >
+                {working === "draft" ? "Building unsigned draft…" : "Prepare unsigned Safe draft"}
+              </button>
+            </>
+          )}
+        </>
+      )}
+
+      {draft ? (
+        <div className="stack" data-testid="safe-withdrawal-draft">
+          <h3>Unsigned Safe transaction draft</h3>
+          <p className="kv"><span className="kv__key">Safe transaction hash</span><span className="mono">{draft.safeTxHash}</span></p>
+          <p className="kv"><span className="kv__key">Safe nonce</span><span className="mono">{draft.nonce}</span></p>
+          <p className="kv"><span className="kv__key">Chain id</span><span className="mono">{draft.chainId}</span></p>
+          <p className="kv"><span className="kv__key">Target escrow</span><span className="mono">{draft.targetAddress}</span></p>
+          <p className="kv"><span className="kv__key">Call value</span><span className="mono">{draft.value} ETH</span></p>
+          <p className="kv"><span className="kv__key">Calldata</span><span className="mono">{draft.data}</span></p>
+          <p className="hint hint--block">
+            The displayed credit is a point-in-time read, not an amount encoded in this call.
+            <code>withdraw()</code> asks the escrow to pay the Safe&apos;s current credit to the Safe
+            when executed. This draft is unsigned and local: Crucible does not collect signatures,
+            submit it to a Safe Transaction Service, broadcast it, or execute it. Verify the Safe,
+            target, chain and current credit in the Safe interface before any separate approval.
+          </p>
+        </div>
+      ) : null}
+
+      {failure ? <p className="hint hint--block" data-tone="sear" role="alert">{failure}</p> : null}
+    </section>
   );
 }
