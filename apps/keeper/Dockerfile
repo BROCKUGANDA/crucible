@@ -37,9 +37,15 @@ COPY apps/fork-host/package.json apps/fork-host/
 RUN npm ci --ignore-scripts
 
 COPY . .
+# See apps/api/Dockerfile: `@web3auth/modal` lists `vitest` as a production
+# dependency, so the prune keeps vite -> esbuild, and esbuild is a Go binary that
+# puts Go's standard library in front of Trivy. The keeper has no web app and no
+# build tooling at runtime.
 RUN npm run build:libs \
   && npm run build --workspace @crucible/keeper \
-  && npm prune --omit=dev --ignore-scripts
+  && npm prune --omit=dev --ignore-scripts \
+  && rm -rf apps/web \
+  && find node_modules -type d \( -name esbuild -o -name "@esbuild" -o -name vite -o -name vitest -o -name "@vitest" -o -name tsx \) -prune -exec rm -rf {} \;
 
 FROM node:22-alpine AS runner
 # npm ships vulnerable transitive deps inside its own bundle (ip-address, brace-expansion, pacote, sigstore), and the base image pins npm 10.x. Upgrade npm in the runtime image: the server never runs the npm CLI, but Trivy scans the whole filesystem, and the gate refuses the image while its bundled tree is vulnerable. Version pinned; re-measure when the base image moves.
