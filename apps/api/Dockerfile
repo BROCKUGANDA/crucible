@@ -42,9 +42,12 @@ COPY apps/web/package.json apps/web/
 RUN npm ci --ignore-scripts
 
 COPY . .
+# TypeScript is build-only; npm prune can retain its optional Go-built platform binary.
+# Keep both the compiler and Linux binary out of the production API image.
 RUN npm run build:libs \
   && npm run build --workspace @crucible/api \
-  && npm prune --omit=dev --ignore-scripts
+  && npm prune --omit=dev --ignore-scripts \
+  && rm -rf node_modules/typescript node_modules/@typescript/typescript-linux-x64
 
 FROM node:22-alpine AS runner
 # npm ships vulnerable transitive deps inside its own bundle (ip-address, brace-expansion, pacote, sigstore), and the base image pins npm 10.x. Upgrade npm in the runtime image: the server never runs the npm CLI, but Trivy scans the whole filesystem, and the gate refuses the image while its bundled tree is vulnerable. Version pinned; re-measure when the base image moves.

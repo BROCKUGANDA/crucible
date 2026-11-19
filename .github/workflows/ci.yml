@@ -555,6 +555,18 @@ jobs:
           fi
           echo "the api image carries /repo/migrations/*.sql"
 
+      # The API runs compiled Node output; TypeScript is a build-only dependency. Its Linux
+      # compiler is Go-built and carries Go standard-library CVEs, so keep it out of runtime.
+      - name: assert the api image excludes the TypeScript compiler
+        run: |
+          set -euo pipefail
+          if ! docker run --rm --read-only --network none --entrypoint sh crucible-api:latest -c \
+            'test ! -e /repo/node_modules/typescript && test ! -e /repo/node_modules/@typescript/typescript-linux-x64/lib/tsc'; then
+            echo "::error::the api runtime image contains the build-only TypeScript compiler; check apps/api/Dockerfile."
+            exit 1
+          fi
+          echo "the api runtime image excludes the TypeScript compiler and Go-built binary"
+
       # Only the edge may publish a host port on the VPS. A manual `docker compose up`
       # without compose.vps.yaml once published the whole stack (2026-11-09); this
       # asserts the merged VPS config keeps every service unpublished, so a compose
