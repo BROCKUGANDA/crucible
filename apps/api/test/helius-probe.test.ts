@@ -235,6 +235,14 @@ describe("real installed ws transport against loopback only", () => {
     const methods: string[] = [];
     let client: RealSocket | undefined;
     let disconnected: Promise<unknown> | undefined;
+    // The client's own close event, captured when it is created.
+    //
+    // `readyState` moves CLOSING(2) -> CLOSED(3) asynchronously, and the server's
+    // close event says nothing about the client having finished moving: asserting
+    // 3 right after the server noticed races the client and failed in CI (green
+    // locally, red on the runner). Waiting on the client's event is waiting on
+    // the quantity the assertion is about.
+    let clientClosed: Promise<unknown> | undefined;
     server.on("connection", (peer: RealSocket) => {
       disconnected = once(peer, "close");
       peer.on("message", (data: Buffer) => {
@@ -254,12 +262,14 @@ describe("real installed ws transport against loopback only", () => {
         connect: () => {
           client = new ws.WebSocket(`ws://127.0.0.1:${server.address().port}`);
           client.on("error", () => {});
+          clientClosed = once(client, "close");
           return client;
         },
       }, timeout ? 500 : 2000);
       expect(result.ok).toBe(!timeout);
       if (timeout) expect(result).toEqual({ ok: false, reason: "timeout" });
       await disconnected;
+      await clientClosed;
       expect(server.clients.size).toBe(0);
       expect(client!.readyState).toBe(3);
       expect(methods.filter((m) => m === "slotSubscribe")).toHaveLength(1);

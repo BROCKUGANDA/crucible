@@ -41,6 +41,13 @@ run-transition guard, and the delivery-portion gate. `npm run verify:all`
 (typecheck, all workspace suites, edge 25/25) is green on `e26bac2`, which also
 lands the previously-uncommitted STAMP and workload domains.
 
+One CI-only red was found and fixed rather than re-run: `helius-probe`'s
+loopback test asserted the client had reached `readyState = 3` immediately
+after the *server* observed the close. The client moves `CLOSING -> CLOSED`
+asynchronously, so that assertion raced the socket and failed on the runner
+while passing locally. It now waits for the client's own close event — the
+quantity the assertion is about — instead of for the other end's.
+
 Still open, unchanged by this slice: preview and production profiles (both
 refuse to boot), interactive guest sessions and quotas, hosted agent
 credentials, the issuer console and investor portal UI, durable STAMP/workload
