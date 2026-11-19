@@ -128,6 +128,16 @@ measured rather than assumed:
   on retry with no code change. This will recur; the host's IPv6 route is the
   thing to fix, and it is not fixed.
 
+- **The API image carried a Go binary it never used.** `@web3auth/modal` 11.4.3
+  lists `vitest` in its *production* dependencies, so `npm prune --omit=dev`
+  kept vitest → vite → esbuild, and esbuild is a Go binary. Trivy scanned Go's
+  standard library inside `crucible-api` and failed on html/template, net/url,
+  crypto/tls and net/http CVEs — code the service cannot execute. The API
+  Dockerfile now drops `apps/web` (not part of its runtime) and the build/test
+  tool packages after the prune; Trivy is the gate that proves it. **Measured,
+  not assumed:** the failing scan named Go stdlib CVEs and the lockfile names
+  `vitest` under `@web3auth/modal`'s `dependencies`.
+
 ## Helius configuration slice — 2026-11-19, not released
 
 Locally verified: server-only fixed mainnet RPC/WS URL derivation and the

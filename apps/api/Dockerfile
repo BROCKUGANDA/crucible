@@ -44,10 +44,20 @@ RUN npm ci --ignore-scripts
 COPY . .
 # TypeScript is build-only; npm prune can retain its optional Go-built platform binary.
 # Keep both the compiler and Linux binary out of the production API image.
+#
+# `@web3auth/modal` 11.4.3 lists `vitest` in its **production** dependencies
+# (measured in the lockfile: `"vitest": "^4.1.8"` under `dependencies`), which
+# drags vite -> esbuild into the tree. esbuild is a Go binary, so Trivy scans
+# Go's standard library inside this image and fails on html/template and
+# crypto/tls CVEs this service can never execute — it has no esbuild, no vite
+# and no web app. The web workspace is not part of the API runtime, so its
+# nested dependencies go too.
 RUN npm run build:libs \
   && npm run build --workspace @crucible/api \
   && npm prune --omit=dev --ignore-scripts \
-  && rm -rf node_modules/typescript node_modules/@typescript/typescript-linux-x64
+  && rm -rf node_modules/typescript node_modules/@typescript/typescript-linux-x64 \
+  && rm -rf apps/web \
+  && find node_modules -type d \( -name esbuild -o -name "@esbuild" -o -name vite -o -name vitest -o -name "@vitest" -o -name tsx \) -prune -exec rm -rf {} \;
 
 FROM node:22-alpine AS runner
 # npm ships vulnerable transitive deps inside its own bundle (ip-address, brace-expansion, pacote, sigstore), and the base image pins npm 10.x. Upgrade npm in the runtime image: the server never runs the npm CLI, but Trivy scans the whole filesystem, and the gate refuses the image while its bundled tree is vulnerable. Version pinned; re-measure when the base image moves.
