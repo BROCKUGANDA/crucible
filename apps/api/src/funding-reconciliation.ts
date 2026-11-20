@@ -225,7 +225,7 @@ export async function runFundingReconciliation(): Promise<ReconciliationReport> 
     reader,
     listClaims: () => pgListClaimsNeedingCheck(),
     listPrograms: async () => {
-      const fromLedger = listPrograms({}).map((program) => ({
+      const fromLedger = (await listPrograms({})).map((program) => ({
         id: program.id,
         name: program.name,
         status: program.status,

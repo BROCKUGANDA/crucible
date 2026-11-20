@@ -214,7 +214,7 @@ export async function pgLatestReceipts(programId: string): Promise<StoredReceipt
        FROM sponsor_funding_receipts r
        JOIN sponsor_funding_claims c ON c.id = r.claim_id
       WHERE c.program_id = $1
-      ORDER BY r.claim_id, r.checked_at DESC, r.created_at DESC`,
+      ORDER BY r.claim_id, r.checked_at DESC, r.seq DESC`,
     [programId],
   );
   return r.rows.map(rowToReceipt);

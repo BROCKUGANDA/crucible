@@ -24,6 +24,7 @@ import { CidStore, DisclosureLog, VerificationReportStore } from "@crucible/cids
 import { webhookNotifier } from "@crucible/warden";
 import { createApp } from "./app.js";
 import { runMigrations } from "@crucible/agent-security";
+import { configureSponsorStore } from "./sponsor-onboarding.js";
 
 // Durable storage gate: production refuses in-memory backends. Postgres must
 // be reachable and migrated before serving real-money traffic.
@@ -32,6 +33,17 @@ if (process.env.NODE_ENV === "production" && (process.env.STORAGE_BACKEND ?? "po
 }
 if (process.env.DATABASE_URL) {
   await runMigrations();
+  // The sponsor's own records — sponsors, programmes, budgets — live in
+  // PostgreSQL when there is one, so a restart does not lose a programme that
+  // a funding claim is attached to. The choice is made once, here, and never
+  // per request.
+  const { pgSponsorStore } = await import("./sponsor-programme-pg.js");
+  configureSponsorStore(pgSponsorStore);
+  console.log("[crucible] sponsor ledger: postgresql (survives a restart)");
+} else {
+  console.log(
+    "[crucible] sponsor ledger: in memory — sponsors, programmes and budgets are lost on restart. Configure DATABASE_URL for a durable ledger.",
+  );
 }
 import { OwnerGate, SponsorshipQueue, sponsorshipMessage } from "./sponsorship.js";
 import { disclosureFileIn, disclosedCids as readDisclosure, type DisclosureEntry } from "./disclosure.js";

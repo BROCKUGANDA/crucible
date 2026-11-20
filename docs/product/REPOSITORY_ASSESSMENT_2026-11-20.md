@@ -343,3 +343,61 @@ sponsor programme scaffolding is still in the API's memory; the Studio's three
 replays are three runs of one verifier in one process, not three independent
 workers; the browser was Edge headless against a local chain, not a public
 deployment.
+
+## J. The durable ledger (2026-11-20, last) — and what a real database found
+
+This slice stood up **PostgreSQL 17 on the build box** and asked the shipped
+code to write to it. Four findings, none of which a unit test or a fake pool
+could have produced.
+
+**1. A sponsor's funding claim could not be recorded in any real deployment.**
+`sponsor_funding_claims.org_id REFERENCES organisations(id)`, and nothing in
+the repository ever inserts an organisation — the tenancy model is process
+memory by design (`packages/agent-security/src/org-store.ts`). Every claim
+died at the foreign key:
+
+```
+insert or update on table "sponsor_funding_claims" violates foreign key constraint "sponsor_funding_claims_org_id_fkey"
+```
+
+The chain-fact path could not record a claim. The constraint is dropped in
+migration `0012`; the tenant boundary is enforced in the route against the
+membership model that is the real source of truth today, and the row-level
+policies are kept for the day that model becomes durable.
+
+**2. The sponsor's ledger was process memory.** Sponsors, programmes, the
+eight budget counters and the budget's own ledger were `Map`s: a restart lost
+every programme, and the durable claims hung off programmes that no longer
+existed. They now live in PostgreSQL behind a `SponsorStore` interface; the
+domain rules stay where they were and the tests still run without a
+database. Proven by writing a sponsor, a programme, a movement and its ledger
+entries through the API, killing the process, starting a new one, and reading
+all of it back.
+
+**3. The programme and budget-entry routes were failing outright.**
+`JSON.stringify` throws on a `bigint`, and both routes returned domain
+objects holding wei as `bigint`. The console's programme list was never
+rendered. Every wei now leaves as a decimal string, through explicit
+serializers.
+
+**4. A ledger with no order, and an invariant its own code broke.**
+`budget_entries` had no insertion order — two movements in the same
+millisecond sorted by a random id, different every run — and
+`recordWithdrawal` decremented `paid` while `validateBudgetConsistency`
+requires `paid >= withdrawn`. Both are fixed: the ledger carries a
+`BIGSERIAL` `seq` and is read by it, and `paid` and `withdrawn` are both
+cumulative.
+
+**Measured after this slice:** `npm run typecheck` clean; `npm test` green —
+**4,171** TypeScript tests passed (the 12 new durable-ledger tests need a
+database and are SKIPPED without one, as the Redis-backed cases already are);
+with a real PostgreSQL the API workspace is **1,121 passed, 0 failed**; edge
+**25/25**.
+
+**What is still open, named rather than left to rot:** the organisation and
+membership model is still in process memory (audit AUTHZ-D1) — a
+multi-process deployment would hold two views of who may see what, and it is
+the next ADR. There is no operator UI for the dead-letter queue; the Studio's
+three replays are still three runs of one verifier in one process; and the
+budget's ledger records what the platform did, not what the chain confirmed —
+the chain truth is the receipts (ADR-0031).
