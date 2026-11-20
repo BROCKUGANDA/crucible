@@ -182,6 +182,28 @@ export async function revokeCOI(id: string): Promise<boolean> {
 }
 
 /**
+ * The declarations one principal has made about ONE organisation.
+ *
+ * `conflictsBetween` asks whether two principals share an interest — which
+ * needs both of them to have declared something. This asks the other
+ * question, and it is the one a trial asks: has this reviewer declared an
+ * interest in the organisation that SPONSORS this trial? The sponsor is
+ * not a principal in the register — it is a fact the chain holds — so
+ * there is no sponsor entry to share an interest with; the reviewer's own
+ * declaration names it.
+ *
+ * The interest is named by `orgId`: the organisation the interest relates
+ * to, which for a trial is the sponsor's address.
+ */
+export async function conflictsWithOrg(
+  principalId: string,
+  orgId: string,
+): Promise<COIEntry[]> {
+  const entries = await currentCOIStore().listForPrincipal(principalId);
+  return entries.filter((entry) => entry.active && entry.orgId === orgId);
+}
+
+/**
  * Check whether two principals have a conflict of interest: any shared
  * organisation, model provider, cloud account, or other recorded interest.
  *

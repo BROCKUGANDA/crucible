@@ -60,6 +60,21 @@ if (process.env.DATABASE_URL) {
   );
 }
 
+// The REVIEWER'S OWN STATE is durable: who holds a case, who stepped away
+// from one. The cases themselves are chain-derived — the indexer re-reads
+// them — but a queue that forgets its claims after a restart is a queue
+// where two reviewers believe they hold the same case.
+if (process.env.DATABASE_URL) {
+  const { configureReviewStore } = await import("./review-store.js");
+  const { pgReviewStore } = await import("./review-pg.js");
+  configureReviewStore(pgReviewStore());
+  console.log("[crucible] review queue: postgresql (a claim survives a restart)");
+} else {
+  console.log(
+    "[crucible] review queue: in memory — a claim is lost on restart. Configure DATABASE_URL for a durable record.",
+  );
+}
+
 // The CONFLICT-OF-INTEREST REGISTER is durable. A conflict declared on
 // Monday and forgotten by Tuesday — because the process restarted — is a
 // conflict that stopped being checked on Tuesday.

@@ -501,6 +501,18 @@ export const SITE_INDEX: SiteEntry[] = [
     "needs": "a settled trial id"
   },
   {
+    "path": "/reviews",
+    "label": "Review queue",
+    "purpose": "Take a case waiting for a reviewer, or step away from one.",
+    "can": [
+      "see what is waiting for a reviewer",
+      "declare a conflict of interest with a case"
+    ],
+    "points": [
+      "reviews-panel"
+    ]
+  },
+  {
     "path": "/rewards",
     "label": "Rewards",
     "purpose": "Real campaign claims via the live API: browse campaigns (EVM and Solana devnet), reserve a pending claim. Reservation is not payment.",

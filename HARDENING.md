@@ -2698,3 +2698,30 @@ Report a vulnerability as described in [`SECURITY.md`](SECURITY.md), not in a pu
   assignment or review is actually screened by it: the reviewer surface — the seat assignment, the review
   queue, the conflict declaration and the abstention — is still to come. And budgets and quotas, webhook
   endpoints, and API keys (with their revocations) are still in process memory.
+
+- **2026-11-20 — the review queue, and the bar a conflict puts on it** (ADR-0039). The register and the
+  audit chain now have a consumer: a reviewer takes a case, steps away from one, or declares a conflict
+  of interest with one, and the declaration **bars** them from that case — it is not a warning, because a
+  warning is advice a reviewer in a hurry ignores. The cases are chain-derived (a trial `judging` or
+  `challenged`); the reviewer's own state is durable (migration `0019`), so a hold survives a restart and
+  the boot log says which store is in use. One case, one holder: the uniqueness is on the case, not on
+  the pair. The three actions are appended to the durable audit chain.
+  **Ten mutations proven red** — the bar removed, the queue offering a barred case, the hold ignored, the
+  abstention not releasing the claim, the reason not required, the audit entry not written, the conflict
+  not releasing the claim, the durable store not holding, the store forgetting it is durable, and a settled
+  trial offered for review. Two of them were green on the first attempt and had to be made honest: one
+  because its anchor no longer matched the code (the mutation was skipping its own test), and one because
+  the test was asserting a consequence that did not depend on the decision — a claim that stayed held by a
+  conflicted reviewer was invisible until another reviewer was blocked by it, so the test now claims the
+  case as a second reviewer does.
+  **Three defects the browser proof found that the tests did not.** The page fetched the queue once, at
+  mount, and never read it again — a reviewer who took a case watched the button stay on "Working…" and
+  could not tell whether the platform had taken the case or refused it. The audit entry's id was derived
+  from the action alone while the chain is append-only, so the second claim of the same case collided with
+  the first and the API answered **HTTP 500** instead of a sentence. And reading `disputeOpenedAt` as "the
+  dispute is still open" put every settled-and-disputed trial back on the queue — a question the chain has
+  already answered. All three are fixed, and the last one names the chain's own status instead.
+  **Still open, and named.** A reviewer who takes a case and then stops leaves it held: there is no
+  timeout on a hold, because a timeout would push work back onto the queue with no way for the platform to
+  know whether the reviewer was slow or gone. The review verdict itself is not modelled yet — what exists
+  is the queue, the hold, the abstention and the conflict.

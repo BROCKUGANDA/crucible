@@ -57,6 +57,46 @@ export const ERROR_CATALOGUE: ErrorCodeEntry[] = [
     whatToDo: "Read the `error` field: it names the field. Fix it and send it again.",
   },
   {
+    code: "no-such-case",
+    status: 404,
+    meaning: "The review queue was asked for a case that does not exist: no trial carries that id.",
+    whatToDo: "Read the queue and take an id from it. A trial id is the chain's own number.",
+  },
+  {
+    code: "case-closed",
+    status: 403,
+    meaning: "The trial is settled, so there is nothing left to review: the chain has already decided it.",
+    whatToDo: "Read the trial's own page. A settled trial's verdict is a fact, not an open question.",
+  },
+  {
+    code: "conflicted",
+    status: 403,
+    meaning:
+      "The reviewer has a recorded conflict of interest with the trial's sponsor, so the platform refuses " +
+      "the case to them.",
+    whatToDo:
+      "Do not dispute the refusal. A conflict that is merely displayed is one a reviewer in a hurry ignores; " +
+      "another reviewer without the conflict may take the case.",
+  },
+  {
+    code: "abstained",
+    status: 403,
+    meaning: "The reviewer already stepped away from this case, so the platform will not hand it back.",
+    whatToDo: "Read the abstention reason on the queue page. It is the reviewer's own words.",
+  },
+  {
+    code: "already-yours",
+    status: 403,
+    meaning: "The reviewer already holds this case. A hold is not re-taken; it is released by stepping away.",
+    whatToDo: "Read the sealed evidence for the case. To hand it back, step away from it with a reason.",
+  },
+  {
+    code: "already-held",
+    status: 403,
+    meaning: "Another reviewer holds this case; a case is held by one reviewer at a time.",
+    whatToDo: "Take another case from the queue, or wait for the holder to step away from it.",
+  },
+  {
     code: "no-credential",
     status: 401,
     meaning: "The request carried no credential the server accepts.",

@@ -758,3 +758,65 @@ it.
   come, and it is the next piece of product work.
 - Budgets and quotas, webhook endpoints, and API keys (with their
   revocations) are still in process memory.
+
+## Q. The reviewer surface (2026-11-20, last) — a conflict that changes nothing is a decoration
+
+The conflict register (P) and the audit chain (O) were both durable, and both
+had **no consumer**: a declaration could be recorded and then change no
+decision anywhere in the platform. A conflict of interest that changes no
+behaviour is a decoration, and the register's whole reason for existing — the
+check — was the thing that was never run.
+
+**Now (ADR-0039).** A review queue, at `/reviews`, over the real chain:
+
+- **The cases are chain-derived.** A trial whose status is `judging` or
+  `challenged` — the windows in which the evidence exists and the chain has
+  not settled it. A settled trial is not a case, *even one that was once
+  disputed*: `disputeOpenedAt` says a dispute was opened at some point and
+  stays set after the trial settles, and reading it as "the dispute is still
+  open" would put every settled trial back on the queue.
+- **The reviewer's own state is durable** (`review_claims`,
+  `review_abstentions`, migration 0019), and one case has one holder: the
+  uniqueness is on the case, not on the pair.
+- **A conflict bars a reviewer from a case.** It is not a warning: the case
+  is not offered, a direct claim is refused with the reason, and declaring a
+  conflict releases the reviewer's claim. The sponsor is not a principal in
+  the register, so the bar asks two questions — a shared interest, and a
+  declared interest *in* the sponsor.
+
+**Proven.** Thirteen API tests and nine against a real PostgreSQL (a claim
+survives a fresh read; a second reviewer cannot take a held case; the same
+reviewer can re-claim; an abstention keeps the reviewer's own words), **ten
+mutations proven red**, and a browser proof at the real URL against the
+running API and the live chain: two real cases on it, the reward in ETH with
+"test ETH worth nothing on this chain" beside it, an em dash for the sponsor
+that has not disclosed its suite, and — after the click — "You hold this
+case", read back from a claim made **before the API was restarted**.
+
+**Three defects the browser proof found that the tests did not.**
+
+1. The page fetched the queue once, at mount, and never read it again: a
+   reviewer who took a case watched the button stay on "Working…" and could
+   not tell a refusal from a success. The page now reads the queue with the
+   actions' refresh token.
+2. The audit entry's id was derived from the action alone, while the chain is
+   append-only with a unique id: the **second** claim of the same case
+   collided with the first and the API answered **HTTP 500** instead of a
+   sentence. An entry is an event, so it gets its own id — and a reviewer who
+   already holds a case is refused with `already-yours` and a reason.
+3. The settled-trial reading above, which the chain's own status fixed.
+
+**What remains, named rather than left to rot:**
+
+- **A hold has no timeout.** A reviewer who takes a case and then stops
+  leaves it held: a timeout would push work back onto the queue with no way
+  for the platform to know whether the reviewer was slow or gone, and
+  inventing one would silently withdraw work from a reviewer who was, in
+  fact, working.
+- **The review verdict itself is not modelled.** What exists is the queue,
+  the hold, the abstention and the conflict.
+- The seat assignment is still unscreened by the register: the Argus draw
+  happens on-chain (`ArgusCourt.conflictOf`) and the platform's role in it
+  is still to be decided.
+- Budgets and quotas, webhook endpoints, and API keys are still in process
+  memory (AUTHZ-D1).

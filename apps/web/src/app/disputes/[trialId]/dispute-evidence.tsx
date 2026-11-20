@@ -213,6 +213,13 @@ export function DisputeEvidence({ trialId }: { trialId: string }) {
         ·{" "}
         <Link className="mono" href="/publications">
           Published methods
+        </Link>{" "}
+        ·{" "}
+        {/* The queue of the cases waiting for a reviewer. A case that is
+            open for review is a case whose evidence exists and nobody has
+            settled it. */}
+        <Link className="mono" href="/reviews">
+          Review queue
         </Link>
       </p>
     </Chrome>
