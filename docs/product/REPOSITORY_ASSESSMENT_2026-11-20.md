@@ -550,3 +550,57 @@ each would have made the feature a decoration:**
 - The org-scoped side models (budgets, audit, conflict-of-interest,
   webhooks, API keys) are still in memory, and the row-level policies are
   still inert.
+
+## M. The dispute's frozen evidence (2026-11-20, last) — and what a bundle says it does not contain
+
+Section L closed the claim (a score with its method and its limits). This
+closes the **proceeding**: the evidence a dispute is decided on.
+
+**Nothing froze the evidence.** The chain records who broke a trial, what
+they staked and the proof they filed — but the evidence those facts point
+to lived in three places that each moved on their own: the disclosure log
+(written by whichever process pinned the files), the off-chain stores (the
+pinned spec, the replay manifest, the scores — all process memory), and the
+content store. A committee that read the evidence on Tuesday and again on
+Thursday could read two different sets of facts, and neither read said
+which one was the evidence the parties broke the trial over. An omission
+was indistinguishable from a completeness.
+
+**A dispute now reads a frozen bundle** (ADR-0035). The bundle carries
+what the chain said and what the platform measured; it is content-addressed
+and append-only, so sealing the same evidence twice is the same bundle and
+a bundle cannot be edited. It is durable (migration 0015), the store is
+chosen once at boot, and a caller may not bring its own evidence, gaps or
+digest.
+
+**The gaps are inside the bundle's own digest.** This is the part that
+matters most for a proceeding: the bundle states what it does NOT contain —
+the suite not disclosed, no replay manifest, no score, fewer than three
+replays, replays that did not agree, a break filed without its proof. A gap
+list that could be edited afterwards to look tidier would be a gap list that
+lied, so it is inside the address.
+
+**The seal is compared with the break on the chain's clock.** A bundle
+sealed after the break may hold evidence the parties never saw, so the
+order decides whether a committee is reading the parties' evidence at all.
+The comparison is chain-seconds against chain-seconds — the host's wall
+clock is a different clock — and when the chain's clock cannot be read the
+answer is "unknown", never a guess.
+
+**Proven:** 12 domain tests, 8 route tests, 5 tests against a real
+PostgreSQL, **nine mutations proven red** (one of them green on the first
+attempt, because the assertion matched a substring another gap also
+contained), the end-to-end proof over HTTP against the live chain (trial 1's
+real facts, three stated gaps, the same address on a re-seal, a
+caller-supplied bundle refused), and browser verification of `/disputes/1`.
+
+**What remains, named rather than left to rot:**
+
+- The off-chain stores the bundle reads are still in process memory
+  (REPL-D1): a measurement can be lost on restart even though its bundle
+  survives.
+- The content store is a host-local directory in this deployment, so the
+  bytes behind a CID are available only on the host that pinned them.
+- The reviewer queue — who may take which case, how a conflict is declared
+  and how an abstention is recorded — is still to come, and it is the
+  consumer of these bundles.

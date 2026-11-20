@@ -20,6 +20,7 @@ import {
   comparePublications,
   deriveLimits,
   publishForManifest,
+  verifyPublicationDigest,
   type PublishedMethod,
 } from "../src/publication.js";
 import {
@@ -197,6 +198,24 @@ describe("publication", () => {
         publishedAt: 1,
       });
       expect(changed.digest).not.toBe(first?.digest);
+    });
+
+    it("can be CHECKED: a reader can recompute the digest and a tampered card fails", () => {
+      const { suite } = makeSuite();
+      const spec = makeSpec(suite.id);
+      const card = publishForManifest(makeManifest(spec.specDigest), 1) as PublishedMethod;
+      expect(verifyPublicationDigest(card)).toBe(true);
+
+      // A limit removed after the fact — the address no longer matches.
+      expect(verifyPublicationDigest({ ...card, limits: card.limits.slice(1) })).toBe(false);
+
+      // A score invented after the fact.
+      expect(
+        verifyPublicationDigest({
+          ...card,
+          rubric: { ...card.rubric, aggregateBps: 10000 },
+        }),
+      ).toBe(false);
     });
 
     it("publishes nothing when there is no method to publish", () => {

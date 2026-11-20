@@ -299,6 +299,21 @@ export const ERROR_CATALOGUE: ErrorCodeEntry[] = [
       "Send only the subject (trialId or runId). A publication states what the platform measured; a caller that supplies the measurement is refused.",
   },
   {
+    code: "caller-supplied-evidence-refused",
+    status: 400,
+    meaning:
+      "The caller tried to supply the evidence, the gaps or the digest of a frozen dispute bundle.",
+    whatToDo:
+      "Send the trial id only. A bundle states what the platform saw; a caller that supplies the evidence is refused.",
+  },
+  {
+    code: "no-such-bundle",
+    status: 404,
+    meaning: "No frozen bundle carries that address.",
+    whatToDo:
+      "A bundle is content-addressed: it exists under exactly one address. List the bundles of the trial instead.",
+  },
+  {
     code: "no-manifest",
     status: 404,
     meaning: "There is no replay manifest for that subject, so there is no method to publish.",

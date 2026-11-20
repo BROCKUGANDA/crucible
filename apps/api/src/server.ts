@@ -46,6 +46,20 @@ if (process.env.DATABASE_URL) {
   );
 }
 
+// The frozen evidence of a dispute is evidence in a proceeding, so it has
+// to outlive the process: a committee that comes back to the bundle next
+// week must find the same one the parties saw.
+if (process.env.DATABASE_URL) {
+  const { configureEvidenceBundleStore } = await import("./evidence-bundle-store.js");
+  const { pgEvidenceBundleStore } = await import("./evidence-bundle-pg.js");
+  configureEvidenceBundleStore(pgEvidenceBundleStore(), "postgresql");
+  console.log("[crucible] evidence bundles: postgresql (a frozen bundle survives a restart)");
+} else {
+  console.log(
+    "[crucible] evidence bundles: in memory — a frozen bundle is lost on restart. Configure DATABASE_URL for a durable record.",
+  );
+}
+
 // Published methods — the method card of a score — are audit artifacts, and
 // an audit artifact that evaporates on restart is a claim with no record.
 // The store is chosen once, here, and never per request (ADR-0033).

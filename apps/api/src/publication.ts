@@ -507,6 +507,32 @@ export function assemblePublication(input: PublicationInput): PublishedMethod {
   return { id, ...body, digest, publishedAt: input.publishedAt };
 }
 
+/**
+ * Recompute a publication's digest and say whether it matches.
+ *
+ * The address names WHAT was published; the time it was published is
+ * recorded beside it and is not part of the address, so sealing the same
+ * method twice is the same card rather than a growing pile of identical
+ * rows. This is the check that a reader can run: take the card's substance,
+ * hash it the same way, and compare.
+ */
+export function verifyPublicationDigest(card: PublishedMethod): boolean {
+  const body = {
+    subject: card.subject,
+    specDigest: card.specDigest,
+    measurementKey: card.measurementKey,
+    measurementKeySource: card.measurementKeySource,
+    suite: card.suite,
+    rubric: card.rubric,
+    judge: card.judge,
+    repetitions: card.repetitions,
+    limits: card.limits,
+    comparabilityKey: card.comparabilityKey,
+  };
+  const digest = hashCanonical(body);
+  return digest === card.digest && card.id === `pub_${digest.slice(0, 32)}`;
+}
+
 /* ------------------------------------------------------------------ */
 /* Finding the inputs                                                 */
 /* ------------------------------------------------------------------ */

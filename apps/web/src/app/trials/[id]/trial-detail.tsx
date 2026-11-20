@@ -267,6 +267,13 @@ export function TrialDetail({ id }: { id: number }) {
                 <Field label="Stake" value={formatEth(trial.breakStakeEth)} mono />
               </div>
               <CommitteeClock trial={trial} />
+              <p className="hint hint--block">
+                {/* The frozen evidence of this dispute: what the chain said,
+                    what was measured, and what the bundle does not contain. */}
+                <Link className="mono" href={`/disputes/${trial.id}`}>
+                  The frozen evidence of this dispute
+                </Link>
+              </p>
             </>
           ) : (
             <p className="hint hint--block">

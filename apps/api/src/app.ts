@@ -86,6 +86,7 @@ import {
 } from "./api-contract.js";
 import { createStudioRoutes } from "./studio-routes.js";
 import { createPublicationRoutes } from "./publication-routes.js";
+import { createEvidenceBundleRoutes } from "./evidence-bundle-routes.js";
 import { createCommercialRoutes } from "./commercial-routes.js";
 import {
   bodyLimit,
@@ -2618,6 +2619,18 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
    */
   app.route("/v1/studio", createStudioRoutes());
   app.route("/v1/publications", createPublicationRoutes());
+  // The frozen evidence of a dispute. The route reads the chain's facts from
+  // the same read model the rest of the API reads, so a bundle's chain facts
+  // and the trial page's chain facts cannot disagree.
+  app.route(
+    "/v1/disputes",
+    createEvidenceBundleRoutes({
+      getModel: () => deps.getModel(),
+      // The chain's clock, so a seal is compared against a dispute on the
+      // same clock. The host's wall clock is a different one.
+      chainNow: () => deps.indexStatus?.().headTimestamp ?? null,
+    }),
+  );
   if (opts.stamp !== undefined && opts.stamp !== null) {
     app.route("/stamp", createStampRoutes(opts.stamp));
   } else {

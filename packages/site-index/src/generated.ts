@@ -238,6 +238,18 @@ export const SITE_INDEX: SiteEntry[] = [
     ]
   },
   {
+    "path": "/disputes/[trialId]",
+    "label": "Dispute evidence",
+    "purpose": "The frozen evidence of a dispute: what the chain said, what was measured, and what is missing.",
+    "can": [
+      "read what a dispute bundle does not contain",
+      "check whether a bundle was sealed before the trial was broken"
+    ],
+    "points": [
+      "dispute-evidence-panel"
+    ]
+  },
+  {
     "path": "/docs",
     "label": "Docs",
     "purpose": "The written rules: the money, the windows, the fees, and what the platform refuses to do.",
