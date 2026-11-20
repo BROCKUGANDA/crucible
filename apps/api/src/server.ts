@@ -60,6 +60,20 @@ if (process.env.DATABASE_URL) {
   );
 }
 
+// The CONFLICT-OF-INTEREST REGISTER is durable. A conflict declared on
+// Monday and forgotten by Tuesday — because the process restarted — is a
+// conflict that stopped being checked on Tuesday.
+if (process.env.DATABASE_URL) {
+  const { configureCOIStore } = await import("@crucible/agent-security");
+  const { pgCOIStore } = await import("@crucible/agent-security");
+  configureCOIStore(pgCOIStore());
+  console.log("[crucible] conflict register: postgresql (a declaration survives a restart)");
+} else {
+  console.log(
+    "[crucible] conflict register: in memory — a declaration is lost on restart. Configure DATABASE_URL for a durable record.",
+  );
+}
+
 // The AUDIT CHAIN is durable, and its hash is a real one (ADR-0037). The
 // chain is what a buyer's compliance review reads, and it has to survive
 // a restart AND continue across one — a chain that restarted at "genesis"

@@ -717,3 +717,44 @@ honest before they proved anything.
 - The row-level-security policy on the audit table follows the
   organisation tables' pattern, and — like theirs — it only bites for a
   connection that does not own the table. The role split is still to come.
+
+## P. The conflict register is a record now (2026-11-20, last)
+
+Sections L–O closed the claim, the proceeding, the rule, the record and
+the hash. This closes the **register that decides who may judge whom**.
+
+The conflict-of-interest register records the affiliations between
+principals and organisations, model providers, cloud accounts and other
+economic interests. It is consulted before an Argus seat is assigned and
+before a reviewer grades a submission from an affiliated principal, and a
+match produces a reviewable risk signal — not a determination of
+collusion.
+
+It was in process memory, and so was the audit record of each declaration
+(§O). A conflict declared on Monday and forgotten by Tuesday — because the
+process restarted — is a conflict that stopped being checked on Tuesday,
+and the two failures compounded.
+
+**Now (ADR-0038).** `org_coi_entries` (migration 0018); the store is
+chosen once at boot; a **withdrawal is not a deletion** (the fact that a
+conflict was declared and then withdrawn is part of the history a reviewer
+may need); the durable store says the same things the in-memory store
+says; and the interest key stays **derived**, so two declarations of the
+same interest cannot be recorded in two spellings and then fail to match.
+
+**Proven.** The register's tests and eight against a real PostgreSQL (a
+declaration survives a fresh read; the conflict is still found after a
+restart; a duplicate is refused in the same words; a withdrawal leaves the
+entry in place but stops it counting), and **four mutations proven red** —
+one of them green on the first attempt because the anchor no longer matched
+the code, so the mutation was skipping its own test rather than passing
+it.
+
+**What remains, named rather than left to rot:**
+
+- **Nothing yet calls the register from a route.** The register is durable;
+  the reviewer surface that would consult it — the seat assignment, the
+  review queue, the conflict declaration and the abstention — is still to
+  come, and it is the next piece of product work.
+- Budgets and quotas, webhook endpoints, and API keys (with their
+  revocations) are still in process memory.

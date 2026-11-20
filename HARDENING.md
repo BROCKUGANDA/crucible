@@ -2669,3 +2669,32 @@ Report a vulnerability as described in [`SECURITY.md`](SECURITY.md), not in a pu
   in process memory, and the row-level-security policy on the audit table follows the organisation
   tables' pattern — it only bites for a connection that does not own the table, and the role split is
   still to come.
+
+- **The conflict register was a memory, and nothing consulted it (2026-11-20, last).** The
+  conflict-of-interest register records the affiliations between principals and organisations, model
+  providers, cloud accounts and other economic interests, and it is consulted before an Argus seat is
+  assigned and before a reviewer grades a submission from an affiliated principal. It lived in process
+  memory: a conflict declared on Monday and forgotten by Tuesday — because the process restarted — is a
+  conflict that stopped being checked on Tuesday, and the check is the whole point of the register. The
+  failure compounded, because the audit record of the declaration was itself in memory (ADR-0037).
+  **Now (ADR-0038).** `org_coi_entries` (migration 0018) holds the declarations, the store is chosen once
+  at boot, and the boot log says which. A **withdrawal is not a deletion** — `revoke` sets `active =
+  false`, because the fact that a conflict was declared and then withdrawn is part of the history a
+  reviewer may need, and a register that erases its own declarations is a register that cannot be audited.
+  The durable store says the same things the in-memory store says (a duplicate declaration is refused in
+  the same words), and the interest key stays **derived** — `${type}:${orgId}` or
+  `${type}:${description}` — so two declarations of the same interest cannot be recorded in two spellings
+  and then fail to match.
+  **Proven.** The register's tests and eight against a real PostgreSQL: a declaration survives a fresh
+  read; the conflict is still found after a restart (a fresh store over the same table); a duplicate is
+  refused in the same words; a withdrawal leaves the entry in place but stops it counting; the
+  principal's declarations and the organisation's are listed; the seat check says which side a candidate
+  is conflicted against. **Four mutations proven red** — the store forgetting a declaration, a withdrawn
+  declaration still counting, the check comparing principals instead of interests, and the store
+  forgetting the interest an entry belongs to. **One of them was green on the first attempt because the
+  anchor no longer matched the code**: the mutation was skipping its own test rather than passing it,
+  which is the same shape of failure as a wiring check that reads the wrong file.
+  **Still open, and named.** The register is durable but **nothing yet calls it from a route**, so no seat
+  assignment or review is actually screened by it: the reviewer surface — the seat assignment, the review
+  queue, the conflict declaration and the abstention — is still to come. And budgets and quotas, webhook
+  endpoints, and API keys (with their revocations) are still in process memory.

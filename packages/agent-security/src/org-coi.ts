@@ -10,36 +10,13 @@
  * reviewable risk signal, not a determination (collaboration-and-governance.md
  * §3, game-theory.md §5.7).
  *
- * In-memory store, consistent with ADR-0008.
+ * The register is DURABLE. A conflict declared on Monday and forgotten by
+ * Tuesday — because the process restarted — is a conflict that stopped
+ * being checked on Tuesday, and the check is the whole point. The store is
+ * chosen once, at boot (ADR-0033's rule), and the boot log says which.
  */
 
 import type { OrganisationId } from "./organisation.js";
-
-const STATE_KEY = "__crucible_org_coi__";
-const globalScope = globalThis as unknown as Record<string, unknown>;
-
-type COIStore = {
-  entries: Map<string, COIEntry>;
-  /** interest key -> set of entry ids. An interest key is `${type}:${orgId}`
-   * for org-based interests, or `${type}:${description}` for others. Two
-   * principals conflict when they share an interest key. */
-  byInterest: Map<string, Set<string>>;
-  /** principalId -> set of entry ids */
-  byPrincipal: Map<string, Set<string>>;
-};
-
-function interestKey(entry: COIEntry): string {
-  return `${entry.type}:${entry.orgId ?? entry.description}`;
-}
-
-function getStore(): COIStore {
-  let store = globalScope[STATE_KEY] as COIStore | undefined;
-  if (!store) {
-    store = { entries: new Map(), byInterest: new Map(), byPrincipal: new Map() };
-    globalScope[STATE_KEY] = store;
-  }
-  return store;
-}
 
 export type COIType =
   | "employer"
@@ -64,6 +41,100 @@ export interface COIEntry {
   /** when the interest lapses */
   active: boolean;
 }
+
+/**
+ * The interest key of an entry: what two principals would SHARE.
+ *
+ * `${type}:${orgId}` for an organisation-based interest, `${type}:${description}`
+ * for anything else. Two principals conflict when they share an interest
+ * key — so the key is the comparison, and it is derived, never written.
+ */
+export function interestKey(entry: COIEntry): string {
+  return `${entry.type}:${entry.orgId ?? entry.description}`;
+}
+
+/* ------------------------------------------------------------------ */
+/* The store                                                           */
+/* ------------------------------------------------------------------ */
+
+export interface COIStore {
+  /** Which store this is, for the boot log. */
+  readonly kind: string;
+  /** Record a declaration. The store refuses a duplicate id. */
+  record(entry: COIEntry): Promise<void>;
+  /** Withdraw a declaration. False when there is no such entry. */
+  revoke(id: string): Promise<boolean>;
+  get(id: string): Promise<COIEntry | null>;
+  listForPrincipal(principalId: string): Promise<COIEntry[]>;
+  /** The declarations about one organisation's employer interest. */
+  listForInterest(type: COIType, orgId: OrganisationId): Promise<COIEntry[]>;
+  listAll(): Promise<COIEntry[]>;
+  /** For tests. */
+  reset(): Promise<void>;
+}
+
+const STATE_KEY = "__crucible_org_coi__";
+const globalScope = globalThis as unknown as Record<string, unknown>;
+
+/** The in-memory register. It does not survive a restart, and says so. */
+export function memoryCOIStore(): COIStore {
+  const entries = new Map<string, COIEntry>();
+  globalScope[STATE_KEY] = entries;
+
+  return {
+    kind: "memory",
+    async record(entry) {
+      if (entries.has(entry.id)) {
+        throw new Error(`coi: entry already exists: ${entry.id}`);
+      }
+      entries.set(entry.id, entry);
+    },
+    async revoke(id) {
+      const entry = entries.get(id);
+      if (!entry) return false;
+      entries.set(id, { ...entry, active: false });
+      return true;
+    },
+    async get(id) {
+      return entries.get(id) ?? null;
+    },
+    async listForPrincipal(principalId) {
+      return [...entries.values()].filter((entry) => entry.principalId === principalId);
+    },
+    async listForInterest(type, orgId) {
+      return [...entries.values()].filter(
+        (entry) => entry.type === type && entry.orgId === orgId,
+      );
+    },
+    async listAll() {
+      return [...entries.values()];
+    },
+    async reset() {
+      entries.clear();
+    },
+  };
+}
+
+let store: COIStore = memoryCOIStore();
+
+/** Which store is in use: "memory" or "postgresql". */
+export function coiStoreKind(): string {
+  return store.kind;
+}
+
+/** Choose the store. Called once, at boot. */
+export function configureCOIStore(next: COIStore): void {
+  store = next;
+}
+
+/** The store in use. */
+export function currentCOIStore(): COIStore {
+  return store;
+}
+
+/* ------------------------------------------------------------------ */
+/* The register                                                        */
+/* ------------------------------------------------------------------ */
 
 export function newCOIEntry(
   id: string,
@@ -90,44 +161,24 @@ export function newCOIEntry(
   };
 }
 
-export function recordCOI(entry: COIEntry): void {
-  const store = getStore();
-  if (store.entries.has(entry.id)) {
-    throw new Error(`coi: entry already exists: ${entry.id}`);
-  }
-  store.entries.set(entry.id, entry);
-  store.byPrincipal.get(entry.principalId)?.add(entry.id) ??
-    store.byPrincipal.set(entry.principalId, new Set([entry.id]));
-  const key = interestKey(entry);
-  store.byInterest.get(key)?.add(entry.id) ??
-    store.byInterest.set(key, new Set([entry.id]));
+export async function recordCOI(entry: COIEntry): Promise<void> {
+  await currentCOIStore().record(entry);
 }
 
-export function getCOIEntry(id: string): COIEntry | null {
-  return getStore().entries.get(id) ?? null;
+export async function getCOIEntry(id: string): Promise<COIEntry | null> {
+  return currentCOIStore().get(id);
 }
 
-export function listCOIForPrincipal(principalId: string): COIEntry[] {
-  const store = getStore();
-  const ids = store.byPrincipal.get(principalId);
-  if (!ids) return [];
-  return [...ids].map((id) => store.entries.get(id)).filter(Boolean) as COIEntry[];
+export async function listCOIForPrincipal(principalId: string): Promise<COIEntry[]> {
+  return currentCOIStore().listForPrincipal(principalId);
 }
 
-export function listCOIForOrg(orgId: OrganisationId): COIEntry[] {
-  const store = getStore();
-  const ids = store.byInterest.get(`employer:${orgId}`);
-  if (!ids) return [];
-  return [...ids].map((id) => store.entries.get(id)).filter(Boolean) as COIEntry[];
+export async function listCOIForOrg(orgId: OrganisationId): Promise<COIEntry[]> {
+  return currentCOIStore().listForInterest("employer", orgId);
 }
 
-export function revokeCOI(id: string): boolean {
-  const store = getStore();
-  const entry = store.entries.get(id);
-  if (!entry) return false;
-  entry.active = false;
-  store.entries.set(id, entry);
-  return true;
+export async function revokeCOI(id: string): Promise<boolean> {
+  return currentCOIStore().revoke(id);
 }
 
 /**
@@ -137,31 +188,29 @@ export function revokeCOI(id: string): boolean {
  * Returns the matching entries, or an empty array when no conflict is recorded.
  * An empty result means "no recorded conflict" — not "proven independent".
  */
-export function conflictsBetween(
+export async function conflictsBetween(
   principalA: string,
   principalB: string,
-): COIEntry[] {
-  const store = getStore();
-  const idsA = store.byPrincipal.get(principalA);
-  const idsB = store.byPrincipal.get(principalB);
-  if (!idsA || !idsB) return [];
-  // Each principal's entry ids, grouped by interest key. Two principals
+): Promise<COIEntry[]> {
+  const entriesA = await currentCOIStore().listForPrincipal(principalA);
+  const entriesB = await currentCOIStore().listForPrincipal(principalB);
+
+  // Each principal's entries, grouped by interest key. Two principals
   // conflict when they share an interest key.
   const interestsA = new Map<string, Set<string>>();
-  for (const id of idsA) {
-    const e = store.entries.get(id);
-    if (e && e.active) {
-      const key = interestKey(e);
-      interestsA.get(key)?.add(id) ?? interestsA.set(key, new Set([id]));
-    }
+  for (const entry of entriesA) {
+    if (!entry.active) continue;
+    const key = interestKey(entry);
+    const ids = interestsA.get(key) ?? new Set<string>();
+    ids.add(entry.id);
+    interestsA.set(key, ids);
   }
+
   const shared: COIEntry[] = [];
-  for (const id of idsB) {
-    const e = store.entries.get(id);
-    if (!e || !e.active) continue;
-    const key = interestKey(e);
-    if (interestsA.has(key)) {
-      shared.push(e);
+  for (const entry of entriesB) {
+    if (!entry.active) continue;
+    if (interestsA.has(interestKey(entry))) {
+      shared.push(entry);
     }
   }
   return shared;
@@ -171,11 +220,11 @@ export function conflictsBetween(
  * Whether a reviewer (principal) is conflicted against a submission's author
  * (submitter) — any recorded shared interest.
  */
-export function reviewerIsConflicted(
+export async function reviewerIsConflicted(
   reviewerPrincipal: string,
   submitterPrincipal: string,
-): { conflicted: boolean; entries: COIEntry[] } {
-  const entries = conflictsBetween(reviewerPrincipal, submitterPrincipal);
+): Promise<{ conflicted: boolean; entries: COIEntry[] }> {
+  const entries = await conflictsBetween(reviewerPrincipal, submitterPrincipal);
   return { conflicted: entries.length > 0, entries };
 }
 
@@ -183,19 +232,19 @@ export function reviewerIsConflicted(
  * Whether an Argus seat candidate is conflicted against the trial's sponsor
  * and agent.
  */
-export function seatIsConflicted(
+export async function seatIsConflicted(
   seatPrincipal: string,
   sponsorPrincipal: string,
   agentPrincipal: string,
-): {
+): Promise<{
   conflicted: boolean;
   entries: COIEntry[];
   against: string[];
-} {
+}> {
   const against: string[] = [];
   const entries: COIEntry[] = [];
-  const vsSponsor = conflictsBetween(seatPrincipal, sponsorPrincipal);
-  const vsAgent = conflictsBetween(seatPrincipal, agentPrincipal);
+  const vsSponsor = await conflictsBetween(seatPrincipal, sponsorPrincipal);
+  const vsAgent = await conflictsBetween(seatPrincipal, agentPrincipal);
   if (vsSponsor.length > 0) {
     against.push("sponsor");
     entries.push(...vsSponsor);
@@ -208,9 +257,6 @@ export function seatIsConflicted(
 }
 
 /** Reset store state (testing only). */
-export function __resetCOIStoreForTests(): void {
-  const store = getStore();
-  store.entries.clear();
-  store.byPrincipal.clear();
-  store.byInterest.clear();
+export async function __resetCOIStoreForTests(): Promise<void> {
+  await currentCOIStore().reset();
 }
