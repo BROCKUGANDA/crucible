@@ -401,3 +401,54 @@ the next ADR. There is no operator UI for the dead-letter queue; the Studio's
 three replays are still three runs of one verifier in one process; and the
 budget's ledger records what the platform did, not what the chain confirmed —
 the chain truth is the receipts (ADR-0031).
+
+## K. The tenancy model is durable (2026-11-20, last) — and what is still in memory
+
+Section J closed the sponsor's ledger. This closes the tenancy model itself:
+**who may see what**.
+
+`packages/agent-security/src/org-store.ts` held organisations, memberships,
+invitations, workspaces and resource ownership on `globalThis`, and said in
+its own header that persistence was deferred. Two things were wrong with that
+deferral, and neither was about performance:
+
+- **A restart lost it.** The tables existed since migration 0002 and were
+  never written to — which is exactly why the funding claims' foreign keys
+  had to be dropped in section J.
+- **Two workers could disagree.** The store lives on `globalThis` so a dev
+  hot reload does not empty it, and under Octane every worker process has its
+  own `globalThis`. An organisation created on worker A was invisible on
+  worker B, and a membership check answered differently depending on which
+  process answered. That check decides who may read a sponsor's funding
+  ledger.
+
+**The store is now a cache over PostgreSQL** (ADR-0033): reads from the cache
+(synchronously — `isMemberOf` is on the hot path of every request), writes to
+the database **first** and the cache second, and a cache that is refilled at
+boot by being **replaced**. The non-durable path is refused while a durable
+backing is attached, so "the write only reached the cache" is prevented
+rather than documented. The membership constraint was corrected against the
+domain: it forbade a member from ever coming back, because it was UNIQUE
+over all memberships including revoked ones; it is now a partial unique index
+over the live ones.
+
+**Proven:** 15 tests against a real PostgreSQL, including the restart — an
+organisation written through the API, the process killed, a new one started,
+and it read back — plus five mutations proven red.
+
+**What is still in memory, named rather than left to rot:**
+
+| Model | Where | Why it matters |
+|---|---|---|
+| Org budgets, audit entries, conflict-of-interest declarations, webhooks, API keys | `packages/agent-security/src/org-{budget,audit,coi,webhook,api-key}.ts` | They hang off an organisation that is now durable; the precondition is met |
+| Org-scoped role matrix decisions | `packages/agent-security/src/org-authz.ts` | Derived from memberships, so it follows |
+| The application's own state (runs, trials, indexer) | in memory by ADR-0008 | Deliberate, and the indexer is a separate concern |
+
+**The row-level policies are still inert**, and the ADR says so plainly:
+PostgreSQL does not apply RLS to a table's owner, and the API connects as the
+owner. The policies in migrations 0002–0013 mean something the day the API
+connects as a separate, non-owning role **and** the principal is set per
+request — a deployment change (two roles: one that owns the schema and
+migrates it, one the application connects as), which is the next step of
+ADR-0033 and the last piece of the tenant boundary that the database is
+currently not enforcing.
