@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import http from "node:http";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -22,7 +22,7 @@ const SAFE_OWNERS = ["0x" + "11".repeat(20), "0x" + "22".repeat(20), "0x" + "33"
 const TRIALS_CONTRACT = "0x" + "44".repeat(20);
 const TREASURY_ADDRESS = "0x" + "55".repeat(20);
 const OWNER_ADDRESS = "0x" + "66".repeat(20);
-const RELEASE_COMMIT = "abcdef1234567";
+const RELEASE_COMMIT = execFileSync("git", ["rev-parse", "HEAD"], { cwd: ROOT, encoding: "utf8" }).trim();
 
 interface RunResult {
   status: number | null;
@@ -39,8 +39,13 @@ interface RpcOptions {
 }
 
 function run(args: string[], env: Record<string, string> = {}): Promise<RunResult> {
+  const effectiveArgs = [...args];
+  const signoffsIndex = args.indexOf("--signoffs");
+  if (signoffsIndex >= 0 && !args.includes("--treasury-adr")) {
+    effectiveArgs.push("--treasury-adr", join(args[signoffsIndex + 1], "treasury-adr.md"));
+  }
   return new Promise((resolve) => {
-    const child = spawn(process.execPath, [SCRIPT, ...args], {
+    const child = spawn(process.execPath, [SCRIPT, ...effectiveArgs], {
       cwd: ROOT,
       env: { ...process.env, MAINNET_RPC_URL: "", MAINNET_RPC_FALLBACK_URL: "", ...env },
     });
@@ -142,11 +147,11 @@ function signedDir(): string {
   const dir = mkdtempSync(join(tmpdir(), "crucible-mainnet-"));
   writeFileSync(
     join(dir, "audit-signoff.json"),
-    JSON.stringify({ signed: true, auditor: "0x" + "11".repeat(20), reportHash: "0x" + "22".repeat(32), commit: RELEASE_COMMIT }),
+    JSON.stringify({ signed: true, auditor: "Independent Auditor", reportUrl: "https://auditor.test/reports/crucible", reportHash: "0x" + "22".repeat(32), commit: RELEASE_COMMIT }),
   );
   writeFileSync(
     join(dir, "legal-signoff.json"),
-    JSON.stringify({ signed: true, entity: "Crucible Ltd", counsel: "counsel@example.test", tosVersion: "v1" }),
+    JSON.stringify({ signed: true, entity: "Crucible Ltd", counsel: "Independent Counsel", tosVersion: "v1", privacyVersion: "v1", licenseVersion: "MIT-0" }),
   );
   writeFileSync(
     join(dir, "genesis-cohort.json"),
@@ -154,11 +159,11 @@ function signedDir(): string {
   );
   writeFileSync(
     join(dir, "timelock.json"),
-    JSON.stringify({ signed: true, multisig: "0x" + "55".repeat(20), timelockHours: 48, signers: ["0x" + "66".repeat(20)] }),
+    JSON.stringify({ signed: true, multisig: OWNER_ADDRESS, timelockHours: 48, signers: SAFE_OWNERS }),
   );
   writeFileSync(
     join(dir, "monitoring.json"),
-    JSON.stringify({ signed: true, oncall: "oncall@example.test", alertChannel: "#crucible-alerts", dashboards: ["hall"] }),
+    JSON.stringify({ signed: true, oncall: "Mainnet Operations Lead", alertChannel: "#crucible-alerts", dashboards: ["hall"] }),
   );
   writeFileSync(
     join(dir, "treasury.json"),
@@ -172,11 +177,12 @@ function signedDir(): string {
         legacyTrials: { address: TRIALS_CONTRACT, runtimeCodeHash: CODE_HASH },
       },
       canonicalDeploymentSource: "https://github.com/safe-fndn/safe-deployments/blob/main/src/assets/v1.4.1/safe.json",
-      verifiedBy: "reviewer@example.test",
+      verifiedBy: "Release reviewer",
       deploymentCommit: RELEASE_COMMIT,
       evidenceHash: "0x" + "88".repeat(32),
     }),
   );
+  writeFileSync(join(dir, "treasury-adr.md"), "# Treasury ADR acceptance fixture\n- **Status:** Accepted\n");
   return dir;
 }
 
@@ -190,15 +196,109 @@ function paramsFile(feeBps: number): string {
 }
 
 describe("mainnet preflight", () => {
-  it("refuses when MAINNET_RPC_URL is missing (production templates are operator-authorized)", async () => {
+  it("reports unresolved ADR, audit and Safe evidence even when the RPC is missing", async () => {
     const res = await run([]);
     expect(res.status).toBe(1);
-    // Production signoffs are operator-authorized (signed) in-repo; without an
-    // RPC the preflight must still refuse because it cannot verify chain id or
-    // on-chain Safe/escrow state.
     expect(res.stderr).toContain("MAINNET_RPC_URL not set");
-    expect(res.stderr).not.toContain("is not signed");
+    expect(res.stderr).toContain("0020-company-treasury-safe-and-mainnet-release-gate.md is not accepted");
+    expect(res.stderr).toContain("audit-signoff.json missing field reportUrl");
+    expect(res.stderr).toContain("audit-signoff.json commit must equal checked-out Git HEAD");
+    expect(res.stderr).toContain("Treasury Safe.address must be a non-zero address");
+    expect(res.stderr).toContain("Treasury Safe.proxyRuntimeCodeHash must be a non-zero bytes32");
+    expect(res.stderr).toContain("Owner Safe.address must be a non-zero address");
+    expect(res.stderr).toContain("treasury.json verifiedBy is pending or missing");
+    expect(res.stderr).toContain("docs/mainnet/legal-signoff.json note contains unresolved placeholder text");
+    expect(res.stderr).toContain("docs/mainnet/genesis-cohort.json sponsors[0] is a local development account");
+    expect(res.stderr).toContain("docs/mainnet/timelock.json multisig contains unresolved placeholder text");
+    expect(res.stderr).toContain("docs/mainnet/monitoring.json alertChannel must not store a Slack webhook URL");
+    expect(res.stderr).not.toContain("docs/mainnet/monitoring.json monitors[0].check contains unresolved placeholder text");
+    expect(res.stderr).toContain("Safe and escrow addresses are unverified on-chain");
   });
+
+  it("refuses a proposed treasury ADR even when the other release fixtures pass", async () => {
+    const dir = signedDir();
+    writeFileSync(join(dir, "treasury-adr.md"), "# Treasury ADR acceptance fixture\n- **Status:** Proposed\n");
+    const server = await rpc("0x1");
+    try {
+      const res = await run(["--signoffs", dir], { MAINNET_RPC_URL: server.url, TRIALS_ADDRESS: TRIALS_CONTRACT, TREASURY_ADDRESS, OWNER_SAFE_ADDRESS: OWNER_ADDRESS });
+      expect(res.status).toBe(1);
+      expect(res.stderr).toContain("treasury-adr.md is not accepted");
+    } finally {
+      await server.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses audit evidence pinned to a different commit than the current Git HEAD", async () => {
+    const dir = signedDir();
+    const auditPath = join(dir, "audit-signoff.json");
+    const treasuryPath = join(dir, "treasury.json");
+    const audit = JSON.parse(readFileSync(auditPath, "utf8"));
+    const treasury = JSON.parse(readFileSync(treasuryPath, "utf8"));
+    audit.commit = "f".repeat(40);
+    treasury.deploymentCommit = audit.commit;
+    writeFileSync(auditPath, JSON.stringify(audit));
+    writeFileSync(treasuryPath, JSON.stringify(treasury));
+    const server = await rpc("0x1");
+    try {
+      const res = await run(["--signoffs", dir], { MAINNET_RPC_URL: server.url, TRIALS_ADDRESS: TRIALS_CONTRACT, TREASURY_ADDRESS, OWNER_SAFE_ADDRESS: OWNER_ADDRESS });
+      expect(res.status).toBe(1);
+      expect(res.stderr).toContain("audit-signoff.json commit must equal checked-out Git HEAD");
+    } finally {
+      await server.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses a treasury deployment record pinned to a different commit than the current Git HEAD", async () => {
+    const dir = signedDir();
+    const treasuryPath = join(dir, "treasury.json");
+    const treasury = JSON.parse(readFileSync(treasuryPath, "utf8"));
+    treasury.deploymentCommit = "f".repeat(40);
+    writeFileSync(treasuryPath, JSON.stringify(treasury));
+    const server = await rpc("0x1");
+    try {
+      const res = await run(["--signoffs", dir], { MAINNET_RPC_URL: server.url, TRIALS_ADDRESS: TRIALS_CONTRACT, TREASURY_ADDRESS, OWNER_SAFE_ADDRESS: OWNER_ADDRESS });
+      expect(res.status).toBe(1);
+      expect(res.stderr).toContain("treasury.json deploymentCommit must equal checked-out Git HEAD");
+    } finally {
+      await server.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses audit signoff without a report URL", async () => {
+    const dir = signedDir();
+    const auditPath = join(dir, "audit-signoff.json");
+    const audit = JSON.parse(readFileSync(auditPath, "utf8"));
+    delete audit.reportUrl;
+    writeFileSync(auditPath, JSON.stringify(audit));
+    try {
+      const res = await run(["--signoffs", dir]);
+      expect(res.status).toBe(1);
+      expect(res.stderr).toContain("audit-signoff.json missing field reportUrl");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it.each(["http://auditor.example.test/report", "https://user:pass@auditor.example.test/report"])(
+    "refuses a non-HTTPS or credential-bearing audit report URL: %s",
+    async (reportUrl) => {
+      const dir = signedDir();
+      const auditPath = join(dir, "audit-signoff.json");
+      const audit = JSON.parse(readFileSync(auditPath, "utf8"));
+      audit.reportUrl = reportUrl;
+      writeFileSync(auditPath, JSON.stringify(audit));
+      try {
+        const res = await run(["--signoffs", dir]);
+        expect(res.status).toBe(1);
+        expect(res.stderr).toContain("audit-signoff.json reportUrl must be an HTTPS URL without embedded credentials");
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
 
   it("passes a fully signed set against a chain-id-1 RPC with a verified Safe fixture", async () => {
     const dir = signedDir();

@@ -69,7 +69,8 @@ export default function DevelopersPage() {
 
       <p className="hint hint--block">
         Docs first: <Link href="/docs">the written rules</Link>. The whole map:{" "}
-        <Link href="/tour">every page, and what it is for</Link>.
+        <Link href="/tour">every page, and what it is for</Link>. The API itself:{" "}
+        <Link href="/developers/reference">the reference, written by the API</Link>.
       </p>
     </Chrome>
   );

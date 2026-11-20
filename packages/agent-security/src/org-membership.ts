@@ -5,27 +5,28 @@
  * ownership through an authorised process. Default role on accept is the
  * lowest that grants access. Revocation takes effect at the next request.
  *
- * Builds on org-store.ts (Membership, Invitation). In-memory per ADR-0008.
+ * Builds on org-store.ts (Membership, Invitation). The records are durable
+ * (ADR-0033): every mutation here is written to PostgreSQL before it is
+ * visible, and the store's cache is refilled from there at boot.
  */
 
 import {
-  createInvitation,
-  createMembership,
-  createOrganisation,
+  createInvitationDurable,
+  createMembershipDurable,
   getInvitation,
   getMembershipByPrincipalAndOrg,
   getOrganisation,
   listInvitations,
   listMemberships,
-  revokeMembership,
-  updateOrganisation,
+  revokeMembershipDurable,
+  updateOrganisationDurable,
 } from "./org-store.js";
 import type { Invitation, Membership } from "./organisation.js";
 import { newInvitation, newMembership, newOrganisation, parseOrgRole } from "./organisation.js";
 import { createAuditEntry, listAuditForOrg, newAuditEntry } from "./org-audit.js";
 
 /** Invite a principal to an organisation. */
-export function inviteMember(
+export async function inviteMember(
   orgId: string,
   inviteePrincipalId: string,
   role: string,
@@ -34,7 +35,7 @@ export function inviteMember(
   projectId?: string,
   email?: string,
   domain?: string,
-): { invitationId: string; invitation: Invitation } {
+): Promise<{ invitationId: string; invitation: Invitation }> {
   const org = getOrganisation(orgId);
   if (!org) {
     throw new Error(`membership: organisation not found: ${orgId}`);
@@ -50,7 +51,7 @@ export function inviteMember(
   }
   const id = `inv-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
   const invitation = newInvitation(id, orgId, parsedRole, actorId, ttlMs, projectId, email, domain);
-  createInvitation(invitation);
+  await createInvitationDurable(invitation);
   createAuditEntry(
     newAuditEntry(
       `audit-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
@@ -65,11 +66,11 @@ export function inviteMember(
 }
 
 /** Accept an invitation. Binds an existing wallet principal. */
-export function acceptMember(
+export async function acceptMember(
   invitationId: string,
   acceptedBy: string,
-): { membershipId: string; membership: Membership } {
-  const result = __acceptInvitation(invitationId, acceptedBy);
+): Promise<{ membershipId: string; membership: Membership }> {
+  const result = await __acceptInvitation(invitationId, acceptedBy);
   if (!result) {
     throw new Error("membership: invitation cannot be accepted (expired, revoked, used, or domain mismatch)");
   }
@@ -87,10 +88,10 @@ export function acceptMember(
   return { membershipId: membership.id, membership };
 }
 
-function __acceptInvitation(
+async function __acceptInvitation(
   invitationId: string,
   acceptedBy: string,
-): { membership: Membership; invitation: Invitation } | null {
+): Promise<{ membership: Membership; invitation: Invitation } | null> {
   const invitation = getInvitation(invitationId);
   if (!invitation || invitation.used || invitation.revokedAt) return null;
   if (invitation.expiresAt <= Date.now()) return null;
@@ -110,12 +111,16 @@ function __acceptInvitation(
     undefined,
     invitation.expiresAt,
   );
-  createMembership(membership);
+  await createMembershipDurable(membership);
   return { membership, invitation };
 }
 
 /** Revoke a membership (immediately inactive). */
-export function removeMember(orgId: string, principalId: string, actorId: string): boolean {
+export async function removeMember(
+  orgId: string,
+  principalId: string,
+  actorId: string,
+): Promise<boolean> {
   const org = getOrganisation(orgId);
   if (!org) return false;
   const actor = getMembershipByPrincipalAndOrg(actorId, orgId);
@@ -124,7 +129,7 @@ export function removeMember(orgId: string, principalId: string, actorId: string
   }
   const m = getMembershipByPrincipalAndOrg(principalId, orgId);
   if (!m) throw new Error(`membership: membership not found: ${principalId}`);
-  const revoked = revokeMembership(m.id);
+  const revoked = await revokeMembershipDurable(m.id);
   if (revoked) {
     createAuditEntry(
       newAuditEntry(
@@ -141,12 +146,12 @@ export function removeMember(orgId: string, principalId: string, actorId: string
 }
 
 /** Change a member's role. Separation of duties: billing admin cannot grant owner. */
-export function changeRole(
+export async function changeRole(
   orgId: string,
   principalId: string,
   newRole: string,
   actorId: string,
-): { previousRole: string; newRole: string } {
+): Promise<{ previousRole: string; newRole: string }> {
   const parsed = parseOrgRole(newRole);
   if (!parsed) throw new Error(`membership: unknown role: ${newRole}`);
   const m = getMembershipByPrincipalAndOrg(principalId, orgId);
@@ -174,11 +179,11 @@ export function changeRole(
 }
 
 /** Transfer organisation ownership. */
-export function transferOwnership(
+export async function transferOwnership(
   orgId: string,
   newOwnerId: string,
   actorId: string,
-): { previousOwner: string; newOwner: string } {
+): Promise<{ previousOwner: string; newOwner: string }> {
   const org = getOrganisation(orgId);
   if (!org) throw new Error("membership: organisation not found");
   const actor = getMembershipByPrincipalAndOrg(actorId, orgId);
@@ -188,7 +193,7 @@ export function transferOwnership(
   const target = getMembershipByPrincipalAndOrg(newOwnerId, orgId);
   if (!target) throw new Error("membership: target principal is not a member");
   const previous = org.ownerId;
-  const updated = updateOrganisation(orgId, { ownerId: newOwnerId });
+  const updated = await updateOrganisationDurable(orgId, { ownerId: newOwnerId });
   if (!updated) throw new Error("membership: organisation not found");
   createAuditEntry(
     newAuditEntry(

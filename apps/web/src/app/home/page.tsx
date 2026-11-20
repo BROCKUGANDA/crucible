@@ -149,6 +149,18 @@ export default function HomeDashboard() {
         <Link className="btn btn-ghost" href="/forge">
           Register agent
         </Link>
+        {/*
+          The two professional doors. A sponsor posts a trial and then has to be able to
+          see whether the escrow holds what the programme says it deposited; an evaluator
+          needs to know whether a result would repeat before publishing it. Both were
+          pages nobody could reach — a URL a visitor can only guess is not shipped.
+        */}
+        <Link className="btn btn-ghost" href="/sponsor">
+          Sponsor console
+        </Link>
+        <Link className="btn btn-ghost" href="/studio">
+          Evaluation Studio
+        </Link>
       </div>
     </Chrome>
   );

@@ -1,209 +1,171 @@
 /**
- * @file worker.ts — BullMQ background worker entry point.
+ * @file worker.ts — THE background process. One entrypoint, one set of queues.
  *
- * Processes queued jobs for evaluation execution, telemetry relay,
- * cache cleanup, quota reset, and reconciliation.
+ * This file used to be a stub. It registered three workers whose processors
+ * returned `{ status: "scheduled" }`, `{ delivered: true }`,
+ * `{ captured: true }`, `{ cleaned: true }`, `{ reset: true }` and
+ * `{ reconciled: true }` — none of which did the thing they named. It also
+ * re-added itself with a delay to repeat, and BullMQ keeps completed jobs by
+ * default, so the re-added job carried an id a completed job already held:
+ * the add was swallowed and a "hourly" job ran exactly once, silently.
  *
- * Started via: node dist/worker.js (or tsx src/worker.ts in dev)
- * Requires REDIS_URL environment variable.
+ * Nothing ran it either. The compose `worker` service built the API image and
+ * the API entrypoint always starts `dist/server.js`, so the "worker" was a
+ * second API server.
+ *
+ * What this does now:
+ *
+ *   - delivers Forge Watch telemetry (the relay, the L0 monitor, findings,
+ *     acknowledgements and the durable dead letter — see
+ *     `packages/agent-security/src/forge-watch-telemetry.ts`);
+ *   - sweeps delivered outbox rows on a schedule;
+ *   - reports the dead-letter backlog on a schedule;
+ *   - reconciles the chain against the commercial ledger on a schedule
+ *     (`funding-reconciliation.ts`), because a sponsor's money has to be a
+ *     chain fact and not an API claim.
+ *
+ * Run it with `npm run worker:service`. It refuses to start without a
+ * database and a queue: a worker that cannot reach either would sit there
+ * appearing healthy.
  */
 
-import { Queue, Worker } from "bullmq";
-import Redis from "ioredis";
+import { createWorker, QUEUE_NAMES } from "@crucible/agent-security";
+import {
+  createDefaultPipeline,
+  startWorkerService,
+  DEFAULT_RETENTION_MS,
+  type TelemetryPipeline,
+} from "@crucible/agent-security";
+import type { Worker } from "bullmq";
+import { runFundingReconciliation } from "./funding-reconciliation.js";
 
-const redisUrl = process.env.REDIS_URL || "redis://localhost:6379";
-const connection = new Redis(redisUrl, { maxRetriesPerRequest: null });
+const log = (line: string) => console.log(`[worker] ${line}`);
 
-// Define job queues
-const evaluationQueue = new Queue("evaluations", { connection });
-const telemetryQueue = new Queue("telemetry", { connection });
-const maintenanceQueue = new Queue("maintenance", { connection });
+/** How often the outbox is swept and the dead-letter backlog reported. */
+const HOUSEKEEPING_INTERVAL_MS = 15 * 60 * 1_000;
 
-// Evaluation worker
-const evaluationWorker = new Worker(
-  "evaluations",
-  async (job) => {
-    console.log(`[worker] Processing evaluation job: ${job.id} (${job.name})`);
-    const { runId, suiteVersionId, agentId } = job.data;
+/** How often the chain is compared against the commercial ledger. */
+const RECONCILIATION_INTERVAL_MS = 10 * 60 * 1_000;
 
-    switch (job.name) {
-      case "execute_evaluation": {
-        // Schedule evaluation execution
-        console.log(`[worker] Scheduling evaluation for run ${runId}`);
-        // In production, this would trigger forge-runner execution
-        return { runId, status: "scheduled" };
+/**
+ * The maintenance consumer.
+ *
+ * Every branch here does the work it names. A branch that cannot yet do its
+ * work is not registered — it is not registered as a job that returns
+ * "ok".
+ *
+ * It is created inside `main()` rather than at module scope: the pipeline it
+ * closes over has to exist first, and a module-scope worker would begin
+ * consuming before the process had finished starting.
+ */
+function createMaintenanceWorker(pipeline: TelemetryPipeline): Worker {
+  const worker = createWorker(
+    QUEUE_NAMES.MAINTENANCE,
+    async (job) => {
+      switch (job.name) {
+        case "outbox-retention": {
+          const cutoff = Date.now() - DEFAULT_RETENTION_MS;
+          const removed = await pipeline.purgeDispatched(cutoff);
+          log(`outbox retention: removed ${removed} delivered row(s) older than ${DEFAULT_RETENTION_MS}ms`);
+          return;
+        }
+        case "dead-letter-report": {
+          const pending = await pipeline.pendingDeadLetters(100);
+          if (pending.length === 0) {
+            log("dead letters: none pending");
+            return;
+          }
+          log(`dead letters: ${pending.length} pending`);
+          for (const record of pending) {
+            log(
+              `  #${record.id} ${record.source} ${record.jobName}: ${record.error} ` +
+                `(${record.attempts} attempt(s))`,
+            );
+          }
+          return;
+        }
+        case "funding-reconciliation": {
+          const report = await runFundingReconciliation();
+          if (!report.ran) {
+            log(`funding reconciliation did not run: ${report.reason}`);
+            return;
+          }
+          log(
+            `funding reconciliation: ${report.checked} claim(s) checked, ` +
+              `${report.verified} verified, ${report.mismatched} mismatched, ` +
+              `${report.unverifiable} unverifiable`,
+          );
+          for (const drift of report.drifts) {
+            log(`  drift ${drift.programId}: ${drift.reason}`);
+          }
+          return;
+        }
+        default:
+          // An unknown job name is worth saying out loud: it means a job was
+          // scheduled by something this build does not know about. Silently
+          // ignoring it is how a schedule rots.
+          log(`unknown maintenance job: ${job.name}`);
       }
-      case "replay_evaluation": {
-        // Independent replay for reproducibility
-        console.log(`[worker] Replaying evaluation for run ${runId}`);
-        return { runId, status: "replayed" };
-      }
-      default:
-        console.warn(`[worker] Unknown evaluation job: ${job.name}`);
-        return { status: "unknown" };
-    }
-  },
-  { connection, concurrency: 5 },
-);
+    },
+    { concurrency: 1 },
+  );
 
-// Telemetry worker
-const telemetryWorker = new Worker(
-  "telemetry",
-  async (job) => {
-    console.log(`[worker] Processing telemetry job: ${job.id} (${job.name})`);
-    const { runId, eventType, data } = job.data;
-
-    switch (job.name) {
-      case "relay_telemetry": {
-        // Relay telemetry event to consumers
-        console.log(`[worker] Relaying telemetry for run ${runId}: ${eventType}`);
-        return { runId, eventType, delivered: true };
-      }
-      case "capture_artifact": {
-        // Persist execution artifact
-        console.log(`[worker] Capturing artifact for run ${runId}`);
-        return { runId, artifactId: data?.artifactId, stored: true };
-      }
-      default:
-        console.warn(`[worker] Unknown telemetry job: ${job.name}`);
-        return { status: "unknown" };
-    }
-  },
-  { connection, concurrency: 10 },
-);
-
-// Maintenance worker (low priority, runs during off-peak)
-const maintenanceWorker = new Worker(
-  "maintenance",
-  async (job) => {
-    console.log(`[worker] Processing maintenance job: ${job.id} (${job.name})`);
-
-    switch (job.name) {
-      case "cache_cleanup": {
-        // Clean up expired cache entries
-        console.log(`[worker] Cleaning up expired cache entries`);
-        await rescheduleRecurringJob("cache_cleanup", 3600_000, "hourly_cache_cleanup");
-        return { cleaned: true };
-      }
-      case "quota_reset": {
-        // Reset monthly quotas
-        console.log(`[worker] Resetting monthly quotas`);
-        await rescheduleRecurringJob("quota_reset", 86400_000, "monthly_quota_reset");
-        return { reset: true };
-      }
-      case "reconciliation": {
-        // Reconcile evaluation, commercial, and chain truth
-        console.log(`[worker] Running three-truth reconciliation`);
-        await rescheduleRecurringJob("reconciliation", 21600_000, "six_hourly_reconciliation");
-        return { reconciled: true };
-      }
-      default:
-        console.warn(`[worker] Unknown maintenance job: ${job.name}`);
-        return { status: "unknown" };
-    }
-  },
-  { connection, concurrency: 1 },
-);
-
-// Schedule recurring maintenance jobs using delayed jobs
-async function scheduleRecurringJobs() {
-  // Cache cleanup every hour (delayed 1 hour from now)
-  await maintenanceQueue.add("cache_cleanup", {}, { delay: 3600_000, jobId: "hourly_cache_cleanup" });
-
-  // Quota reset on the 1st of every month (delayed 24 hours for initial run)
-  await maintenanceQueue.add("quota_reset", {}, { delay: 86400_000, jobId: "monthly_quota_reset" });
-
-  // Reconciliation every 6 hours (delayed 6 hours from now)
-  await maintenanceQueue.add("reconciliation", {}, { delay: 21600_000, jobId: "six_hourly_reconciliation" });
-
-  console.log("[worker] Recurring maintenance jobs scheduled");
+  worker.on("error", (err) => {
+    log(`maintenance worker error: ${err instanceof Error ? err.message : String(err)}`);
+  });
+  worker.on("failed", (job, err) => {
+    log(`maintenance job ${job?.name} failed: ${err instanceof Error ? err.message : String(err)}`);
+  });
+  return worker;
 }
 
-// Reschedule recurring jobs after completion
-async function rescheduleRecurringJob(jobName: string, delayMs: number, jobId: string) {
-  await maintenanceQueue.add(jobName, {}, { delay: delayMs, jobId });
-}
+async function main(): Promise<void> {
+  // The pipeline is created once and shared by the service and the jobs.
+  const pipeline = createDefaultPipeline(log);
+  const maintenanceWorker = createMaintenanceWorker(pipeline);
 
-// Error handling
-evaluationWorker.on("error", (err) => {
-  console.error("[worker] Evaluation worker error:", err);
-});
+  const service = await startWorkerService({
+    pipeline,
+    jobs: [
+      {
+        id: "outbox-retention",
+        everyMs: HOUSEKEEPING_INTERVAL_MS,
+        queueName: QUEUE_NAMES.MAINTENANCE,
+        jobName: "outbox-retention",
+      },
+      {
+        id: "dead-letter-report",
+        everyMs: HOUSEKEEPING_INTERVAL_MS,
+        queueName: QUEUE_NAMES.MAINTENANCE,
+        jobName: "dead-letter-report",
+      },
+      {
+        id: "funding-reconciliation",
+        everyMs: RECONCILIATION_INTERVAL_MS,
+        queueName: QUEUE_NAMES.MAINTENANCE,
+        jobName: "funding-reconciliation",
+      },
+    ],
+    onLog: log,
+  });
 
-telemetryWorker.on("error", (err) => {
-  console.error("[worker] Telemetry worker error:", err);
-});
+  let shuttingDown = false;
+  const shutdown = async (signal: string) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    log(`${signal} received, draining`);
+    await maintenanceWorker.close().catch(() => {
+      // A worker that cannot close cleanly must not block the shutdown.
+    });
+    await service.stop().catch(() => undefined);
+    process.exit(0);
+  };
 
-maintenanceWorker.on("error", (err) => {
-  console.error("[worker] Maintenance worker error:", err);
-});
-
-// Job completion logging
-evaluationWorker.on("completed", (job) => {
-  console.log(`[worker] Evaluation job completed: ${job.id}`);
-});
-
-telemetryWorker.on("completed", (job) => {
-  console.log(`[worker] Telemetry job completed: ${job.id}`);
-});
-
-maintenanceWorker.on("completed", (job) => {
-  console.log(`[worker] Maintenance job completed: ${job.id}`);
-});
-
-// Failed job handling
-evaluationWorker.on("failed", (job, err) => {
-  console.error(`[worker] Evaluation job failed: ${job?.id}`, err);
-});
-
-telemetryWorker.on("failed", (job, err) => {
-  console.error(`[worker] Telemetry job failed: ${job?.id}`, err);
-});
-
-// Graceful shutdown
-let isShuttingDown = false;
-
-async function gracefulShutdown() {
-  if (isShuttingDown) return;
-  isShuttingDown = true;
-
-  console.log("[worker] Initiating graceful shutdown...");
-
-  // Stop processing new jobs
-  await evaluationWorker.close();
-  await telemetryWorker.close();
-  await maintenanceWorker.close();
-
-  // Close queues
-  await evaluationQueue.close();
-  await telemetryQueue.close();
-  await maintenanceQueue.close();
-
-  // Close Redis connection
-  await connection.quit();
-
-  console.log("[worker] Graceful shutdown complete");
-  process.exit(0);
-}
-
-process.on("SIGTERM", gracefulShutdown);
-process.on("SIGINT", gracefulShutdown);
-
-// Start workers
-async function main() {
-  console.log("[worker] Starting BullMQ workers...");
-  console.log(`[worker] Redis URL: ${redisUrl}`);
-
-  // Schedule recurring maintenance jobs
-  await scheduleRecurringJobs();
-
-  console.log("[worker] All workers started successfully");
-  console.log("[worker] Queues: evaluations, telemetry, maintenance");
+  process.on("SIGTERM", () => void shutdown("SIGTERM"));
+  process.on("SIGINT", () => void shutdown("SIGINT"));
 }
 
 main().catch((err) => {
-  console.error("[worker] Failed to start workers:", err);
+  log(`failed to start: ${err instanceof Error ? err.message : String(err)}`);
   process.exit(1);
 });
-
-// Export for programmatic access
-export { evaluationQueue, telemetryQueue, maintenanceQueue };

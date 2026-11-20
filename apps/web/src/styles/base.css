@@ -358,6 +358,25 @@ p {
   gap: var(--s-3);
 }
 
+/* A panel that is also a choice: the sponsor console's way of asking which
+   organisation or which programme to look at. It is a button, so it takes a
+   button's semantics — left-aligned, with a visible pressed state — and the
+   alignment lives here rather than in a style attribute the component owns. */
+.choice-panel {
+  text-align: left;
+  cursor: pointer;
+  width: 100%;
+  background: none;
+  border: 1px solid var(--line, currentColor);
+  color: inherit;
+  font: inherit;
+}
+
+.choice-panel[aria-pressed="true"] {
+  outline: 2px solid var(--tone, currentColor);
+  outline-offset: 2px;
+}
+
 /* ── tone ─────────────────────────────────────────────────── */
 
 /* The one place data-driven colour enters the CSS. The meta tables in src/lib/forge.ts
