@@ -244,3 +244,79 @@ produces evidence and an independent review is commissioned.
   file sets `TRIALS_ADDRESS`, `ALLOY_ADDRESS`, `ARENA_ADDRESS`, `AUTH_ORIGIN` and
   `ALLOWED_ORIGINS` for `http://127.0.0.1:3210`), then
   `npx next start -p 3210` in `apps/web`.
+
+## Session end (2026-11-20, ~07:30) — the sponsor's ledger is durable, and the claim path works at all
+
+### What shipped
+
+**`8bf7972` — the console's ledger total was zero.** The funding summary was
+built from the chain's receipts with each receipt's claimed amount dropped on
+the way in, so a programme with a 1.15 ETH claim showed "the ledger claims 0
+ETH" next to "the escrow holds 1.15 ETH". Found by browser verification, not by
+reasoning. `summarizeProgrammeFunding` now takes the claims (the ledger's
+number) and the receipts (the confirmed number) separately, with "unchecked" as
+its own column. Four mutations proven red; **the fourth was green on the first
+attempt** because its anchor matched an identical line in another function.
+
+**`9075761` — the sponsor's ledger is durable, and the claim path works.**
+A real **PostgreSQL 17** was stood up on the build box (initdb at
+`C:/Users/HP/AppData/Local/Temp/crucible-pg`, port **5433**, `trust` auth) and
+the shipped code was asked to write to it. Four findings:
+
+1. **A funding claim could not be recorded in any real deployment.**
+   `sponsor_funding_claims.org_id REFERENCES organisations(id)` and nothing
+   ever writes an organisation (the tenancy model is process memory by design,
+   `packages/agent-security/src/org-store.ts`). Every claim died at the FK.
+   Dropped in `migrations/0012_sponsor_ledger_durable.sql`.
+2. **The sponsor's ledger was a `Map`** — sponsors, programmes, the eight
+   budget counters and the budget's own ledger were process memory. Now
+   PostgreSQL behind a `SponsorStore` interface (`apps/api/src/sponsor-
+   programme-pg.ts`); the domain rules stay put; the API announces the ledger
+   at boot ("postgresql (survives a restart)" / "in memory — ... lost on
+   restart").
+3. **The programme and budget-entry routes were failing outright** —
+   `JSON.stringify` throws on a `bigint`; every wei now leaves as a decimal
+   string through explicit serializers.
+4. **The ledger had no insertion order** (`BIGSERIAL seq`), and
+   `recordWithdrawal` decremented `paid` while the module's own invariant
+   requires `paid >= withdrawn` — both counters are cumulative now.
+
+ADR-0032. Audit: MONEY-H6, MONEY-H7, MONEY-M1, MONEY-M2, AUTHZ-D1.
+
+### Measurements
+
+- `npm run typecheck` clean; `npm test` green — **4,171** TS tests passed (the
+  12 durable-ledger tests SKIP without a database, as the Redis cases do).
+- With `DATABASE_URL` set: API workspace **1,121 passed, 0 failed**.
+- **Restart proof:** sponsor + programme + deposit + 3 ledger entries written
+  through the API → process killed → new process → all read back
+  (`committed 1 ETH / deposited 0.575 / escrowed 0.575`).
+- **Six mutations proven red** against the real database; **two were green on
+  the first attempt** (no test covered withdrawing twice; nothing could
+  distinguish the ledger's order) — both gaps closed with tests that fail for
+  the right reason (a row written last but stamped earlier).
+- Edge 25/25; `forge script` compiles and deploys; anvil still up on 8555.
+
+### Environment left running
+
+- **PostgreSQL 17 on `127.0.0.1:5433`** (data dir
+  `C:/Users/HP/AppData/Local/Temp/crucible-pg`, database `crucible`, user
+  `crucible`, trust auth). `DATABASE_URL=postgres://crucible@127.0.0.1:5433/crucible`.
+  It holds the durable-ledger evidence and the migrations applied.
+- **Anvil on `127.0.0.1:8555`** with the arena deployed.
+- The API was stopped (it held 8787, the port the other session's `.env`
+  expects). Start it with
+  `node --env-file=.scratch/api.env apps/api/dist/server.js` (which sets
+  `DATABASE_URL`), and the site with `npx next start -p 3210` in `apps/web`.
+
+### Next steps, in order
+
+1. **The organisation and membership model becomes durable** (AUTHZ-D1,
+   ADR-0032's named successor). It is the last in-memory state on the money
+   path, it makes the RLS policies real, and it is what a multi-process
+   deployment needs.
+2. The remaining P1 surfaces: the dispute evidence bundle, the reviewer queue
+   with conflict declaration and abstention, the comparison studio, the agent
+   directory, the evidence inspector, the trial timeline.
+3. P3 (mainnet) stays gated: it does not begin before P1 produces evidence and
+   an independent review is commissioned.
