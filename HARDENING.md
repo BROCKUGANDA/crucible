@@ -2749,3 +2749,26 @@ Report a vulnerability as described in [`SECURITY.md`](SECURITY.md), not in a pu
   written, so the commercial promise ("your team polls the API with a key") is not yet true. There is no
   server-side pepper, so an attacker with the table still attacks the secret alone. And scrypt's ~80 ms per
   verification is a denial-of-service surface on any endpoint that verifies a key without a rate limit.
+
+- **2026-11-20 — the door that accepts a key** (ADR-0041). An organisation's key reads its OWN organisation
+  (`GET /orgs/:id` and `GET /orgs/:id/api-keys`) and writes nothing: creating a credential, revoking one and
+  inviting a member all still need a wallet signature (ADR-0006), because a key that could change who holds
+  credentials is a key that could, one permission change later, move money. A key presented for ANOTHER
+  organisation is refused by name (`key-not-for-this-org`) — a key that reads another organisation would be a
+  key with the wrong grant, not a key with a missing check. The three refusals are distinct on purpose: a
+  revoked key, an expired key and a missing scope are 401s with their own reasons, and a missing scope is a
+  403 that names the scope.
+  **Six mutations proven red** — a key reading another organisation, the scope unchecked, a revoked key
+  authenticating, any bearer token treated as a key, a key creating a credential, and a wrong secret
+  accepted. One of them was green on the first attempt for a reason worth recording: the test presented a
+  secret with a DIFFERENT PREFIX, which is never found at all, so it passed without ever comparing the secret.
+  The test now presents one with the SAME prefix and a different body — the key is found, and the SECRET is
+  what refuses it.
+  **And a lesson about the instrument.** The mutation that disables the secret comparison lives in the
+  PACKAGE, and the API's tests import the BUILT package — so a mutation there is invisible until the
+  package is rebuilt. The script now rebuilds before the test **and again after restoring the source**: a
+  restore that leaves the build mutated turns the next plain run into a red test that is not there, and a
+  red test that is not there is an instrument lying about a product.
+  **Still open, and named.** The surface is two routes — the sponsor's funding ledger, the trials, the
+  publications and the disputes are still wallet-only — and an endpoint that spends ~80 ms verifying a secret
+  needs a rate limit before it is exposed.

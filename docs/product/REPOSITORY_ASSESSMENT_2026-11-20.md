@@ -877,3 +877,48 @@ against the durable store, so the in-memory guard was unmeasured.
   endpoint that verifies a key without a rate limit.
 - Budgets and quotas, and webhook endpoints, are still in process memory
   (AUTHZ-D1).
+
+## S. The door that accepts a key (2026-11-20, last) — and how narrow it is on purpose
+
+ADR-0040 made the API keys durable and named what was still missing:
+**nothing authenticated with them**. `validateApiKey` had no caller
+outside its own tests, so the credential existed only on a spreadsheet and
+the commercial promise was not yet true.
+
+**Now (ADR-0041).** An organisation's key reads its own organisation and
+writes nothing:
+
+- the presentation is `Authorization: Bearer crux.<secret>`; the lookup
+  prefix is the first eight characters of the secret — **derived**, never
+  carried separately, so the two cannot disagree;
+- the secret is verified with the slow hash (scrypt), once per request,
+  never on a route that needs no credential;
+- **three refusals stay three facts**: revoked, expired and wrong-secret
+  are 401s; a missing scope is a 403 that names the scope; a key presented
+  for **another organisation** is refused by name;
+- **a key writes nothing** — a key that could change who holds
+  credentials is a key that could, one permission change later, move
+  money.
+
+**Proven.** Six API tests and six mutations proven red. One mutation was
+green on the first attempt for a reason worth recording: the test
+presented a secret with a **different prefix**, which is never found at
+all, so it passed without ever comparing the secret. The test now
+presents one with the same prefix and a different body.
+
+**A lesson about the instrument.** The mutation that disables the secret
+comparison lives in the package, and the API's tests import the **built**
+package — so the mutation script rebuilds before the test **and again
+after restoring the source**. A restore that leaves the build mutated
+turns the next plain run into a red test that is not there, and a red test
+that is not there is an instrument lying about a product.
+
+**What remains, named rather than left to rot:**
+
+- **The surface is two routes.** The sponsor's funding ledger, the trials,
+  the publications and the disputes are still wallet-only; widening the key
+  means naming the scope each route needs.
+- An endpoint that spends ~80 ms verifying a secret needs a rate limit
+  before it is exposed.
+- No server-side pepper (ADR-0040).
+- Budgets and quotas, and webhook endpoints, are still in process memory.

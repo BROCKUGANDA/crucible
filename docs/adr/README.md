@@ -51,6 +51,7 @@ way it does and what would have to change to revisit it.
 | [0038](0038-the-conflict-register-is-durable.md) | The conflict-of-interest register is durable; a withdrawal is not a deletion, and the interest key stays derived | Accepted |
 | [0039](0039-a-review-queue-bars-whoever-has-a-conflict.md) | A review queue bars whoever has a recorded conflict with a case; the cases are chain-derived, the reviewer's own state is durable | Accepted |
 | [0040](0040-a-revoked-key-must-not-come-back.md) | The organisation API keys are durable: a revoked key does not come back, and the hash is slow and salted | Accepted |
+| [0041](0041-an-api-key-reads-its-own-organisation-and-writes-nothing.md) | An API key reads its own organisation and writes nothing; a revoked key, a missing scope and another organisation are three different refusals | Accepted |
 
 **A numbering defect, recorded rather than papered over.** `0020` names two ADRs written a
 week apart by different sessions. The later one (treasury) is what most of the newer

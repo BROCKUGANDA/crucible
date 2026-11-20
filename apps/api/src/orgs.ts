@@ -46,6 +46,7 @@ import {
   listApiKeysForOrg,
   revokeApiKey,
 } from "@crucible/agent-security";
+import { verifiedApiKey, ORG_READ_SCOPE } from "./api-key-auth.js";
 
 function resolveWalletPrincipal(c: Context): OrganisationPrincipal | null {
   const session = verifiedSessionFromContext(c);
@@ -57,6 +58,61 @@ function resolveWalletPrincipal(c: Context): OrganisationPrincipal | null {
     sessionId: session.sessionId,
     authenticated: true,
   });
+}
+
+/**
+ * Who is asking?
+ *
+ * Two credentials read an organisation: a wallet-signed session from
+ * somebody who belongs to it, and the organisation's OWN API key. The key
+ * reads only its own organisation — a key that reads another organisation
+ * is a key with the wrong grant, not a key with a missing check.
+ *
+ * The WRITE routes do not come here: a write needs a wallet signature
+ * (ADR-0006), and a key can never authorise one.
+ */
+type OrgReader =
+  | { kind: "wallet"; principal: OrganisationPrincipal }
+  | { kind: "api-key"; orgId: string; keyId: string };
+
+async function resolveOrgReader(
+  c: Context,
+  orgId: string,
+): Promise<{ reader: OrgReader | null; refusal: { body: Record<string, unknown>; status: number } | null }> {
+  const principal = resolveWalletPrincipal(c);
+  if (principal) {
+    if (!isMemberOf(principal.wallet.id, orgId)) {
+      return {
+        reader: null,
+        refusal: { body: { error: "forbidden", code: "not-a-member" }, status: 403 },
+      };
+    }
+    return { reader: { kind: "wallet", principal }, refusal: null };
+  }
+
+  const key = await verifiedApiKey(c, [ORG_READ_SCOPE]);
+  if (!key.ok) {
+    return {
+      reader: null,
+      refusal: { body: { error: key.reason, code: key.code }, status: key.status },
+    };
+  }
+  if (key.principal.orgId !== orgId) {
+    // The key belongs to another organisation. This is a refusal, not a
+    // silent empty answer: the caller asked with a credential that does
+    // not reach the thing they asked for.
+    return {
+      reader: null,
+      refusal: {
+        body: {
+          error: "this API key does not belong to this organisation",
+          code: "key-not-for-this-org",
+        },
+        status: 403,
+      },
+    };
+  }
+  return { reader: { kind: "api-key", orgId: key.principal.orgId, keyId: key.principal.keyId }, refusal: null };
 }
 
 export function createOrgRoutes(): Hono {
@@ -101,13 +157,13 @@ export function createOrgRoutes(): Hono {
   });
 
   app.get("/:id", async (c) => {
-    const principal = resolveWalletPrincipal(c);
-    if (!principal) {
-      return c.json({ error: "unauthenticated", code: "no-credential" }, 401);
-    }
     const id = c.req.param("id");
-    if (!isMemberOf(principal.wallet.id, id)) {
-      return c.json({ error: "forbidden", code: "not-a-member" }, 403);
+    const { reader, refusal } = await resolveOrgReader(c, id);
+    if (refusal) {
+      return c.json(refusal.body as never, refusal.status as never);
+    }
+    if (!reader) {
+      return c.json({ error: "unauthenticated", code: "no-credential" }, 401);
     }
     const org = getOrganisation(id);
     if (!org) {
@@ -257,13 +313,13 @@ export function createOrgRoutes(): Hono {
   });
 
   app.get("/:id/api-keys", async (c) => {
-    const principal = resolveWalletPrincipal(c);
-    if (!principal) {
-      return c.json({ error: "unauthenticated", code: "no-credential" }, 401);
-    }
     const id = c.req.param("id");
-    if (!isMemberOf(principal.wallet.id, id)) {
-      return c.json({ error: "forbidden", code: "not-a-member" }, 403);
+    const { reader, refusal } = await resolveOrgReader(c, id);
+    if (refusal) {
+      return c.json(refusal.body as never, refusal.status as never);
+    }
+    if (!reader) {
+      return c.json({ error: "unauthenticated", code: "no-credential" }, 401);
     }
     const keys = (await listApiKeysForOrg(id)).map((k) => ({ ...k, secretHash: undefined }));
     return c.json({ apiKeys: keys });

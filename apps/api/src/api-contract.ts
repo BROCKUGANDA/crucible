@@ -115,6 +115,33 @@ export const ERROR_CATALOGUE: ErrorCodeEntry[] = [
     whatToDo: "Ask for the scope you need. Each organisation role grants a different set.",
   },
   {
+    code: "revoked",
+    status: 401,
+    meaning: "The API key that was presented has been revoked. A revocation survives a restart.",
+    whatToDo: "Make another key in the organisation's console and use that. The old one will not come back.",
+  },
+  {
+    code: "expired",
+    status: 401,
+    meaning: "The API key that was presented has expired.",
+    whatToDo: "Make another key in the organisation's console. An expired key is not extended.",
+  },
+  {
+    code: "wrong-scope",
+    status: 403,
+    meaning:
+      "The API key that was presented does not carry the scope the request needs, or the secret did not match.",
+    whatToDo: "Read the key's scopes in the organisation's console and ask for one that carries what you need.",
+  },
+  {
+    code: "key-not-for-this-org",
+    status: 403,
+    meaning: "The API key that was presented belongs to another organisation, so it cannot read this one.",
+    whatToDo:
+      "Use the key of the organisation whose record you are reading. A key that reads another organisation would " +
+      "be a key with the wrong grant, not a key with a missing check.",
+  },
+  {
     code: "not-a-member",
     status: 403,
     meaning: "The caller is not a member of the organisation named in the request.",
