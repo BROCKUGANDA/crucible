@@ -78,6 +78,7 @@ import { createStsRoutes, STS_MAX_AUDIO_BYTES, STS_TURN_TIMEOUT_MS, type StsConf
 import { createSuitesRoutes } from "./suites-routes.js";
 import { createScoringRoutes } from "./scoring-routes.js";
 import { createSponsorRoutes } from "./sponsor-routes.js";
+import { createSponsorFundingRoutes } from "./sponsor-funding-routes.js";
 import { createCommercialRoutes } from "./commercial-routes.js";
 import {
   bodyLimit,
@@ -2573,6 +2574,15 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
    * Sponsor registration, program creation, budget accounting.
    */
   app.route("/sponsors", createSponsorRoutes());
+
+  /**
+   * Sponsor funding, verified against the chain.
+   *
+   * Mounted under the sponsor surface because that is where a sponsor looks
+   * for it, and because the program budget and the chain's escrow are two
+   * views of the same money.
+   */
+  app.route("/sponsors", createSponsorFundingRoutes());
 
   /**
    * Commercial tiers and usage metering (Phase 9: General Availability).

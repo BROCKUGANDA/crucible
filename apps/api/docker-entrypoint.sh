@@ -17,4 +17,27 @@ fi
 
 cd "$(dirname "$0")" 2>/dev/null || true
 cd /repo/apps/api
-exec node dist/server.js
+
+# The role decides what this process IS.
+#
+# This script used to ignore its argument and always start the API, so the
+# compose `worker` service — which passes `node dist/worker.js` — started a
+# SECOND API SERVER. The worker was never running anywhere: the queues were
+# drained by nothing and the telemetry nothing delivered.
+#
+# An unknown role is an error rather than a fallback. A container that
+# silently runs the wrong process is a container nobody can trust to be
+# doing what its service name says.
+ROLE="${1:-api}"
+case "$ROLE" in
+  api)
+    exec node dist/server.js
+    ;;
+  worker)
+    exec node dist/worker.js
+    ;;
+  *)
+    echo "crucible-api-entrypoint: unknown role '$ROLE' (expected 'api' or 'worker')" >&2
+    exit 64
+    ;;
+esac
