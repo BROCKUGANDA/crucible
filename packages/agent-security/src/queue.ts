@@ -92,21 +92,39 @@ export async function addJob(
   options?: {
     delay?: number;
     attempts?: number;
-    backoff?: { delay: number; type: 'fixed' | 'exponential' };
+    backoff?: { delay: number; type?: 'fixed' | 'exponential' };
     priority?: number;
     jobId?: string;
+    /**
+     * How many finished jobs to keep. BullMQ's own option, exposed here
+     * because a caller that needs a specific retention has to be able to say
+     * so — the default below is a convenience, not a policy.
+     */
+    removeOnComplete?: number | boolean;
+    /** How many failed jobs to keep for inspection. */
+    removeOnFail?: number | boolean;
   }
 ): Promise<Job> {
   const queue = getQueue(queueName);
+  // The backoff is composed rather than spread: a caller that says "delay
+  // 2000" without naming a type means BullMQ's default (exponential), and
+  // spreading `{type: undefined}` through would ask BullMQ for a backoff with
+  // an explicitly undefined type, which its own types refuse and its runtime
+  // does not need.
+  const backoff = options?.backoff
+    ? {
+        delay: options.backoff.delay,
+        type: options.backoff.type ?? ('exponential' as const),
+      }
+    : { type: 'exponential' as const, delay: 1000 };
+
+  const { backoff: _ignoredBackoff, ...rest } = options ?? {};
   return queue.add(name, data, {
     attempts: 5,
-    backoff: {
-      type: 'exponential',
-      delay: 1000,
-    },
+    backoff,
     removeOnComplete: 100,
     removeOnFail: 50,
-    ...options,
+    ...rest,
   });
 }
 

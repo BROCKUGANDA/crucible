@@ -75,6 +75,10 @@ import { createVoiceRoutes, type VoiceConfig } from "./voice.js";
 import { createReplayRoutes, type ReplaySourceResult } from "./replay.js";
 import { createFrenchyRoutes, DEFAULT_BRAIN_TIMEOUT_MS, type FrenchyConfig } from "./frenchy.js";
 import { createStsRoutes, STS_MAX_AUDIO_BYTES, STS_TURN_TIMEOUT_MS, type StsConfig } from "./sts.js";
+import { createSuitesRoutes } from "./suites-routes.js";
+import { createScoringRoutes } from "./scoring-routes.js";
+import { createSponsorRoutes } from "./sponsor-routes.js";
+import { createCommercialRoutes } from "./commercial-routes.js";
 import {
   bodyLimit,
   corsPolicy,
@@ -2551,6 +2555,30 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
    * Engram achievement + rewards routes (REW-001..003).
    */
   app.route("/engrams", createEngramRoutes());
+
+  /**
+   * Benchmark suite registry routes (Phase 2: Evaluation Integrity).
+   * CRUD for suites, suite versions, and adversarial tests.
+   */
+  app.route("/suites", createSuitesRoutes());
+
+  /**
+   * Scoring engine routes (Phase 2: Evaluation Integrity).
+   * Rubrics, dimension scores, and aggregate scores.
+   */
+  app.route("/scoring", createScoringRoutes());
+
+  /**
+   * Sponsor onboarding and program management (Phase 8: Sponsored Pilot).
+   * Sponsor registration, program creation, budget accounting.
+   */
+  app.route("/sponsors", createSponsorRoutes());
+
+  /**
+   * Commercial tiers and usage metering (Phase 9: General Availability).
+   * Tier configuration, plan assignment, usage tracking, quota enforcement.
+   */
+  app.route("/commercial", createCommercialRoutes());
 
   app.route("/v1", createWorkloadRoutes());
   if (opts.stamp !== undefined && opts.stamp !== null) {

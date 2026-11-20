@@ -1,0 +1,270 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://crucible.dev/schemas/evaluation-spec/v1.json",
+  "title": "Crucible Evaluation Specification",
+  "description": "Canonical, versioned evaluation specification for AI agent trials. Published specs are immutable — changes create new revisions.",
+  "version": "1.0.0",
+  "type": "object",
+  "required": [
+    "spec_id",
+    "trial_id",
+    "trial_revision",
+    "suite_version_id",
+    "agent_id",
+    "evaluation_protocol",
+    "scoring_methodology",
+    "execution_environment"
+  ],
+  "properties": {
+    "spec_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Unique identifier for this evaluation specification"
+    },
+    "trial_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Parent trial identifier"
+    },
+    "trial_revision": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Trial revision number; published specs are immutable"
+    },
+    "suite_version_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Immutable suite version this spec evaluates against"
+    },
+    "agent_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Agent identity being evaluated"
+    },
+    "agent_version": {
+      "type": "string",
+      "description": "Agent build or version tag"
+    },
+    "model_id": {
+      "type": "string",
+      "description": "Model identifier, if applicable"
+    },
+    "provider_config": {
+      "type": "object",
+      "description": "Provider configuration (API endpoints, auth method, rate limits)",
+      "additionalProperties": true
+    },
+    "evaluation_protocol": {
+      "type": "string",
+      "enum": ["deterministic", "stochastic", "hybrid"],
+      "description": "Protocol type: deterministic outputs, stochastic model behavior, or hybrid"
+    },
+    "task_category": {
+      "type": "string",
+      "description": "Primary task category (e.g., code_generation, reasoning, safety)"
+    },
+    "task_specification": {
+      "type": "object",
+      "description": "Task definition including inputs, expected outputs, and constraints",
+      "additionalProperties": true
+    },
+    "input_fixtures": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["fixture_id", "hash"],
+        "properties": {
+          "fixture_id": {
+            "type": "string"
+          },
+          "hash": {
+            "type": "string",
+            "description": "SHA-256 digest of the fixture content"
+          },
+          "path": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "hidden_test_definitions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "description": "Hidden tests are only revealed after evaluation completion"
+      },
+      "description": "Tests not visible to participants before evaluation"
+    },
+    "execution_environment": {
+      "type": "object",
+      "required": ["runtime_image"],
+      "properties": {
+        "runtime_image": {
+          "type": "string",
+          "description": "Container image digest for reproducible execution"
+        },
+        "cpu_limit": {
+          "type": "integer",
+          "description": "Maximum CPU cores"
+        },
+        "memory_limit_mb": {
+          "type": "integer",
+          "description": "Maximum memory in MB"
+        },
+        "time_limit_seconds": {
+          "type": "integer",
+          "description": "Maximum execution time in seconds"
+        },
+        "network_egress": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether network egress is allowed"
+        },
+        "filesystem_restrictions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "runtime_config": {
+      "type": "object",
+      "description": "Runtime configuration parameters",
+      "additionalProperties": true
+    },
+    "resource_limits": {
+      "type": "object",
+      "description": "Resource constraints for the execution",
+      "additionalProperties": true
+    },
+    "tool_permissions": {
+      "type": "object",
+      "description": "Allowed tools and their permissions",
+      "additionalProperties": true
+    },
+    "judge_config": {
+      "type": "object",
+      "required": ["judge_version"],
+      "properties": {
+        "judge_version": {
+          "type": "string",
+          "description": "Version-pinned judge configuration"
+        },
+        "model_provider": {
+          "type": "string",
+          "description": "Model provider for AI-based judging"
+        },
+        "rubric_version": {
+          "type": "string",
+          "description": "Version of the scoring rubric"
+        }
+      },
+      "additionalProperties": true
+    },
+    "scoring_methodology": {
+      "type": "object",
+      "required": ["dimensions"],
+      "properties": {
+        "dimensions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "weight"],
+            "properties": {
+              "name": {
+                "type": "string",
+                "enum": ["CORRECTNESS", "ROBUSTNESS", "SAFETY", "EFFICIENCY", "RELIABILITY"]
+              },
+              "weight": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              }
+            }
+          }
+        },
+        "aggregate_method": {
+          "type": "string",
+          "enum": ["weighted_average", "min_max", "custom"],
+          "default": "weighted_average"
+        }
+      },
+      "additionalProperties": true
+    },
+    "repetition_policy": {
+      "type": "object",
+      "properties": {
+        "repetitions": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 1
+        },
+        "independent_replays": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 3,
+          "description": "Number of independent replays required for verification"
+        }
+      },
+      "additionalProperties": true
+    },
+    "randomness_config": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": ["deterministic", "vrf"],
+          "description": "Mode 0 (deterministic) for demo only; Mode 1 (VRF) required for funded trials"
+        },
+        "seed": {
+          "type": "string",
+          "description": "Randomness seed for deterministic mode"
+        },
+        "vrf_request_id": {
+          "type": "string",
+          "description": "VRF request ID for production mode"
+        }
+      },
+      "additionalProperties": true
+    },
+    "evidence_requirements": {
+      "type": "object",
+      "description": "Required evidence artifacts and their integrity checks",
+      "additionalProperties": true
+    },
+    "publication_policy": {
+      "type": "string",
+      "enum": ["private", "org", "public"],
+      "default": "private"
+    },
+    "dispute_rules": {
+      "type": "object",
+      "description": "Rules for dispute resolution, including commit/reveal parameters",
+      "additionalProperties": true
+    },
+    "reward_terms": {
+      "type": "object",
+      "description": "Reward structure (kept separate from scoring data)",
+      "additionalProperties": true
+    },
+    "spec_digest": {
+      "type": "string",
+      "description": "SHA-256 digest of the canonical JSON representation"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["DRAFT", "PUBLISHED", "EXECUTING", "COMPLETED", "ARCHIVED"],
+      "default": "DRAFT"
+    },
+    "created_at": {
+      "type": "integer",
+      "description": "Unix millisecond timestamp"
+    },
+    "updated_at": {
+      "type": "integer",
+      "description": "Unix millisecond timestamp"
+    }
+  },
+  "additionalProperties": false
+}

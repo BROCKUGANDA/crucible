@@ -40,9 +40,21 @@ services:
       - ./migrations:/repo/migrations:ro
     environment:
       CRUCIBLE_MIGRATIONS_DIR: /repo/migrations
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-crucible_prod_2026_secure}
+
+  postgres:
+    ports: !reset []
+
+  redis:
+    ports: !reset []
+
+  worker:
+    # Worker runs internally, no published ports
 
   web:
     ports: !reset []
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-crucible_prod_2026_secure}
     build:
       args:
         # The VPS hosts the valueless demo by default. A deployment that targets a
