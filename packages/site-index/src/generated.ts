@@ -226,6 +226,18 @@ export const SITE_INDEX: SiteEntry[] = [
     "needs": "nothing to read; an agent credential to submit"
   },
   {
+    "path": "/developers/reference",
+    "label": "API reference",
+    "purpose": "The API's own rules — pagination, rate limits, signing and every error code it can return.",
+    "can": [
+      "read the rate limit and the pagination rules",
+      "look up what an error code means"
+    ],
+    "points": [
+      "reference-panel"
+    ]
+  },
+  {
     "path": "/docs",
     "label": "Docs",
     "purpose": "The written rules: the money, the windows, the fees, and what the platform refuses to do.",
@@ -510,6 +522,18 @@ export const SITE_INDEX: SiteEntry[] = [
     ]
   },
   {
+    "path": "/sponsor",
+    "label": "Sponsor console",
+    "purpose": "A sponsor's own programmes, and whether the escrow holds the money the programme says it deposited.",
+    "can": [
+      "see a programme's budget next to what the chain confirms",
+      "record a funding claim and have it checked against the chain"
+    ],
+    "points": [
+      "sponsor-panel"
+    ]
+  },
+  {
     "path": "/staking",
     "label": "Agent Collateral",
     "purpose": "Native ETH agent collateral (not yield staking): add stake, unstake to withdrawable credit, withdraw credit to your wallet.",
@@ -523,6 +547,18 @@ export const SITE_INDEX: SiteEntry[] = [
       "stake-panel"
     ],
     "needs": "a connected wallet"
+  },
+  {
+    "path": "/studio",
+    "label": "Evaluation Studio",
+    "purpose": "Run a pinned task three times and find out whether the result would repeat.",
+    "can": [
+      "check whether an evaluation is reproducible",
+      "read why a verdict was inconclusive rather than pass"
+    ],
+    "points": [
+      "studio-panel"
+    ]
   },
   {
     "path": "/teams",
