@@ -560,11 +560,20 @@ services:
     build:
       context: .
       dockerfile: apps/api/Dockerfile
-    command: node dist/worker.js
+    # The entrypoint script switches on this argument: `api` starts the
+    # server, `worker` starts the queue-draining process. Before the switch
+    # existed, this service passed the argument and the entrypoint ignored it
+    # and started a second API server — so the worker never ran anywhere.
+    command: worker
     environment:
       - NODE_ENV=production
       - DATABASE_URL=postgresql://crucible:${POSTGRES_PASSWORD:-crucible_prod_2026_secure}@postgres:5432/crucible
       - REDIS_URL=redis://redis:6379
+      # The funding reconciliation reads the escrow, so the worker needs the
+      # same chain the API reads. Without these it reports that it could not
+      # run, which is honest but useless.
+      - RPC_URL=${RPC_URL:-http://anvil:8545}
+      - ARENA_ADDRESS=${ARENA_ADDRESS:-}
     depends_on:
       postgres:
         condition: service_healthy

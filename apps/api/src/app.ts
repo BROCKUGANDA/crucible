@@ -78,6 +78,13 @@ import { createStsRoutes, STS_MAX_AUDIO_BYTES, STS_TURN_TIMEOUT_MS, type StsConf
 import { createSuitesRoutes } from "./suites-routes.js";
 import { createScoringRoutes } from "./scoring-routes.js";
 import { createSponsorRoutes } from "./sponsor-routes.js";
+import { createSponsorFundingRoutes } from "./sponsor-funding-routes.js";
+import {
+  API_VERSION,
+  buildApiContract,
+  DEFAULT_RATE_LIMIT as API_DEFAULT_RATE_LIMIT,
+} from "./api-contract.js";
+import { createStudioRoutes } from "./studio-routes.js";
 import { createCommercialRoutes } from "./commercial-routes.js";
 import {
   bodyLimit,
@@ -305,7 +312,7 @@ const MAX_OPEN_STREAMS = 200;
  * so tests and the demo can move it, because a test that cannot make requests is not a
  * test.
  */
-const DEFAULT_RATE_LIMIT = { limit: 60, windowMs: 60_000, burst: 20 } as const;
+const DEFAULT_RATE_LIMIT = API_DEFAULT_RATE_LIMIT;
 
 export interface ApiOptions {
   rateLimit?: { limit: number; windowMs: number; burst?: number; trustProxy?: boolean } | false;
@@ -1026,6 +1033,16 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
     );
   };
   app.get("/health", health);
+
+  /**
+   * The API's contract, described by the API.
+   *
+   * The developer portal renders this instead of a hand-written page, so the
+   * documented limits, pagination rules and error codes cannot drift away
+   * from the ones the API enforces. A test reads the routes' source and fails
+   * if a route emits a code this endpoint does not document.
+   */
+  app.get(`/${API_VERSION}/contract`, (c) => c.json(buildApiContract()));
   app.get("/healthz", health);
   app.route("/v1/integrations/helius", createHeliusRoutes());
 
@@ -2575,12 +2592,30 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
   app.route("/sponsors", createSponsorRoutes());
 
   /**
+   * Sponsor funding, verified against the chain.
+   *
+   * Mounted under the sponsor surface because that is where a sponsor looks
+   * for it, and because the program budget and the chain's escrow are two
+   * views of the same money.
+   */
+  app.route("/sponsors", createSponsorFundingRoutes());
+
+  /**
    * Commercial tiers and usage metering (Phase 9: General Availability).
    * Tier configuration, plan assignment, usage tracking, quota enforcement.
    */
   app.route("/commercial", createCommercialRoutes());
 
   app.route("/v1", createWorkloadRoutes());
+
+  /**
+   * The Evaluation Studio.
+   *
+   * The reproducibility route is the one that matters: it runs the pinned
+   * task three times through the real verifier and says whether the result
+   * would repeat. The verdict is computed here, not in the browser.
+   */
+  app.route("/v1/studio", createStudioRoutes());
   if (opts.stamp !== undefined && opts.stamp !== null) {
     app.route("/stamp", createStampRoutes(opts.stamp));
   } else {

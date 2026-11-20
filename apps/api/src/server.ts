@@ -24,6 +24,7 @@ import { CidStore, DisclosureLog, VerificationReportStore } from "@crucible/cids
 import { webhookNotifier } from "@crucible/warden";
 import { createApp } from "./app.js";
 import { runMigrations } from "@crucible/agent-security";
+import { configureSponsorStore } from "./sponsor-onboarding.js";
 
 // Durable storage gate: production refuses in-memory backends. Postgres must
 // be reachable and migrated before serving real-money traffic.
@@ -32,6 +33,38 @@ if (process.env.NODE_ENV === "production" && (process.env.STORAGE_BACKEND ?? "po
 }
 if (process.env.DATABASE_URL) {
   await runMigrations();
+  // The sponsor's own records — sponsors, programmes, budgets — live in
+  // PostgreSQL when there is one, so a restart does not lose a programme that
+  // a funding claim is attached to. The choice is made once, here, and never
+  // per request.
+  const { pgSponsorStore } = await import("./sponsor-programme-pg.js");
+  configureSponsorStore(pgSponsorStore);
+  console.log("[crucible] sponsor ledger: postgresql (survives a restart)");
+} else {
+  console.log(
+    "[crucible] sponsor ledger: in memory — sponsors, programmes and budgets are lost on restart. Configure DATABASE_URL for a durable ledger.",
+  );
+}
+
+// The tenancy model — organisations, memberships, invitations — is durable
+// too (ADR-0033). The store is a cache over PostgreSQL: it is filled from
+// there at boot and every write goes to the database before it is visible.
+// Without a database the API runs on the in-memory store and says so.
+if (process.env.DATABASE_URL) {
+  const { configureOrgPersistence, hydrateOrgStore, orgPersistenceKind } = await import(
+    "@crucible/agent-security"
+  );
+  const { pgOrgPersistence } = await import("@crucible/agent-security");
+  configureOrgPersistence(pgOrgPersistence);
+  const hydrated = await hydrateOrgStore();
+  console.log(
+    `[crucible] tenancy: ${orgPersistenceKind()} — ${hydrated.organisations} organisation(s), ` +
+      `${hydrated.memberships} membership(s), ${hydrated.invitations} invitation(s)`,
+  );
+} else {
+  console.log(
+    "[crucible] tenancy: in memory — organisations and memberships are lost on restart, and two workers can disagree about who is a member of what.",
+  );
 }
 import { OwnerGate, SponsorshipQueue, sponsorshipMessage } from "./sponsorship.js";
 import { disclosureFileIn, disclosedCids as readDisclosure, type DisclosureEntry } from "./disclosure.js";

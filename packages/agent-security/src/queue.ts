@@ -83,6 +83,35 @@ export function createWorker(
 }
 
 /**
+ * Register a recurring job with BullMQ's scheduler.
+ *
+ * The scheduler is keyed by `id`, so registering the same id twice updates
+ * the schedule instead of creating a second one — that is what makes several
+ * instances of the worker safe, and what makes a restart safe.
+ *
+ * This replaces the pattern where a job re-adds itself with a delay when it
+ * finishes. That pattern is a trap: BullMQ keeps completed jobs by default,
+ * so the re-added job carries an id that a completed job already holds, the
+ * add is swallowed, and a job that was supposed to run every hour runs once
+ * and quietly stops. The scheduler API states the cadence in Redis instead of
+ * relying on a job surviving to re-arm itself.
+ */
+export async function scheduleRecurring(spec: {
+  id: string;
+  everyMs: number;
+  queueName: string;
+  jobName: string;
+  data?: unknown;
+}): Promise<void> {
+  const queue = getQueue(spec.queueName);
+  await queue.upsertJobScheduler(
+    spec.id,
+    { every: spec.everyMs },
+    { name: spec.jobName, data: spec.data ?? {} },
+  );
+}
+
+/**
  * Add a job to a queue. Returns the job object.
  */
 export async function addJob(
@@ -158,6 +187,14 @@ export const QUEUE_NAMES = {
   FORGE_WATCH_L3: 'forge-watch-l3',
   /** Dead-letter sink for monitor jobs that exhaust retry budget. */
   FORGE_WATCH_DLQ: 'forge-watch-dlq',
+  /**
+   * Housekeeping that runs on a schedule: outbox retention, dead-letter
+   * reporting, chain-vs-ledger reconciliation. Deliberately NOT called
+   * "evaluation" or "telemetry" — those are the queues of real work, and a
+   * maintenance job that claims to do work it does not do is exactly the
+   * stub this repository removed.
+   */
+  MAINTENANCE: 'maintenance',
 } as const;
 
 /** Default BullMQ job options for Forge Watch monitor dispatch (idempotent jobs). */

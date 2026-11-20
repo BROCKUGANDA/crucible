@@ -1,5 +1,112 @@
 # Hardening record
 
+## Worker, money and methodology slice — 2026-11-20, not released
+
+Three defects of the same shape: a claim the platform believed because the
+platform wrote it down.
+
+**The worker was a stub and ran nowhere.** `apps/api/src/worker.ts` returned
+`{status:"scheduled"}`, `{delivered:true}`, `{captured:true}`, `{cleaned:true}`,
+`{reset:true}` and `{reconciled:true}` — six answers shaped like successes
+with none of the work behind them. Its repeat pattern re-added each job with a
+delay to run again; BullMQ keeps completed jobs by default, so the re-added
+job carried an id a completed job already held, the add was swallowed, and a
+job scheduled every hour ran exactly once and then stopped, silently. And
+nothing ran it: the compose `worker` service passed `command: node
+dist/worker.js` to an entrypoint script that ignored its argument and always
+started `dist/server.js`, so the "worker" was a second API server and the
+queues were drained by nothing.
+
+There is now ONE worker. The entrypoint is `apps/api/src/worker.ts`; the
+reusable service is `packages/agent-security/src/worker-service.ts` and the
+old `telemetry-service.ts` is gone, because two services that both claim to
+be the worker is the duplicate source of truth this repository forbids.
+Recurring jobs are armed with BullMQ's `upsertJobScheduler`, keyed by id, so a
+restart or a second instance updates the cadence instead of doubling it, and
+the cadence does not depend on a job surviving to re-arm itself. The shutdown
+drains for real — the in-flight pass is awaited and then ONE more pass runs,
+because the row that needs delivering is the one claimed after the last tick.
+The docker entrypoint now switches on an explicit role and refuses an unknown
+one; a container that silently runs the wrong process cannot be trusted.
+
+Two plausible jobs were deliberately NOT registered: `quota_reset` (quota
+usage is computed from the events inside the current period — there is no
+counter to reset) and `cache_cleanup` (Redis expires the cache keys itself).
+A stub that returns ok is worse than an absent job, because it hides the
+absence.
+
+**A sponsor's funding was a claim.** `depositToEscrow(programId, amountWei)`
+believed a sponsor's deposit because the API wrote it down, so a console could
+report a programme as funded that had never received a wei. Funding is now
+recorded as a claim and checked against the chain over public RPC (the API
+still holds no chain key, ADR-0006):
+
+- the sponsor's escrow is `reward + fee`, READ from `Arena.amountsOf` — not
+  `deposited`, which is the ghost ledger of every wei the trial ever took in
+  and therefore includes the agent's bond and the skeptics' stakes;
+- the fee is read, never recomputed, because the contract computed it at post
+  time and a reader that recomputes it can disagree with the escrow by a wei
+  forever;
+- a claim about a trial somebody else sponsored is a MISMATCH — that check is
+  what stops one programme presenting another's funding;
+- an unreachable chain is UNVERIFIABLE, not MISMATCH: an outage must not
+  manufacture an accusation;
+- both totals are reported — what the ledger claims and what the escrow holds
+  — because their difference IS the finding.
+
+Seven mutations were each shown to turn the tree red: dropping the sponsor
+check, reporting `deposited` as the sponsor's escrow, reading an unreachable
+chain as a mismatch, not writing the receipt, comparing the ledger against
+zero, arming no schedule, and dropping the shutdown drain.
+
+**The methodology was a scaffold.** `POST /v1/studio/reproducibility` now runs
+the pinned task three times through the real verifier and answers "would this
+result repeat?". The rules it obeys:
+
+- three replays exactly, not "as many as arrived";
+- the comparison is over EVIDENCE, not over PASS/FAIL — three runs that all
+  lack evidence AGREE, and agreement about absence is not reproducibility;
+- a replay with no evidence is incomparable and says so;
+- a task the verifier would refuse is refused up front, rather than dressed up
+  as a finding about reproducibility;
+- a caller may not bring its own verdict, score or status.
+
+`GET /v1/contract` serves the API's own description of itself — pagination
+rules, rate limit, authentication schemes, webhook signing, and every error
+code — read from the modules that enforce them. A test reads the routes'
+source and fails when a route emits a code the contract does not document, and
+fails when the contract documents a code the API never emits. It found
+thirty-one undocumented codes when it was written.
+
+**One specification model.** The evaluation specification and the scoring
+engine each carried their own copy of the dimension names, the default weights
+and the replay count. The specification's `ScoringDimension.name` union, its
+`VALID_DIMENSIONS` set and its `independentReplays: 3` literal are gone: the
+scoring engine owns the dimensions and their weights, `replay-policy.ts` owns
+the three-replay rule, and a test fails if a second copy reappears.
+
+### Still open
+
+- **The sponsor programme scaffolding is in memory.** `sponsor-onboarding.ts`
+  holds sponsors, programmes and budget lines in the API process's Map, so
+  they do not survive a restart. The functions are synchronous, so a durable
+  store means an async rewrite that touches the routes and their tests. The
+  chain-truth layer was built to survive that rewrite.
+- **`@crucible/datasets` is imported by nothing.** It is a second split
+  engine (`sha256(key || datasetId || seed) mod 1000`) beside the one that is
+  used (`@crucible/eval`, per 100). Deleting a package is not this session's
+  call; the two options are to delete it or to make it the canonical engine
+  and move `@crucible/eval` onto it.
+- **No operator UI for the dead-letter queue**, no metrics endpoint (the
+  backlog is logged), no scheduled retention sweep.
+- **CI provides neither Redis nor PostgreSQL**, so the end-to-end delivery
+  case is SKIPPED in CI. It was run manually here, against a local
+  `redis-server`.
+- **The Studio's replays are only as independent as their evidence.** The
+  route compares three evidence sets; independence is a property of the
+  workers that produced them, and the platform does not yet enforce that the
+  three come from different workers.
+
 ## Telemetry delivery slice — 2026-11-20, not released
 
 Forge Watch wrote telemetry to PostgreSQL and never delivered it. The relay
@@ -2417,3 +2524,29 @@ Report a vulnerability as described in [`SECURITY.md`](SECURITY.md), not in a pu
 - **CRU-002 (2026-11-06): an outside specification asked for an evidence pipeline; thirteen of its twenty-four claims already existed, and the owner chose to build it anyway.** The blueprint ("Evaluation Evidence Pipeline — Locked Implementation Contract") named real files and real types, which made it close enough to be plausible and wrong where it mattered. Audited verdict by verdict: the events, the manifest + JCS + keccak `runHash`, the identity fields, the digest-integrity gate, the cohort concept, the measured score with confidence bounds and the deterministic rebuild **already exist** — several in stronger shape, since the existing evidence identity is an EIP-712 typed hash *with a signer* where the proposal was an unsigned `keccak256(chainId, trialId, runHash)`. `ArgusPhase` and `ArgusReplayability` **are not exported types** (the phase union is inline at `packages/argus/src/argus.ts:65`), and the proposal's `deterministic|partial|nondeterministic` **would have regressed ADR-0013**, whose classes are `artifact-replayable|generation-attested|undecided`, derived from `phase` alone (`apps/juror/src/state.ts:35`, `policy.ts:249-252`). `identity.funderId` as a run fact is **dead on arrival** — in this contract set "funder" is the party that *receives* a refund (`crucible-contracts/contracts/RewardMath.sol:15-16`). `HallRow` is a React component (`apps/web/src/app/hall/page.tsx:59`); the projection is `HallEntry` (`packages/indexer/src/model.ts:753`). Its `(timestamp, evaluationId)` cursor **contradicts ADR-0010** and is nevertheless right for these rows: verification time is not chain position and collides on whole seconds. **What genuinely did not exist was three things**: the runner computed a manifest on every green run and no caller anywhere pinned or announced it (`grep manifestCid` before this slice returned this slice's own files); Argus returned a `VerifyReport` that nothing kept, while the seat's durable record holds one entry per trial **and overwrites it** (`apps/juror/src/state.ts:105-107`); and there was no per-run evaluation document or read surface. Those were built; the rest was adopted as a parallel surface with the collision written down instead of hidden — **ADR-0024**. `docs/adr/README.md` had also gone stale: no row for 0019, 0020 (both of them), 0021 or this one, and **two ADRs are numbered 0020**, written a week apart by different sessions. The collision is recorded rather than renamed, because a rename means editing citations in a dozen files including `docs/since-submission.md` — a dated log that must not be rewritten after the fact — while other sessions still have those files open. Gates **919-929** were added, and one lost `- id:` line was restored as 929 (an entry whose `title:`/`frameworks:` sat under the previous id, invisible to the generator): the register now parses 511 ids against 511 titles. **Not claimed, with the reason:** `/evaluations` and `/leaderboards` are mounted with no host source and answer 503 with that stated, rather than serving an empty list that reads as "nothing was verified" — the join needs two facts the read model does not carry (a `blockNumber` on `RunRow`, `model.ts:140-143`, and the signer recovered from the signature the chain kept), and inventing either would produce records that validate and lie. Cohorts are therefore empty, and comparability is claimed on a cohort's name rather than verified against suite and judge pins (gate 927 says so in its own text). **Two instrument findings kept because they are the class that hides:** the first mutation of the manifest-publish gate was a silent no-op — the pattern did not match a CRLF line, so 32 tests passed over an *unmutated* file; re-applied against a verified edit it goes red. And an `opts` field added by two overlapping scripted edits produced a duplicate property plus a mangled import (`"@crucible/cidstore"` became `"/cidstore"`) because `@` interpolates inside a double-quoted `perl -e`; both were caught by `tsc`, which is why the typecheck runs before the commit rather than after the push.
 
 - **Production-hardening pass (2026-11-09): provider switch, chrome declutter, gate bypass, pagination, money law, profile gate.** Seven verified slices, each committed separately. **LLM:** every inference call defaults to the token.xyz exchange (OpenAI-compatible) under TOKENXYZ_API_KEY; the Anthropic Messages client is deleted, Groq/NIM survive only as the classifiers promptGuard screens with, and the voice stack (TTS/STT/Scribe/ConvAI) stays ElevenLabs untouched. Wire tests assert the chat-completions bytes, and the brain probe became a real GET /frenchy/status instead of reading its own 400. **Edge:** /anvil forwarded the caller's own X-Forwarded-For and the gate keyed on the left-most entry — unlimited fresh rate-limit buckets by header. Fixed at the proxy (header_up), the gate (right-most entry), and the installer (gate-file drift check + container recreate); mutation-proven red under the old keying. **API:** one pagination contract (numeric + opaque cursors, no silent default cap) on ten list routes; creator-scoped Idempotency-Key on POST /v1/runs; /trials/:id/events under the shared open-stream ceiling; CORS advertises the PATCH/DELETE routes it actually serves; snapshotSignature imported instead of inlined; one shared sweeper; fork-host stops the previous fork before replacing it. **Web:** the Workspace agent card read `owner` (indexer serves `operator`) and the verdict badge tested a verdict the chain never emits; both fixed, and the checklist item that said "Register an agent" now links there instead of to /trials/new. Wei was printed through an ETH-string formatter in the bounty calculator and the brief detail tab (10^18 off); brief creation crossed a float; brief/[id] now awaits the Next 15 params Promise, stops sending an orgId the API stopped reading (0c442ff), and uses the role=tablist pattern trial detail already had. One formatWhen (ISO UTC) replaced toLocaleString; engrams' render-time setTimeout state update is an effect. Navbar: voice/sound into More, four inline wallet buttons collapsed into one Connect chooser, footer 8→4; Frenchy pill smaller, session-dismissible, below modal scrims; global-error imports a wallet-free Crack and route errors print their digest as a fault code. **Profiles:** CRUCIBLE_PROFILE refuses unknown names, refuses demo off chain 31337 or with REAL_VALUE_OPERATIONS≠0, and refuses preview/production outright until the runbook gates exist (apps/api/src/profile.ts, 0ee612e); compose.public-demo.yaml publishes no origin port. **Measured, not carried forward:** npm test 3,339 TS passed (20 skipped) + 360 Foundry passed (4 fork skips) = 3,699 passing, 0 failures; typecheck clean; forge build --sizes compiles script/; edge 21/21; web next build green. **Open and stated:** token.xyz inference is unverified live (the key authenticates; the account has no credits — 402); the compose overlay could not be `config`-checked (no Docker on this machine); browser verification of the chrome and money changes and the live-site redeploy (api/snapshot was 502 at the time of the report) remain for the operator; org sublists and the funder's internal /allocations stay whole by design (tenancy-bounded, loopback-only); console pages (rewards/solana/finance/data/engineering/scorecards) still render raw JSON dumps and 27 secondary segments still fall back to the root loading state.
+
+- **The three new surfaces were verified in a browser; the verification found a money bug in the sponsor console (2026-11-20, later).** The rule this repository follows is that a UI change is verified in a browser at the real URL, not by the test suite alone. The stack was stood up for it: Anvil on `127.0.0.1:8555`, the arena deployed with `forge script script/Demo.s.sol:Demo --rpc-url http://127.0.0.1:8555 --broadcast` (crucibleTrials `0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0`, AlloyRegistry `0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512`, Arena `0x0B306BF915C4d645ff596e518fAf3F9669b97016`, VerificationReceipt `0xDc64a140Aa3E981100a9becA4E685f962f0cF6C9`), the API on `:8787` against those addresses, the site on `:3210` against the API, and the pages read in Edge. **The reference page renders the live contract** — the pagination rules, the rate limit, the auth schemes, the webhook signing and every error code, read from the running API rather than from a copy — and the Studio and the console render their honest signed-out states instead of pretending to work. **The instrument failed once, and the failure is recorded rather than hidden:** the app's own preview browser timed out twice on the accessibility snapshot (`Preview automation snapshot timed out after 15000ms`), so the browser was switched to Edge headless and the screenshots taken there.
+  **Three things the browser caught that the test suite did not.** (1) `SignalLost` hard-coded "Couldn't reach the chain", so an API outage on the reference page, the Studio and the console pointed the reader at the chain — the wrong machine; it now takes what could not be reached and keeps "the chain" for chain pages. (2) A session-carrying POST whose `Origin` is not the deployment's `AUTH_ORIGIN` is refused with `csrf-origin` (`apps/api/src/app.ts:679`): the console only works from the site it belongs to, which is the point of the check. (3) The CORS allowlist refused an origin that was not on it, and the refusal was visible in the browser as "Failed to fetch" rather than as a 403 — a reader learns nothing from that. It is the API's answer to give, and the panel now says which host could not be reached.
+  **The money bug.** The sponsor console's "the ledger claims" column summed the chain's receipts with each receipt's claimed amount dropped on the way in, so a programme with a 1.15 ETH claim showed **0 ETH** while "the escrow holds" showed 1.15 ETH — and a sponsor could not tell which of the two was wrong. The summary is now built from the claims (every claim, including the ones never put to the chain) and the receipts (the confirmed total), and "not checked" is its own column: a claim the platform has not put to the chain is not counted as contradicted, and a chain that could not be read is not counted as a refusal. **Four mutations proven red and reverted** (`apps/api/test/programme-funding-summary.test.ts`): the claimed total read from the receipts, the unchecked count forced to zero, the confirmed total counting contradicted claims, and an unverifiable claim recorded as mismatched. **The fourth mutation was green on the first attempt** — it had edited `summarizeFunding`, a different function with an identical line, so the anchor was made unique and the mutation re-run; a mutation that cannot fail proves nothing, and one that fails for the wrong reason proves less than one that fails for the right one.
+  **The funding truth, proven against the live chain rather than only against a scripted reader.** The arena on `8555` reports trial 1 posted by `0x976EA74026E726554dB657fA54763abd0C3a0aa9`, reward `0.5 ETH`, fee `0.075 ETH`, deposited `0.675 ETH` (the extra `0.1` is the agent's bond, which is not the sponsor's money). An honest claim of `reward + fee` is `verified`; a claim of the reward alone is a `mismatch` that names both numbers; another wallet's address on the same trial is a `mismatch` ("its money is not this sponsor's money"); an unreachable node is `unverifiable`, not `mismatch`. **The fee in that arithmetic is the arena's `ARENA_FEE_BPS = 1500`, paid by the sponsor on top of the reward** — the frozen `FEE_BPS = 500` is the *legacy* escrow's own fee, a different contract, and the console now says which money it is showing so the two cannot be conflated.
+  **Still open:** the sponsor programme scaffolding is still in process memory (`apps/api/src/sponsor-onboarding.ts`), so a restart still loses the budgets the funding table is compared against; CI provides neither Redis nor PostgreSQL, so the durable funding and telemetry paths are not exercised by the pipeline; there is no operator UI for the dead-letter queue; the Studio's three replays are three runs of one verifier in one process, not three independent workers, so "independent" is a claim about the harness and not yet about the infrastructure.
+
+- **The sponsor's money could not be recorded at all, and the sponsor's own ledger did not survive a restart (2026-11-20, later still).** Two defects, one cause, both found by standing a real PostgreSQL 17 up on this box and asking the deployed code to write to it — the way this repository's own rule asks (*"a figure is read or it is not shown"*, and a green you cannot turn red is decoration).
+  **Defect one: the funding claims could not be written.** `sponsor_funding_claims.org_id REFERENCES organisations(id)`, and **nothing in this repository ever inserts an organisation** — the tenancy model is deliberately in process memory (`packages/agent-security/src/org-store.ts`: *"persistence is explicitly deferred"*). So every claim died at the foreign key:
+  ```
+  insert or update on table "sponsor_funding_claims" violates foreign key constraint "sponsor_funding_claims_org_id_fkey"
+  ```
+  The path that was supposed to make "a sponsor's funding is a chain fact" was the path that could not record a claim. The constraint could only ever refuse a legitimate write, so it is dropped (migration `0012_sponsor_ledger_durable.sql`). The tenant boundary does not move: it is enforced in the route against the in-memory membership model that is the real source of truth today, and the row-level policies stay for the day that model becomes durable.
+  **Defect two: the ledger the console compares against was in a `Map`.** Sponsors, programmes, the eight budget counters and the budget's own ledger were process memory: a restart lost every programme, and the funding claims — which *were* durable — hung off one that no longer existed. The records now live in PostgreSQL behind a `SponsorStore` interface; the domain rules stay in the domain module and the tests still run without a database. The API says which ledger it is using at boot: *"sponsor ledger: postgresql (survives a restart)"*, or, without a database, *"in memory — sponsors, programmes and budgets are lost on restart"*.
+  **Proven, not asserted:** a sponsor, a programme, a budget movement and the ledger entries were written through the API, the process was killed, a new one was started, and all of it was read back — sponsor, programme, budget `committed 1 ETH / deposited 0.575 ETH / escrowed 0.575 ETH`, and the three ledger entries in order. A mutation set that stops the durable store from writing the counters turns the suite red.
+  **Three more things the real database found, none of which a fake pool could have:** (1) `JSON.stringify` throws on a `bigint`, so the programme and budget-entry routes had been failing outright — every wei now leaves as a decimal string; (2) `JSON.stringify` threw on the reward structure for the same reason, inside the store itself; (3) the budget's ledger had **no defined order** — two movements written in the same millisecond sorted by a random id, so the order changed every run. The ledger now carries a `BIGSERIAL` `seq` and is read by it; the funding receipts got the same column, because "the latest receipt" was ambiguous for two receipts written in the same millisecond.
+  **And a contradiction in the domain's own published invariant, found by the durable store's consistency check.** `recordWithdrawal` decremented `paid` while `validateBudgetConsistency` requires `paid >= withdrawn` — a balance that shrinks as fast as it is withdrawn can never satisfy it. **`paid` and `withdrawn` are both cumulative now**: a withdrawal is part of what was paid, not a subtraction from it, and two withdrawals of 60 against a paid total of 100 are refused because the second would pay out more than was paid.
+  **Six mutations proven red and reverted** (`apps/api/test/sponsor-programme-pg.test.ts`, against a real PostgreSQL): a withdrawal that does not add up to what was already withdrawn; a withdrawal that reduces the cumulative `paid`; a refused movement reported as a success; the ledger read by timestamp instead of insertion order; the durable store not writing the budget counters; the programme forgetting its tenant. **Two of them were green on the first attempt** — the second withdrawal (no test covered withdrawing twice) and the ledger order (the test could not distinguish the orders) — and both gaps were closed with tests that fail for the right reason: a row written last but stamped earlier, which a timestamp-ordered ledger would put first.
+  **Still open:** the organisation and membership model is still in process memory, so a multi-process deployment would have two views of who may see what — recorded as AUTHZ-D1, and it is the next ADR. The budget's ledger records what the platform did, not what the chain confirmed; the chain truth is the receipts (ADR-0031). The sponsor's programme scaffolding is no longer in memory, but the *organisation* that owns it is.
+
+- **The tenancy model was process memory, so a restart lost it and two workers could disagree (2026-11-20, last).** `packages/agent-security/src/org-store.ts` held organisations, memberships, invitations, workspaces and resource ownership on `globalThis`, and its header said *"persistence is explicitly deferred"*. Two things were wrong with that deferral, and neither was about performance. **A restart lost it**: the tables existed (migration 0002) and were never written to, which is why migration 0012 had to drop foreign keys that could only ever refuse a legitimate write (ADR-0032). **Two workers could disagree**: the store lives on `globalThis` so a dev hot reload does not empty it, and under Octane every worker process has its own `globalThis` — so an organisation created on worker A was invisible on worker B, and a membership check answered differently depending on which worker answered. The API's tenancy decisions decide who may read a sponsor's funding ledger.
+  **The store is now a CACHE over PostgreSQL**, not the store itself (ADR-0033): reads are answered from the cache synchronously, because `isMemberOf` is on the hot path of every request; writes go to the database **first** and to the cache **second**, because a record visible in the cache but not in the database is a record a restart would lose and a "created" that would have been a lie; and the cache is refilled at boot by REPLACING it, because a row the database no longer has is not a record.
+  **The non-durable path is refused while a durable backing is attached** — the synchronous mutators throw and name the durable alternative. A write that only reaches the cache is prevented, not documented; with no database configured they behave exactly as before, which is what the unit tests use.
+  **The membership constraint was corrected against the domain.** The old one was UNIQUE over `(org_id, principal_id)` — ANY second membership for a principal in an organisation, *including a revoked one* — so a member who was removed and came back could not be recorded, even though the domain says revocation takes effect and a membership can be granted again. It is now a partial unique index over the **active** memberships: one live membership per principal per organisation, with the history kept.
+  **Proven against a real PostgreSQL, not inferred:** 15 tests in `packages/agent-security/test/org-store-pg.test.ts`, including the restart (an organisation written through the API, the process killed, a new one started: `tenancy: postgresql — 1 organisation(s), 1 membership(s)`), the refusal of a write the database rejects (the cache must not be ahead of the database), and the forgetting of a record deleted behind the cache's back. **Five mutations proven red and reverted** — the cache updated before the database, hydration not clearing the cache, a revocation never written to the database, the guard removed, the owner's membership not written with the organisation. **Two of them were green on the first attempt** (the ordering and the clearing) and both gaps were closed with tests that fail for the right reason: a membership inserted straight into the database so the write reaches the database and is refused there, and an organisation deleted behind the cache's back.
+  **Still open, and named:** the row-level policies are still INERT — PostgreSQL does not apply RLS to a table's owner and the API connects as the owner, so the policies in migrations 0002–0013 mean nothing until the API connects as a separate non-owning role AND the principal is set per request. That is a deployment change (two roles: one that owns the schema and migrates it, one the application connects as) and it is the next step of ADR-0033, not a code change; until it lands the tenant boundary is enforced in the route layer, as it always was. The org-scoped SIDE models are still in memory: budgets, audit entries, conflict-of-interest declarations, webhooks and API keys. They hang off an organisation that is now durable, which is the precondition for making them durable too.

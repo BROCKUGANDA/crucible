@@ -26,8 +26,8 @@ describe("sponsor-onboarding", () => {
   });
 
   describe("sponsor registration", () => {
-    it("registers a new sponsor", () => {
-      const sponsor = registerSponsor({
+    it("registers a new sponsor", async () => {
+      const sponsor = await registerSponsor({
         name: "Test Sponsor",
         walletAddress: "0x1234567890123456789012345678901234567890",
         contactEmail: "sponsor@test.com",
@@ -39,23 +39,23 @@ describe("sponsor-onboarding", () => {
       expect(sponsor.onboardingSteps.length).toBeGreaterThan(0);
     });
 
-    it("retrieves a registered sponsor", () => {
-      const sponsor = registerSponsor({
+    it("retrieves a registered sponsor", async () => {
+      const sponsor = await registerSponsor({
         name: "Test Sponsor",
         walletAddress: "0x1234567890123456789012345678901234567890",
         contactEmail: "sponsor@test.com",
       });
 
-      const found = getSponsor(sponsor.id);
+      const found = await getSponsor(sponsor.id);
       expect(found).toEqual(sponsor);
     });
 
-    it("returns undefined for unknown sponsor", () => {
-      expect(getSponsor("nonexistent")).toBeUndefined();
+    it("returns undefined for unknown sponsor", async () => {
+      expect(await getSponsor("nonexistent")).toBeUndefined();
     });
 
-    it("normalizes wallet address", () => {
-      const sponsor = registerSponsor({
+    it("normalizes wallet address", async () => {
+      const sponsor = await registerSponsor({
         name: "Test Sponsor",
         walletAddress: "0xABC",
         contactEmail: "sponsor@test.com",
@@ -66,32 +66,32 @@ describe("sponsor-onboarding", () => {
   });
 
   describe("onboarding", () => {
-    it("completes an onboarding step", () => {
-      const sponsor = registerSponsor({
+    it("completes an onboarding step", async () => {
+      const sponsor = await registerSponsor({
         name: "Test Sponsor",
         walletAddress: "0x123",
         contactEmail: "sponsor@test.com",
       });
 
-      const result = completeOnboardingStep(sponsor.id, "organization");
+      const result = await completeOnboardingStep(sponsor.id, "organization");
       expect(result).toBe(true);
 
-      const updated = getSponsor(sponsor.id);
+      const updated = await getSponsor(sponsor.id);
       expect(updated?.onboardingSteps[0].completed).toBe(true);
     });
 
-    it("returns false for unknown step", () => {
-      const sponsor = registerSponsor({
+    it("returns false for unknown step", async () => {
+      const sponsor = await registerSponsor({
         name: "Test Sponsor",
         walletAddress: "0x123",
         contactEmail: "sponsor@test.com",
       });
 
-      expect(completeOnboardingStep(sponsor.id, "unknown")).toBe(false);
+      expect(await completeOnboardingStep(sponsor.id, "unknown")).toBe(false);
     });
 
-    it("auto-approves when all steps completed", () => {
-      const sponsor = registerSponsor({
+    it("auto-approves when all steps completed", async () => {
+      const sponsor = await registerSponsor({
         name: "Test Sponsor",
         walletAddress: "0x123",
         contactEmail: "sponsor@test.com",
@@ -99,41 +99,41 @@ describe("sponsor-onboarding", () => {
 
       // Complete all steps
       for (const step of sponsor.onboardingSteps) {
-        completeOnboardingStep(sponsor.id, step.step);
+        await completeOnboardingStep(sponsor.id, step.step);
       }
 
-      const updated = getSponsor(sponsor.id);
+      const updated = await getSponsor(sponsor.id);
       expect(updated?.status).toBe("approved");
       expect(updated?.approvedAt).toBeDefined();
     });
 
-    it("manually approves a sponsor", () => {
-      const sponsor = registerSponsor({
+    it("manually approves a sponsor", async () => {
+      const sponsor = await registerSponsor({
         name: "Test Sponsor",
         walletAddress: "0x123",
         contactEmail: "sponsor@test.com",
       });
 
-      expect(approveSponsor(sponsor.id)).toBe(true);
-      expect(getSponsor(sponsor.id)?.status).toBe("approved");
+      expect(await approveSponsor(sponsor.id)).toBe(true);
+      expect((await getSponsor(sponsor.id))?.status).toBe("approved");
     });
 
-    it("filters sponsors by status", () => {
-      registerSponsor({
+    it("filters sponsors by status", async () => {
+      await registerSponsor({
         name: "Pending Sponsor",
         walletAddress: "0x111",
         contactEmail: "pending@test.com",
       });
 
-      const sponsor2 = registerSponsor({
+      const sponsor2 = await registerSponsor({
         name: "Approved Sponsor",
         walletAddress: "0x222",
         contactEmail: "approved@test.com",
       });
-      approveSponsor(sponsor2.id);
+      await approveSponsor(sponsor2.id);
 
-      const pending = listSponsors({ status: "pending" });
-      const approved = listSponsors({ status: "approved" });
+      const pending = await listSponsors({ status: "pending" });
+      const approved = await listSponsors({ status: "approved" });
 
       expect(pending.length).toBe(1);
       expect(approved.length).toBe(1);
@@ -141,15 +141,15 @@ describe("sponsor-onboarding", () => {
   });
 
   describe("program creation", () => {
-    it("creates a program for an approved sponsor", () => {
-      const sponsor = registerSponsor({
+    it("creates a program for an approved sponsor", async () => {
+      const sponsor = await registerSponsor({
         name: "Test Sponsor",
         walletAddress: "0x123",
         contactEmail: "sponsor@test.com",
       });
-      approveSponsor(sponsor.id);
+      await approveSponsor(sponsor.id);
 
-      const program = createProgram({
+      const program = await createProgram({
         sponsorId: sponsor.id,
         name: "Test Program",
         description: "A test program",
@@ -169,14 +169,14 @@ describe("sponsor-onboarding", () => {
       expect(program.budget.committed).toBe(BigInt("1000000000000000000"));
     });
 
-    it("rejects program for unapproved sponsor", () => {
-      const sponsor = registerSponsor({
+    it("rejects program for unapproved sponsor", async () => {
+      const sponsor = await registerSponsor({
         name: "Test Sponsor",
         walletAddress: "0x123",
         contactEmail: "sponsor@test.com",
       });
 
-      expect(() =>
+      await expect(
         createProgram({
           sponsorId: sponsor.id,
           name: "Test Program",
@@ -190,11 +190,11 @@ describe("sponsor-onboarding", () => {
             end: Date.now() + 86400000,
           },
         }),
-      ).toThrow("not approved");
+      ).rejects.toThrow("not approved");
     });
 
-    it("rejects program for unknown sponsor", () => {
-      expect(() =>
+    it("rejects program for unknown sponsor", async () => {
+      await expect(
         createProgram({
           sponsorId: "nonexistent",
           name: "Test Program",
@@ -208,18 +208,18 @@ describe("sponsor-onboarding", () => {
             end: Date.now() + 86400000,
           },
         }),
-      ).toThrow("not found");
+      ).rejects.toThrow("not found");
     });
 
-    it("approves and launches a program", () => {
-      const sponsor = registerSponsor({
+    it("approves and launches a program", async () => {
+      const sponsor = await registerSponsor({
         name: "Test Sponsor",
         walletAddress: "0x123",
         contactEmail: "sponsor@test.com",
       });
-      approveSponsor(sponsor.id);
+      await approveSponsor(sponsor.id);
 
-      const program = createProgram({
+      const program = await createProgram({
         sponsorId: sponsor.id,
         name: "Test Program",
         description: "A test program",
@@ -233,22 +233,22 @@ describe("sponsor-onboarding", () => {
         },
       });
 
-      expect(approveProgram(program.id)).toBe(true);
-      expect(getProgram(program.id)?.status).toBe("approved");
+      expect(await approveProgram(program.id)).toBe(true);
+      expect((await getProgram(program.id))?.status).toBe("approved");
 
-      expect(launchProgram(program.id)).toBe(true);
-      expect(getProgram(program.id)?.status).toBe("active");
+      expect(await launchProgram(program.id)).toBe(true);
+      expect((await getProgram(program.id))?.status).toBe("active");
     });
 
-    it("filters programs by sponsor", () => {
-      const sponsor = registerSponsor({
+    it("filters programs by sponsor", async () => {
+      const sponsor = await registerSponsor({
         name: "Test Sponsor",
         walletAddress: "0x123",
         contactEmail: "sponsor@test.com",
       });
-      approveSponsor(sponsor.id);
+      await approveSponsor(sponsor.id);
 
-      createProgram({
+      await createProgram({
         sponsorId: sponsor.id,
         name: "Program 1",
         description: "Program 1",
@@ -259,21 +259,21 @@ describe("sponsor-onboarding", () => {
         evaluationPeriod: { start: Date.now(), end: Date.now() + 86400000 },
       });
 
-      const programs = listPrograms({ sponsorId: sponsor.id });
+      const programs = await listPrograms({ sponsorId: sponsor.id });
       expect(programs.length).toBe(1);
     });
   });
 
   describe("budget operations", () => {
-    function setupProgram() {
-      const sponsor = registerSponsor({
+    async function setupProgram() {
+      const sponsor = await registerSponsor({
         name: "Test Sponsor",
         walletAddress: "0x123",
         contactEmail: "sponsor@test.com",
       });
-      approveSponsor(sponsor.id);
+      await approveSponsor(sponsor.id);
 
-      const program = createProgram({
+      const program = await createProgram({
         sponsorId: sponsor.id,
         name: "Test Program",
         description: "A test program",
@@ -286,118 +286,118 @@ describe("sponsor-onboarding", () => {
           end: Date.now() + 86400000,
         },
       });
-      approveProgram(program.id);
+      await approveProgram(program.id);
 
       return program;
     }
 
-    it("deposits to escrow", () => {
-      const program = setupProgram();
+    it("deposits to escrow", async () => {
+      const program = await setupProgram();
 
-      const result = depositToEscrow(program.id, "500000000000000000");
+      const result = await depositToEscrow(program.id, "500000000000000000");
       expect(result).toBe(true);
 
-      const updated = getProgram(program.id);
+      const updated = await getProgram(program.id);
       expect(updated?.budget.deposited).toBe(BigInt("500000000000000000"));
       expect(updated?.budget.escrowed).toBe(BigInt("500000000000000000"));
     });
 
-    it("allocates to trial", () => {
-      const program = setupProgram();
-      depositToEscrow(program.id, "500000000000000000");
+    it("allocates to trial", async () => {
+      const program = await setupProgram();
+      await depositToEscrow(program.id, "500000000000000000");
 
-      const result = allocateToTrial(program.id, "trial-1", "100000000000000000");
+      const result = await allocateToTrial(program.id, "trial-1", "100000000000000000");
       expect(result).toBe(true);
 
-      const updated = getProgram(program.id);
+      const updated = await getProgram(program.id);
       expect(updated?.budget.allocated).toBe(BigInt("100000000000000000"));
     });
 
-    it("rejects allocation exceeding escrow", () => {
-      const program = setupProgram();
-      depositToEscrow(program.id, "100000000000000000");
+    it("rejects allocation exceeding escrow", async () => {
+      const program = await setupProgram();
+      await depositToEscrow(program.id, "100000000000000000");
 
-      const result = allocateToTrial(program.id, "trial-1", "200000000000000000");
+      const result = await allocateToTrial(program.id, "trial-1", "200000000000000000");
       expect(result).toBe(false);
     });
 
-    it("credits settlement", () => {
-      const program = setupProgram();
+    it("credits settlement", async () => {
+      const program = await setupProgram();
 
-      const result = creditSettlement(program.id, "50000000000000000");
+      const result = await creditSettlement(program.id, "50000000000000000");
       expect(result).toBe(true);
 
-      const updated = getProgram(program.id);
+      const updated = await getProgram(program.id);
       expect(updated?.budget.pending).toBe(BigInt("50000000000000000"));
       expect(updated?.budget.payable).toBe(BigInt("50000000000000000"));
     });
 
-    it("records payment", () => {
-      const program = setupProgram();
-      creditSettlement(program.id, "50000000000000000");
+    it("records payment", async () => {
+      const program = await setupProgram();
+      await creditSettlement(program.id, "50000000000000000");
 
-      const result = recordPayment(program.id, "50000000000000000");
+      const result = await recordPayment(program.id, "50000000000000000");
       expect(result).toBe(true);
 
-      const updated = getProgram(program.id);
+      const updated = await getProgram(program.id);
       expect(updated?.budget.paid).toBe(BigInt("50000000000000000"));
     });
 
-    it("rejects payment exceeding payable", () => {
-      const program = setupProgram();
-      creditSettlement(program.id, "50000000000000000");
+    it("rejects payment exceeding payable", async () => {
+      const program = await setupProgram();
+      await creditSettlement(program.id, "50000000000000000");
 
-      const result = recordPayment(program.id, "100000000000000000");
+      const result = await recordPayment(program.id, "100000000000000000");
       expect(result).toBe(false);
     });
 
-    it("records withdrawal", () => {
-      const program = setupProgram();
-      creditSettlement(program.id, "50000000000000000");
-      recordPayment(program.id, "50000000000000000");
+    it("records withdrawal", async () => {
+      const program = await setupProgram();
+      await creditSettlement(program.id, "50000000000000000");
+      await recordPayment(program.id, "50000000000000000");
 
-      const result = recordWithdrawal(program.id, "50000000000000000");
+      const result = await recordWithdrawal(program.id, "50000000000000000");
       expect(result).toBe(true);
 
-      const updated = getProgram(program.id);
+      const updated = await getProgram(program.id);
       expect(updated?.budget.withdrawn).toBe(BigInt("50000000000000000"));
     });
 
-    it("rejects withdrawal exceeding paid", () => {
-      const program = setupProgram();
-      creditSettlement(program.id, "50000000000000000");
-      recordPayment(program.id, "50000000000000000");
+    it("rejects withdrawal exceeding paid", async () => {
+      const program = await setupProgram();
+      await creditSettlement(program.id, "50000000000000000");
+      await recordPayment(program.id, "50000000000000000");
 
-      const result = recordWithdrawal(program.id, "100000000000000000");
+      const result = await recordWithdrawal(program.id, "100000000000000000");
       expect(result).toBe(false);
     });
 
-    it("tracks transactions", () => {
-      const program = setupProgram();
-      depositToEscrow(program.id, "500000000000000000");
+    it("tracks transactions", async () => {
+      const program = await setupProgram();
+      await depositToEscrow(program.id, "500000000000000000");
 
-      const txs = getProgramTransactions(program.id);
+      const txs = await getProgramTransactions(program.id);
       expect(txs.length).toBeGreaterThan(0);
     });
 
-    it("validates budget consistency", () => {
-      const program = setupProgram();
-      depositToEscrow(program.id, "500000000000000000");
+    it("validates budget consistency", async () => {
+      const program = await setupProgram();
+      await depositToEscrow(program.id, "500000000000000000");
 
-      const errors = validateBudgetConsistency(program.id);
+      const errors = await validateBudgetConsistency(program.id);
       expect(errors).toEqual([]);
     });
 
-    it("detects budget inconsistency", () => {
-      const program = setupProgram();
+    it("detects budget inconsistency", async () => {
+      const program = await setupProgram();
 
       // The program starts consistent - validation should pass
-      const errors = validateBudgetConsistency(program.id);
+      const errors = await validateBudgetConsistency(program.id);
       expect(errors).toEqual([]);
     });
 
-    it("returns error for unknown program", () => {
-      const errors = validateBudgetConsistency("nonexistent");
+    it("returns error for unknown program", async () => {
+      const errors = await validateBudgetConsistency("nonexistent");
       expect(errors).toContain("Program not found");
     });
   });

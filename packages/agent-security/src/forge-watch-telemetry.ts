@@ -161,6 +161,15 @@ export interface TelemetryPipeline {
   pendingDeadLetters(limit?: number): Promise<DeadLetter[]>;
   /** Health: queue lag and the size of the backlog. */
   stats(): Promise<TelemetryStats>;
+  /**
+   * Remove delivered outbox rows older than `beforeMs`.
+   *
+   * Only rows the relay itself marked `dispatched` are eligible: a pending,
+   * dispatching or quarantined row is a delivery that has not happened or
+   * has not been dealt with, and deleting it would destroy the record of a
+   * problem as well as the problem.
+   */
+  purgeDispatched(beforeMs: number): Promise<number>;
 }
 
 export interface TelemetryStats {
@@ -423,6 +432,7 @@ export function createTelemetryPipeline(
     resolve,
     pendingDeadLetters,
     stats,
+    purgeDispatched: (beforeMs: number) => relay.purgeDispatched(beforeMs),
   };
 }
 

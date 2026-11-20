@@ -1,7 +1,8 @@
 import { readFileSync, existsSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 
 // The preflight is read-only. It must never deploy, sign, transfer or withdraw.
-// --signoffs and --params are test overrides only; production defaults are the real tree.
+// --signoffs, --params and --treasury-adr are test overrides only; production defaults are the real tree.
 const args = process.argv.slice(2);
 function arg(name, fallback) {
   const i = args.indexOf(name);
@@ -9,9 +10,16 @@ function arg(name, fallback) {
 }
 const SIGNOFF_DIR = String(arg('--signoffs', 'docs/mainnet')).replace(/\/+$/, '');
 const PARAMS_FILE = String(arg('--params', 'params/crucible.params.json'));
+const TREASURY_ADR_FILE = String(arg('--treasury-adr', 'docs/adr/0020-company-treasury-safe-and-mainnet-release-gate.md'));
 const problems = [];
 const notes = [];
 const ZERO = '0x0000000000000000000000000000000000000000';
+const ZERO_BYTES32 = '0x' + '0'.repeat(64);
+const UNRESOLVED_EVIDENCE = /\b(?:pending|placeholder|todo|tbd|replace|example|sample|unverified|unlicensed)\b/i;
+const LOCAL_DEV_ACCOUNTS = new Set([
+  '0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266',
+  '0x70997970c51812dc3a010c7d01b50e0d17dc79c8',
+]);
 const SAFE_SELECTORS = {
   treasury: '0x61d027b3',
   owner: '0x8da5cb5b',
@@ -55,6 +63,7 @@ function checkParams() {
 function checkSignoff(file, fields, { skipSigned = false } = {}) {
   const j = loadJson(file, file);
   if (!j) return null;
+  checkUnresolvedEvidence(file, j);
   if (!skipSigned && j.signed !== true) problems.push(file + ' is not signed (signed must be true)');
   for (const f of fields) {
     if (!j[f] || (Array.isArray(j[f]) && j[f].length === 0)) {
@@ -62,6 +71,78 @@ function checkSignoff(file, fields, { skipSigned = false } = {}) {
     }
   }
   return j;
+}
+
+function checkedOutCommit() {
+  try {
+    const commit = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim().toLowerCase();
+    if (!/^[0-9a-f]{40}$/.test(commit)) throw new Error('invalid Git commit');
+    return commit;
+  } catch {
+    problems.push('unable to determine the release commit from Git HEAD');
+    return null;
+  }
+}
+
+function checkTreasuryAdr(file) {
+  if (!existsSync(file)) {
+    problems.push(file + ' missing; explicit treasury ADR acceptance is required');
+    return;
+  }
+  let contents;
+  try {
+    contents = readFileSync(file, 'utf8');
+  } catch {
+    problems.push(file + ' could not be read; explicit treasury ADR acceptance is required');
+    return;
+  }
+  const status = contents.match(/^\s*-\s*\*\*Status:\*\*\s*([^\r\n(]+)/im)?.[1]?.trim();
+  if (!status || status.toLowerCase() !== 'accepted') {
+    problems.push(file + ' is not accepted; explicit company approval of the treasury release decision is required');
+  }
+}
+
+function checkUnresolvedEvidence(file, value, path = '') {
+  if (/(?:^|\.)check$/.test(path)) return;
+  if (typeof value === 'string') {
+    if (UNRESOLVED_EVIDENCE.test(value)) {
+      problems.push(file + (path ? ' ' + path : '') + ' contains unresolved placeholder text');
+    }
+    return;
+  }
+  if (Array.isArray(value)) {
+    value.forEach((entry, index) => checkUnresolvedEvidence(file, entry, path + '[' + index + ']'));
+    return;
+  }
+  if (value && typeof value === 'object') {
+    for (const [key, entry] of Object.entries(value)) {
+      checkUnresolvedEvidence(file, entry, path ? path + '.' + key : key);
+    }
+  }
+}
+
+function checkAuditEvidence(record, releaseCommit) {
+  if (!record) return;
+  if (!isBytes32(record.reportHash) || record.reportHash.toLowerCase() === ZERO_BYTES32) {
+    problems.push('audit-signoff.json reportHash must be a non-zero bytes32 hash');
+  }
+  if (record.reportUrl && typeof record.reportUrl !== 'string') {
+    problems.push('audit-signoff.json reportUrl must be an HTTPS URL without embedded credentials');
+  } else if (record.reportUrl) {
+    try {
+      const reportUrl = new URL(record.reportUrl);
+      if (reportUrl.protocol !== 'https:' || !reportUrl.hostname || reportUrl.username || reportUrl.password) {
+        problems.push('audit-signoff.json reportUrl must be an HTTPS URL without embedded credentials');
+      }
+    } catch {
+      problems.push('audit-signoff.json reportUrl must be an HTTPS URL without embedded credentials');
+    }
+  }
+  if (typeof record.commit !== 'string' || !/^[0-9a-f]{40}$/i.test(record.commit)) {
+    problems.push('audit-signoff.json commit must be a full 40-character Git SHA');
+  } else if (releaseCommit && record.commit.toLowerCase() !== releaseCommit) {
+    problems.push('audit-signoff.json commit must equal checked-out Git HEAD');
+  }
 }
 
 function isAddress(value) {
@@ -72,6 +153,59 @@ function isBytes32(value) {
 }
 function normAddress(value) {
   return String(value).toLowerCase();
+}
+function checkGenesisCohort(record, file) {
+  if (!record) return;
+  for (const field of ['sponsors', 'agents']) {
+    if (!Array.isArray(record[field])) continue;
+    record[field].forEach((address, index) => {
+      if (!isAddress(address) || normAddress(address) === ZERO) {
+        problems.push(file + ' ' + field + '[' + index + '] must be a non-zero EVM address');
+      } else if (LOCAL_DEV_ACCOUNTS.has(normAddress(address))) {
+        problems.push(file + ' ' + field + '[' + index + '] is a local development account');
+      }
+    });
+  }
+  const cap = typeof record.epochCapEth === 'string' ? record.epochCapEth : '';
+  if (!/^(?:0|[1-9]\d*)(?:\.\d{1,18})?$/.test(cap) || !/[1-9]/.test(cap)) {
+    problems.push(file + ' epochCapEth must be a positive decimal ETH amount');
+  }
+}
+function checkTimelockEvidence(record, ownerSafe, file) {
+  if (!record) return;
+  if (!isAddress(record.multisig) || normAddress(record.multisig) === ZERO) {
+    problems.push(file + ' multisig must be a non-zero address');
+  }
+  if (!Number.isSafeInteger(record.timelockHours) || record.timelockHours < 48) {
+    problems.push(file + ' timelockHours must be an integer of at least 48');
+  }
+  const signers = record.signers;
+  const signersValid =
+    Array.isArray(signers) &&
+    signers.length === 3 &&
+    signers.every((address) => isAddress(address) && normAddress(address) !== ZERO) &&
+    new Set(signers.map(normAddress)).size === 3;
+  if (!signersValid) {
+    problems.push(file + ' signers must contain exactly three distinct non-zero addresses');
+  }
+  if (isAddress(record.multisig) && isAddress(ownerSafe?.address) && normAddress(record.multisig) !== normAddress(ownerSafe.address)) {
+    problems.push(file + ' multisig must match treasury.json ownerSafe.address');
+  }
+  if (signersValid && Array.isArray(ownerSafe?.owners) && ownerSafe.owners.length === 3) {
+    const recordedOwners = new Set(ownerSafe.owners.map(normAddress));
+    if (signers.some((address) => !recordedOwners.has(normAddress(address)))) {
+      problems.push(file + ' signers must match treasury.json ownerSafe.owners');
+    }
+  }
+}
+function checkMonitoringEvidence(record, file) {
+  if (!record) return;
+  if (typeof record.alertChannel === 'string' && /^https:\/\/hooks\.slack\.com\/services\//i.test(record.alertChannel.trim())) {
+    problems.push(file + ' alertChannel must not store a Slack webhook URL');
+  }
+  if (!Array.isArray(record.dashboards) || record.dashboards.length === 0) {
+    problems.push(file + ' dashboards must be a non-empty list');
+  }
 }
 function word(value) {
   return BigInt(value).toString(16).padStart(64, '0');
@@ -162,16 +296,17 @@ function checkSafeRecord(record, label) {
     problems.push('treasury.json missing ' + label);
     return false;
   }
+  const initialProblemCount = problems.length;
   for (const field of ['address', 'singletonAddress']) {
     if (!isAddress(record[field]) || normAddress(record[field]) === ZERO) {
       problems.push('treasury.json ' + label + '.' + field + ' must be a non-zero address');
     }
   }
-  if (!isBytes32(record.singletonRuntimeCodeHash)) {
-    problems.push('treasury.json ' + label + '.singletonRuntimeCodeHash must be bytes32');
+  if (!isBytes32(record.singletonRuntimeCodeHash) || record.singletonRuntimeCodeHash.toLowerCase() === ZERO_BYTES32) {
+    problems.push('treasury.json ' + label + '.singletonRuntimeCodeHash must be a non-zero bytes32');
   }
-  if (!isBytes32(record.proxyRuntimeCodeHash)) {
-    problems.push('treasury.json ' + label + '.proxyRuntimeCodeHash must be bytes32');
+  if (!isBytes32(record.proxyRuntimeCodeHash) || record.proxyRuntimeCodeHash.toLowerCase() === ZERO_BYTES32) {
+    problems.push('treasury.json ' + label + '.proxyRuntimeCodeHash must be a non-zero bytes32');
   }
   if (!Array.isArray(record.owners) || record.owners.length !== 3 || record.owners.some((x) => !isAddress(x))) {
     problems.push('treasury.json ' + label + '.owners must contain exactly three valid addresses');
@@ -193,6 +328,7 @@ function checkSafeRecord(record, label) {
     }
   }
   return (
+    problems.length === initialProblemCount &&
     isAddress(record.address) &&
     isAddress(record.singletonAddress) &&
     isBytes32(record.singletonRuntimeCodeHash) &&
@@ -305,7 +441,7 @@ async function checkEscrow(url, escrow, expectedTreasury, expectedOwner) {
   }
 }
 
-async function checkTreasury(url, auditSignoff) {
+async function checkTreasury(url, auditSignoff, releaseCommit) {
   const file = SIGNOFF_DIR + '/treasury.json';
   // The signature was already judged at the top level, RPC or not; here the record
   // is deep-verified against the chain, so only its shape and fields are re-read.
@@ -334,8 +470,11 @@ async function checkTreasury(url, auditSignoff) {
     problems.push(file + ' canonicalDeploymentSource must reference the official Safe deployments repository');
   }
   if (!isBytes32(record.evidenceHash)) problems.push(file + ' evidenceHash must be bytes32');
-  if (!record.deploymentCommit || !/^[0-9a-f]{7,40}$/i.test(record.deploymentCommit)) {
-    problems.push(file + ' deploymentCommit must be a commit SHA');
+  if (!record.deploymentCommit || !/^[0-9a-f]{40}$/i.test(record.deploymentCommit)) {
+    problems.push(file + ' deploymentCommit must be a full 40-character Git SHA');
+  }
+  if (releaseCommit && (typeof record.deploymentCommit !== 'string' || record.deploymentCommit.toLowerCase() !== releaseCommit)) {
+    problems.push(file + ' deploymentCommit must equal checked-out Git HEAD');
   }
   await checkSafe(url, record.treasurySafe, 'Treasury Safe');
   await checkSafe(url, record.ownerSafe, 'Owner Safe');
@@ -403,24 +542,53 @@ async function checkTreasury(url, auditSignoff) {
 }
 
 checkParams();
-const auditSignoff = checkSignoff(SIGNOFF_DIR + '/audit-signoff.json', ['auditor', 'reportHash', 'commit']);
-checkSignoff(SIGNOFF_DIR + '/legal-signoff.json', ['entity', 'counsel', 'tosVersion']);
-checkSignoff(SIGNOFF_DIR + '/genesis-cohort.json', ['sponsors', 'agents', 'epochCapEth']);
-checkSignoff(SIGNOFF_DIR + '/timelock.json', ['multisig', 'timelockHours', 'signers']);
-checkSignoff(SIGNOFF_DIR + '/monitoring.json', ['oncall', 'alertChannel', 'dashboards']);
+const releaseCommit = checkedOutCommit();
+const auditSignoff = checkSignoff(SIGNOFF_DIR + '/audit-signoff.json', ['auditor', 'reportUrl', 'reportHash', 'commit']);
+checkAuditEvidence(auditSignoff, releaseCommit);
+checkTreasuryAdr(TREASURY_ADR_FILE);
+checkSignoff(SIGNOFF_DIR + '/legal-signoff.json', ['entity', 'counsel', 'tosVersion', 'privacyVersion', 'licenseVersion']);
+const genesisCohort = checkSignoff(SIGNOFF_DIR + '/genesis-cohort.json', ['sponsors', 'agents', 'epochCapEth']);
+checkGenesisCohort(genesisCohort, SIGNOFF_DIR + '/genesis-cohort.json');
+const timelockSignoff = checkSignoff(SIGNOFF_DIR + '/timelock.json', ['multisig', 'timelockHours', 'signers']);
+const monitoringSignoff = checkSignoff(SIGNOFF_DIR + '/monitoring.json', ['oncall', 'alertChannel', 'dashboards']);
+checkMonitoringEvidence(monitoringSignoff, SIGNOFF_DIR + '/monitoring.json');
+const treasuryTemplate = loadJson(SIGNOFF_DIR + '/treasury.json', SIGNOFF_DIR + '/treasury.json');
+if (treasuryTemplate) {
+  checkUnresolvedEvidence(SIGNOFF_DIR + '/treasury.json', treasuryTemplate);
+  checkTimelockEvidence(timelockSignoff, treasuryTemplate.ownerSafe, SIGNOFF_DIR + '/timelock.json');
+}
 // treasury.json is signature-checked here with the other templates, so an unsigned
 // record is refused even when no RPC is reachable — the deep on-chain verification
 // stays in checkTreasury, which needs the node. Without this hoist, unplugging the
 // RPC would also unplug the one check that judges the treasury record itself
 // (test: "refuses the unsigned production templates and the missing RPC").
 {
-  const treasuryTemplate = loadJson(SIGNOFF_DIR + '/treasury.json', SIGNOFF_DIR + '/treasury.json');
   if (treasuryTemplate && treasuryTemplate.signed !== true) {
     problems.push(SIGNOFF_DIR + '/treasury.json is not signed (signed must be true)');
   }
+  if (treasuryTemplate && (typeof treasuryTemplate.verifiedBy !== 'string' || /pending|unverified/i.test(treasuryTemplate.verifiedBy))) {
+    problems.push(SIGNOFF_DIR + '/treasury.json verifiedBy is pending or missing');
+  }
 }
 const mainnetRpc = await checkChain();
-if (mainnetRpc) await checkTreasury(mainnetRpc, auditSignoff);
+if (mainnetRpc) {
+  await checkTreasury(mainnetRpc, auditSignoff, releaseCommit);
+} else {
+  const treasuryTemplate = loadJson(SIGNOFF_DIR + '/treasury.json', SIGNOFF_DIR + '/treasury.json');
+  if (treasuryTemplate) {
+    const treasurySafeValid = checkSafeRecord(treasuryTemplate.treasurySafe, 'Treasury Safe');
+    const ownerSafeValid = checkSafeRecord(treasuryTemplate.ownerSafe, 'Owner Safe');
+    if (treasurySafeValid && ownerSafeValid && normAddress(treasuryTemplate.treasurySafe.address) === normAddress(treasuryTemplate.ownerSafe.address)) {
+      problems.push(SIGNOFF_DIR + '/treasury.json Treasury Safe and Owner Safe must be distinct addresses');
+    }
+    if (!treasuryTemplate.deploymentCommit || !/^[0-9a-f]{40}$/i.test(treasuryTemplate.deploymentCommit)) {
+      problems.push(SIGNOFF_DIR + '/treasury.json deploymentCommit must be a full 40-character Git SHA');
+    } else if (releaseCommit && (typeof treasuryTemplate.deploymentCommit !== 'string' || treasuryTemplate.deploymentCommit.toLowerCase() !== releaseCommit)) {
+      problems.push(SIGNOFF_DIR + '/treasury.json deploymentCommit must equal checked-out Git HEAD');
+    }
+    problems.push('Safe and escrow addresses are unverified on-chain without a reachable chain-id-1 RPC');
+  }
+}
 
 for (const note of notes) console.log('ok: ' + note);
 if (problems.length) {

@@ -9,13 +9,20 @@
  *
  * Consistent with ADR-0008 (in-memory) until ADR-0023 (PostgreSQL) lands.
  * No chain keys are held by the API.
+ *
+ * The tenancy records themselves are durable (ADR-0033): an organisation and
+ * its memberships are written to PostgreSQL before they are visible, and the
+ * store's cache is refilled from there at boot. The org-scoped side models
+ * that hang off them (budgets, audit, conflict-of-interest declarations,
+ * webhooks, API keys) are still in process memory — see the open list in
+ * HARDENING.md.
  */
 
 import { Hono, type Context } from "hono";
 import { configuredChainId, verifiedSessionFromContext } from "./auth.js";
 import {
   buildOrganisationPrincipal,
-  createOrganisation,
+  createOrganisationDurable,
   getOrganisation,
   organisationsForPrincipal,
   isMemberOf,
@@ -86,7 +93,7 @@ export function createOrgRoutes(): Hono {
     }
     try {
       const org = newOrganisation(orgId, name, slug, principal.wallet.id);
-      createOrganisation(org);
+      await createOrganisationDurable(org);
       return c.json({ organisation: getOrganisation(orgId) }, 201);
     } catch (err) {
       return c.json({ error: (err as Error).message, code: "conflict" }, 409);
@@ -143,7 +150,7 @@ export function createOrgRoutes(): Hono {
       return c.json({ error: "inviteePrincipalId is required", code: "bad-request" }, 400);
     }
     try {
-      const result = inviteMember(id, invitee, role, principal.wallet.id, ttlMs);
+      const result = await inviteMember(id, invitee, role, principal.wallet.id, ttlMs);
       return c.json({ invitationId: result.invitationId, invitation: result.invitation }, 201);
     } catch (err) {
       return c.json({ error: (err as Error).message, code: "forbidden" }, 403);

@@ -81,6 +81,10 @@ npm-debug.log*
 *.swp
 apps/web/.env.local
 
+# Agent session artifacts — not source, not tracked
+.commandcode/
+.junie/
+
 # graphflow
 .graphflow-cache/
 graphflow-out/

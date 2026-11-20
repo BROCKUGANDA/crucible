@@ -27,6 +27,26 @@ export const ALL_DIMENSIONS: ScoreDimension[] = [
   "RELIABILITY",
 ];
 
+/**
+ * The default weight of each dimension.
+ *
+ * These are the weights a rubric gets when the author names none, and they
+ * are the weights an evaluation specification carries when it names no
+ * rubric. They live here because the scoring engine scores them and the
+ * specification publishes them: two copies of a weight table is a rubric
+ * that stops matching the scores it explains.
+ *
+ * They sum to 1. A test asserts it, because a table that sums to 1.05
+ * produces an aggregate score above 100.
+ */
+export const DEFAULT_DIMENSION_WEIGHTS: Record<ScoreDimension, number> = {
+  CORRECTNESS: 0.35,
+  ROBUSTNESS: 0.2,
+  SAFETY: 0.2,
+  EFFICIENCY: 0.1,
+  RELIABILITY: 0.15,
+};
+
 export interface DimensionConfig {
   dimension: ScoreDimension;
   weight: number;

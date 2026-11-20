@@ -151,3 +151,172 @@ session — deliberately left alone.
 Whether the target EVM mainnet is still undecided. The tree has never approved one
 (Anvil 31337 only; Base Sepolia appears as a test path), and choosing it needs an ADR
 before any VRF subscription or multisig is funded.
+
+## Session end (2026-11-20, ~06:45) — worker, funding truth, three surfaces, browser proof
+
+### What shipped
+
+1. **One worker** (commit `e341a5e`). `apps/api/src/worker.ts` was six success-shaped
+   stubs; it is now the single worker entrypoint over
+   `packages/agent-security/src/worker-service.ts` (the old `telemetry-service.ts` is
+   deleted), recurring jobs go through BullMQ's `upsertJobScheduler`, shutdown drains,
+   and `apps/api/docker-entrypoint.sh` switches on an explicit role and refuses an
+   unknown one (the compose `worker` service had been starting a second API server).
+   ADR-0030.
+2. **Funding as a chain fact** (commit `e341a5e`). `apps/api/src/{chain-reader,
+   funding-verification,funding-reconciliation,sponsor-funding-pg,sponsor-funding-
+   routes}.ts` + `migrations/0011_sponsor_funding_chain_truth.sql`. The sponsor's
+   escrow is `reward + fee` read from the arena, never `deposited`; the fee is read,
+   never recomputed; an unreadable chain is `unverifiable`, never `mismatch`.
+   ADR-0031.
+3. **Three surfaces** (commit `0c85816`): Evaluation Studio (`/studio`), an API
+   reference the API writes about itself (`GET /v1/contract` + a drift gate that
+   found thirty-one undocumented error codes), the sponsor console (`/sponsor`).
+4. **One specification model** (commit `0e5e06f`): `scoring.ts` owns the dimension
+   names and weights, `replay-policy.ts` owns the three-replay rule,
+   `evaluation-spec.ts` is built from both. Guarded by `spec-model-collapse.test.ts`.
+   (The assessment's earlier claim that `packages/datasets` was a second spec model
+   was **wrong** — it is a training-data package with a per-1000 split engine against
+   `@crucible/eval`'s per-100. Corrected in the assessment.)
+5. **Chain environments ADR (0029)**: Ethereum mainnet for the EVM track; Solana
+   **Devnet** as a separate release ("Solana Sepolia" does not exist); 1inch is an
+   off-chain conversion path only, never an escrow asset or settlement rail.
+6. **Browser verification and the money bug** (this session). Anvil on `:8555`,
+   arena deployed via `forge script` (which also compiles `script/`, unlike
+   `forge test`), API on `:8787`, site on `:3210`, pages read in Edge. The reference
+   page renders the live contract; the Studio's full path was driven with a real
+   signed session (`REPRODUCIBLE` / `NOT_REPRODUCIBLE` / `INCONCLUSIVE`); the
+   funding truth was proven against the live chain. Browser found
+   `SignalLost` saying "the chain" on API pages — now says "the host" there.
+   **Bug found and fixed: the console reported the ledger's claimed total as 0**
+   (the summary was built from the receipts with the claimed amounts dropped);
+   `summarizeProgrammeFunding` now builds the claimed total from the claims and the
+   confirmed total from the receipts, with "unchecked" as its own column. Four
+   mutations proven red; **the fourth was green on the first attempt** because its
+   anchor matched an identical line in another function — the anchor was made unique
+   and the mutation re-run.
+
+### Measurements
+
+- `npm run typecheck` clean (all workspaces + scripts).
+- `npm test` green — **4,171** TypeScript tests passed (was 4,165; +6 from
+  `programme-funding-summary.test.ts`).
+- Edge suite **25/25**. `forge script` compiles and deploys.
+- Live chain (arena `0x0B306BF915C4d645ff596e518fAf3F9669b97016`, trial 1): sponsor
+  `0x976EA74026E726554dB657fA54763abd0C3a0aa9`, reward 0.5 ETH, arena fee 0.075 ETH
+  (`ARENA_FEE_BPS = 1500` — **not** the legacy `FEE_BPS = 500`), deposited 0.675 ETH
+  (the extra 0.1 is the agent's bond, not the sponsor's).
+
+### Still open (unchanged or newly named)
+
+- Sponsor programme scaffolding is still in process memory
+  (`apps/api/src/sponsor-onboarding.ts`) — survives no restart. The funding truth is
+  durable; the budget it is compared against is not.
+- No operator UI for the dead-letter queue; no metrics endpoint for the backlog; no
+  scheduled retention sweep. CI provides neither Redis nor PostgreSQL.
+- The Studio's three replays are three runs of one verifier in one process — not
+  three independent workers. "Independent" is currently a claim about the harness.
+- `@crucible/datasets` is imported by nothing (audit CODE-M1).
+- The preview browser timed out twice on the accessibility snapshot
+  (`Preview automation snapshot timed out after 15000ms`); the browser was switched
+  to Edge headless rather than retried.
+
+### Question left for the operator
+
+The EVM mainnet is now Ethereum mainnet (ADR-0029) — that question is answered.
+The open ones are now commercial rather than technical: an operating legal entity and
+a funded multisig (the treasury ADR is not written), a VRF subscription on the
+chosen chain, a named on-call human, an independent auditor, and one sponsor who
+will actually put ETH into a trial. P3 mainnet work does not begin before P1
+produces evidence and an independent review is commissioned.
+
+### Local environment left running
+
+- **Anvil on `127.0.0.1:8555` (PID 27268) is still up**, with the arena deployed
+  (Arena `0x0B306BF915C4d645ff596e518fAf3F9669b97016`, trial 1 posted by
+  `0x976EA74026E726554dB657fA54763abd0C3a0aa9`). It does not conflict with the
+  other session's `8545`.
+- The API (8787) and the site (3210) were **stopped**: `8787` is the port the
+  other session's `.env` expects, and leaving it held would block them.
+- To bring the verification stack back: deploy with
+  `node scripts/run-forge.mjs script script/Demo.s.sol:Demo --rpc-url http://127.0.0.1:8555 --broadcast`,
+  run the API with `node --env-file=.scratch/api.env apps/api/dist/server.js` (that
+  file sets `TRIALS_ADDRESS`, `ALLOY_ADDRESS`, `ARENA_ADDRESS`, `AUTH_ORIGIN` and
+  `ALLOWED_ORIGINS` for `http://127.0.0.1:3210`), then
+  `npx next start -p 3210` in `apps/web`.
+
+## Session end (2026-11-20, ~07:30) — the sponsor's ledger is durable, and the claim path works at all
+
+### What shipped
+
+**`8bf7972` — the console's ledger total was zero.** The funding summary was
+built from the chain's receipts with each receipt's claimed amount dropped on
+the way in, so a programme with a 1.15 ETH claim showed "the ledger claims 0
+ETH" next to "the escrow holds 1.15 ETH". Found by browser verification, not by
+reasoning. `summarizeProgrammeFunding` now takes the claims (the ledger's
+number) and the receipts (the confirmed number) separately, with "unchecked" as
+its own column. Four mutations proven red; **the fourth was green on the first
+attempt** because its anchor matched an identical line in another function.
+
+**`9075761` — the sponsor's ledger is durable, and the claim path works.**
+A real **PostgreSQL 17** was stood up on the build box (initdb at
+`C:/Users/HP/AppData/Local/Temp/crucible-pg`, port **5433**, `trust` auth) and
+the shipped code was asked to write to it. Four findings:
+
+1. **A funding claim could not be recorded in any real deployment.**
+   `sponsor_funding_claims.org_id REFERENCES organisations(id)` and nothing
+   ever writes an organisation (the tenancy model is process memory by design,
+   `packages/agent-security/src/org-store.ts`). Every claim died at the FK.
+   Dropped in `migrations/0012_sponsor_ledger_durable.sql`.
+2. **The sponsor's ledger was a `Map`** — sponsors, programmes, the eight
+   budget counters and the budget's own ledger were process memory. Now
+   PostgreSQL behind a `SponsorStore` interface (`apps/api/src/sponsor-
+   programme-pg.ts`); the domain rules stay put; the API announces the ledger
+   at boot ("postgresql (survives a restart)" / "in memory — ... lost on
+   restart").
+3. **The programme and budget-entry routes were failing outright** —
+   `JSON.stringify` throws on a `bigint`; every wei now leaves as a decimal
+   string through explicit serializers.
+4. **The ledger had no insertion order** (`BIGSERIAL seq`), and
+   `recordWithdrawal` decremented `paid` while the module's own invariant
+   requires `paid >= withdrawn` — both counters are cumulative now.
+
+ADR-0032. Audit: MONEY-H6, MONEY-H7, MONEY-M1, MONEY-M2, AUTHZ-D1.
+
+### Measurements
+
+- `npm run typecheck` clean; `npm test` green — **4,171** TS tests passed (the
+  12 durable-ledger tests SKIP without a database, as the Redis cases do).
+- With `DATABASE_URL` set: API workspace **1,121 passed, 0 failed**.
+- **Restart proof:** sponsor + programme + deposit + 3 ledger entries written
+  through the API → process killed → new process → all read back
+  (`committed 1 ETH / deposited 0.575 / escrowed 0.575`).
+- **Six mutations proven red** against the real database; **two were green on
+  the first attempt** (no test covered withdrawing twice; nothing could
+  distinguish the ledger's order) — both gaps closed with tests that fail for
+  the right reason (a row written last but stamped earlier).
+- Edge 25/25; `forge script` compiles and deploys; anvil still up on 8555.
+
+### Environment left running
+
+- **PostgreSQL 17 on `127.0.0.1:5433`** (data dir
+  `C:/Users/HP/AppData/Local/Temp/crucible-pg`, database `crucible`, user
+  `crucible`, trust auth). `DATABASE_URL=postgres://crucible@127.0.0.1:5433/crucible`.
+  It holds the durable-ledger evidence and the migrations applied.
+- **Anvil on `127.0.0.1:8555`** with the arena deployed.
+- The API was stopped (it held 8787, the port the other session's `.env`
+  expects). Start it with
+  `node --env-file=.scratch/api.env apps/api/dist/server.js` (which sets
+  `DATABASE_URL`), and the site with `npx next start -p 3210` in `apps/web`.
+
+### Next steps, in order
+
+1. **The organisation and membership model becomes durable** (AUTHZ-D1,
+   ADR-0032's named successor). It is the last in-memory state on the money
+   path, it makes the RLS policies real, and it is what a multi-process
+   deployment needs.
+2. The remaining P1 surfaces: the dispute evidence bundle, the reviewer queue
+   with conflict declaration and abstention, the comparison studio, the agent
+   directory, the evidence inspector, the trial timeline.
+3. P3 (mainnet) stays gated: it does not begin before P1 produces evidence and
+   an independent review is commissioned.

@@ -42,6 +42,7 @@ import {
 } from "@crucible/eval";
 import { verifiedSessionFromContext } from "./auth.js";
 import { IdempotencyStore, parseIdempotencyKey } from "./idempotency.js";
+import { WORKLOAD_PROFILES } from "./workload-profiles.js";
 
 type RunRecord = {
   runId: string;
@@ -122,11 +123,7 @@ function ctx(body: Record<string, unknown>, profile: WorkloadProfile, now: numbe
   };
 }
 
-const PROFILES: readonly WorkloadProfile[] = [
-  "SOFTWARE_ENGINEERING",
-  "STRUCTURED_DATA",
-  "AUTONOMOUS_FINANCE",
-];
+const PROFILES: readonly WorkloadProfile[] = WORKLOAD_PROFILES;
 
 function isProduction(): boolean {
   return process.env.NODE_ENV === "production";

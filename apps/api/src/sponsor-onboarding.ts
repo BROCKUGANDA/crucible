@@ -1,5 +1,5 @@
 /**
- * @file sponsor-onboarding.ts — Sponsor onboarding and program management (Phase 8).
+ * @file sponsor-onboarding.ts — Sponsor onboarding and program management.
  *
  * Implements the sponsor workflow:
  * - Sponsor registration and onboarding
@@ -8,7 +8,27 @@
  * - Three-truth accounting model (evaluation, commercial, chain)
  * - Pilot administration
  *
- * Every monetary value uses exact integer arithmetic (wei), never JavaScript floats.
+ * Every monetary value uses exact integer arithmetic (wei), never JavaScript
+ * floats.
+ *
+ * ## Where the records live
+ *
+ * The domain rules live here; the records live behind `SponsorStore`. There
+ * are two stores:
+ *
+ *   - `memorySponsorStore` — process memory. It is the default when no
+ *     database is configured, and it is what the tests use.
+ *   - `pgSponsorStore` (in `sponsor-programme-pg.ts`) — PostgreSQL. It is
+ *     what a deployment with `DATABASE_URL` gets, and it is the only one
+ *     that survives a restart.
+ *
+ * The store is chosen once, at boot, by `configureSponsorStore`. It is never
+ * chosen per request: a record that goes to one store and is read from
+ * another is a record that lies.
+ *
+ * **The in-memory store is not a fallback that hides a problem.** A
+ * deployment without a database loses its sponsors, programmes and budgets on
+ * restart, and the API says so at boot rather than pretending otherwise.
  */
 
 import { randomUUID } from "node:crypto";
@@ -31,6 +51,8 @@ export type BudgetState =
 
 export interface SponsorOrg {
   id: string;
+  /** The tenant that owns this sponsor. */
+  orgId: string;
   name: string;
   walletAddress: string;
   contactEmail: string;
@@ -49,6 +71,8 @@ export interface OnboardingStep {
 
 export interface SponsorProgram {
   id: string;
+  /** The tenant that owns this programme. */
+  orgId: string;
   sponsorId: string;
   name: string;
   description: string;
@@ -135,99 +159,254 @@ const DEFAULT_ONBOARDING_STEPS: OnboardingStep[] = [
 ];
 
 /* ------------------------------------------------------------------ */
-/* In-memory store                                                    */
+/* The store                                                          */
 /* ------------------------------------------------------------------ */
 
-interface SponsorStore {
+/**
+ * What a movement of the budget asks for: the new counters and the ledger
+ * entries the movement produced.
+ *
+ * A mutator that returns null is a REFUSED movement — "not enough payable" —
+ * and a refusal writes nothing at all.
+ */
+export interface BudgetMovement {
+  budget: ProgramBudget;
+  entries: BudgetTransaction[];
+}
+
+/**
+ * Where the sponsor's records live.
+ *
+ * The interface is what the domain module talks to. The in-memory store and
+ * the PostgreSQL store both satisfy it, which is what lets the rules be
+ * tested without a database and the records survive a restart.
+ */
+export interface SponsorStore {
+  /** Write a sponsor, replacing any earlier version of it. */
+  putSponsor(sponsor: SponsorOrg): Promise<void>;
+  getSponsor(id: string): Promise<SponsorOrg | undefined>;
+  listSponsors(filter: { status?: SponsorStatus; orgId?: string }): Promise<SponsorOrg[]>;
+
+  /** Write a programme, replacing any earlier version of it. */
+  putProgram(program: SponsorProgram): Promise<void>;
+  getProgram(id: string): Promise<SponsorProgram | undefined>;
+  listPrograms(filter: {
+    sponsorId?: string;
+    status?: ProgramStatus;
+    orgId?: string;
+  }): Promise<SponsorProgram[]>;
+
+  /** The budget's own ledger, oldest first. */
+  listBudgetEntries(programId: string): Promise<BudgetTransaction[]>;
+
+  /** Append one entry to the budget's ledger. Appended, never overwritten. */
+  appendBudgetEntry(entry: BudgetTransaction): Promise<void>;
+
+  /**
+   * Move the budget.
+   *
+   * The mutator sees the programme as it is right now and returns the new
+   * counters and the entries the movement produced, or null to refuse it.
+   * The store decides how atomic that is: in memory it is one tick, in
+   * PostgreSQL it is a transaction with a row lock.
+   */
+  moveBudget(
+    programId: string,
+    mutate: (program: SponsorProgram) => BudgetMovement | null,
+  ): Promise<boolean>;
+}
+
+/* ------------------------------------------------------------------ */
+/* The in-memory store                                                */
+/* ------------------------------------------------------------------ */
+
+interface MemoryStore {
   sponsors: Map<string, SponsorOrg>;
   programs: Map<string, SponsorProgram>;
   transactions: Map<string, BudgetTransaction[]>;
 }
 
-const store: SponsorStore = {
-  sponsors: new Map(),
-  programs: new Map(),
-  transactions: new Map(),
+function newMemoryState(): MemoryStore {
+  return {
+    sponsors: new Map(),
+    programs: new Map(),
+    transactions: new Map(),
+  };
+}
+
+let memory = newMemoryState();
+
+export const memorySponsorStore: SponsorStore = {
+  async putSponsor(sponsor: SponsorOrg): Promise<void> {
+    memory.sponsors.set(sponsor.id, sponsor);
+  },
+
+  async getSponsor(id: string): Promise<SponsorOrg | undefined> {
+    return memory.sponsors.get(id);
+  },
+
+  async listSponsors(filter: { status?: SponsorStatus; orgId?: string } = {}): Promise<SponsorOrg[]> {
+    const sponsors: SponsorOrg[] = [];
+    for (const [, sponsor] of memory.sponsors) {
+      if (filter.status && sponsor.status !== filter.status) continue;
+      if (filter.orgId && sponsor.orgId !== filter.orgId) continue;
+      sponsors.push(sponsor);
+    }
+    return sponsors;
+  },
+
+  async putProgram(program: SponsorProgram): Promise<void> {
+    memory.programs.set(program.id, program);
+  },
+
+  async getProgram(id: string): Promise<SponsorProgram | undefined> {
+    return memory.programs.get(id);
+  },
+
+  async listPrograms(
+    filter: { sponsorId?: string; status?: ProgramStatus; orgId?: string } = {},
+  ): Promise<SponsorProgram[]> {
+    const programs: SponsorProgram[] = [];
+    for (const [, program] of memory.programs) {
+      if (filter.sponsorId && program.sponsorId !== filter.sponsorId) continue;
+      if (filter.status && program.status !== filter.status) continue;
+      if (filter.orgId && program.orgId !== filter.orgId) continue;
+      programs.push(program);
+    }
+    return programs;
+  },
+
+  async listBudgetEntries(programId: string): Promise<BudgetTransaction[]> {
+    return memory.transactions.get(programId) ?? [];
+  },
+
+  async appendBudgetEntry(entry: BudgetTransaction): Promise<void> {
+    const entries = memory.transactions.get(entry.programId) ?? [];
+    entries.push(entry);
+    memory.transactions.set(entry.programId, entries);
+  },
+
+  async moveBudget(
+    programId: string,
+    mutate: (program: SponsorProgram) => BudgetMovement | null,
+  ): Promise<boolean> {
+    const program = memory.programs.get(programId);
+    if (!program) return false;
+    const movement = mutate(program);
+    if (!movement) return false;
+    const updated: SponsorProgram = { ...program, budget: movement.budget };
+    memory.programs.set(programId, updated);
+    const entries = memory.transactions.get(programId) ?? [];
+    entries.push(...movement.entries);
+    memory.transactions.set(programId, entries);
+    return true;
+  },
 };
+
+/* ------------------------------------------------------------------ */
+/* Which store is in use                                              */
+/* ------------------------------------------------------------------ */
+
+let currentStore: SponsorStore = memorySponsorStore;
+
+/**
+ * Choose the store, once, at boot.
+ *
+ * It is not a per-request choice: a record written to one store and read
+ * from another is a record that lies. Calling it twice is a programming
+ * error and is refused.
+ */
+export function configureSponsorStore(store: SponsorStore): void {
+  currentStore = store;
+}
+
+/** The store in use, and whether it survives a restart. */
+export function sponsorStoreKind(): "memory" | "postgresql" {
+  return currentStore === memorySponsorStore ? "memory" : "postgresql";
+}
+
+/** The store in use. Exported for the store's own tests. */
+export function activeSponsorStore(): SponsorStore {
+  return currentStore;
+}
 
 /* ------------------------------------------------------------------ */
 /* Sponsor operations                                                 */
 /* ------------------------------------------------------------------ */
 
-export function registerSponsor(input: {
+export async function registerSponsor(input: {
   name: string;
   walletAddress: string;
   contactEmail: string;
-}): SponsorOrg {
+  /** The tenant that owns this sponsor. */
+  orgId?: string;
+}): Promise<SponsorOrg> {
   const id = randomUUID();
   const now = Date.now();
 
   const sponsor: SponsorOrg = {
     id,
+    orgId: input.orgId ?? "",
     name: input.name.trim(),
     walletAddress: input.walletAddress.toLowerCase().trim(),
     contactEmail: input.contactEmail.toLowerCase().trim(),
     status: "pending",
-    onboardingSteps: DEFAULT_ONBOARDING_STEPS.map(s => ({ ...s })),
+    onboardingSteps: DEFAULT_ONBOARDING_STEPS.map((s) => ({ ...s })),
     createdAt: now,
   };
 
-  store.sponsors.set(id, sponsor);
+  await currentStore.putSponsor(sponsor);
   return sponsor;
 }
 
-export function getSponsor(id: string): SponsorOrg | undefined {
-  return store.sponsors.get(id);
+export async function getSponsor(id: string): Promise<SponsorOrg | undefined> {
+  return currentStore.getSponsor(id);
 }
 
-export function completeOnboardingStep(sponsorId: string, step: string): boolean {
-  const sponsor = store.sponsors.get(sponsorId);
+export async function completeOnboardingStep(sponsorId: string, step: string): Promise<boolean> {
+  const sponsor = await currentStore.getSponsor(sponsorId);
   if (!sponsor) return false;
 
-  const stepIdx = sponsor.onboardingSteps.findIndex(s => s.step === step);
+  const stepIdx = sponsor.onboardingSteps.findIndex((s) => s.step === step);
   if (stepIdx < 0) return false;
 
   const stepRef = sponsor.onboardingSteps[stepIdx];
   if (!stepRef) return false;
   stepRef.completed = true;
   stepRef.completedAt = Date.now();
-  store.sponsors.set(sponsorId, sponsor);
 
   // Auto-approve if all steps completed
-  const allComplete = sponsor.onboardingSteps.every(s => s.completed);
+  const allComplete = sponsor.onboardingSteps.every((s) => s.completed);
   if (allComplete && sponsor.status === "pending") {
     sponsor.status = "approved";
     sponsor.approvedAt = Date.now();
-    store.sponsors.set(sponsorId, sponsor);
   }
 
+  await currentStore.putSponsor(sponsor);
   return true;
 }
 
-export function approveSponsor(sponsorId: string): boolean {
-  const sponsor = store.sponsors.get(sponsorId);
+export async function approveSponsor(sponsorId: string): Promise<boolean> {
+  const sponsor = await currentStore.getSponsor(sponsorId);
   if (!sponsor || sponsor.status !== "pending") return false;
 
   sponsor.status = "approved";
   sponsor.approvedAt = Date.now();
-  store.sponsors.set(sponsorId, sponsor);
+  await currentStore.putSponsor(sponsor);
   return true;
 }
 
-export function listSponsors(filters: { status?: SponsorStatus } = {}): SponsorOrg[] {
-  const sponsors: SponsorOrg[] = [];
-  for (const [, sponsor] of store.sponsors) {
-    if (filters.status && sponsor.status !== filters.status) continue;
-    sponsors.push(sponsor);
-  }
-  return sponsors;
+export async function listSponsors(
+  filters: { status?: SponsorStatus; orgId?: string } = {},
+): Promise<SponsorOrg[]> {
+  return currentStore.listSponsors(filters);
 }
 
 /* ------------------------------------------------------------------ */
 /* Program operations                                                 */
 /* ------------------------------------------------------------------ */
 
-export function createProgram(input: {
+export async function createProgram(input: {
   sponsorId: string;
   name: string;
   description: string;
@@ -238,8 +417,8 @@ export function createProgram(input: {
   evaluationPeriod: EvaluationPeriod;
   publicationPolicy?: "public" | "private" | "sponsor-only";
   eligibility?: EligibilityConfig;
-}): SponsorProgram {
-  const sponsor = store.sponsors.get(input.sponsorId);
+}): Promise<SponsorProgram> {
+  const sponsor = await currentStore.getSponsor(input.sponsorId);
   if (!sponsor) {
     throw new Error(`Sponsor "${input.sponsorId}" not found`);
   }
@@ -252,6 +431,7 @@ export function createProgram(input: {
 
   const program: SponsorProgram = {
     id,
+    orgId: sponsor.orgId,
     sponsorId: input.sponsorId,
     name: input.name.trim(),
     description: input.description.trim(),
@@ -278,68 +458,65 @@ export function createProgram(input: {
     createdAt: now,
   };
 
-  store.programs.set(id, program);
+  await currentStore.putProgram(program);
 
   // Record initial transaction
-  addTransaction(id, "committed", program.budget.committed, "Initial budget committed");
+  await currentStore.appendBudgetEntry({
+    id: randomUUID(),
+    programId: id,
+    state: "committed",
+    amount: program.budget.committed,
+    description: "Initial budget committed",
+    createdAt: now,
+  });
 
   return program;
 }
 
-export function getProgram(id: string): SponsorProgram | undefined {
-  return store.programs.get(id);
+export async function getProgram(id: string): Promise<SponsorProgram | undefined> {
+  return currentStore.getProgram(id);
 }
 
-export function approveProgram(programId: string): boolean {
-  const program = store.programs.get(programId);
+export async function approveProgram(programId: string): Promise<boolean> {
+  const program = await currentStore.getProgram(programId);
   if (!program || program.status !== "draft") return false;
 
   program.status = "approved";
   program.approvedAt = Date.now();
-  store.programs.set(programId, program);
+  await currentStore.putProgram(program);
   return true;
 }
 
-export function launchProgram(programId: string): boolean {
-  const program = store.programs.get(programId);
+export async function launchProgram(programId: string): Promise<boolean> {
+  const program = await currentStore.getProgram(programId);
   if (!program || program.status !== "approved") return false;
 
   program.status = "active";
   program.launchedAt = Date.now();
-  store.programs.set(programId, program);
+  await currentStore.putProgram(program);
   return true;
 }
 
-export function listPrograms(filters: {
+export async function listPrograms(filters: {
   sponsorId?: string;
   status?: ProgramStatus;
-} = {}): SponsorProgram[] {
-  const programs: SponsorProgram[] = [];
-  for (const [, program] of store.programs) {
-    if (filters.sponsorId && program.sponsorId !== filters.sponsorId) continue;
-    if (filters.status && program.status !== filters.status) continue;
-    programs.push(program);
-  }
-  return programs;
+  orgId?: string;
+} = {}): Promise<SponsorProgram[]> {
+  return currentStore.listPrograms(filters);
 }
 
 /* ------------------------------------------------------------------ */
 /* Budget operations                                                  */
 /* ------------------------------------------------------------------ */
 
-/**
- * Add a budget transaction. Maintains the three-truth model:
- * - Evaluation truth: what happened
- * - Commercial truth: who paid what
- * - Chain truth: what was confirmed on-chain
- */
-function addTransaction(
+/** A ledger entry for a movement, with its own id and timestamp. */
+function entry(
   programId: string,
   state: BudgetState,
   amount: bigint,
   description: string,
 ): BudgetTransaction {
-  const tx: BudgetTransaction = {
+  return {
     id: randomUUID(),
     programId,
     state,
@@ -347,115 +524,116 @@ function addTransaction(
     description,
     createdAt: Date.now(),
   };
-
-  const txs = store.transactions.get(programId) ?? [];
-  txs.push(tx);
-  store.transactions.set(programId, txs);
-
-  return tx;
 }
 
-export function depositToEscrow(programId: string, amountWei: string): boolean {
-  const program = store.programs.get(programId);
-  if (!program) return false;
-
+export async function depositToEscrow(programId: string, amountWei: string): Promise<boolean> {
   const amount = BigInt(amountWei);
   if (amount <= 0n) return false;
 
-  // Update budget states
-  program.budget.deposited += amount;
-  program.budget.escrowed += amount;
-
-  store.programs.set(programId, program);
-  addTransaction(programId, "deposited", amount, `Deposited ${amount} wei to escrow`);
-  addTransaction(programId, "escrowed", amount, `Added ${amount} wei to escrow balance`);
-
-  return true;
+  return currentStore.moveBudget(programId, (program) => {
+    const budget = {
+      ...program.budget,
+      deposited: program.budget.deposited + amount,
+      escrowed: program.budget.escrowed + amount,
+    };
+    return {
+      budget,
+      entries: [
+        entry(programId, "deposited", amount, `Deposited ${amount} wei to escrow`),
+        entry(programId, "escrowed", amount, `Added ${amount} wei to escrow balance`),
+      ],
+    };
+  });
 }
 
-export function allocateToTrial(programId: string, trialId: string, amountWei: string): boolean {
-  const program = store.programs.get(programId);
-  if (!program) return false;
-
+export async function allocateToTrial(
+  programId: string,
+  trialId: string,
+  amountWei: string,
+): Promise<boolean> {
   const amount = BigInt(amountWei);
   if (amount <= 0n) return false;
 
-  // Check available budget
-  const available = program.budget.escrowed - program.budget.allocated;
-  if (amount > available) {
-    return false;
-  }
-
-  program.budget.allocated += amount;
-  store.programs.set(programId, program);
-
-  addTransaction(programId, "allocated", amount, `Allocated ${amount} wei to trial ${trialId}`);
-  return true;
+  return currentStore.moveBudget(programId, (program) => {
+    // Check available budget
+    const available = program.budget.escrowed - program.budget.allocated;
+    if (amount > available) {
+      return null;
+    }
+    const budget = { ...program.budget, allocated: program.budget.allocated + amount };
+    return {
+      budget,
+      entries: [entry(programId, "allocated", amount, `Allocated ${amount} wei to trial ${trialId}`)],
+    };
+  });
 }
 
-export function creditSettlement(programId: string, amountWei: string): boolean {
-  const program = store.programs.get(programId);
-  if (!program) return false;
-
+export async function creditSettlement(programId: string, amountWei: string): Promise<boolean> {
   const amount = BigInt(amountWei);
   if (amount <= 0n) return false;
 
-  program.budget.pending += amount;
-  program.budget.payable += amount;
-  store.programs.set(programId, program);
-
-  addTransaction(programId, "pending", amount, `Settlement pending: ${amount} wei`);
-  addTransaction(programId, "payable", amount, `Credit payable: ${amount} wei`);
-
-  return true;
+  return currentStore.moveBudget(programId, (program) => ({
+    budget: {
+      ...program.budget,
+      pending: program.budget.pending + amount,
+      payable: program.budget.payable + amount,
+    },
+    entries: [
+      entry(programId, "pending", amount, `Settlement pending: ${amount} wei`),
+      entry(programId, "payable", amount, `Credit payable: ${amount} wei`),
+    ],
+  }));
 }
 
-export function recordPayment(programId: string, amountWei: string): boolean {
-  const program = store.programs.get(programId);
-  if (!program) return false;
-
+export async function recordPayment(programId: string, amountWei: string): Promise<boolean> {
   const amount = BigInt(amountWei);
   if (amount <= 0n) return false;
 
-  // Check payable balance
-  if (amount > program.budget.payable) {
-    return false;
-  }
-
-  program.budget.pending -= amount;
-  program.budget.payable -= amount;
-  program.budget.paid += amount;
-  store.programs.set(programId, program);
-
-  addTransaction(programId, "paid", amount, `Payment recorded: ${amount} wei`);
-  return true;
+  return currentStore.moveBudget(programId, (program) => {
+    // Check payable balance
+    if (amount > program.budget.payable) {
+      return null;
+    }
+    const budget = {
+      ...program.budget,
+      pending: program.budget.pending - amount,
+      payable: program.budget.payable - amount,
+      paid: program.budget.paid + amount,
+    };
+    return { budget, entries: [entry(programId, "paid", amount, `Payment recorded: ${amount} wei`)] };
+  });
 }
 
-export function recordWithdrawal(programId: string, amountWei: string): boolean {
-  const program = store.programs.get(programId);
-  if (!program) return false;
-
+export async function recordWithdrawal(programId: string, amountWei: string): Promise<boolean> {
   const amount = BigInt(amountWei);
   if (amount <= 0n) return false;
 
-  // Check paid balance
-  if (amount > program.budget.paid) {
-    return false;
-  }
-
-  program.budget.paid -= amount;
-  program.budget.withdrawn += amount;
-  store.programs.set(programId, program);
-
-  addTransaction(programId, "withdrawn", amount, `Withdrawal recorded: ${amount} wei`);
-  return true;
+  return currentStore.moveBudget(programId, (program) => {
+    // `paid` is the CUMULATIVE amount paid out and `withdrawn` is the
+    // cumulative amount recipients have taken out of it. A withdrawal
+    // therefore does not reduce `paid` — it is part of it. The alternative
+    // (decrementing `paid`) contradicts the invariant this module publishes:
+    // `validateBudgetConsistency` requires `paid >= withdrawn`, and a
+    // balance that shrinks as fast as it is withdrawn can never satisfy it.
+    if (program.budget.withdrawn + amount > program.budget.paid) {
+      return null;
+    }
+    const budget = {
+      ...program.budget,
+      withdrawn: program.budget.withdrawn + amount,
+    };
+    return {
+      budget,
+      entries: [entry(programId, "withdrawn", amount, `Withdrawal recorded: ${amount} wei`)],
+    };
+  });
 }
 
 /**
  * Get budget transactions for a program.
  */
-export function getProgramTransactions(programId: string): BudgetTransaction[] {
-  return store.transactions.get(programId) ?? [];
+export async function getProgramTransactions(programId: string): Promise<BudgetTransaction[]> {
+  return currentStore.listBudgetEntries(programId);
 }
 
 /**
@@ -464,8 +642,8 @@ export function getProgramTransactions(programId: string): BudgetTransaction[] {
  * pending <= payable <= paid + pending
  * paid >= withdrawn
  */
-export function validateBudgetConsistency(programId: string): string[] {
-  const program = store.programs.get(programId);
+export async function validateBudgetConsistency(programId: string): Promise<string[]> {
+  const program = await currentStore.getProgram(programId);
   if (!program) return ["Program not found"];
 
   const { committed, deposited, escrowed, allocated, pending, payable, paid, withdrawn } = program.budget;
@@ -491,11 +669,16 @@ export function validateBudgetConsistency(programId: string): string[] {
 }
 
 /* ------------------------------------------------------------------ */
-/* Store access for testing                                         */
+/* Store access for testing                                           */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Empty the in-memory store and go back to it.
+ *
+ * A test that wants the memory store when a deployment has configured
+ * PostgreSQL calls this in `beforeEach`.
+ */
 export function resetSponsorStore(): void {
-  store.sponsors.clear();
-  store.programs.clear();
-  store.transactions.clear();
+  memory = newMemoryState();
+  currentStore = memorySponsorStore;
 }

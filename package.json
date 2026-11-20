@@ -53,7 +53,8 @@
     "identity:fit:selftest": "node scripts/fit-identity.mjs --self-test",
     "clean-sdk:install": "npm --prefix integrations/clean-sdk install --ignore-scripts --no-audit --no-fund",
     "clean-sdk:test": "npm --prefix integrations/clean-sdk test",
-    "telemetry:service": "node --env-file-if-exists=.env packages/agent-security/dist/telemetry-service.js"
+    "worker:service": "node --env-file-if-exists=.env apps/api/dist/worker.js",
+    "telemetry:service": "npm run worker:service"
   },
   "engines": {
     "node": ">=20 <27",
