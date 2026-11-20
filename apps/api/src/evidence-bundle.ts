@@ -309,16 +309,19 @@ export function verifyBundleDigest(bundle: EvidenceBundle): boolean {
  * are keyed by the platform's own trial id, and the two are the same
  * number when the platform created the trial on the chain.
  */
-export function buildBundle(
+export async function buildBundle(
   trialKey: string,
   sealedAt: number,
   chain?: Partial<BundleChainFacts> | null,
   sealedAtChainSeconds?: number | null,
-): EvidenceBundle {
-  const manifests = listManifestsByTrial(trialKey).map((manifest) => ({
-    manifest,
-    replays: listReplaysByManifest(manifest.manifestId),
-  }));
+): Promise<EvidenceBundle> {
+  const manifestList = await listManifestsByTrial(trialKey);
+  const manifests = await Promise.all(
+    manifestList.map(async (manifest) => ({
+      manifest,
+      replays: await listReplaysByManifest(manifest.manifestId),
+    })),
+  );
 
   const specs = listSpecsByTrial(trialKey);
   const spec = specs.length > 0 ? specs[specs.length - 1] : null;

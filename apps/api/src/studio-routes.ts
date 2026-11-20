@@ -35,20 +35,49 @@ import {
 } from "./replay-manifest.js";
 import { hashCanonical } from "@crucible/crypto";
 import { WORKLOAD_PROFILES } from "./workload-profiles.js";
-import { REQUIRED_REPLAYS } from "./replay-policy.js";
+import { REQUIRED_REPLAYS, REQUIRED_REPLAY_WORKERS } from "./replay-policy.js";
 
 export { REQUIRED_REPLAYS };
 
 export type ReproducibilityVerdict =
-  | "REPRODUCIBLE"
-  | "NOT_REPRODUCIBLE"
+  | "AGREED"
+  | "NOT_AGREED"
   | "INCONCLUSIVE";
+
+/**
+ * Whether the replays were INDEPENDENT — run by different workers.
+ *
+ * Separate from the verdict, because separate from the question: the
+ * verdict says whether the replays agreed, this says whether that
+ * agreement is worth calling independent reproduction. The count comes
+ * from the worker identities the platform derived, never from the labels
+ * the caller chose.
+ */
+export interface Independence {
+  /** How many different workers the compared replays came from. */
+  workers: number;
+  /** How many the rule needs. */
+  required: number;
+  /** Whether the rule is met. */
+  independent: boolean;
+  /** Why, in words. */
+  reason: string;
+}
 
 export interface ReplayResult {
   /** Which replay this is: 1, 2 or 3. */
   replayNumber: number;
-  /** The label the caller gave this replay (usually the worker that ran it). */
+  /** The label the caller gave this replay. A name, not an identity. */
   label: string;
+  /**
+   * WHO THIS OBSERVATION CAME FROM, as the platform knows it.
+   *
+   * The caller's label is not this: a caller that names its three replays
+   * "worker-a", "worker-b" and "worker-c" would satisfy any check that
+   * reads a label, and the independence rule would become decoration. The
+   * platform attributes the observation to the party it came from.
+   */
+  workerIdentity: string;
   /** The verifier's status for this replay. */
   status: string;
   /** How many checks the evidence answered. */
@@ -113,10 +142,31 @@ export function decideReproducibility(replays: ReplayResult[]): {
   explanation: string;
   comparable: number;
   distinctFingerprints: number;
+  independence: Independence;
 } {
   const comparableReplays = replays.filter((replay) => replay.comparable);
   const comparable = comparableReplays.length;
   const distinct = new Set(comparableReplays.map((replay) => replay.fingerprint)).size;
+
+  // INDEPENDENCE is a separate question from AGREEMENT, and it is decided
+  // on the worker identities — never on the caller's labels. The Studio
+  // runs its replays in this process on the caller's observations, so they
+  // come from one worker and the agreement is not independent
+  // reproduction. Saying so is the point: the rule the network quotes is
+  // about independent replays, and a surface that quietly could not meet
+  // it would make the rule decorative.
+  const workers = new Set(comparableReplays.map((replay) => replay.workerIdentity)).size;
+  const independence: Independence = {
+    workers,
+    required: REQUIRED_REPLAY_WORKERS,
+    independent: comparable >= REQUIRED_REPLAYS && workers >= REQUIRED_REPLAY_WORKERS,
+    reason:
+      comparable < REQUIRED_REPLAYS
+        ? `Only ${comparable} of the ${REQUIRED_REPLAYS} replays produced evidence to compare, so there are no workers to count yet.`
+        : workers >= REQUIRED_REPLAY_WORKERS
+          ? `The ${comparable} replays came from ${workers} different workers.`
+          : `The ${comparable} replays came from ${workers} worker${workers === 1 ? "" : "s"}, not ${REQUIRED_REPLAY_WORKERS} different ones: agreement between replays from one worker is agreement about that worker's habits, not independent reproduction.`,
+  };
 
   if (replays.length < REQUIRED_REPLAYS) {
     return {
@@ -126,6 +176,7 @@ export function decideReproducibility(replays: ReplayResult[]): {
         `One run proves what happened once; the rule needs ${REQUIRED_REPLAYS}.`,
       comparable,
       distinctFingerprints: distinct,
+      independence,
     };
   }
 
@@ -139,27 +190,31 @@ export function decideReproducibility(replays: ReplayResult[]): {
         `result is not reproducibility.`,
       comparable,
       distinctFingerprints: distinct,
+      independence,
     };
   }
 
   if (distinct === 1) {
     return {
-      verdict: "REPRODUCIBLE",
+      verdict: "AGREED",
       explanation:
         `All ${REQUIRED_REPLAYS} replays produced evidence and agreed on it. ` +
-        `The same result would follow from the same pinned task.`,
+        `The same result would follow from the same pinned task — in this ` +
+        `worker. ${independence.reason}`,
       comparable,
       distinctFingerprints: distinct,
+      independence,
     };
   }
 
   return {
-    verdict: "NOT_REPRODUCIBLE",
+    verdict: "NOT_AGREED",
     explanation:
       `The ${REQUIRED_REPLAYS} replays produced ${distinct} different results. ` +
       `The result does not follow from the task, so publishing it as a score would be a lie.`,
     comparable,
     distinctFingerprints: distinct,
+    independence,
   };
 }
 
@@ -169,20 +224,20 @@ export function decideReproducibility(replays: ReplayResult[]): {
  * The pinned digest is the digest of the TASK — what was measured. It is
  * not the digest of the verdict: a verdict that changed would still be the
  * same measurement, and a measurement that stayed the same would be the
- * same task whether the verdict was REPRODUCIBLE or not.
+ * same task whether the verdict was AGREED or not.
  */
-function recordStudioMeasurement(input: {
+async function recordStudioMeasurement(input: {
   profile: string;
   task: unknown;
   results: ReplayResult[];
   agentId: string;
   callerId: string;
-}): {
+}): Promise<{
   manifestId: string;
   trialId: string;
   runId: string;
   pinnedDigest: string;
-} {
+}> {
   const trialId = `studio_${randomUUID()}`;
   const runId = `run_${randomUUID()}`;
   const pinnedDigest = hashCanonical({
@@ -190,7 +245,7 @@ function recordStudioMeasurement(input: {
     task: input.task,
   });
 
-  const manifest = createReplayManifest({
+  const manifest = await createReplayManifest({
     trialId,
     runId,
     specDigest: pinnedDigest,
@@ -208,11 +263,18 @@ function recordStudioMeasurement(input: {
   });
 
   for (const result of input.results) {
-    const record = createReplayRecord(manifest.manifestId, result.replayNumber, result.label);
+    // The worker identity is the party the observation came from — never
+    // the caller's name for the replay, which a caller controls.
+    const record = await createReplayRecord(
+      manifest.manifestId,
+      result.replayNumber,
+      input.callerId,
+      result.label,
+    );
     if (result.fingerprint) {
-      completeReplay(record.replayId, `sha256:${result.fingerprint}`);
+      await completeReplay(record.replayId, `sha256:${result.fingerprint}`);
     } else {
-      failReplay(record.replayId, result.reason ?? "this replay produced no evidence");
+      await failReplay(record.replayId, result.reason ?? "this replay produced no evidence");
     }
   }
 
@@ -336,6 +398,10 @@ export function createStudioRoutes(): Hono {
       results.push({
         replayNumber: index + 1,
         label: replay.label?.trim() || `replay ${index + 1}`,
+        // The observations came from the caller, so the caller is the
+        // worker they are attributed to. The caller's NAME for the replay
+        // is kept beside it and is never used for the rule.
+        workerIdentity: session.payload.address.toLowerCase(),
         status,
         checksAnswered,
         fingerprint,
@@ -354,7 +420,7 @@ export function createStudioRoutes(): Hono {
     // digest), and one replay record per replay carries what each of them
     // produced — including the replays that produced nothing, because "this
     // replay reported no evidence" is part of the finding.
-    const measurement = recordStudioMeasurement({
+    const measurement = await recordStudioMeasurement({
       profile,
       task,
       results,
@@ -369,6 +435,11 @@ export function createStudioRoutes(): Hono {
       comparable: decision.comparable,
       distinctFingerprints: decision.distinctFingerprints,
       requiredReplays: REQUIRED_REPLAYS,
+      // Whether the agreement is INDEPENDENT. Separate from the verdict,
+      // because separate from the question: the verdict says whether the
+      // replays agreed; this says whether that agreement is worth calling
+      // independent reproduction.
+      independence: decision.independence,
       replays: results,
       // The identifiers a caller needs to publish the method, look it up,
       // or compare it with another measurement.

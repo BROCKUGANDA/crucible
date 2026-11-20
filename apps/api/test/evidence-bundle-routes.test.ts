@@ -50,9 +50,9 @@ function headers(): Headers {
 const app = createEvidenceBundleRoutes();
 
 describe("the evidence bundle routes", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     resetEvidenceBundleStore();
-    resetReplayStore();
+    await resetReplayStore();
     resetScoringStore();
     resetSuiteStore();
     resetSpecStore();
@@ -158,7 +158,7 @@ describe("the evidence bundle routes", () => {
   });
 
   it("carries the measurement when one was recorded", async () => {
-    const manifest = createReplayManifest({
+    const manifest = await createReplayManifest({
       trialId: TRIAL,
       runId: "run_route_1",
       specDigest: "sha256:spec-route",
@@ -171,8 +171,8 @@ describe("the evidence bundle routes", () => {
       artifactHashes: {},
       workerIdentity: "worker-1",
     });
-    const replay = createReplayRecord(manifest.manifestId, 1, "w1");
-    completeReplay(replay.replayId, "sha256:output");
+    const replay = await createReplayRecord(manifest.manifestId, 1, "w1");
+    await completeReplay(replay.replayId, "sha256:output");
 
     const res = await app.request(`/${TRIAL}/bundle`, {
       method: "POST",

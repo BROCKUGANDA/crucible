@@ -604,3 +604,67 @@ caller-supplied bundle refused), and browser verification of `/disputes/1`.
 - The reviewer queue — who may take which case, how a conflict is declared
   and how an abstention is recorded — is still to come, and it is the
   consumer of these bundles.
+
+## N. The rule behind every score was never checked, and the measurement was in memory (2026-11-20, last)
+
+Sections L and M closed the claim and the proceeding. This closes the
+**rule** they both rest on.
+
+**Independence was decorative.** The network quotes one rule above every
+score: three *independent* replays of the same pinned task must produce the
+same result. The reproducibility state machine counted completed replays
+and compared their output hashes; it never looked at who ran them. Worse,
+the Studio filled each replay's `workerIdentity` with **the caller's own
+label** for the replay — so a caller could satisfy any independence check
+by naming its three replays `worker-a`, `worker-b` and `worker-c`, and the
+published card quoted the rule while listing those labels as though they
+were workers. The Studio itself ran the three replays in one process and
+called the result `REPRODUCIBLE`.
+
+**Now.** Independence is decided on the worker, and the worker is derived:
+the party the observation came from, as the platform knows it. The
+caller's name is kept, shown and never consulted. `REPRODUCIBLE` requires
+three agreeing replays from three *different* workers, and the manifest
+says which of the two reasons it is not — they disagreed, or they agreed
+and did not come from enough workers. The card carries the worker count,
+the independence verdict and a derived limit, all inside its digest, so two
+cards differing only in independence have different addresses. The Studio's
+verdict names became `AGREED` / `NOT_AGREED`, and it reports the
+independence separately — because it decides agreement and nothing else,
+and because a surface that quietly could not meet the rule would make the
+rule decorative.
+
+**The measurement was in memory.** The replay manifest lived in a module
+map, so a restart erased it and a card or a bundle described something
+that could no longer be re-derived. It is durable now
+(`replay_measurements`, migration 0016), the store is chosen once at boot,
+the replay API is asynchronous because a write that cannot be awaited cannot
+be durable, and a replay record's identity can never be rewritten — only
+its status and output may move.
+
+**A collision found on the way, named rather than papered over.** Migration
+0008 already defines `replay_manifests` and `replay_records` in a
+different, spec-bound shape — every row must name an
+`evaluation_spec_id`, carry a `manifest_digest`, and `replay_status` is
+CHECKed against a set that excludes `RUNNING` — and **nothing in the
+codebase writes them**. The durable store therefore uses its own tables
+rather than filling the 0008 ones with invented values to satisfy a NOT
+NULL. The divergence is audit row REPL-D2.
+
+**Proven.** 21 manifest tests, 19 publication tests, 12 studio-route tests,
+the decision on its own, 8 tests against a real PostgreSQL, and **nine
+mutations proven red** (one green on the first attempt, because the card's
+limits masked the mutation; the mutation now removes both and the two
+cards' addresses collide, which is what it was about). Repo-wide: 4,233
+tests pass, and 1,197 in `apps/api` against a real PostgreSQL.
+
+**What remains, named rather than left to rot:**
+
+- The multi-worker fleet that would make independent replays possible does
+  not exist (ADR-0030). Until it does, no surface can claim independent
+  reproduction — and none of them says it does.
+- The replay's result is still the caller's reported evidence, verified by
+  the platform's verifier; the fingerprint is of the evidence, not of an
+  independently executed run.
+- The 0008 schema and the live store are two models of the same word; the
+  reconciliation is named (REPL-D2) and unstarted.

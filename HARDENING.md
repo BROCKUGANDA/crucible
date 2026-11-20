@@ -2567,3 +2567,59 @@ Report a vulnerability as described in [`SECURITY.md`](SECURITY.md), not in a pu
   **Proven.** 12 domain tests (what it carries, what it says it does not contain, its identity, the clock comparison), 8 route tests (a caller-supplied bundle refused by name, an unauthenticated seal refused, a non-numeric trial id refused, the same evidence sealed twice is one bundle, the read side returns what was sealed) and 5 tests against a real PostgreSQL (the bundle survives a fresh read and still verifies; a later write with the same id cannot rewrite it; the bundles of a trial are listed oldest first). **Nine mutations proven red** (`.scratch/mutate_evidence_bundle.py`): dropping the "the suite was not disclosed" gap, dropping the "no replay manifest" gap, assuming the replays agreed, ignoring the timestamps, comparing against the host's clock, comparing when the chain's clock is unreadable, a digest verification that always passes, a route that accepts a caller's bundle, and a store that lets a later bundle overwrite a frozen one. **One was green on the first attempt** — the "the suite was not disclosed" assertion matched a substring that ANOTHER gap also contained ("the break's proof was not disclosed"), so the mutation was invisible to it; the assertions now name the exact sentence.
   **Proven end to end over HTTP against the live chain**: trial 1's real facts — sponsor `0x976EA74026E726554dB657fA54763abd0C3a0aa9`, status settled, verdict paid, the committed spec digest `0xcfeedaa2…`, the break by `0x14dC7996…` with its proof — sealed into a bundle with three stated gaps, re-sealed to the same address, read back, and a caller-supplied bundle refused with `caller-supplied-evidence-refused`. Browser-verified at `/disputes/1`: the gaps are shown BEFORE the contents, the score that was never recorded shows an em dash and not a zero, and the bundle that was sealed after the break says so.
   **Still open, and named:** the off-chain stores the bundle reads are still in process memory (REPL-D1) — a measurement can be lost on restart even though its bundle survives, so the bundle is then a record of something that cannot be re-derived; and the content store is a host-local directory in this deployment, so the bytes behind a CID are available only on the host that pinned them.
+
+- **The headline rule was never checked, and the measurement was in memory (2026-11-20, last).** The
+  network quotes one rule above every score: three INDEPENDENT replays of the same pinned task must
+  produce the same result. Two things made the quotation decorative.
+  **Independence was never checked.** The reproducibility state machine counted completed replays and
+  compared their output hashes; it never looked at who ran them. And the Studio filled each replay's
+  `workerIdentity` with the CALLER's own label for that replay — so a caller could satisfy any
+  independence check by naming its three replays `worker-a`, `worker-b` and `worker-c`, and the
+  published card quoted the rule while listing those labels as though they were workers. One worker
+  running the same verifier three times can agree three times and still be wrong three times: a
+  sticky seed, a cached artefact, a bug in that worker, a shared environment that fails the same
+  way. **The measurement was a module map.** The replay manifest — what was run, in which
+  environment, by which worker, and what each replay produced — lived in process memory, so a
+  restart erased it, and a published card and a frozen dispute bundle were left describing a
+  measurement that could no longer be re-derived.
+  **Now (ADR-0036).** Independence is decided on the WORKER, and the worker is DERIVED: the party
+  the observation came from, as the platform knows it. The caller's name for a replay is kept, shown
+  and never consulted — `label` is a name, `workerIdentity` is who ran it. `REPRODUCIBLE` now
+  requires three agreeing replays from three DIFFERENT workers, and the manifest says WHICH of the
+  two reasons it is not: the replays disagreed, or they agreed and did not come from enough
+  different workers. "INCONCLUSIVE" alone is a shrug; a reader should not have to guess which. The
+  published card carries the worker count, the independence verdict and a derived limit — and that
+  limit is INSIDE the digest, so two cards that differ only in independence have different addresses.
+  The Studio's verdict names changed to `AGREED` and `NOT_AGREED`: a verdict must not claim more
+  than the decision established, and this surface decides agreement and nothing else. It reports the
+  independence separately — the Studio runs the three replays in one process on the caller's
+  observations, so they come from one worker and the agreement is not independent reproduction —
+  and the page says so next to the verdict rather than in a footnote.
+  The measurement is durable: `replay_measurements` and `replay_measurement_records` (migration
+  0016), the store chosen once at boot, and the replay API asynchronous — a write that cannot be
+  awaited cannot be durable. The worker identity is a column of its own, because the rule is decided
+  on it; and a replay record's identity — which manifest, which number, which worker — can never be
+  rewritten, only its status and output can move. The rule itself lives in one place
+  (`replay-policy.ts`), so the replay-number bound and the completeness threshold no longer carry a
+  second, literal `3`.
+  **Proven.** 21 manifest tests, 19 publication tests, 12 studio-route tests, the decision on its
+  own, and 8 tests against a real PostgreSQL (the manifest survives a fresh read; the worker
+  identity survives it as a column; a caller's label is kept without being mistaken for a worker;
+  two replays with the same number are refused; a replay's status moves as it completes while its
+  identity does not). **Nine mutations proven red** (`.scratch/mutate_independence.py`): the state
+  machine ignoring the worker count, the worker count taken from the labels, the rule needing only
+  one worker, the manifest not saying why, the card stopping to say anything about independence, the
+  derived limit dropped, the card claiming independence whatever the replays came from, the Studio
+  attributing a replay to the label, and the Studio's answer claiming independence whatever it was.
+  **One was green on the first attempt** — the mutation that made the card stop saying anything
+  about independence, because the card's *limits* also carried the distinction and masked it; the
+  mutation now removes both, and the two cards' addresses then collide, which is what the mutation
+  was about.
+  **Proven end to end.** Repo-wide: `npm run typecheck` clean, `npm test` → 4,233 tests passed,
+  0 FAIL; `apps/api` against a real PostgreSQL → 78 files / 1,197 tests.
+  **Still open, and named.** The multi-worker fleet that would make independent replays possible
+  does not exist (ADR-0030), so no surface can yet claim independent reproduction — the Studio
+  reports the agreement and says plainly that it was not independent. And migration 0008 defines
+  `replay_manifests` and `replay_records` in a different, spec-bound shape that no code writes
+  (REPL-D2): the durable store has its own tables rather than filling the 0008 ones with invented
+  values, and the two schemas are reconciled in a later change.

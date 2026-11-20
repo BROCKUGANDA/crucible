@@ -50,11 +50,12 @@ import {
   listManifestsByRun,
   listManifestsByTrial,
   listReplaysByManifest,
+  independentWorkerCount,
   type ReplayManifest,
   type ReplayRecord,
 } from "./replay-manifest.js";
 import { computeMeasurementKey, listSpecsByTrial, type EvaluationSpec } from "./evaluation-spec.js";
-import { REQUIRED_REPLAYS } from "./replay-policy.js";
+import { REQUIRED_REPLAYS, REQUIRED_REPLAY_WORKERS } from "./replay-policy.js";
 
 /* ------------------------------------------------------------------ */
 /* The card                                                           */
@@ -121,6 +122,22 @@ export interface PublishedRepetitions {
   performed: number;
   /** Did the repetitions agree? */
   agreed: boolean | null;
+  /**
+   * How many DIFFERENT workers the completed repetitions came from.
+   *
+   * The rule the card quotes is about INDEPENDENT replays, so the card has
+   * to say how many workers there were. Zero when nothing completed; null
+   * `independent` when nothing completed either.
+   */
+  workers: number;
+  /**
+   * Whether the repetitions met the independence rule.
+   *
+   * Null when there is nothing to judge (no completed repetition). False is
+   * a statement about the measurement: the repetitions agreed, but they came
+   * from too few workers to call that independent reproduction.
+   */
+  independent: boolean | null;
   /** The rule, in words: what agreement means. */
   agreementRule: string;
   /** One line per replay: which worker, what it produced, how it ended. */
@@ -291,6 +308,16 @@ export function deriveLimits(input: {
       "The repetitions did not agree, so this result does not follow from the task and is not publishable as a score.",
     );
   }
+  if (input.repetitions.independent === false) {
+    // The card quotes a rule about INDEPENDENT replays, so the card has to
+    // say when the repetitions were not independent. Agreement between
+    // repetitions from one worker is agreement about that worker's habits.
+    limits.push(
+      `The completed repetitions came from ${input.repetitions.workers} worker${
+        input.repetitions.workers === 1 ? "" : "s"
+      }, not ${REQUIRED_REPLAY_WORKERS} different ones, so this is agreement, not independent reproduction.`,
+    );
+  }
 
   if (!input.judge.judgeVersion) {
     limits.push("No judge version is published, so the grading cannot be reproduced.");
@@ -439,12 +466,21 @@ export function assemblePublication(input: PublicationInput): PublishedMethod {
     modelId: manifest.modelId ?? null,
   };
 
+  const completedReplays = replays.filter((replay) => replay.status === "COMPLETED");
+  const workers = independentWorkerCount(completedReplays);
+  const independent =
+    completedReplays.length === 0
+      ? null
+      : completedReplays.length >= REQUIRED_REPLAYS && workers >= REQUIRED_REPLAY_WORKERS;
+
   const publishedRepetitions: PublishedRepetitions = {
     required: REQUIRED_REPLAYS,
     performed: replays.length,
     agreed,
+    workers,
+    independent,
     agreementRule:
-      "Three independent replays of the same pinned task must produce the same result; " +
+      `${REQUIRED_REPLAYS} independent replays of the same pinned task must produce the same result; ` +
       "the score is publishable only when they agree.",
     replays: [...replays]
       .sort((a, b) => a.replayNumber - b.replayNumber)
@@ -525,6 +561,10 @@ export function verifyPublicationDigest(card: PublishedMethod): boolean {
     suite: card.suite,
     rubric: card.rubric,
     judge: card.judge,
+    // The repetitions carry the workers and the independence verdict, so
+    // two cards that differ ONLY in those differ in their address. A card
+    // that said "independent" and one that said "not independent" must not
+    // share an address.
     repetitions: card.repetitions,
     limits: card.limits,
     comparabilityKey: card.comparabilityKey,
@@ -545,23 +585,26 @@ export function verifyPublicationDigest(card: PublishedMethod): boolean {
  * manifest has no method to publish, and a card with blanks in it would be
  * a card that says nothing.
  */
-export function publishForTrial(trialId: string, publishedAt: number): PublishedMethod | null {
-  const manifests = listManifestsByTrial(trialId);
+export async function publishForTrial(trialId: string, publishedAt: number): Promise<PublishedMethod | null> {
+  const manifests = await listManifestsByTrial(trialId);
   const manifest = manifests[manifests.length - 1];
   if (!manifest) return null;
   return publishForManifest(manifest, publishedAt);
 }
 
 /** Publish the method of one run. */
-export function publishForRun(runId: string, publishedAt: number): PublishedMethod | null {
-  const manifests = listManifestsByRun(runId);
+export async function publishForRun(runId: string, publishedAt: number): Promise<PublishedMethod | null> {
+  const manifests = await listManifestsByRun(runId);
   const manifest = manifests[manifests.length - 1];
   if (!manifest) return null;
   return publishForManifest(manifest, publishedAt);
 }
 
 /** Publish the method of one manifest. */
-export function publishForManifest(manifest: ReplayManifest, publishedAt: number): PublishedMethod | null {
+export async function publishForManifest(
+  manifest: ReplayManifest,
+  publishedAt: number,
+): Promise<PublishedMethod | null> {
   const aggregate = getAggregateScore(manifest.runId);
   const dimensionScores = getDimensionScores(manifest.runId);
   const rubric = aggregate ? getRubric(aggregate.rubricId) : undefined;
@@ -571,7 +614,7 @@ export function publishForManifest(manifest: ReplayManifest, publishedAt: number
   return assemblePublication({
     manifest,
     spec,
-    replays: replaysOf(manifest),
+    replays: await replaysOf(manifest),
     aggregate,
     dimensionScores,
     rubric,
@@ -582,7 +625,7 @@ export function publishForManifest(manifest: ReplayManifest, publishedAt: number
 }
 
 /** The replays recorded against a manifest. */
-function replaysOf(manifest: ReplayManifest): ReplayRecord[] {
+async function replaysOf(manifest: ReplayManifest): Promise<ReplayRecord[]> {
   return listReplaysByManifest(manifest.manifestId);
 }
 

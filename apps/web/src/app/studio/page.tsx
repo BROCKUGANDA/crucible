@@ -17,7 +17,14 @@ import { useAuthSession } from "@/lib/auth-session";
  * a studio that let you check reproducibility with one run would be selling
  * the one thing the rule exists to prevent.
  */
-type Verdict = "REPRODUCIBLE" | "NOT_REPRODUCIBLE" | "INCONCLUSIVE";
+/**
+ * What the TRIAL found, said in plain words.
+ *
+ * "AGREED" says the three replays agreed and nothing more. It does not say
+ * the agreement was independent: that is a separate fact, with its own
+ * field, because one worker can agree with itself three times.
+ */
+type Verdict = "AGREED" | "NOT_AGREED" | "INCONCLUSIVE";
 
 interface ReplayOutcome {
   replayNumber: number;
@@ -29,12 +36,20 @@ interface ReplayOutcome {
   reason: string | null;
 }
 
+interface Independence {
+  workers: number;
+  required: number;
+  independent: boolean;
+  reason: string;
+}
+
 interface Report {
   verdict: Verdict;
   explanation: string;
   comparable: number;
   distinctFingerprints: number;
   requiredReplays: number;
+  independence: Independence;
   replays: ReplayOutcome[];
 }
 
@@ -171,6 +186,18 @@ export default function StudioPage() {
                 <br />
                 <span className="hint">{report.explanation}</span>
               </p>
+              {/* The independence is a separate fact and it is shown next to
+                  the verdict, because agreement between three runs of one
+                  worker is not the agreement the network's rule is about. */}
+              <p className="surface detail-panel">
+                <strong>
+                  {report.independence.independent
+                    ? "Yes — the replays came from different workers."
+                    : "No — the replays did not come from different workers."}
+                </strong>
+                <br />
+                <span className="hint">{report.independence.reason}</span>
+              </p>
               <div className="stack">
                 {report.replays.map((replay) => (
                   <div key={replay.replayNumber} className="surface detail-panel">
@@ -203,7 +230,7 @@ export default function StudioPage() {
 }
 
 function verdictWords(verdict: Verdict): string {
-  if (verdict === "REPRODUCIBLE") return "Yes — the three replays agreed.";
-  if (verdict === "NOT_REPRODUCIBLE") return "No — the replays disagreed.";
+  if (verdict === "AGREED") return "Yes — the three replays agreed.";
+  if (verdict === "NOT_AGREED") return "No — the replays disagreed.";
   return "Not enough to say.";
 }

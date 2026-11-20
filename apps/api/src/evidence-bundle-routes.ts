@@ -133,7 +133,7 @@ export function createEvidenceBundleRoutes(deps: EvidenceBundleRouteDeps = {}): 
     // the gaps it states are the gaps of the bundle as sealed. A bundle
     // whose gaps were patched afterwards would be a bundle whose address
     // did not cover its own contents.
-    const bundle = buildBundle(trialId, sealedAt, facts, deps.chainNow?.() ?? null);
+    const bundle = await buildBundle(trialId, sealedAt, facts, deps.chainNow?.() ?? null);
     const predates = predatesDispute(bundle, facts?.disputeOpenedAt ?? null);
     const stored = await getEvidenceBundleStore().record(bundle, predates);
 

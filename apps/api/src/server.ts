@@ -60,6 +60,22 @@ if (process.env.DATABASE_URL) {
   );
 }
 
+// The MEASUREMENT is durable. A replay manifest is what was run, in which
+// environment, by which worker, and what each replay produced; a published
+// card and a frozen dispute bundle are both built from it, so a manifest
+// that evaporates on restart leaves them describing something that can no
+// longer be re-derived.
+if (process.env.DATABASE_URL) {
+  const { configureReplayStore } = await import("./replay-store.js");
+  const { pgReplayStore } = await import("./replay-pg.js");
+  configureReplayStore(pgReplayStore());
+  console.log("[crucible] replay manifests: postgresql (a measurement survives a restart)");
+} else {
+  console.log(
+    "[crucible] replay manifests: in memory — a measurement is lost on restart. Configure DATABASE_URL for a durable record.",
+  );
+}
+
 // Published methods — the method card of a score — are audit artifacts, and
 // an audit artifact that evaporates on restart is a claim with no record.
 // The store is chosen once, here, and never per request (ADR-0033).

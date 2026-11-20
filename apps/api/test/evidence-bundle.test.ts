@@ -34,15 +34,15 @@ import { generateEvaluationSpec, resetSpecStore } from "../src/evaluation-spec.j
 const TRIAL = "42";
 const AGENT = "agent_bundle_1";
 
-function resetAll() {
-  resetReplayStore();
+async function resetAll() {
+  await resetReplayStore();
   resetScoringStore();
   resetSuiteStore();
   resetSpecStore();
 }
 
 /** A measurement: a pinned spec, three agreeing replays and a score. */
-function seedMeasurement() {
+async function seedMeasurement() {
   const suite = createSuite({
     id: "suite_bundle_1",
     orgId: null,
@@ -106,7 +106,7 @@ function seedMeasurement() {
   });
   createAggregateScore("run_bundle_1", rubric.id, "weighted");
 
-  const manifest = createReplayManifest({
+  const manifest = await createReplayManifest({
     trialId: TRIAL,
     runId: "run_bundle_1",
     specDigest: spec.specDigest,
@@ -120,8 +120,8 @@ function seedMeasurement() {
     workerIdentity: "worker-1",
   });
   for (let n = 1; n <= 3; n += 1) {
-    const replay = createReplayRecord(manifest.manifestId, n, `worker-${n}`);
-    completeReplay(replay.replayId, "sha256:same-output");
+    const replay = await createReplayRecord(manifest.manifestId, n, `worker-${n}`);
+    await completeReplay(replay.replayId, "sha256:same-output");
   }
   return { spec, manifest };
 }
@@ -145,13 +145,13 @@ function emptyMeasurement(overrides: Partial<BundleMeasurement> = {}): BundleMea
 }
 
 describe("the evidence bundle", () => {
-  beforeEach(() => {
-    resetAll();
+  beforeEach(async () => {
+    await resetAll();
   });
 
   describe("what it carries", () => {
-    it("carries the chain's facts and the platform's measurement, and nothing either did not say", () => {
-      const bundle = assembleBundle({
+    it("carries the chain's facts and the platform's measurement, and nothing either did not say", async () => {
+      const bundle = await assembleBundle({
         trialKey: TRIAL,
         sealedAt: 1_700_000_000_000,
         chain: {
@@ -184,9 +184,9 @@ describe("the evidence bundle", () => {
       expect(bundle.chain?.breakProofCid).toBeNull();
     });
 
-    it("carries a real measurement: the replays, their agreement and the score", () => {
-      seedMeasurement();
-      const bundle = buildBundle(TRIAL, 1_700_000_000_000);
+    it("carries a real measurement: the replays, their agreement and the score", async () => {
+      await seedMeasurement();
+      const bundle = await buildBundle(TRIAL, 1_700_000_000_000);
 
       expect(bundle.measurement.replays.length).toBe(3);
       expect(bundle.measurement.replaysAgreed).toBe(true);
@@ -199,8 +199,8 @@ describe("the evidence bundle", () => {
   });
 
   describe("what it says it does not contain", () => {
-    it("says the suite was not disclosed, rather than omitting it", () => {
-      const bundle = assembleBundle({
+    it("says the suite was not disclosed, rather than omitting it", async () => {
+      const bundle = await assembleBundle({
         trialKey: TRIAL,
         sealedAt: 1,
         chain: {
@@ -223,8 +223,8 @@ describe("the evidence bundle", () => {
       );
     });
 
-    it("says the break's own proof is missing, when it was filed without one", () => {
-      const bundle = assembleBundle({
+    it("says the break's own proof is missing, when it was filed without one", async () => {
+      const bundle = await assembleBundle({
         trialKey: TRIAL,
         sealedAt: 1,
         chain: { breakSkeptic: "0xskeptic", breakProofCid: null },
@@ -238,25 +238,25 @@ describe("the evidence bundle", () => {
       );
     });
 
-    it("says there is no measurement when no manifest was recorded", () => {
-      seedMeasurement();
-      resetReplayStore();
-      const bundle = buildBundle(TRIAL, 1);
+    it("says there is no measurement when no manifest was recorded", async () => {
+      await seedMeasurement();
+      await resetReplayStore();
+      const bundle = await buildBundle(TRIAL, 1);
       expect(bundle.gaps.some((g) => g.includes("No replay manifest"))).toBe(true);
     });
 
-    it("says the score is missing rather than showing none", () => {
-      seedMeasurement();
+    it("says the score is missing rather than showing none", async () => {
+      await seedMeasurement();
       resetScoringStore();
-      const bundle = buildBundle(TRIAL, 1);
+      const bundle = await buildBundle(TRIAL, 1);
       expect(bundle.gaps.some((g) => g.includes("No aggregate score"))).toBe(true);
       expect(bundle.measurement.aggregateBps).toBeNull();
     });
 
-    it("says the replays did not agree, when they did not", () => {
-      seedMeasurement();
+    it("says the replays did not agree, when they did not", async () => {
+      await seedMeasurement();
       // A fourth, disagreeing replay on a fresh manifest.
-      const manifest = createReplayManifest({
+      const manifest = await createReplayManifest({
         trialId: "77",
         runId: "run_77",
         specDigest: "sha256:x",
@@ -269,19 +269,19 @@ describe("the evidence bundle", () => {
         artifactHashes: {},
         workerIdentity: "worker-1",
       });
-      const a = createReplayRecord(manifest.manifestId, 1, "w1");
-      const b = createReplayRecord(manifest.manifestId, 2, "w2");
-      completeReplay(a.replayId, "sha256:output-a");
-      completeReplay(b.replayId, "sha256:output-b");
+      const a = await createReplayRecord(manifest.manifestId, 1, "w1");
+      const b = await createReplayRecord(manifest.manifestId, 2, "w2");
+      await completeReplay(a.replayId, "sha256:output-a");
+      await completeReplay(b.replayId, "sha256:output-b");
 
-      const bundle = buildBundle("77", 1);
+      const bundle = await buildBundle("77", 1);
       expect(bundle.measurement.replaysAgreed).toBe(false);
       expect(bundle.gaps.some((g) => g.includes("did not agree"))).toBe(true);
     });
   });
 
   describe("its identity", () => {
-    it("is content-addressed, so it cannot be edited afterwards", () => {
+    it("is content-addressed, so it cannot be edited afterwards", async () => {
       const base: Parameters<typeof assembleBundle>[0] = {
         trialKey: TRIAL,
         sealedAt: 1_700_000_000_000,
@@ -291,15 +291,15 @@ describe("the evidence bundle", () => {
         aggregate: null,
         dimensionScores: [],
       };
-      const first = assembleBundle(base);
+      const first = await assembleBundle(base);
       // The address names WHAT was frozen, so sealing the same evidence
       // again is the same bundle — not a second row saying the same thing.
-      const second = assembleBundle({ ...base, sealedAt: 1_700_000_000_001 });
+      const second = await assembleBundle({ ...base, sealedAt: 1_700_000_000_001 });
       expect(second.digest).toBe(first.digest);
       expect(second.id).toBe(first.id);
 
       // Any change to the content changes the address.
-      const changed = assembleBundle({
+      const changed = await assembleBundle({
         ...base,
         chain: { trialId: 42, specDigest: "0x" + "c".repeat(64) },
       });
@@ -308,8 +308,8 @@ describe("the evidence bundle", () => {
       expect(first.id.startsWith("bundle_")).toBe(true);
     });
 
-    it("can be CHECKED: a reader can recompute the digest and a tampered bundle fails", () => {
-      const bundle = assembleBundle({
+    it("can be CHECKED: a reader can recompute the digest and a tampered bundle fails", async () => {
+      const bundle = await assembleBundle({
         trialKey: TRIAL,
         sealedAt: 1_700_000_000_000,
         chain: { trialId: 42, specDigest: "0x" + "a".repeat(64) },
@@ -335,7 +335,7 @@ describe("the evidence bundle", () => {
   });
 
   describe("whether it is the bundle the parties saw", () => {
-    const bundle = (sealedAtChainSeconds: number | null): EvidenceBundle =>
+    const bundle = async (sealedAtChainSeconds: number | null): Promise<EvidenceBundle> =>
       assembleBundle({
         trialKey: TRIAL,
         sealedAt: 1_700_000_000_000,
@@ -347,26 +347,26 @@ describe("the evidence bundle", () => {
         dimensionScores: [],
       });
 
-    it("says a bundle sealed before the break predates it", () => {
+    it("says a bundle sealed before the break predates it", async () => {
       // The seal and the dispute are compared on the CHAIN's clock. The
       // host's wall clock is a different clock, and mixing them inverts the
       // answer by a factor of a thousand.
-      expect(predatesDispute(bundle(1_700_000_400), 1_700_000_500)).toBe(true);
+      expect(predatesDispute(await bundle(1_700_000_400), 1_700_000_500)).toBe(true);
     });
 
-    it("says a bundle sealed after the break does not predate it", () => {
-      expect(predatesDispute(bundle(1_700_000_600), 1_700_000_500)).toBe(false);
+    it("says a bundle sealed after the break does not predate it", async () => {
+      expect(predatesDispute(await bundle(1_700_000_600), 1_700_000_500)).toBe(false);
     });
 
-    it("says nothing when the chain has not said when the dispute opened", () => {
-      expect(predatesDispute(bundle(1_700_000_400), null)).toBeNull();
+    it("says nothing when the chain has not said when the dispute opened", async () => {
+      expect(predatesDispute(await bundle(1_700_000_400), null)).toBeNull();
     });
 
-    it("says nothing when this host could not read the chain's clock", () => {
+    it("says nothing when this host could not read the chain's clock", async () => {
       // Two clocks: the chain's and the host's. A seal compared against a
       // dispute across the two is a guess, and a guess here decides whether
       // a committee is reading the parties' evidence.
-      expect(predatesDispute(bundle(null), 1_700_000_500)).toBeNull();
+      expect(predatesDispute(await bundle(null), 1_700_000_500)).toBeNull();
     });
   });
 });

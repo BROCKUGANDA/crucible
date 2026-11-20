@@ -73,8 +73,8 @@ export function createPublicationRoutes(): Hono {
 
     const publishedAt = Date.now();
     const method = trialId
-      ? publishForTrial(trialId, publishedAt)
-      : publishForRun(runId, publishedAt);
+      ? await publishForTrial(trialId, publishedAt)
+      : await publishForRun(runId, publishedAt);
     if (!method) {
       return c.json(
         {

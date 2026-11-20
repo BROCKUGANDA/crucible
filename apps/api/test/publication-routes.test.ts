@@ -33,11 +33,11 @@ const AGENT = "agent_pub_route_1";
 
 const app = createPublicationRoutes();
 
-function seed(digestSuffix = "1"): {
+async function seed(digestSuffix = "1"): Promise<{
   manifestId: string;
   rubricId: string;
-} {
-  resetReplayStore();
+}> {
+  await resetReplayStore();
   resetScoringStore();
   resetSuiteStore();
   resetSpecStore();
@@ -115,7 +115,7 @@ function seed(digestSuffix = "1"): {
   });
   createAggregateScore(RUN, rubric.id, "weighted");
 
-  const manifest = createReplayManifest({
+  const manifest = await createReplayManifest({
     trialId: TRIAL,
     runId: RUN,
     specDigest: spec.specDigest,
@@ -133,8 +133,8 @@ function seed(digestSuffix = "1"): {
   });
 
   for (let n = 1; n <= 3; n++) {
-    const replay = createReplayRecord(manifest.manifestId, n, `worker-${n}`);
-    completeReplay(replay.replayId, "sha256:same-output");
+    const replay = await createReplayRecord(manifest.manifestId, n, `worker-${n}`);
+    await completeReplay(replay.replayId, "sha256:same-output");
   }
 
   return { manifestId: manifest.manifestId, rubricId: rubric.id };
@@ -146,7 +146,7 @@ describe("publication routes", () => {
   });
 
   it("publishes the method of a trial", async () => {
-    seed();
+    await seed();
     const res = await app.request("/", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -174,7 +174,7 @@ describe("publication routes", () => {
   });
 
   it("refuses a caller who brings its own score", async () => {
-    seed();
+    await seed();
     const res = await app.request("/", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -186,7 +186,7 @@ describe("publication routes", () => {
   });
 
   it("refuses a caller who brings its own verdict or limits", async () => {
-    seed();
+    await seed();
     for (const field of ["verdict", "limits", "digest", "publishedAt"]) {
       const res = await app.request("/", {
         method: "POST",
@@ -211,7 +211,7 @@ describe("publication routes", () => {
   });
 
   it("reads back exactly what was published", async () => {
-    seed();
+    await seed();
     const publish = await app.request("/", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -227,7 +227,7 @@ describe("publication routes", () => {
   });
 
   it("publishes the same method twice as the same card", async () => {
-    seed();
+    await seed();
     const first = await app.request("/", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -244,7 +244,7 @@ describe("publication routes", () => {
   });
 
   it("lists the published cards of a subject", async () => {
-    seed();
+    await seed();
     await app.request("/", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -257,7 +257,7 @@ describe("publication routes", () => {
   });
 
   it("compares two cards and says they are comparable when they were measured the same way", async () => {
-    seed();
+    await seed();
     const publish = await app.request("/", {
       method: "POST",
       headers: { "content-type": "application/json" },
