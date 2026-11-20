@@ -17,38 +17,38 @@ import { createOrganisation, __resetStoreForTests, getInvitation } from "../src/
 import { __resetAuditStoreForTests } from "../src/org-audit.js";
 import { newOrganisation } from "../src/organisation.js";
 
-beforeEach(() => {
+beforeEach(async () => {
   __resetStoreForTests();
   __resetAuditStoreForTests();
 });
 
 const org = newOrganisation("org-1", "Acme Corp", "acme", "0xowner");
 
-beforeEach(() => {
+beforeEach(async () => {
   createOrganisation(org);
 });
 
 describe("invite and accept", () => {
-  it("invites and accepts a member", () => {
-    const { invitationId } = inviteMember(
+  it("invites and accepts a member", async () => {
+    const { invitationId } = await inviteMember(
       "org-1",
       "0xalice",
       "org.evaluator",
       "0xowner",
       1000 * 60 * 60,
     );
-    const { membershipId, membership } = acceptMember(invitationId, "0xalice");
+    const { membershipId, membership } = await acceptMember(invitationId, "0xalice");
     expect(membership.principalId).toBe("0xalice");
     expect(membership.role).toBe("org.evaluator");
     expect(membershipId).toBe(membership.id);
   });
 
-  it("rejects unknown invitation", () => {
-    expect(() => acceptMember("nope", "0xalice")).toThrow();
+  it("rejects unknown invitation", async () => {
+    await expect(acceptMember("nope", "0xalice")).rejects.toThrow();
   });
 
-  it("rejects domain mismatch at accept", () => {
-    inviteMember(
+  it("rejects domain mismatch at accept", async () => {
+    await inviteMember(
       "org-1",
       "0xalice",
       "org.evaluator",
@@ -60,92 +60,92 @@ describe("invite and accept", () => {
     );
     // The invitations list holds the real id; acceptance with a non-matching domain fails.
     const inv = listOrgInvitations("org-1")[0];
-    expect(() => acceptMember(inv.id, "not-an-email")).toThrow();
+    await expect(acceptMember(inv.id, "not-an-email")).rejects.toThrow();
   });
 
-  it("lists invitations", () => {
-    inviteMember("org-1", "0xalice", "org.evaluator", "0xowner", 1000 * 60 * 60);
+  it("lists invitations", async () => {
+    await inviteMember("org-1", "0xalice", "org.evaluator", "0xowner", 1000 * 60 * 60);
     expect(listOrgInvitations("org-1")).toHaveLength(1);
     expect(listOrgInvitations("other-org")).toHaveLength(0);
   });
 });
 
 describe("remove and change role", () => {
-  beforeEach(() => {
-    const { invitationId } = inviteMember(
+  beforeEach(async () => {
+    const { invitationId } = await inviteMember(
       "org-1",
       "0xalice",
       "org.evaluator",
       "0xowner",
       1000 * 60 * 60,
     );
-    acceptMember(invitationId, "0xalice");
+    await acceptMember(invitationId, "0xalice");
   });
 
-  it("changes role", () => {
-    const result = changeRole("org-1", "0xalice", "org.reviewer", "0xowner");
+  it("changes role", async () => {
+    const result = await changeRole("org-1", "0xalice", "org.reviewer", "0xowner");
     expect(result.previousRole).toBe("org.evaluator");
     expect(result.newRole).toBe("org.reviewer");
   });
 
-  it("rejects non-owner changing role", () => {
-    expect(() => changeRole("org-1", "0xalice", "org.reviewer", "0xalice")).toThrow();
+  it("rejects non-owner changing role", async () => {
+    await expect(changeRole("org-1", "0xalice", "org.reviewer", "0xalice")).rejects.toThrow();
   });
 
-  it("enforces separation of duties — billing admin cannot grant owner", () => {
+  it("enforces separation of duties — billing admin cannot grant owner", async () => {
     // Make alice a billing admin first.
-    changeRole("org-1", "0xalice", "org.billing.admin", "0xowner");
+    await changeRole("org-1", "0xalice", "org.billing.admin", "0xowner");
     // Now alice tries to grant owner to bob.
-    const { invitationId: bobInvite } = inviteMember(
+    const { invitationId: bobInvite } = await inviteMember(
       "org-1",
       "0xbob",
       "org.evaluator",
       "0xowner",
       1000 * 60 * 60,
     );
-    acceptMember(bobInvite, "0xbob");
-    expect(() => changeRole("org-1", "0xbob", "org.owner", "0xalice")).toThrow();
+    await acceptMember(bobInvite, "0xbob");
+    await expect(changeRole("org-1", "0xbob", "org.owner", "0xalice")).rejects.toThrow();
   });
 
-  it("removes member", () => {
-    expect(removeMember("org-1", "0xalice", "0xowner")).toBe(true);
+  it("removes member", async () => {
+    expect(await removeMember("org-1", "0xalice", "0xowner")).toBe(true);
     expect(listOrgMemberships("org-1")).toHaveLength(1);
-    expect(() => removeMember("org-1", "0xalice", "0xowner")).toThrow();
+    await expect(removeMember("org-1", "0xalice", "0xowner")).rejects.toThrow();
   });
 
-  it("rejects non-owner removing member", () => {
-    changeRole("org-1", "0xalice", "org.reviewer", "0xowner");
-    expect(() => removeMember("org-1", "0xalice", "0xalice")).toThrow();
+  it("rejects non-owner removing member", async () => {
+    await changeRole("org-1", "0xalice", "org.reviewer", "0xowner");
+    await expect(removeMember("org-1", "0xalice", "0xalice")).rejects.toThrow();
   });
 });
 
 describe("transfer ownership", () => {
-  beforeEach(() => {
-    const { invitationId } = inviteMember(
+  beforeEach(async () => {
+    const { invitationId } = await inviteMember(
       "org-1",
       "0xalice",
       "org.evaluator",
       "0xowner",
       1000 * 60 * 60,
     );
-    acceptMember(invitationId, "0xalice");
+    await acceptMember(invitationId, "0xalice");
   });
 
-  it("transfers ownership", () => {
-    const result = transferOwnership("org-1", "0xalice", "0xowner");
+  it("transfers ownership", async () => {
+    const result = await transferOwnership("org-1", "0xalice", "0xowner");
     expect(result.previousOwner).toBe("0xowner");
     expect(result.newOwner).toBe("0xalice");
   });
 
-  it("rejects non-owner transferring", () => {
-    expect(() => transferOwnership("org-1", "0xalice", "0xalice")).toThrow();
+  it("rejects non-owner transferring", async () => {
+    await expect(transferOwnership("org-1", "0xalice", "0xalice")).rejects.toThrow();
   });
 });
 
 describe("audit history", () => {
-  it("records membership actions in audit", () => {
-    const { invitationId } = inviteMember("org-1", "0xalice", "org.evaluator", "0xowner", 1000 * 60 * 60);
-    acceptMember(invitationId, "0xalice");
+  it("records membership actions in audit", async () => {
+    const { invitationId } = await inviteMember("org-1", "0xalice", "org.evaluator", "0xowner", 1000 * 60 * 60);
+    await acceptMember(invitationId, "0xalice");
     const audit = listOrgAudit("org-1");
     expect(audit.length).toBeGreaterThanOrEqual(2);
     const actions = audit.map((a) => a.action);
@@ -155,28 +155,28 @@ describe("audit history", () => {
 });
 
 describe("projects/workspaces edge cases (blueprint items 61-80)", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     // alice is a member (org already created by outer beforeEach)
-    const { invitationId } = inviteMember(
+    const { invitationId } = await inviteMember(
       "org-1",
       "0xalice",
       "org.evaluator",
       "0xowner",
       1000 * 60 * 60,
     );
-    acceptMember(invitationId, "0xalice");
+    await acceptMember(invitationId, "0xalice");
   });
 
-  it("61: duplicate request replay - same invite is idempotent", () => {
+  it("61: duplicate request replay - same invite is idempotent", async () => {
     const before = listOrgInvitations("org-1").length;
-    const inv1 = inviteMember(
+    const inv1 = await inviteMember(
       "org-1",
       "0xbob",
       "org.reviewer",
       "0xowner",
       1000 * 60 * 60,
     );
-    const inv2 = inviteMember(
+    const inv2 = await inviteMember(
       "org-1",
       "0xbob",
       "org.reviewer",
@@ -187,8 +187,8 @@ describe("projects/workspaces edge cases (blueprint items 61-80)", () => {
     expect(listOrgInvitations("org-1").length).toBe(before + 2);
   });
 
-  it("62: stale or expired state - expired invitation cannot be accepted", () => {
-    const { invitationId } = inviteMember(
+  it("62: stale or expired state - expired invitation cannot be accepted", async () => {
+    const { invitationId } = await inviteMember(
       "org-1",
       "0xcharlie",
       "org.evaluator",
@@ -198,18 +198,18 @@ describe("projects/workspaces edge cases (blueprint items 61-80)", () => {
     const inv = getInvitation(invitationId);
     expect(inv).not.toBeNull();
     if (inv) inv.expiresAt = Date.now() - 1000;
-    expect(() => acceptMember(invitationId, "0xcharlie")).toThrow();
+    await expect(acceptMember(invitationId, "0xcharlie")).rejects.toThrow();
   });
 
-  it("63: concurrent conflicting update - role change is consistent", () => {
-    const r1 = changeRole("org-1", "0xalice", "org.reviewer", "0xowner");
-    const r2 = changeRole("org-1", "0xalice", "org.reviewer", "0xowner");
+  it("63: concurrent conflicting update - role change is consistent", async () => {
+    const r1 = await changeRole("org-1", "0xalice", "org.reviewer", "0xowner");
+    const r2 = await changeRole("org-1", "0xalice", "org.reviewer", "0xowner");
     expect(r1.newRole).toBe(r2.newRole);
   });
 
-  it("64: partial multi-service completion - invite is atomic", () => {
+  it("64: partial multi-service completion - invite is atomic", async () => {
     const before = listOrgInvitations("org-1").length;
-    const { invitationId } = inviteMember(
+    const { invitationId } = await inviteMember(
       "org-1",
       "0xdave",
       "org.evaluator",
@@ -221,20 +221,16 @@ describe("projects/workspaces edge cases (blueprint items 61-80)", () => {
     expect(invitationId).toBeDefined();
   });
 
-  it("65: dependency unavailable - non-existent org rejects", () => {
-    expect(() =>
-      inviteMember("org-missing", "0xeve", "org.evaluator", "0xowner", 1000 * 60 * 60),
-    ).toThrow();
+  it("65: dependency unavailable - non-existent org rejects", async () => {
+    await expect(inviteMember("org-missing", "0xeve", "org.evaluator", "0xowner", 1000 * 60 * 60)).rejects.toThrow();
   });
 
-  it("66: malformed or oversized input - unknown role rejected", () => {
-    expect(() =>
-      inviteMember("org-1", "0xfrank", "org.not-a-role" as any, "0xowner", 1000 * 60 * 60),
-    ).toThrow();
+  it("66: malformed or oversized input - unknown role rejected", async () => {
+    await expect(inviteMember("org-1", "0xfrank", "org.not-a-role" as any, "0xowner", 1000 * 60 * 60)).rejects.toThrow();
   });
 
-  it("68: clock skew - invitation expiry uses server time", () => {
-    const { invitationId } = inviteMember(
+  it("68: clock skew - invitation expiry uses server time", async () => {
+    const { invitationId } = await inviteMember(
       "org-1",
       "0xgrace",
       "org.evaluator",
@@ -245,13 +241,13 @@ describe("projects/workspaces edge cases (blueprint items 61-80)", () => {
     expect(inv?.expiresAt).toBeGreaterThan(Date.now());
   });
 
-  it("69: permission revoked mid-workflow - removed member cannot be re-added via old invite", () => {
-    removeMember("org-1", "0xalice", "0xowner");
+  it("69: permission revoked mid-workflow - removed member cannot be re-added via old invite", async () => {
+    await removeMember("org-1", "0xalice", "0xowner");
     // Alice's membership is revoked; she is no longer a member.
     expect(listOrgMemberships("org-1")).toHaveLength(1); // only owner
   });
 
-  it("70: cache/log/export data leakage - org isolation", () => {
+  it("70: cache/log/export data leakage - org isolation", async () => {
     const aliceOrgs = listOrgMemberships("org-1");
     expect(aliceOrgs.some((m) => m.principalId === "0xalice")).toBe(true);
     // Stranger has no memberships in this org.
@@ -261,26 +257,24 @@ describe("projects/workspaces edge cases (blueprint items 61-80)", () => {
     expect(strangerMemberships).toHaveLength(0);
   });
 
-  it("71: illegal state transition - non-owner cannot change role", () => {
-    expect(() =>
-      changeRole("org-1", "0xalice", "org.owner", "0xalice"),
-    ).toThrow();
+  it("71: illegal state transition - non-owner cannot change role", async () => {
+    await expect(changeRole("org-1", "0xalice", "org.owner", "0xalice")).rejects.toThrow();
   });
 
-  it("72: worker crash or duplicate delivery - idempotent operations", () => {
+  it("72: worker crash or duplicate delivery - idempotent operations", async () => {
     const m1 = listOrgMemberships("org-1");
     const m2 = listOrgMemberships("org-1");
     expect(m1.length).toBe(m2.length);
   });
 
-  it("76: resource exhaustion - per-tenant quota boundary", () => {
+  it("76: resource exhaustion - per-tenant quota boundary", async () => {
     // The org store enforces one active membership per principal per org.
-    expect(() =>
+    await expect(
       changeRole("org-1", "0xalice", "org.owner", "0xowner"),
-    ).not.toThrow();
+    ).resolves.toBeDefined();
   });
 
-  it("78: environment configuration drift - organization persists across resets", () => {
+  it("78: environment configuration drift - organization persists across resets", async () => {
     const fetched = listOrgMemberships("org-1");
     expect(fetched.length).toBeGreaterThan(0);
   });

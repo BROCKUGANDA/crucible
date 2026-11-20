@@ -8,6 +8,7 @@ export * from "./memory-seal.js";
 export * from "./orchestrator.js";
 export * from "./organisation.js";
 export * from "./org-store.js";
+export * from "./org-store-pg.js";
 export * from "./org-principal.js";
 export * from "./org-authz.js";
 export * from "./org-roles.js";

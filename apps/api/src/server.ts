@@ -45,6 +45,27 @@ if (process.env.DATABASE_URL) {
     "[crucible] sponsor ledger: in memory — sponsors, programmes and budgets are lost on restart. Configure DATABASE_URL for a durable ledger.",
   );
 }
+
+// The tenancy model — organisations, memberships, invitations — is durable
+// too (ADR-0033). The store is a cache over PostgreSQL: it is filled from
+// there at boot and every write goes to the database before it is visible.
+// Without a database the API runs on the in-memory store and says so.
+if (process.env.DATABASE_URL) {
+  const { configureOrgPersistence, hydrateOrgStore, orgPersistenceKind } = await import(
+    "@crucible/agent-security"
+  );
+  const { pgOrgPersistence } = await import("@crucible/agent-security");
+  configureOrgPersistence(pgOrgPersistence);
+  const hydrated = await hydrateOrgStore();
+  console.log(
+    `[crucible] tenancy: ${orgPersistenceKind()} — ${hydrated.organisations} organisation(s), ` +
+      `${hydrated.memberships} membership(s), ${hydrated.invitations} invitation(s)`,
+  );
+} else {
+  console.log(
+    "[crucible] tenancy: in memory — organisations and memberships are lost on restart, and two workers can disagree about who is a member of what.",
+  );
+}
 import { OwnerGate, SponsorshipQueue, sponsorshipMessage } from "./sponsorship.js";
 import { disclosureFileIn, disclosedCids as readDisclosure, type DisclosureEntry } from "./disclosure.js";
 import { createContentSource, digestToCidMap } from "./content.js";
