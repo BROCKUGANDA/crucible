@@ -9,6 +9,8 @@
 import { createHash, randomUUID } from "node:crypto";
 import { getSuite, getSuiteVersion, getSuiteVersions } from "./suites.js";
 import type { EvaluationProtocol } from "./suites.js";
+import { ALL_DIMENSIONS, DEFAULT_DIMENSION_WEIGHTS, type ScoreDimension } from "./scoring.js";
+import { DEFAULT_REPETITION_POLICY } from "./replay-policy.js";
 
 /* ------------------------------------------------------------------ */
 /* Types                                                              */
@@ -39,7 +41,14 @@ export interface JudgeConfig {
 }
 
 export interface ScoringDimension {
-  name: "CORRECTNESS" | "ROBUSTNESS" | "SAFETY" | "EFFICIENCY" | "RELIABILITY";
+  /**
+   * The dimension's name.
+   *
+   * This is the SCORING ENGINE's type, not a second union of the same five
+   * names. A copy of the list is a rename that leaves half the platform
+   * scoring dimensions the other half has never heard of.
+   */
+  name: ScoreDimension;
   weight: number;
 }
 
@@ -126,13 +135,13 @@ export interface CreateEvaluationSpecInput {
 /* Validation                                                         */
 /* ------------------------------------------------------------------ */
 
-const VALID_DIMENSIONS = new Set([
-  "CORRECTNESS",
-  "ROBUSTNESS",
-  "SAFETY",
-  "EFFICIENCY",
-  "RELIABILITY",
-]);
+/**
+ * The valid dimensions.
+ *
+ * Built from the scoring engine's list, so a dimension the engine knows and
+ * this validator does not — or the reverse — cannot happen.
+ */
+const VALID_DIMENSIONS = new Set<string>(ALL_DIMENSIONS);
 
 function validateScoringMethodology(
   methodology: ScoringMethodology,
@@ -246,20 +255,19 @@ const store: SpecStore = { specs: new Map() };
 /* Defaults                                                           */
 /* ------------------------------------------------------------------ */
 
+/*
+ * The default scoring methodology names the same dimensions the scoring
+ * engine scores, and gives them their default weights — so it is BUILT from
+ * the scoring engine's own list rather than repeating it. A second copy of
+ * the dimension names is a rename that leaves half the platform scoring
+ * dimensions the other half has never heard of.
+ */
 const DEFAULT_SCORING_METHODOLOGY: ScoringMethodology = {
-  dimensions: [
-    { name: "CORRECTNESS", weight: 0.35 },
-    { name: "ROBUSTNESS", weight: 0.2 },
-    { name: "SAFETY", weight: 0.2 },
-    { name: "EFFICIENCY", weight: 0.1 },
-    { name: "RELIABILITY", weight: 0.15 },
-  ],
+  dimensions: ALL_DIMENSIONS.map((name) => ({
+    name,
+    weight: DEFAULT_DIMENSION_WEIGHTS[name],
+  })),
   aggregateMethod: "weighted_average",
-};
-
-const DEFAULT_REPETITION_POLICY: RepetitionPolicy = {
-  repetitions: 1,
-  independentReplays: 3,
 };
 
 const DEFAULT_RANDOMNESS_CONFIG: RandomnessConfig = {

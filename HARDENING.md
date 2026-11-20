@@ -1,5 +1,112 @@
 # Hardening record
 
+## Worker, money and methodology slice — 2026-11-20, not released
+
+Three defects of the same shape: a claim the platform believed because the
+platform wrote it down.
+
+**The worker was a stub and ran nowhere.** `apps/api/src/worker.ts` returned
+`{status:"scheduled"}`, `{delivered:true}`, `{captured:true}`, `{cleaned:true}`,
+`{reset:true}` and `{reconciled:true}` — six answers shaped like successes
+with none of the work behind them. Its repeat pattern re-added each job with a
+delay to run again; BullMQ keeps completed jobs by default, so the re-added
+job carried an id a completed job already held, the add was swallowed, and a
+job scheduled every hour ran exactly once and then stopped, silently. And
+nothing ran it: the compose `worker` service passed `command: node
+dist/worker.js` to an entrypoint script that ignored its argument and always
+started `dist/server.js`, so the "worker" was a second API server and the
+queues were drained by nothing.
+
+There is now ONE worker. The entrypoint is `apps/api/src/worker.ts`; the
+reusable service is `packages/agent-security/src/worker-service.ts` and the
+old `telemetry-service.ts` is gone, because two services that both claim to
+be the worker is the duplicate source of truth this repository forbids.
+Recurring jobs are armed with BullMQ's `upsertJobScheduler`, keyed by id, so a
+restart or a second instance updates the cadence instead of doubling it, and
+the cadence does not depend on a job surviving to re-arm itself. The shutdown
+drains for real — the in-flight pass is awaited and then ONE more pass runs,
+because the row that needs delivering is the one claimed after the last tick.
+The docker entrypoint now switches on an explicit role and refuses an unknown
+one; a container that silently runs the wrong process cannot be trusted.
+
+Two plausible jobs were deliberately NOT registered: `quota_reset` (quota
+usage is computed from the events inside the current period — there is no
+counter to reset) and `cache_cleanup` (Redis expires the cache keys itself).
+A stub that returns ok is worse than an absent job, because it hides the
+absence.
+
+**A sponsor's funding was a claim.** `depositToEscrow(programId, amountWei)`
+believed a sponsor's deposit because the API wrote it down, so a console could
+report a programme as funded that had never received a wei. Funding is now
+recorded as a claim and checked against the chain over public RPC (the API
+still holds no chain key, ADR-0006):
+
+- the sponsor's escrow is `reward + fee`, READ from `Arena.amountsOf` — not
+  `deposited`, which is the ghost ledger of every wei the trial ever took in
+  and therefore includes the agent's bond and the skeptics' stakes;
+- the fee is read, never recomputed, because the contract computed it at post
+  time and a reader that recomputes it can disagree with the escrow by a wei
+  forever;
+- a claim about a trial somebody else sponsored is a MISMATCH — that check is
+  what stops one programme presenting another's funding;
+- an unreachable chain is UNVERIFIABLE, not MISMATCH: an outage must not
+  manufacture an accusation;
+- both totals are reported — what the ledger claims and what the escrow holds
+  — because their difference IS the finding.
+
+Seven mutations were each shown to turn the tree red: dropping the sponsor
+check, reporting `deposited` as the sponsor's escrow, reading an unreachable
+chain as a mismatch, not writing the receipt, comparing the ledger against
+zero, arming no schedule, and dropping the shutdown drain.
+
+**The methodology was a scaffold.** `POST /v1/studio/reproducibility` now runs
+the pinned task three times through the real verifier and answers "would this
+result repeat?". The rules it obeys:
+
+- three replays exactly, not "as many as arrived";
+- the comparison is over EVIDENCE, not over PASS/FAIL — three runs that all
+  lack evidence AGREE, and agreement about absence is not reproducibility;
+- a replay with no evidence is incomparable and says so;
+- a task the verifier would refuse is refused up front, rather than dressed up
+  as a finding about reproducibility;
+- a caller may not bring its own verdict, score or status.
+
+`GET /v1/contract` serves the API's own description of itself — pagination
+rules, rate limit, authentication schemes, webhook signing, and every error
+code — read from the modules that enforce them. A test reads the routes'
+source and fails when a route emits a code the contract does not document, and
+fails when the contract documents a code the API never emits. It found
+thirty-one undocumented codes when it was written.
+
+**One specification model.** The evaluation specification and the scoring
+engine each carried their own copy of the dimension names, the default weights
+and the replay count. The specification's `ScoringDimension.name` union, its
+`VALID_DIMENSIONS` set and its `independentReplays: 3` literal are gone: the
+scoring engine owns the dimensions and their weights, `replay-policy.ts` owns
+the three-replay rule, and a test fails if a second copy reappears.
+
+### Still open
+
+- **The sponsor programme scaffolding is in memory.** `sponsor-onboarding.ts`
+  holds sponsors, programmes and budget lines in the API process's Map, so
+  they do not survive a restart. The functions are synchronous, so a durable
+  store means an async rewrite that touches the routes and their tests. The
+  chain-truth layer was built to survive that rewrite.
+- **`@crucible/datasets` is imported by nothing.** It is a second split
+  engine (`sha256(key || datasetId || seed) mod 1000`) beside the one that is
+  used (`@crucible/eval`, per 100). Deleting a package is not this session's
+  call; the two options are to delete it or to make it the canonical engine
+  and move `@crucible/eval` onto it.
+- **No operator UI for the dead-letter queue**, no metrics endpoint (the
+  backlog is logged), no scheduled retention sweep.
+- **CI provides neither Redis nor PostgreSQL**, so the end-to-end delivery
+  case is SKIPPED in CI. It was run manually here, against a local
+  `redis-server`.
+- **The Studio's replays are only as independent as their evidence.** The
+  route compares three evidence sets; independence is a property of the
+  workers that produced them, and the platform does not yet enforce that the
+  three come from different workers.
+
 ## Telemetry delivery slice — 2026-11-20, not released
 
 Forge Watch wrote telemetry to PostgreSQL and never delivered it. The relay

@@ -61,11 +61,29 @@ groups; it is the point where every new feature lands. `packages/forge-watch` ha
 consumer until this session. The API, keeper and funder each hold their own
 BullMQ/PG wiring, so "the worker" is currently three products rather than one.
 
-**Duplicated and unused.** `packages/eval` and `packages/grader` overlap; the
-`evaluation-spec.ts` / `suites.ts` / `scoring.ts` modules added in the last session
-are a **second** specification model next to `packages/datasets`. `scripts/live-agent.mjs`
-contains the only outbox-relay wiring in the tree — now superseded by
-`packages/agent-security/src/telemetry-service.ts`.
+**Duplicated and unused — corrected.** This section first claimed that
+`packages/datasets` and `apps/api/src/evaluation-spec.ts` were two models of the same
+thing. **They are not**, and the claim was wrong in a way worth correcting rather than
+quietly dropping:
+
+- `packages/datasets` is a **training-data** package: dataset manifests, shards,
+  connectors, and a split engine over dataset rows, bucketed per 1000.
+- `packages/eval`'s `splits.ts` is a **probe-bank** split engine, bucketed per 100,
+  and it IS used (`promote.ts`, `train.ts`).
+
+The duplication that was real, and has been collapsed, was inside `apps/api`
+itself, where the evaluation specification and the scoring engine each carried their
+own copy of the dimension names, the default weights and the replay count
+(`ScoringDimension.name` as its own union, `VALID_DIMENSIONS` as its own set, and
+`independentReplays: 3` written out twice). That is now one model:
+`scoring.ts` owns the dimensions and their weights, `replay-policy.ts` owns the
+three-replay rule, and `evaluation-spec.ts` is built from both
+(`apps/api/test/spec-model-collapse.test.ts` fails if a second copy reappears).
+
+Separately, and still open: **no file imports `@crucible/datasets`.** It is built by
+`build:libs` and nothing uses it. It is a second split engine with different
+semantics from the one that is used. Deleting a package is not this session's call,
+so it is recorded as an open item with the two options, not silently merged.
 
 ## C. Evaluation assessment — what is genuinely operational
 
@@ -77,9 +95,9 @@ contains the only outbox-relay wiring in the tree — now superseded by
 | Telemetry capture | **Working** | `packages/forge-watch` writes events + outbox atomically |
 | **Telemetry delivery** | **Working as of `40d3558`** | before that: nothing delivered anything |
 | **Findings persistence** | **Working as of `40d3558`** | before that: the monitor detected problems and threw them away |
-| Independent replay (3×) | **Scaffold** | `apps/api/src/replay-manifest.ts` (another session, untracked) — the three-agreement rule the decision ledger names as absent |
-| Multi-dimensional scoring | **Partial, unmerged** | `apps/api/src/scoring.ts` (another session) — five dimensions, no judge calibration |
-| Confidence intervals / statistics | **Partial, unmerged** | same module; no minimum-sample policy |
+| Independent replay (3×) | **Operational at the decision** | `POST /v1/studio/reproducibility` runs the pinned task three times through the real verifier and compares the EVIDENCE; agreement is `REPRODUCIBLE`, disagreement is `NOT_REPRODUCIBLE`, and "no evidence in one of the three" is `INCONCLUSIVE` |
+| Multi-dimensional scoring | **Partial** | `apps/api/src/scoring.ts` (merged) — five dimensions with one canonical weight table; no judge calibration |
+| Confidence intervals / statistics | **Partial** | same module; no minimum-sample policy |
 | Judge calibration & drift | **Missing** | Argus is deterministic (ADR-0005), which is a strength for reproducibility and a limit for semantic judging |
 | Adversarial catalogue | **Partial, unmerged** | `suites.ts` defines the catalogue; nothing executes it |
 | Dispute evidence | **Partial** | contract-side commit/reveal works; the *evidence bundle* a dispute needs is not assembled |
@@ -240,13 +258,33 @@ external dependencies above.
 
 ## H. What this session shipped
 
-`40d3558` — **durable telemetry delivery.** The pipeline, the service, the attempt
+Three commits, in order:
+
+**`40d3558` — durable telemetry delivery.** The pipeline, the service, the attempt
 ceiling, the durable dead letter, structured findings, the acknowledgement, and
 the BullMQ job-id bug that would have made every delivery fail. Full detail and
 the six mutation proofs are in `HARDENING.md` under "Telemetry delivery slice —
 2026-11-20".
 
+**`e341a5e` — one worker, and a sponsor's money as a chain fact.** The stub worker
+(`apps/api/src/worker.ts`) returned six success-shaped answers without doing the
+work, its repeat pattern ran "hourly" jobs exactly once, and the compose worker
+service actually started a second API server. There is now one worker, with real
+schedules. And a sponsor's funding is verified against the arena's own views over
+public RPC: the sponsor's escrow is `reward + fee` read from the chain, never
+`deposited`; the fee is read, never recomputed; an unreadable chain is
+`unverifiable`, never `mismatch`. ADRs 0029, 0030 and 0031.
+
+**`0c85816` — the three surfaces.** The Evaluation Studio (three replays, a verdict
+computed by the server, and an explicit refusal to treat agreement about ABSENCE as
+reproducibility), the sponsor console (the ledger and the escrow side by side), and
+the API reference — which the API writes about itself, with a drift gate that found
+thirty-one undocumented error codes on the day it was written.
+
 **What it does not claim:** no operator UI for the dead-letter queue; no metrics
 endpoint (the backlog is logged); no scheduled retention sweep; the end-to-end
 case needs `REDIS_URL` and is SKIPPED in CI, which provides neither Redis nor
-PostgreSQL — it was run manually here, against a local `redis-server`.
+PostgreSQL — it was run manually here, against a local `redis-server`. The sponsor
+programme scaffolding is still held in the API's memory, so the console's programme
+list does not survive a restart; the funding truth (the part that must not be a
+claim) is durable and chain-verified, and was built to survive that rewrite.

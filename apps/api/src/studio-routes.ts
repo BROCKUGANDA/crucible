@@ -28,9 +28,9 @@ import { getAdapter, type WorkloadProfile } from "@crucible/eval";
 import type { CheckEvidence } from "@crucible/eval";
 import { verifiedSessionFromContext } from "./auth.js";
 import { WORKLOAD_PROFILES } from "./workload-profiles.js";
+import { REQUIRED_REPLAYS } from "./replay-policy.js";
 
-/** The number of replays the rule requires. */
-export const REQUIRED_REPLAYS = 3;
+export { REQUIRED_REPLAYS };
 
 export type ReproducibilityVerdict =
   | "REPRODUCIBLE"
