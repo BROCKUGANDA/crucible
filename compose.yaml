@@ -123,6 +123,33 @@ services:
       # sign-in message. Both are configuration rather than something the
       # request may say.
       CHAIN_ID: ${CHAIN_ID:-31337}
+      # Chain environment isolation (Phase 6). Missing configuration stops
+      # startup rather than silently falling back to Anvil or demo mode.
+      CHAIN_ENV: ${CHAIN_ENV:-anvil}
+      MAINNET_RPC_URL: ${MAINNET_RPC_URL:-}
+      MAINNET_RPC_FALLBACK_URL: ${MAINNET_RPC_FALLBACK_URL:-}
+      TESTNET_RPC_URL: ${TESTNET_RPC_URL:-}
+      TESTNET_RPC_FALLBACK_URL: ${TESTNET_RPC_FALLBACK_URL:-}
+      EXPLORER_URL: ${EXPLORER_URL:-}
+      CONFIRMATION_BLOCKS: ${CONFIRMATION_BLOCKS:-1}
+      FINALITY_POLICY: ${FINALITY_POLICY:-safe}
+      # Contract addresses for non-anvil deployments
+      ARENA_ADDRESS: ${ARENA_ADDRESS:-}
+      ESCROW_ADDRESS: ${ESCROW_ADDRESS:-}
+      IDENTITY_ADDRESS: ${IDENTITY_ADDRESS:-}
+      TREASURY_ADDRESS: ${TREASURY_ADDRESS:-}
+      # VRF configuration (required for mainnet)
+      VRF_COORDINATOR_ADDRESS: ${VRF_COORDINATOR_ADDRESS:-}
+      VRF_KEY_HASH: ${VRF_KEY_HASH:-}
+      VRF_SUBSCRIPTION_ID: ${VRF_SUBSCRIPTION_ID:-}
+      VRF_GAS_LANE: ${VRF_GAS_LANE:-}
+      # Pilot limits (configurable, not hard-coded)
+      PILOT_MAX_ACTIVE_TRIALS: ${PILOT_MAX_ACTIVE_TRIALS:-5}
+      PILOT_MAX_FUNDING: ${PILOT_MAX_FUNDING:-0.1}
+      PILOT_MAX_BUDGET: ${PILOT_MAX_BUDGET:-1}
+      PILOT_MAX_REWARD: ${PILOT_MAX_REWARD:-0.05}
+      PILOT_MAX_DAILY_OUTFLOW: ${PILOT_MAX_DAILY_OUTFLOW:-0.5}
+      PILOT_MIN_RESERVE: ${PILOT_MIN_RESERVE:-0.1}
       # Deployment profile (docs/runbooks/profiles.md). Env-only on purpose: the value is
       # passed ONLY when the host explicitly sets it. A static `${VAR:-demo}` would read a
       # default that shadows a missing host value, and a gate that rejects a container whose
@@ -170,7 +197,6 @@ services:
       # replay, cursor). Interpolated from `.env` like the rest; a name the
       # code does not read does not belong here.
       ALLOY_TTL_MS: ${ALLOY_TTL_MS:-}
-      ARENA_ADDRESS: ${ARENA_ADDRESS:-}
       CLEAN_PASSPORT_URL: ${CLEAN_PASSPORT_URL:-}
       CRUSIBLE_CURSOR_FILE: ${CRUSIBLE_CURSOR_FILE:-}
       ELEVENLABS_API_KEY: ${ELEVENLABS_API_KEY:-}
@@ -211,7 +237,9 @@ services:
       KEEPER_API_KEY: ${KEEPER_API_KEY:-}
       # Durable storage gate (production fail-closed; dev runs in-memory).
       STORAGE_BACKEND: ${STORAGE_BACKEND:-}
-      DATABASE_URL: ${DATABASE_URL:-}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://crucible:${POSTGRES_PASSWORD:-crucible_prod_2026_secure}@postgres:5432/crucible}
+      # Redis for caching and BullMQ job queues (Phase 10)
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
       # STAMP protocol-ownership domain: disabled unless explicitly enabled.
       STAMP_MODE: ${STAMP_MODE:-disabled}
       # Comma-separated wallets allowed to operate the STAMP manual-review queue.
@@ -485,6 +513,68 @@ services:
     restart: unless-stopped
     logging: *log-rotation
 
+  # -----------------------------------------------------------------------
+  # Production database: PostgreSQL for durable storage (Phase 10)
+  # -----------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: crucible
+      POSTGRES_USER: crucible
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-crucible_prod_2026_secure}
+    ports:
+      - "${POSTGRES_HOST_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d/00-migrations:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U crucible"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+    logging: *log-rotation
+
+  # -----------------------------------------------------------------------
+  # Redis: caching and BullMQ job queues (Phase 10)
+  # -----------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    ports:
+      - "${REDIS_HOST_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+    logging: *log-rotation
+
+  # -----------------------------------------------------------------------
+  # Background worker: BullMQ job processing (Phase 10)
+  # -----------------------------------------------------------------------
+  worker:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    command: node dist/worker.js
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://crucible:${POSTGRES_PASSWORD:-crucible_prod_2026_secure}@postgres:5432/crucible
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+    logging: *log-rotation
+
 volumes:
   deployed:
   # Survives a keeper restart so the hash chain continues rather than restarting at genesis;
@@ -497,3 +587,7 @@ volumes:
   # The seats' sealed votes and their salts. Never a bind mount of a host directory that might be
   # cleaned: this is the only copy of the opening to a commitment the chain still holds.
   juror-state:
+  # Persistent PostgreSQL data
+  postgres-data:
+  # Persistent Redis data
+  redis-data:

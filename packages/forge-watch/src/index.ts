@@ -43,10 +43,28 @@ export {
   FORGE_WATCH_QUEUE_NAMES,
   eventJobId,
   runJobId,
+  deliveryJobId,
+  replayJobId,
+  jobIdPart,
   monitorJob,
   monitorEventJob,
   type ForgeWatchQueueLevel,
   type MonitorEvent,
   type MonitorJobPayload,
 } from "./dispatch.js";
-export { createOutboxRelay, type OutboxRelay, type OutboxRow, type OutboxRelayOptions } from "./outbox.js";
+export {
+  createOutboxRelay,
+  OUTBOX_STATUS,
+  type OutboxRelay,
+  type OutboxRow,
+  type OutboxRelayOptions,
+  type QuarantinedDelivery,
+} from "./outbox.js";
+export {
+  createDeadLetterStore,
+  serialisePayload,
+  type DeadLetter,
+  type DeadLetterStatus,
+  type DeadLetterStore,
+  type RecordDeadLetterInput,
+} from "./dead-letter.js";

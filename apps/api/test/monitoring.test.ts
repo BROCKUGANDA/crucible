@@ -5,7 +5,7 @@
  * alert acknowledgment, system health summary, and path-to-group mapping.
  */
 
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import {
   recordRequest,
   getSloCompliance,
@@ -286,26 +286,40 @@ describe("Default SLOs", () => {
  * middleware and this goes red; that is the mutation it exists to catch.
  */
 describe("metrics are fed by real requests", () => {
+  // The app module is imported ONCE, in a hook, not once per case.
+  //
+  // `await import("../src/app")` inside a case charged the whole cold import to that case's
+  // timeout. Measured on this machine the import alone took 12s cold (9.7s before the Phase 2
+  // route modules landed) and ~20s beside a typecheck; under the full suite's 63 parallel
+  // workers on 12 cores it exceeded the 30s budget. The case then aborted with its request
+  // still in flight, and the abandoned request recorded its metric after the next case had
+  // reset the counter and read it — which is how this file read `expected 2 to be 1`.
+  //
+  // The dependent measurement was the timeout's fault, not the middleware's. Timing the import
+  // out of the assertion budget is the fix; the correlation-id case below still drove three
+  // concurrent requests through one app to prove the middleware is mounted at all.
+  let createApp: typeof import("../src/app")["createApp"];
+  let emptyModel: typeof import("@crucible/indexer")["emptyModel"];
+
+  beforeAll(async () => {
+    ({ createApp } = await import("../src/app"));
+    ({ emptyModel } = await import("@crucible/indexer"));
+  }, 120_000);
+
   beforeEach(() => {
     resetMonitoringForTests();
   });
 
   it("counts a request that actually went through the app", async () => {
-    const { createApp } = await import("../src/app");
-    const { emptyModel } = await import("@crucible/indexer");
     const app = createApp({ getModel: () => emptyModel() }, { rateLimit: false });
 
     expect(getSystemHealth().totalRequests).toBe(0);
     const res = await app.request("/health");
     expect(res.status).toBe(200);
     expect(getSystemHealth().totalRequests).toBe(1);
-    // Cold import measured 2.5s idle and 7.4s beside a typecheck; a 5s abort leaked its in-flight
-    // request into the next case's counter, which is how this read `expected 2 to be 1`.
   }, 30_000);
 
   it("counts a refused request too, because a refusal is real traffic", async () => {
-    const { createApp } = await import("../src/app");
-    const { emptyModel } = await import("@crucible/indexer");
     const app = createApp({ getModel: () => emptyModel() }, { rateLimit: false });
 
     const res = await app.request("/trials/not-a-number");
@@ -317,8 +331,6 @@ describe("metrics are fed by real requests", () => {
   }, 30_000);
 
   it("stamps a correlation id that does not collide under concurrency", async () => {
-    const { createApp } = await import("../src/app");
-    const { emptyModel } = await import("@crucible/indexer");
     const app = createApp({ getModel: () => emptyModel() }, { rateLimit: false });
 
     const responses = await Promise.all([

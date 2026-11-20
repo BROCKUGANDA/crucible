@@ -1,5 +1,90 @@
 # Hardening record
 
+## Telemetry delivery slice — 2026-11-20, not released
+
+Forge Watch wrote telemetry to PostgreSQL and never delivered it. The relay
+existed. The monitor workers existed. The findings table they would write to
+existed. **Nothing ran any of them**: `registerForgeWatchWorkers` was called by
+no process, and the relay appeared only inside `scripts/live-agent.mjs`, a demo
+script. The outbox table filled forever and no monitor job was ever dispatched.
+That is audit RUN-H1, and the honest reading of it — a database record that is
+never delivered is not a telemetry pipeline.
+
+What this slice changed, and what it proves:
+
+- **A production pipeline** (`packages/agent-security/src/forge-watch-telemetry.ts`):
+  the relay claims due outbox rows (`FOR UPDATE SKIP LOCKED`), hands each event
+  to the L0 monitor queue under an idempotency key derived from the event, and
+  the monitor's findings are written to `forge_watch_findings`. The pipeline is
+  a library with the queue, the store and the processor injected, so the parts
+  can be exercised without a server and the delivery path can be exercised
+  without faking the crossing.
+- **A runnable service** (`packages/agent-security/src/telemetry-service.ts`,
+  `npm run telemetry:service`): drains on an interval, drains once more on
+  shutdown, reports its backlog, and refuses to start without a database and a
+  reachable queue. It touches no money — it reads telemetry and writes findings
+  (ADR-0025).
+- **An attempt ceiling.** The relay retried a failing delivery forever with a
+  five-minute backoff, so a poison message kept a row cycling for the life of
+  the deployment and was indistinguishable from a busy queue. A delivery that
+  fails eight times is now **quarantined**: the row stops being claimed and the
+  reason is written to a durable dead letter.
+- **A durable dead letter** (`forge_watch_dead_letters`,
+  `packages/forge-watch/src/dead-letter.ts`). The dead letter used to be a Redis
+  queue named `forge-watch-dlq`: a flush, a redeploy or an eviction took the
+  evidence with it, and there was no replay because no message survived to be
+  replayed. It is now a PostgreSQL row an operator can list, replay and
+  resolve. This closes audit RUN-M3.
+- **Findings that are records.** The L0 processor detected lost events, denied
+  egress, denied tool calls and test modifications, and returned them as one
+  comma-joined string in `reason` — a string is fine to log and useless to
+  persist. The detection is now also emitted as a structured finding, with a
+  content-derived id, so a redelivery is the same row instead of a second one.
+- **An acknowledgement.** The relay marking a row dispatched says the event was
+  handed over; the consumer now stamps `forge_watch_events.dispatched_at` when
+  it finishes with it. Only the pair makes "handed over but never
+  acknowledged" a question the database can answer.
+
+**A real bug the end-to-end test caught.** BullMQ refuses a custom job id
+whose colon-separated parts are not exactly three (`Custom Id cannot contain
+:`), and it throws at `queue.add` rather than warning. The delivery key
+`fw:<event>` split into two parts, so **every delivery would have failed at the
+moment it was enqueued**. The pre-existing `eventJobId`/`runJobId` helpers were
+accidentally valid (three parts) but fragile: a run id containing a colon would
+have made them four-part and undeliverable, so they now sanitise colons inside
+a part, and the delivery key carries no colons at all.
+
+**A measurement defect, not a product defect.** `apps/api/test/monitoring.test.ts`
+failed twice under the full suite and passed in isolation. The cause was its own
+30-second budget: the cold import of `app.ts` takes ~12s here (measured), the
+budget was sized from an old 2.5s figure, and an aborted case left its request
+in flight, so the abandoned request recorded its metric into the *next* case's
+counter — which is how the file read `expected 2 to be 1`. The import moved
+into a `beforeAll` with its own budget. The assertions were not weakened.
+
+**Proven.** `npm run typecheck` clean across every workspace. `npm test` green
+across every workspace. `npm run test:edge` 25/25. `forge test` 360 passed, 0
+failed. The delivery path itself was proven against a **real Redis and a real
+BullMQ worker** (`packages/agent-security/test/forge-watch-telemetry.e2e.test.ts`,
+run against a local `redis-server`): an event crosses the queue and the finding
+the monitor detects is persisted. Without `REDIS_URL` that case reports
+SKIPPED, and says so. Five mutations were applied and each turned the tree red
+before it was reverted — dropping the finding sink from the worker registration,
+removing the attempt ceiling, removing the dead-letter upsert, removing the
+dispatched-row restriction from the retention sweep, and dropping the
+quarantine's dead-letter write.
+
+**Still open, and not claimed as fixed.** There is no operator UI for the
+dead-letter queue — list, replay and resolve are library calls, and a human
+reaches them through the API only after one is mounted. The queue-lag and
+backlog numbers are reported to the log, not to a metrics endpoint. CI provides
+neither Redis nor PostgreSQL, so the end-to-end case is SKIPPED in CI and was
+run manually here; the wiring to give CI both is written in the open list below
+and has still never been measured. The retention sweep's cut-off is a
+parameter, but nothing schedules it yet: the shipped service drains and
+reports, and leaving that to an operator with a `DELETE` is the honest state
+until a scheduler owns it.
+
 ## STAMP issuer console and investor portal — 2026-11-19, released in v0.1.43
 
 The register shipped in v0.1.42 as an API and a public projection; a human
