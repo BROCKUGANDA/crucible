@@ -17,6 +17,7 @@ export * from "./org-budget.js";
 export * from "./org-api-key.js";
 export * from "./org-webhook.js";
 export * from "./org-audit.js";
+export * from "./org-audit-pg.js";
 export * from "./org-membership.js";
 export * from "./kill-switch.js";
 export * from "./incident.js";

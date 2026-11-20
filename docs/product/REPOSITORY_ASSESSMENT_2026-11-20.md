@@ -668,3 +668,52 @@ tests pass, and 1,197 in `apps/api` against a real PostgreSQL.
   independently executed run.
 - The 0008 schema and the live store are two models of the same word; the
   reconciliation is named (REPL-D2) and unstarted.
+
+## O. The audit log was not tamper-evident, and the hash was eight characters (2026-11-20, last)
+
+Sections L, M and N closed the claim, the proceeding and the rule. This
+closes the **record** they all rest on.
+
+**The organisation audit log claimed to be hash-chained and tamper-evident,
+and it was neither.** It asked for `sha256` through `require()` — which
+does not exist in an ES module — so the error was swallowed and the chain
+was linked with a 31-multiplier rolling hash, **eight hex characters
+long**. A chain that is tamper-evident only because nobody read the code
+is not tamper-evident.
+
+**And the chain broke on its own redaction.** The write-time hash covered
+the RAW metadata while the entry stored the REDACTED metadata. The
+redaction list covers any key containing "key", so an ordinary
+`api_key:create` entry produced a hash that no longer matched what was
+stored, and `verifyChain` reported the chain as **tampered after an
+entirely innocent write**. The raw metadata inside the hash was also a
+digest of a secret, which is an oracle for that secret. Both were
+reproduced against the built package before the fix.
+
+**Now (ADR-0037).** The entry hash is `hashCanonical` — the repository's
+one hashing door — over exactly what is stored: a real sha256 over
+canonical JSON (so it depends on the content, not on the key order), over
+the REDACTED metadata (so the redaction cannot break the chain and no
+secret reaches a digest). The chain is durable (`org_audit_entries`,
+migration 0017), ordered by a sequence rather than by the clock, and it
+**continues across a restart**: the head is the last row in the table, so
+a chain that restarted at "genesis" cannot orphan the entries before it.
+The append is serialised with an advisory lock and checks the link inside
+the transaction, so two writers cannot both link to the same head and
+fork the chain — and a forked chain verifies as broken, which is exactly
+what a tamper must look like.
+
+**Proven.** The audit tests, eight tests against a real PostgreSQL (the
+chain continues across a restart; two writers cannot fork it; a row
+changed directly in the database is detected), and **six mutations proven
+red** — two of which were green on the first attempt and had to be made
+honest before they proved anything.
+
+**What remains, named rather than left to rot:**
+
+- Budgets, conflict-of-interest declarations, webhooks and API keys are
+  still in process memory. The audit trail is durable; the things it
+  audits are not.
+- The row-level-security policy on the audit table follows the
+  organisation tables' pattern, and — like theirs — it only bites for a
+  connection that does not own the table. The role split is still to come.

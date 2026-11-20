@@ -47,6 +47,7 @@ way it does and what would have to change to revisit it.
 | [0034](0034-a-published-score-carries-its-method-and-its-limits.md) | A published score carries its method and its limits; comparability is keyed on the measurement, and a published method cannot be edited | Accepted |
 | [0035](0035-a-dispute-reads-a-frozen-bundle.md) | A dispute reads a frozen, content-addressed bundle; the bundle states what it does not contain, and the seal is compared with the break on the chain's clock | Accepted |
 | [0036](0036-the-three-replays-must-come-from-three-workers.md) | The three replays must come from three workers; the worker is derived, never a caller's label, and the measurement is durable | Accepted |
+| [0037](0037-the-audit-chain-is-durable-and-its-hash-is-a-real-one.md) | The audit chain is durable and its hash is a real sha256 over what is stored; the chain continues across a restart | Accepted |
 
 **A numbering defect, recorded rather than papered over.** `0020` names two ADRs written a
 week apart by different sessions. The later one (treasury) is what most of the newer

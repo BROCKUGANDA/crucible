@@ -2623,3 +2623,49 @@ Report a vulnerability as described in [`SECURITY.md`](SECURITY.md), not in a pu
   `replay_manifests` and `replay_records` in a different, spec-bound shape that no code writes
   (REPL-D2): the durable store has its own tables rather than filling the 0008 ones with invented
   values, and the two schemas are reconciled in a later change.
+
+- **The audit log claimed to be tamper-evident and was neither (2026-11-20, last).** The organisation
+  audit trail is what a buyer's compliance review reads: who did what, in which organisation, on whose
+  authority. It was written to be hash-chained and append-only, and it was neither — in two ways, both
+  found while making it durable.
+  **The hash was not cryptographic.** The module asked for `sha256` through `require()`. `require` does
+  not exist in an ES module: the `try` threw, the `catch` swallowed it, and the chain was linked with a
+  31-multiplier rolling hash — eight hex characters long, with a comment saying it was "not cryptographic
+  but stable". A chain that is tamper-evident only because nobody read the code is not tamper-evident:
+  anybody can recompute a forged chain. The stored hashes really were eight characters long.
+  **The chain broke on its own redaction.** The write-time hash covered the RAW metadata while the entry
+  stored the REDACTED metadata. The redaction list covers any key containing "key", so an ordinary
+  `api_key:create` entry — `{ keyId: "k-1" }` — was masked, the hash no longer matched what was stored,
+  and `verifyChain` reported the chain as **tampered after an entirely innocent write**. The raw metadata
+  inside the hash was a third, quieter problem: a digest of a secret is an oracle for that secret. This
+  was reproduced against the built package before the fix — `verifyChain()` returned
+  `{ valid: false, brokenAt: "e2", reason: "hash_mismatch" }` on a chain of two perfectly ordinary
+  entries.
+  **Now (ADR-0037).** The entry hash is `hashCanonical` from `@crucible/crypto` — the repository's one
+  hashing door — over exactly what is stored: a real sha256 over canonical JSON, so it depends on the
+  CONTENT and not on the order the metadata's keys happen to be in, and over the REDACTED metadata, so the
+  redaction cannot break the chain and no secret reaches a digest. The chain is durable
+  (`org_audit_entries`, migration 0017), ordered by a sequence rather than by the clock — two entries
+  written in the same millisecond still have a defined order — and it CONTINUES across a restart, because
+  the head is the last row in the table and not a field in a process's memory; a chain that restarted at
+  "genesis" would orphan every entry written before it. The append takes a transaction-scoped advisory
+  lock and checks the link INSIDE the transaction: two writers that both read the same head would
+  otherwise both link to it and fork the chain, and a forked chain verifies as broken — which is exactly
+  what a tamper must look like. The domain layer checks the link too, before the store is called; the
+  store's check is the one that stops the fork.
+  **Proven.** The audit tests, plus eight tests against a real PostgreSQL: an entry survives a fresh
+  read; the chain continues across a restart (the next entry's `prevHash` is the previous entry's hash,
+  read from the table); the entries are ordered by insertion; an entry that does not link is refused; two
+  writers cannot fork the chain; a row changed directly in the database is detected; the chain verifies
+  after all of it. **Six mutations proven red** (`.scratch/mutate_audit.py`): the trivial rolling hash,
+  the hash over the raw metadata, a hash that depends on the key order, a volatile chain head, an append
+  that does not check the link inside the transaction, and a verifier that accepts a changed entry.
+  **Two of them were green on the first attempt and had to be made honest before they proved anything** —
+  the key-order mutation was defeated by `hashCanonical` itself (so the mutation now hashes a plain
+  `JSON.stringify`, which is what the old code did), and the transaction-check mutation was still caught
+  by the domain layer's check (so the test now writes straight to the store, which is the only way to
+  reach the check that stops the fork).
+  **Still open, and named.** Budgets, conflict-of-interest declarations, webhooks and API keys are still
+  in process memory, and the row-level-security policy on the audit table follows the organisation
+  tables' pattern — it only bites for a connection that does not own the table, and the role split is
+  still to come.

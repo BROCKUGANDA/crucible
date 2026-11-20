@@ -60,6 +60,21 @@ if (process.env.DATABASE_URL) {
   );
 }
 
+// The AUDIT CHAIN is durable, and its hash is a real one (ADR-0037). The
+// chain is what a buyer's compliance review reads, and it has to survive
+// a restart AND continue across one — a chain that restarted at "genesis"
+// would orphan every entry written before it.
+if (process.env.DATABASE_URL) {
+  const { configureAuditStore } = await import("@crucible/agent-security");
+  const { pgAuditStore } = await import("@crucible/agent-security");
+  configureAuditStore(pgAuditStore());
+  console.log("[crucible] audit chain: postgresql (an audit entry survives a restart)");
+} else {
+  console.log(
+    "[crucible] audit chain: in memory — an audit entry is lost on restart. Configure DATABASE_URL for a durable record.",
+  );
+}
+
 // The MEASUREMENT is durable. A replay manifest is what was run, in which
 // environment, by which worker, and what each replay produced; a published
 // card and a frozen dispute bundle are both built from it, so a manifest
