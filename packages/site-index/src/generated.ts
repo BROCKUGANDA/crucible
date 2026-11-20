@@ -454,6 +454,30 @@ export const SITE_INDEX: SiteEntry[] = [
     "needs": "a signed-in wallet on the host's reviewer list"
   },
   {
+    "path": "/publications",
+    "label": "Published methods",
+    "purpose": "Read what a published score was measured against, and what it does not establish.",
+    "can": [
+      "read the limits a published score carries",
+      "find out whether two scores may be compared at all"
+    ],
+    "points": [
+      "publications-panel"
+    ]
+  },
+  {
+    "path": "/publications/[id]",
+    "label": "Published method",
+    "purpose": "One published score with the method it was measured against, and the limits it carries.",
+    "can": [
+      "read what a published score does not establish",
+      "see the suite, rubric, judge and repetitions behind it"
+    ],
+    "points": [
+      "publication-card"
+    ]
+  },
+  {
     "path": "/replay/[id]",
     "label": "Replay Theater",
     "purpose": "Re-enact any settled trial on a scrubbable timeline.",

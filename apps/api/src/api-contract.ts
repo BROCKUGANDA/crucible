@@ -291,6 +291,28 @@ export const ERROR_CATALOGUE: ErrorCodeEntry[] = [
     whatToDo: "Verdicts are signed by a binder, not asserted by the client.",
   },
   {
+    code: "caller-supplied-verdict-refused",
+    status: 400,
+    meaning:
+      "The caller tried to publish a score, a verdict, a status, the limits or the digest of a published method.",
+    whatToDo:
+      "Send only the subject (trialId or runId). A publication states what the platform measured; a caller that supplies the measurement is refused.",
+  },
+  {
+    code: "no-manifest",
+    status: 404,
+    meaning: "There is no replay manifest for that subject, so there is no method to publish.",
+    whatToDo:
+      "Run the evaluation first. A method exists only once a measurement has been recorded: the subject must have been run and its replay manifest written.",
+  },
+  {
+    code: "no-such-publication",
+    status: 404,
+    meaning: "No published method carries that address.",
+    whatToDo:
+      "A published method is content-addressed: it exists under exactly one address. Check the id, or list the publications of the subject.",
+  },
+  {
     code: "no-chain",
     status: 503,
     meaning: "This deployment has no chain, so nothing on it can be read or verified.",

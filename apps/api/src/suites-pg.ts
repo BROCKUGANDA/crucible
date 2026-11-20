@@ -9,6 +9,7 @@
  */
 
 import { getPool } from "@crucible/agent-security";
+import { computeSuiteVersionDigest } from "./suites.js";
 import type {
   Suite,
   SuiteVersion,
@@ -185,11 +186,21 @@ export async function pgCreateSuiteVersion(
   const now = Date.now();
   const id = `sv_${now}_${Math.random().toString(36).slice(2, 8)}`;
 
+  // The digest is written, not defaulted. `spec_digest` is NOT NULL with no
+  // default, so an insert that omits it fails — and a suite version whose
+  // digest is missing cannot be compared with anything, because the digest
+  // is what says two versions measured the same thing.
+  const digest = computeSuiteVersionDigest(input);
+
   const r = await pool.query(
     `INSERT INTO suite_versions (
       id, suite_id, version, schema_version, task_families, capability_domains,
-      difficulty, evaluation_protocol, scoring_rules, test_fixtures, status, created_at
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+      difficulty, evaluation_protocol, scoring_rules, test_fixtures, required_tools,
+      runtime_constraints, safety_requirements, expected_artifacts, validation_rules,
+      known_limitations, changelog, spec_digest, status, created_at
+    ) VALUES (
+      $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20
+    )
      ON CONFLICT (suite_id, version) DO NOTHING
      RETURNING *`,
     [
@@ -203,6 +214,14 @@ export async function pgCreateSuiteVersion(
       input.evaluationProtocol ?? "deterministic",
       JSON.stringify(input.scoringRules ?? {}),
       JSON.stringify(input.testFixtures ?? {}),
+      JSON.stringify(input.requiredTools ?? []),
+      JSON.stringify(input.runtimeConstraints ?? {}),
+      JSON.stringify(input.safetyRequirements ?? {}),
+      JSON.stringify(input.expectedArtifacts ?? []),
+      JSON.stringify(input.validationRules ?? {}),
+      input.knownLimitations ?? "",
+      input.changelog ?? "",
+      digest,
       "ACTIVE",
       now,
     ],

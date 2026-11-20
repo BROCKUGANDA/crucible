@@ -27,6 +27,13 @@ import { randomUUID } from "node:crypto";
 import { getAdapter, type WorkloadProfile } from "@crucible/eval";
 import type { CheckEvidence } from "@crucible/eval";
 import { verifiedSessionFromContext } from "./auth.js";
+import {
+  createReplayManifest,
+  createReplayRecord,
+  completeReplay,
+  failReplay,
+} from "./replay-manifest.js";
+import { hashCanonical } from "@crucible/crypto";
 import { WORKLOAD_PROFILES } from "./workload-profiles.js";
 import { REQUIRED_REPLAYS } from "./replay-policy.js";
 
@@ -156,6 +163,62 @@ export function decideReproducibility(replays: ReplayResult[]): {
   };
 }
 
+/**
+ * Record a Studio run as a replay manifest, so it can be published.
+ *
+ * The pinned digest is the digest of the TASK — what was measured. It is
+ * not the digest of the verdict: a verdict that changed would still be the
+ * same measurement, and a measurement that stayed the same would be the
+ * same task whether the verdict was REPRODUCIBLE or not.
+ */
+function recordStudioMeasurement(input: {
+  profile: string;
+  task: unknown;
+  results: ReplayResult[];
+  agentId: string;
+  callerId: string;
+}): {
+  manifestId: string;
+  trialId: string;
+  runId: string;
+  pinnedDigest: string;
+} {
+  const trialId = `studio_${randomUUID()}`;
+  const runId = `run_${randomUUID()}`;
+  const pinnedDigest = hashCanonical({
+    profile: input.profile,
+    task: input.task,
+  });
+
+  const manifest = createReplayManifest({
+    trialId,
+    runId,
+    specDigest: pinnedDigest,
+    // The Studio measures against a workload PROFILE, not a suite. The
+    // manifest's slot names the profile honestly, and the published card
+    // says the suite is not published — because it is not.
+    suiteVersion: input.profile,
+    agentId: input.agentId,
+    runtimeImageDigest: `profile:${input.profile}`,
+    executionConfig: { profile: input.profile, pinnedDigest },
+    judgeVersion: "studio-verifier-1",
+    environmentFingerprint: "studio:local",
+    artifactHashes: {},
+    workerIdentity: input.callerId,
+  });
+
+  for (const result of input.results) {
+    const record = createReplayRecord(manifest.manifestId, result.replayNumber, result.label);
+    if (result.fingerprint) {
+      completeReplay(record.replayId, `sha256:${result.fingerprint}`);
+    } else {
+      failReplay(record.replayId, result.reason ?? "this replay produced no evidence");
+    }
+  }
+
+  return { manifestId: manifest.manifestId, trialId, runId, pinnedDigest };
+}
+
 export function createStudioRoutes(): Hono {
   const app = new Hono();
 
@@ -283,6 +346,22 @@ export function createStudioRoutes(): Hono {
 
     const decision = decideReproducibility(results);
 
+    // RECORD the measurement, so it can be published as a method.
+    //
+    // A verdict that lives only in the response is not a measurement: it
+    // cannot be published, cannot be compared with another, and vanishes
+    // with the page. The manifest pins what was measured (the task's own
+    // digest), and one replay record per replay carries what each of them
+    // produced — including the replays that produced nothing, because "this
+    // replay reported no evidence" is part of the finding.
+    const measurement = recordStudioMeasurement({
+      profile,
+      task,
+      results,
+      agentId: session.payload.address.toLowerCase(),
+      callerId: session.payload.address.toLowerCase(),
+    });
+
     return c.json({
       profile,
       verdict: decision.verdict,
@@ -291,6 +370,14 @@ export function createStudioRoutes(): Hono {
       distinctFingerprints: decision.distinctFingerprints,
       requiredReplays: REQUIRED_REPLAYS,
       replays: results,
+      // The identifiers a caller needs to publish the method, look it up,
+      // or compare it with another measurement.
+      measurement: {
+        manifestId: measurement.manifestId,
+        trialId: measurement.trialId,
+        runId: measurement.runId,
+        pinnedDigest: measurement.pinnedDigest,
+      },
     });
   });
 

@@ -85,6 +85,7 @@ import {
   DEFAULT_RATE_LIMIT as API_DEFAULT_RATE_LIMIT,
 } from "./api-contract.js";
 import { createStudioRoutes } from "./studio-routes.js";
+import { createPublicationRoutes } from "./publication-routes.js";
 import { createCommercialRoutes } from "./commercial-routes.js";
 import {
   bodyLimit,
@@ -2616,6 +2617,7 @@ export function createApp(deps: ApiDeps, opts: ApiOptions = {}): Hono {
    * would repeat. The verdict is computed here, not in the browser.
    */
   app.route("/v1/studio", createStudioRoutes());
+  app.route("/v1/publications", createPublicationRoutes());
   if (opts.stamp !== undefined && opts.stamp !== null) {
     app.route("/stamp", createStampRoutes(opts.stamp));
   } else {

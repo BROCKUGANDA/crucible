@@ -46,6 +46,20 @@ if (process.env.DATABASE_URL) {
   );
 }
 
+// Published methods — the method card of a score — are audit artifacts, and
+// an audit artifact that evaporates on restart is a claim with no record.
+// The store is chosen once, here, and never per request (ADR-0033).
+if (process.env.DATABASE_URL) {
+  const { configurePublicationStore } = await import("./publication-store.js");
+  const { pgPublicationStore } = await import("./publication-pg.js");
+  configurePublicationStore(pgPublicationStore(), "postgresql");
+  console.log("[crucible] published methods: postgresql (a published method survives a restart)");
+} else {
+  console.log(
+    "[crucible] published methods: in memory — a published method is lost on restart. Configure DATABASE_URL for a durable record.",
+  );
+}
+
 // The tenancy model — organisations, memberships, invitations — is durable
 // too (ADR-0033). The store is a cache over PostgreSQL: it is filled from
 // there at boot and every write goes to the database before it is visible.

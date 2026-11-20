@@ -38,6 +38,13 @@ way it does and what would have to change to revisit it.
 | [0024](0024-evaluation-evidence-pipeline.md) | Evaluation evidence pipeline: a parallel surface, adopted deliberately | Accepted |
 | [0025](0025-forge-watch-runtime-monitoring.md) | Forge Watch: runtime monitoring, misalignment detection and incident response | Accepted (architecture) |
 | [0026](0026-web3auth-safe-protocol-kit.md) | Optional Web3Auth EOA and draft-only Safe Protocol Kit | Accepted (limited integration scope) |
+| [0028](0028-evaluation-integrity-foundation.md) | Evaluation integrity: the suite registry, the scoring model and the replay manifest | Accepted |
+| [0029](0029-chain-environments-and-conversion-path.md) | Ethereum mainnet for the EVM track; Solana Devnet as a separate release; 1inch is an off-chain conversion path, never an escrow asset | Accepted |
+| [0030](0030-one-worker-one-process.md) | One worker entrypoint, one process, an explicit role at boot | Accepted |
+| [0031](0031-sponsor-funding-is-a-chain-fact.md) | A sponsor's funding is read from the chain — the fee is read, never recomputed, and "unverifiable" is not "mismatch" | Accepted |
+| [0032](0032-sponsor-ledger-is-durable.md) | The sponsor's ledger is durable: PostgreSQL, one store chosen at boot, wei never crossing a float | Accepted |
+| [0033](0033-tenancy-model-is-durable.md) | The tenancy model is durable; the store is a cache over PostgreSQL and the non-durable path is refused | Accepted |
+| [0034](0034-a-published-score-carries-its-method-and-its-limits.md) | A published score carries its method and its limits; comparability is keyed on the measurement, and a published method cannot be edited | Accepted |
 
 **A numbering defect, recorded rather than papered over.** `0020` names two ADRs written a
 week apart by different sessions. The later one (treasury) is what most of the newer

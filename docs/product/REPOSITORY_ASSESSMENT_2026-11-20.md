@@ -452,3 +452,101 @@ request — a deployment change (two roles: one that owns the schema and
 migrates it, one the application connects as), which is the next step of
 ADR-0033 and the last piece of the tenant boundary that the database is
 currently not enforcing.
+
+## L. The published method (2026-11-20, last) — a score with its method and its limits
+
+Sections I–K closed the money (what the chain holds), the ledger (what the
+platform records) and the tenant boundary (who may see it). This section
+closes the **claim**: what the platform says when it reports a score.
+
+**The product could not answer three questions about its own scores.**
+
+1. *What was this measured against?* The Studio computed a verdict —
+   `REPRODUCIBLE`, `NOT_REPRODUCIBLE`, `INCONCLUSIVE` — and returned it in a
+   response body. Nothing recorded it. It could not be published, compared
+   with another verdict, or audited later.
+2. *What does this score NOT establish?* Nothing said. A score published
+   without its limits is a marketing claim; the limits are the difference
+   between a measurement and an advertisement.
+3. *May these two numbers be compared at all?* Two scores of 0.82 measured
+   against different suites are two different numbers, and the product had no
+   way to say so — it kept no record of how anything was measured.
+
+**A publication is now a content-addressed method card** (ADR-0034). It
+carries the suite version by that version's own digest, the rubric with each
+dimension's weight and methodology, the judge, the repetitions and whether
+they agreed, the score with its uncertainty — and the **limits, derived from
+the measurement** rather than written by hand.
+
+The derivation is the substance. Each limit is the consequence of something a
+reader would otherwise have to know to interpret the number: the score
+establishes only what the pinned measurement covered; the suite's own
+published limitations apply, in its author's words; this dimension carries no
+published methodology, so 20% of the score is unexplained; there is no
+confidence interval; two of the three required repetitions were run; the
+repetitions did not agree. A hand-written limit is a promise; a derived limit
+cannot disagree with the data it describes.
+
+**Comparability is keyed on the measurement, with the subject left out**
+(`computeMeasurementKey`): the suite version, the protocol, the fixtures, the
+environment, the judge, the scoring methodology, the repetition policy and
+the randomness configuration — and deliberately not the trial, the agent or
+the timestamps. This is the decision the whole comparison surface rests on:
+
+- the **spec digest** cannot be the key, because it includes the agent, so
+  it would refuse exactly the comparison the product exists for (two agents
+  measured against the same suite);
+- the **subject** cannot be the key, for the same reason;
+- the **suite digest alone** is not enough, because it ignores the judge and
+  the rubric: the same suite scored by two judges is two measurements.
+
+Two cards whose keys match are comparable; two whose keys do not get an
+explicit **"not comparable"** with the reason, and the comparison is
+recorded. The page never subtracts two numbers that came from different
+measurements.
+
+**Durability follows the ADR-0032/0033 pattern.** The card lives in
+PostgreSQL (migration 0014), append-only: the address is the digest of the
+card's own contents, so publishing the same card twice is the same row and a
+published method cannot be edited — any change produces a different address.
+The store is chosen once at boot, never per request. Without a database the
+API runs on the in-memory store and says so in the boot log and in every
+publish response.
+
+**A publication states what the platform measured; the caller may not
+state it.** The route refuses a body carrying `score`, `verdict`, `status`,
+`limits`, `digest`, `comparabilityKey`, `aggregateBps`, `scoreBps` or
+`publishedAt`, by name and whatever the value.
+
+**The Studio now records a measurement** — a replay manifest and one replay
+record per replay, including the replays that produced no evidence — so that
+the thing it measures can be published.
+
+**Proven:** 15 domain tests, 9 route tests, 8 tests against a real
+PostgreSQL, **eight mutations proven red**, and browser verification at the
+real URL against the running API and a live database: `/publications` lists
+the cards with their repetitions and their limits; `/publications/<id>`
+shows the card, with an em dash where nothing is published and never a zero.
+
+**Three defects were found on the way, and they are worth naming because
+each would have made the feature a decoration:**
+
+| Defect | Why it mattered here |
+|---|---|
+| The suite version's "digest" was a principal **object** in the in-memory route, and the PostgreSQL route never wrote the NOT NULL column at all | The comparability key would have compared an object against a string; the durable path could not insert |
+| The evaluation spec hashed with a hand-rolled `JSON.stringify` | A second hashing convention beside the repository's canonical JSON hash (gate 629) |
+| `runMigrations()` took no lock | Two processes migrating at once deadlocked — and the API migrates on **boot**, so a multi-worker boot could crash-loop |
+
+**What remains, named rather than left to rot:**
+
+- **The replay manifest store is still in process memory** (REPL-D1). A
+  measurement can be lost on restart even though its published card
+  survives — the card is then a record of something that cannot be
+  re-derived. It is the next slice: make the manifest durable, and the
+  publication follows it out of the process.
+- The Studio's three replays are still three runs of one verifier in one
+  process, so "independent" is a claim about the harness and not about the
+  infrastructure.
+- The org-scoped side models (budgets, audit, conflict-of-interest,
+  webhooks, API keys) are still in memory, and the row-level policies are
+  still inert.
