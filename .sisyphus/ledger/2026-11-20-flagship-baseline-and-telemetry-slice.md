@@ -229,3 +229,18 @@ a funded multisig (the treasury ADR is not written), a VRF subscription on the
 chosen chain, a named on-call human, an independent auditor, and one sponsor who
 will actually put ETH into a trial. P3 mainnet work does not begin before P1
 produces evidence and an independent review is commissioned.
+
+### Local environment left running
+
+- **Anvil on `127.0.0.1:8555` (PID 27268) is still up**, with the arena deployed
+  (Arena `0x0B306BF915C4d645ff596e518fAf3F9669b97016`, trial 1 posted by
+  `0x976EA74026E726554dB657fA54763abd0C3a0aa9`). It does not conflict with the
+  other session's `8545`.
+- The API (8787) and the site (3210) were **stopped**: `8787` is the port the
+  other session's `.env` expects, and leaving it held would block them.
+- To bring the verification stack back: deploy with
+  `node scripts/run-forge.mjs script script/Demo.s.sol:Demo --rpc-url http://127.0.0.1:8555 --broadcast`,
+  run the API with `node --env-file=.scratch/api.env apps/api/dist/server.js` (that
+  file sets `TRIALS_ADDRESS`, `ALLOY_ADDRESS`, `ARENA_ADDRESS`, `AUTH_ORIGIN` and
+  `ALLOWED_ORIGINS` for `http://127.0.0.1:3210`), then
+  `npx next start -p 3210` in `apps/web`.
