@@ -197,7 +197,6 @@ services:
       # replay, cursor). Interpolated from `.env` like the rest; a name the
       # code does not read does not belong here.
       ALLOY_TTL_MS: ${ALLOY_TTL_MS:-}
-      ARENA_ADDRESS: ${ARENA_ADDRESS:-}
       CLEAN_PASSPORT_URL: ${CLEAN_PASSPORT_URL:-}
       CRUSIBLE_CURSOR_FILE: ${CRUSIBLE_CURSOR_FILE:-}
       ELEVENLABS_API_KEY: ${ELEVENLABS_API_KEY:-}

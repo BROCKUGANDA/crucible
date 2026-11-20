@@ -9,10 +9,10 @@
  */
 
 import { Queue, Worker } from "bullmq";
-import IORedis from "ioredis";
+import Redis from "ioredis";
 
 const redisUrl = process.env.REDIS_URL || "redis://localhost:6379";
-const connection = new IORedis(redisUrl, { maxRetriesPerRequest: null });
+const connection = new Redis(redisUrl, { maxRetriesPerRequest: null });
 
 // Define job queues
 const evaluationQueue = new Queue("evaluations", { connection });
