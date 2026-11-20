@@ -25,10 +25,11 @@ import {
   type FundingClaim,
 } from "./sponsor-funding-pg.js";
 import {
-  summarizeFunding,
+  summarizeProgrammeFunding,
   verifySponsorFunding,
   type ChainReader,
   type FundingReceipt,
+  type FundingVerdict,
 } from "./funding-verification.js";
 
 /**
@@ -102,6 +103,19 @@ function jsonClaim(claim: FundingClaim) {
     createdAt: claim.createdAt,
     updatedAt: claim.updatedAt,
   };
+}
+
+/** The stored verdict, in the domain's words. */
+function storedVerdictToDomain(verdict: "VERIFIED" | "MISMATCH" | "UNVERIFIABLE"): FundingVerdict {
+  if (verdict === "VERIFIED") return "verified";
+  if (verdict === "MISMATCH") return "mismatch";
+  return "unverifiable";
+}
+
+/** What the ledger claimed for a claim id, or null when the id is unknown. */
+function claimAmountFor(claims: FundingClaim[], claimId: string): string | null {
+  const claim = claims.find((c) => c.id === claimId);
+  return claim ? claim.claimedWei : null;
 }
 
 export function createSponsorFundingRoutes(): Hono {
@@ -200,21 +214,18 @@ export function createSponsorFundingRoutes(): Hono {
     const claims = await pgListFundingClaims(programId);
     const receipts = await pgLatestReceipts(programId);
 
-    const summary = summarizeFunding(
+    // The claimed total comes from the ledger's claims — every claim,
+    // including the ones never put to the chain. The verified total comes
+    // from the chain's receipts. Summarising from the receipts alone would
+    // drop an unchecked claim from the ledger's number, and a programme
+    // whose claim has not been checked yet would look like it never
+    // claimed anything.
+    const summary = summarizeProgrammeFunding(
+      claims.map((claim) => ({ claimId: claim.id, claimedWei: claim.claimedWei })),
       receipts.map((receipt) => ({
-        trialId: "",
-        sponsorAddress: "",
-        verdict: receipt.verdict === "VERIFIED" ? "verified" : receipt.verdict === "MISMATCH" ? "mismatch" : "unverifiable",
-        reason: receipt.reason,
-        claimedWei: null,
+        claimId: receipt.claimId,
+        verdict: storedVerdictToDomain(receipt.verdict),
         observedSponsorFundingWei: receipt.observedSponsorFundingWei,
-        observedRewardWei: receipt.observedRewardWei,
-        observedFeeWei: receipt.observedFeeWei,
-        observedDepositedWei: receipt.observedDepositedWei,
-        observedPaidOutWei: receipt.observedPaidOutWei,
-        observedSponsor: receipt.observedSponsor,
-        trialStatus: receipt.trialStatus,
-        checkedAt: receipt.checkedAt,
       })),
     );
 
@@ -225,6 +236,7 @@ export function createSponsorFundingRoutes(): Hono {
         claimId: receipt.claimId,
         verdict: receipt.verdict,
         reason: receipt.reason,
+        claimedWei: claimAmountFor(claims, receipt.claimId),
         observedSponsorFundingWei: receipt.observedSponsorFundingWei,
         observedRewardWei: receipt.observedRewardWei,
         observedFeeWei: receipt.observedFeeWei,

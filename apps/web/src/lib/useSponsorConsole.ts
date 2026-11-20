@@ -36,6 +36,8 @@ export interface FundingReceipt {
   claimId: string;
   verdict: FundingVerdict;
   reason: string | null;
+  /** What the ledger claimed for this claim, in wei. */
+  claimedWei: string | null;
   observedSponsorFundingWei: string | null;
   observedRewardWei: string | null;
   observedFeeWei: string | null;
@@ -45,10 +47,12 @@ export interface FundingReceipt {
 }
 
 export interface FundingSummary {
+  claims: number;
   checked: number;
   verified: number;
   mismatched: number;
   unverifiable: number;
+  unchecked: number;
   verifiedWei: string;
   claimedWei: string;
 }
@@ -258,7 +262,16 @@ export function useFundingStatus(
 }
 
 function emptySummary(): FundingSummary {
-  return { checked: 0, verified: 0, mismatched: 0, unverifiable: 0, verifiedWei: "0", claimedWei: "0" };
+  return {
+    claims: 0,
+    checked: 0,
+    verified: 0,
+    mismatched: 0,
+    unverifiable: 0,
+    unchecked: 0,
+    verifiedWei: "0",
+    claimedWei: "0",
+  };
 }
 
 /** Record what the programme claims it funded, and read the chain's answer. */

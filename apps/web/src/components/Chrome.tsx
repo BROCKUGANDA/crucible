@@ -449,10 +449,19 @@ export function ColdForge({ line, cta, href }: { line: string; cta: string; href
   );
 }
 
-export function SignalLost({ message }: { message: string }) {
+/**
+ * The "we could not get an answer" panel.
+ *
+ * `what` names the thing that could not be reached. It defaults to "the
+ * chain" because that is the overwhelming majority of uses — a page reading
+ * the chain lost the chain. A page reading the API says "the host": telling
+ * somebody the chain is down when the API is down sends them to look at the
+ * wrong machine.
+ */
+export function SignalLost({ message, what = "the chain" }: { message: string; what?: string }) {
   return (
     <div className="surface signal-lost" role="alert" data-tone="sear">
-      <strong>Couldn&apos;t reach the chain.</strong> {message}
+      <strong>Couldn&apos;t reach {what}.</strong> {message}
     </div>
   );
 }

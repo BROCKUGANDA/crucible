@@ -161,7 +161,7 @@ export default function StudioPage() {
             </button>
           </p>
 
-          {error ? <SignalLost message={error} /> : null}
+          {error ? <SignalLost what="the host" message={error} /> : null}
 
           {report ? (
             <>

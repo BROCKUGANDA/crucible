@@ -138,10 +138,10 @@ function OrgChooser({
 }) {
   if (state.kind === "loading") return <p className="hint">Reading your organisations…</p>;
   if (state.kind === "unreachable") {
-    return <SignalLost message={`The API could not be reached. (${state.reason})`} />;
+    return <SignalLost what="the host" message={`The API could not be reached. (${state.reason})`} />;
   }
   if (state.kind === "refused") {
-    return <SignalLost message={`The API refused the read. (${state.reason})`} />;
+    return <SignalLost what="the host" message={`The API refused the read. (${state.reason})`} />;
   }
   if (state.value.length === 0) {
     return (
@@ -182,10 +182,10 @@ function ProgramChooser({
 }) {
   if (state.kind === "loading") return <p className="hint">Reading your programmes…</p>;
   if (state.kind === "unreachable") {
-    return <SignalLost message={`The API could not be reached. (${state.reason})`} />;
+    return <SignalLost what="the host" message={`The API could not be reached. (${state.reason})`} />;
   }
   if (state.kind === "refused") {
-    return <SignalLost message={`The API refused the read. (${state.reason})`} />;
+    return <SignalLost what="the host" message={`The API refused the read. (${state.reason})`} />;
   }
   if (state.value.length === 0) {
     return (
@@ -245,10 +245,10 @@ function FundingPanel({
 
   if (state.kind === "loading") return <p className="hint">Reading the escrow…</p>;
   if (state.kind === "unreachable") {
-    return <SignalLost message={`The API could not be reached. (${state.reason})`} />;
+    return <SignalLost what="the host" message={`The API could not be reached. (${state.reason})`} />;
   }
   if (state.kind === "refused") {
-    return <SignalLost message={`The API refused the read. (${state.reason})`} />;
+    return <SignalLost what="the host" message={`The API refused the read. (${state.reason})`} />;
   }
 
   const { claims, receipts, summary } = state.value;
@@ -312,16 +312,21 @@ function FundingPanel({
             : `${formatWei(BigInt(summary.verifiedWei))} ETH`}
           <br />
           <span className="hint">
-            {summary.verified} of {summary.checked} claim(s) confirmed by the chain.
+            {summary.verified} of {summary.checked} checked claim(s) confirmed by the
+            chain. This is the sponsor&apos;s money — the reward plus the arena fee.
+            Agent bonds are not the sponsor&apos;s.
           </span>
         </p>
         <p className="surface detail-panel">
           <strong>The ledger claims</strong>
           <br />
-          {summary.claimedWei === "0" && summary.checked === 0 ? "—" : `${formatWei(BigInt(summary.claimedWei))} ETH`}
+          {summary.claimedWei === "0" && summary.claims === 0
+            ? "—"
+            : `${formatWei(BigInt(summary.claimedWei))} ETH`}
           <br />
           <span className="hint">
-            {summary.mismatched} contradicted, {summary.unverifiable} not checked.
+            {summary.mismatched} contradicted, {summary.unverifiable} the chain could
+            not answer, {summary.unchecked} not checked yet.
           </span>
         </p>
       </div>
@@ -347,8 +352,9 @@ function FundingPanel({
                 </p>
                 {receipt?.observedSponsorFundingWei ? (
                   <p className="hint">
-                    The escrow holds {formatWei(BigInt(receipt.observedSponsorFundingWei))} ETH
-                    for this trial.
+                    The sponsor&apos;s side of the escrow holds{" "}
+                    {formatWei(BigInt(receipt.observedSponsorFundingWei))} ETH for this
+                    trial.
                   </p>
                 ) : null}
                 {receipt?.reason ? <p className="hint">{receipt.reason}</p> : null}

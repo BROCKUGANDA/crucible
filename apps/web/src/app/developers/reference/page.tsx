@@ -36,12 +36,13 @@ export default function DeveloperReferencePage() {
 
       {state.kind === "unreachable" ? (
         <SignalLost
+          what="the host"
           message={`The API could not be reached, so no reference could be read. (${state.reason})`}
         />
       ) : null}
 
       {state.kind === "refused" ? (
-        <SignalLost message={`The API did not return a reference. ${state.reason}`} />
+        <SignalLost what="the host" message={`The API did not return a reference. ${state.reason}`} />
       ) : null}
 
       {state.kind === "ready" ? <Contract contract={state.contract} /> : null}

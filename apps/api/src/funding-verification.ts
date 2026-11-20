@@ -275,6 +275,87 @@ export function summarizeFunding(receipts: FundingReceipt[]): FundingSummary {
   };
 }
 
+/**
+ * A claim as the ledger holds it — the only thing the platform wrote down.
+ */
+export interface LedgerClaim {
+  claimId: string;
+  claimedWei: string;
+}
+
+/**
+ * A receipt, as it is stored: which claim it speaks about, what the chain
+ * said, and how much the chain holds.
+ */
+export interface ProgrammeReceipt {
+  claimId: string;
+  verdict: FundingVerdict;
+  observedSponsorFundingWei: string | null;
+}
+
+/**
+ * The two numbers a sponsor's programme is made of, side by side.
+ *
+ * `unchecked` is its own column because "not checked" is neither "paid" nor
+ * "not paid": a claim the platform has not yet put to the chain is a claim
+ * in the ledger and nothing anywhere else. Hiding it inside either pile
+ * would overstate one and understate the other.
+ */
+export interface ProgrammeFundingSummary {
+  /** How many claims the ledger holds. */
+  claims: number;
+  /** How many of them have been put to the chain. */
+  checked: number;
+  /** The chain confirmed these. */
+  verified: number;
+  /** The chain was read and it says otherwise. */
+  mismatched: number;
+  /** The chain could not answer. */
+  unverifiable: number;
+  /** Never put to the chain. */
+  unchecked: number;
+  /** What the ledger claims, in wei — every claim, checked or not. */
+  claimedWei: string;
+  /** What the chain confirmed, in wei. */
+  verifiedWei: string;
+}
+
+/**
+ * Summarise a programme from ITS ledger and the chain's receipts.
+ *
+ * The claimed total comes from the claims, not from the receipts: a claim
+ * that has never been checked is still something the ledger says, and
+ * dropping it from the total would let a programme look small on paper
+ * while the chain says otherwise. The verified total comes from the
+ * receipts, and counts only the claims the chain confirmed.
+ *
+ * A receipt whose claim is not in the ledger is still counted — it happened,
+ * and hiding it would be the same lie in the other direction.
+ */
+export function summarizeProgrammeFunding(
+  claims: LedgerClaim[],
+  receipts: ProgrammeReceipt[],
+): ProgrammeFundingSummary {
+  let claimed = 0n;
+  for (const claim of claims) {
+    claimed += BigInt(claim.claimedWei);
+  }
+  const checkedClaimIds = new Set(receipts.map((r) => r.claimId));
+  const verified = receipts.filter((r) => r.verdict === "verified");
+  return {
+    claims: claims.length,
+    checked: receipts.length,
+    verified: verified.length,
+    mismatched: receipts.filter((r) => r.verdict === "mismatch").length,
+    unverifiable: receipts.filter((r) => r.verdict === "unverifiable").length,
+    unchecked: claims.filter((c) => !checkedClaimIds.has(c.claimId)).length,
+    claimedWei: claimed.toString(),
+    verifiedWei: verified
+      .reduce((sum, r) => sum + BigInt(r.observedSponsorFundingWei ?? "0"), 0n)
+      .toString(),
+  };
+}
+
 function message(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }

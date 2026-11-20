@@ -288,3 +288,58 @@ PostgreSQL — it was run manually here, against a local `redis-server`. The spo
 programme scaffolding is still held in the API's memory, so the console's programme
 list does not survive a restart; the funding truth (the part that must not be a
 claim) is durable and chain-verified, and was built to survive that rewrite.
+
+## I. Verification session (later, 2026-11-20) — browser proof and a money bug
+
+The three surfaces shipped in section H were verified the way this repository says
+they must be verified: in a browser at the real URL, against a real chain.
+
+**The stack.** Anvil on `127.0.0.1:8555`; the arena deployed with
+`forge script script/Demo.s.sol:Demo --rpc-url http://127.0.0.1:8555 --broadcast`
+(CrucibleTrials `0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0`, AlloyRegistry
+`0xe7f1725E7734CE288f8367e1Bb143E90bb3F0512`, Arena
+`0x0B306BF915C4d645ff596e518fAf3F9669b97016`); the API on `:8787` against those
+addresses; the site on `:3210` against the API. The `forge script` run also
+compiles `script/`, which `forge test` does not — the deploy path is therefore
+proved to build, not only to test.
+
+**What the browser showed.** The reference page renders the live contract — the
+pagination rules, the rate limit, the two auth schemes, the webhook signature and
+every error code, read from the running API. The Studio and the console render
+their honest signed-out states. The Studio's full path was then driven against the
+live API with a real signed session: three agreeing replays produce
+`REPRODUCIBLE`, one disagreeing replay produces `NOT_REPRODUCIBLE`, and three
+replays that produced no evidence at all produce `INCONCLUSIVE`.
+
+**The funding truth, against the live chain.** Trial 1 of the deployed arena is
+posted by `0x976EA74026E726554dB657fA54763abd0C3a0aa9` with reward `0.5 ETH`, fee
+`0.075 ETH` and deposited `0.675 ETH` — the extra `0.1` is the agent's bond, which
+is not the sponsor's money. An honest claim of `reward + fee` is `verified`; a
+claim of the reward alone is a `mismatch` naming both numbers; another wallet's
+address on that trial is a `mismatch`; an unreachable node is `unverifiable`.
+**The fee in that arithmetic is the arena's `ARENA_FEE_BPS = 1500`, paid by the
+sponsor on top of the reward.** The frozen `FEE_BPS = 500` is the *legacy* escrow's
+own fee on a different contract, and the two must not be read as one number.
+
+**A money bug, found by looking rather than by reasoning.** The console's "the
+ledger claims" column summed the chain's receipts with each receipt's claimed
+amount dropped on the way in, so a programme with a 1.15 ETH claim reported **0
+ETH** next to "the escrow holds 1.15 ETH". The summary now comes from the claims
+and the receipts separately, and an unchecked claim is its own column rather than a
+contradiction. Four mutations are proven red. **The fourth was green on its first
+attempt** because the anchor matched an identical line in a different function —
+a mutation that cannot fail proves nothing, and one that fails for the wrong
+reason proves less than one that fails for the right one. That correction is in
+`HARDENING.md` with the rest.
+
+**Also found by the browser, and fixed.** The "couldn't reach the chain" panel was
+shown when it was the *API* that was unreachable, on three pages that read the
+API; it says "the host" there now and keeps "the chain" for chain pages.
+
+**Measured after this session:** `npm run typecheck` clean; `npm test` green —
+**4,171** TypeScript tests passed; the edge suite **25/25**; `forge script` compiles
+and deploys. **Not claimed:** no operator UI for the dead-letter queue; the
+sponsor programme scaffolding is still in the API's memory; the Studio's three
+replays are three runs of one verifier in one process, not three independent
+workers; the browser was Edge headless against a local chain, not a public
+deployment.
