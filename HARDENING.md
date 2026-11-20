@@ -2725,3 +2725,27 @@ Report a vulnerability as described in [`SECURITY.md`](SECURITY.md), not in a pu
   timeout on a hold, because a timeout would push work back onto the queue with no way for the platform to
   know whether the reviewer was slow or gone. The review verdict itself is not modelled yet — what exists
   is the queue, the hold, the abstention and the conflict.
+
+- **2026-11-20 — a revoked key must not come back** (ADR-0040). The organisation API keys were created,
+  listed and revoked, and **nothing authenticated with them** (`validateApiKey` had no caller outside its
+  own tests). They also lived in process memory, so the defect was not that a key was lost: it was that
+  **a revoked key came back**. The revocation was a field in a `globalThis` map, the process restarted, and
+  the key was valid again — at exactly the moment somebody asks whether the old key really stopped working.
+  The keys are now durable (`org_api_keys`, migration 0020), the revocation survives a restart, and the API
+  is asynchronous throughout, because a write that cannot be awaited cannot be durable. The durable store
+  says the same things the in-memory store says, in the same words (PostgreSQL's `23505` is translated, not
+  leaked), and a second revocation has nothing to revoke and says so in both stores.
+  The hash was also **fast and unsalted** — a stolen table of digests is a gift to a GPU — so it is now
+  **scrypt with a per-key salt** in a self-describing format (`scrypt$16384$8$1$<salt>$<hash>`), and a
+  hash in another format is refused rather than guessed at.
+  **Eleven mutations proven red** — the store forgetting a revocation, the revocation unscoped to its
+  organisation, a duplicate id accepted, a colliding prefix accepted, the secret stored in the clear, a fast
+  unsalted hash, a rotation that does not invalidate the old secret, the scope grant unchecked, an expired
+  key that still authenticates, the store forgetting it is durable, and the in-memory store revoking across
+  organisations. One of them was **green on the first attempt** because the test that should have caught it
+  did not exist: the cross-organisation revocation was only tested against the durable store, so the
+  in-memory guard was unmeasured. The test now exists.
+  **Still open, and named.** Nothing yet AUTHENTICATES with a key — the door that would accept one is not
+  written, so the commercial promise ("your team polls the API with a key") is not yet true. There is no
+  server-side pepper, so an attacker with the table still attacks the secret alone. And scrypt's ~80 ms per
+  verification is a denial-of-service surface on any endpoint that verifies a key without a rate limit.

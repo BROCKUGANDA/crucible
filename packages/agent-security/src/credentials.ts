@@ -42,7 +42,14 @@ export function hashSecret(secret: string): string {
   return createHash("sha256").update(`crucible:v1:${secret}`).digest("hex");
 }
 
-function secretEquals(a: string, b: string): boolean {
+/**
+ * Compare two secrets in constant time.
+ *
+ * Exported so that every secret comparison in the package goes through
+ * the same door: a comparison written a second time is a comparison
+ * somebody will write without the constant-time part.
+ */
+export function secretEquals(a: string, b: string): boolean {
   const ab = Buffer.from(a);
   const bb = Buffer.from(b);
   if (ab.length !== bb.length) return false;

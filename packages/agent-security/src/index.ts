@@ -14,6 +14,7 @@ export * from "./org-authz.js";
 export * from "./org-roles.js";
 export * from "./org-coi.js";
 export * from "./org-coi-pg.js";
+export * from "./org-api-key-pg.js";
 export * from "./org-budget.js";
 export * from "./org-api-key.js";
 export * from "./org-webhook.js";

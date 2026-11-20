@@ -249,7 +249,7 @@ export function createOrgRoutes(): Hono {
         body.scopes ?? [],
         principal.wallet.id,
       );
-      createApiKey({ key, plaintextSecret });
+      await createApiKey({ key, plaintextSecret });
       return c.json({ apiKey: key, secret: plaintextSecret }, 201);
     } catch (err) {
       return c.json({ error: (err as Error).message, code: "conflict" }, 409);
@@ -265,7 +265,7 @@ export function createOrgRoutes(): Hono {
     if (!isMemberOf(principal.wallet.id, id)) {
       return c.json({ error: "forbidden", code: "not-a-member" }, 403);
     }
-    const keys = listApiKeysForOrg(id).map((k) => ({ ...k, secretHash: undefined }));
+    const keys = (await listApiKeysForOrg(id)).map((k) => ({ ...k, secretHash: undefined }));
     return c.json({ apiKeys: keys });
   });
 
@@ -281,7 +281,7 @@ export function createOrgRoutes(): Hono {
       return c.json({ error: "forbidden", reason: decision.reason, code: decision.code }, 403);
     }
     const keyId = c.req.param("keyId");
-    const ok = revokeApiKey(keyId, id);
+    const ok = await revokeApiKey(keyId, id);
     if (!ok) {
       return c.json({ error: "not found", code: "no-such-key" }, 404);
     }

@@ -89,6 +89,21 @@ if (process.env.DATABASE_URL) {
   );
 }
 
+// The ORGANISATION API KEYS are durable. The revocation is the reason: a
+// revocation that lives in process memory is undone by the next restart,
+// and the moment a credential is most likely to be tried again is right
+// after somebody rotated it in a hurry.
+if (process.env.DATABASE_URL) {
+  const { configureApiKeyStore } = await import("@crucible/agent-security");
+  const { pgApiKeyStore } = await import("@crucible/agent-security");
+  configureApiKeyStore(pgApiKeyStore());
+  console.log("[crucible] api keys: postgresql (a revocation survives a restart)");
+} else {
+  console.log(
+    "[crucible] api keys: in memory — a revocation is undone by a restart. Configure DATABASE_URL for a durable record.",
+  );
+}
+
 // The AUDIT CHAIN is durable, and its hash is a real one (ADR-0037). The
 // chain is what a buyer's compliance review reads, and it has to survive
 // a restart AND continue across one — a chain that restarted at "genesis"

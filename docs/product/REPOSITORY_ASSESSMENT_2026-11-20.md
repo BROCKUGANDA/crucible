@@ -820,3 +820,60 @@ case", read back from a claim made **before the API was restarted**.
   is still to be decided.
 - Budgets and quotas, webhook endpoints, and API keys are still in process
   memory (AUTHZ-D1).
+
+## R. A revoked key came back (2026-11-20, last) — and nothing authenticated with one
+
+The organisation API keys were created, listed and revoked, and **nothing
+authenticated with them**: `validateApiKey` had no caller outside its own
+tests. They also lived in process memory — and that is where the real
+defect was.
+
+**It was not that a key was lost.** A lost key is an inconvenience; the
+organisation makes another one. It was that **a revoked key came back**:
+the revocation was a field in a `globalThis` map, the process restarted — a
+deploy, a crash, an Octane worker recycling — and the key was valid again.
+The moment a credential is most likely to be tried again is right after
+somebody rotated it in a hurry, because that is when somebody asks "did the
+old key really stop working?" and the platform's answer depended on whether
+a process had restarted since.
+
+The hash had a second problem: it was **fast and unsalted**
+(`HMAC-SHA256(key = secret, msg = "")`), so a stolen table of digests is a
+gift to a GPU, and no two keys shared a salt.
+
+**Now (ADR-0040).**
+
+- The keys are durable (`org_api_keys`, migration 0020); the store is
+  chosen once at boot and the boot log says which. The API is asynchronous
+  throughout — a write that cannot be awaited cannot be durable.
+- The durable store says the same things the in-memory store says, in the
+  same words: PostgreSQL's `23505` is translated, not leaked, and a second
+  revocation has nothing to revoke and says so in both stores.
+- The revocation's scope guard is **inside the statement**
+  (`WHERE id = $1 AND org_id = $3`), because a check outside a statement is
+  a check a concurrent write can slip between.
+- The hash is **scrypt with a per-key salt**, self-describing
+  (`scrypt$16384$8$1$<salt>$<hash>`), and a hash in another format is
+  refused rather than guessed at. The comparison is constant-time and goes
+  through the package's existing `secretEquals`, not a second copy of it.
+
+**Proven.** Thirteen tests against a real PostgreSQL — a key written,
+revoked, and read back by a **fresh store object over the same table**, and
+it refuses to authenticate — and **eleven mutations proven red**. One of
+them was green on the first attempt because the test that should have
+caught it did not exist: the cross-organisation revocation was only tested
+against the durable store, so the in-memory guard was unmeasured.
+
+**What remains, named rather than left to rot:**
+
+- **Nothing yet authenticates with a key.** The door that would accept one
+  is not written, so the commercial promise — "your team polls the API
+  with a key" — is not yet true.
+- **No server-side pepper.** The salt is per key and stored beside the
+  hash, so an attacker with the table still attacks the secret alone. A
+  pepper belongs in the environment, not in the database, and adding one
+  changes the hash format — so it is a change, not a tweak.
+- Scrypt's ~80 ms per verification is a denial-of-service surface on any
+  endpoint that verifies a key without a rate limit.
+- Budgets and quotas, and webhook endpoints, are still in process memory
+  (AUTHZ-D1).

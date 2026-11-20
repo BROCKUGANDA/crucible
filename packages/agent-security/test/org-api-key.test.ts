@@ -15,8 +15,8 @@ import {
   __resetApiKeyStoreForTests,
 } from "../src/org-api-key.js";
 
-beforeEach(() => {
-  __resetApiKeyStoreForTests();
+beforeEach(async () => {
+  await __resetApiKeyStoreForTests();
 });
 
 const orgId = "org-1";
@@ -27,41 +27,41 @@ function makeKey(scopes = ["org:read"], resourceScope?: string[]) {
 }
 
 describe("API keys", () => {
-  it("creates, reads and lists", () => {
+  it("creates, reads and lists", async () => {
     const { key } = makeKey();
-    createApiKey({ key, plaintextSecret: secret });
-    expect(getApiKey("key-1")).toEqual(key);
-    const byPrefix = getApiKeyByPrefix(key.prefix);
+    await createApiKey({ key, plaintextSecret: secret });
+    expect(await getApiKey("key-1")).toEqual(key);
+    const byPrefix = await getApiKeyByPrefix(key.prefix);
     expect(byPrefix?.id).toBe("key-1");
-    expect(listApiKeysForOrg(orgId)).toHaveLength(1);
-    expect(listApiKeysForOrg("other-org")).toHaveLength(0);
+    expect(await listApiKeysForOrg(orgId)).toHaveLength(1);
+    expect(await listApiKeysForOrg("other-org")).toHaveLength(0);
   });
 
-  it("rejects duplicate key and prefix collision", () => {
+  it("rejects duplicate key and prefix collision", async () => {
     const { key } = makeKey();
-    createApiKey({ key, plaintextSecret: secret });
-    expect(() => createApiKey({ key, plaintextSecret: secret })).toThrow();
+    await createApiKey({ key, plaintextSecret: secret });
+    await expect(createApiKey({ key, plaintextSecret: secret })).rejects.toThrow();
     // Same prefix (first 8 chars) but a different, long-enough secret.
     const collidingSecret = secret.slice(0, 8) + "0123456789";
     const { key: key2 } = newOrgApiKey("key-2", orgId, "Key 2", collidingSecret, ["org:read"], "0xowner");
-    expect(() => createApiKey({ key: key2, plaintextSecret: collidingSecret })).toThrow();
+    await expect(createApiKey({ key: key2, plaintextSecret: collidingSecret })).rejects.toThrow();
   });
 
-  it("rejects short secret", () => {
+  it("rejects short secret", async () => {
     expect(() => newOrgApiKey("k", orgId, "n", "short", [], "0xowner")).toThrow();
   });
 });
 
-function seedKey(scopes = ["org:read"], resourceScope?: string[]) {
+async function seedKey(scopes = ["org:read"], resourceScope?: string[]) {
   const { key } = makeKey(scopes, resourceScope);
-  createApiKey({ key, plaintextSecret: secret });
+  await createApiKey({ key, plaintextSecret: secret });
   return key;
 }
 
 describe("validateApiKey", () => {
-  it("validates correct key and scopes", () => {
-    const key = seedKey(["org:read", "org:budget:set"], ["res-a"]);
-    const r = validateApiKey(
+  it("validates correct key and scopes", async () => {
+    const key = await seedKey(["org:read", "org:budget:set"], ["res-a"]);
+    const r = await validateApiKey(
       key.prefix,
       secret,
       ["org:read", "org:budget:set"],
@@ -71,63 +71,72 @@ describe("validateApiKey", () => {
     expect(r.key?.id).toBe(key.id);
   });
 
-  it("rejects wrong secret", () => {
-    const k = seedKey();
-    const r = validateApiKey(k.prefix, ["wrong","secret","0123456789"].join("-"), ["org:read"]);
+  it("rejects wrong secret", async () => {
+    const k = await seedKey();
+    const r = await validateApiKey(k.prefix, ["wrong","secret","0123456789"].join("-"), ["org:read"]);
     expect(r.valid).toBe(false);
     expect(r.code).toBe("wrong-scope");
   });
 
-  it("rejects unknown prefix", () => {
-    const r = validateApiKey("nope-prefix", secret, ["org:read"]);
+  it("rejects unknown prefix", async () => {
+    const r = await validateApiKey("nope-prefix", secret, ["org:read"]);
     expect(r.valid).toBe(false);
     expect(r.code).toBe("no-credential");
   });
 
-  it("rejects missing scope", () => {
-    const k = seedKey();
-    const r = validateApiKey(k.prefix, secret, ["org:read", "org:manage"]);
+  it("rejects missing scope", async () => {
+    const k = await seedKey();
+    const r = await validateApiKey(k.prefix, secret, ["org:read", "org:manage"]);
     expect(r.valid).toBe(false);
     expect(r.code).toBe("wrong-scope");
   });
 
-  it("rejects out-of-scope resource", () => {
-    const k = seedKey(["org:read"], ["res-a"]);
-    const r = validateApiKey(k.prefix, secret, ["org:read"], "res-b");
+  it("rejects out-of-scope resource", async () => {
+    const k = await seedKey(["org:read"], ["res-a"]);
+    const r = await validateApiKey(k.prefix, secret, ["org:read"], "res-b");
     expect(r.valid).toBe(false);
     expect(r.code).toBe("wrong-scope");
   });
 
-  it("records last used", () => {
-    const k = seedKey();
-    validateApiKey(k.prefix, secret, ["org:read"]);
-    const stored = getApiKey(k.id);
+  it("records last used", async () => {
+    const k = await seedKey();
+    await validateApiKey(k.prefix, secret, ["org:read"]);
+    const stored = await getApiKey(k.id);
     expect(stored?.lastUsedAt).not.toBeNull();
   });
 });
 
 describe("revoke and rotate", () => {
-  it("revokes key", () => {
-    const k = seedKey();
-    expect(revokeApiKey(k.id)).toBe(true);
-    const r = validateApiKey(k.prefix, secret, ["org:read"]);
+  it("revokes key", async () => {
+    const k = await seedKey();
+    expect(await revokeApiKey(k.id)).toBe(true);
+    const r = await validateApiKey(k.prefix, secret, ["org:read"]);
     expect(r.valid).toBe(false);
     expect(r.code).toBe("revoked");
-    expect(revokeApiKey("nope")).toBe(false);
+    expect(await revokeApiKey("nope")).toBe(false);
   });
 
-  it("rotates key", () => {
-    seedKey();
+  it("does not revoke a key in another organisation", async () => {
+    const k = await seedKey();
+    // The scope guard: a caller revoking within one organisation must not
+    // revoke another organisation's key (CRU-IAM-002).
+    expect(await revokeApiKey(k.id, "other-org")).toBe(false);
+    expect((await getApiKey(k.id))?.revokedAt).toBeUndefined();
+    expect(await revokeApiKey(k.id, orgId)).toBe(true);
+  });
+
+  it("rotates key", async () => {
+    await seedKey();
     const newSecret = ["sk","new","0123456789abcdef"].join("-");
-    const result = rotateApiKey("key-1", newSecret);
+    const result = await rotateApiKey("key-1", newSecret);
     expect(result?.plaintextSecret).toBe(newSecret);
-    const r = validateApiKey("sk-new-0", newSecret, ["org:read"]);
+    const r = await validateApiKey("sk-new-0", newSecret, ["org:read"]);
     expect(r.valid).toBe(true);
-    const old = validateApiKey("sk-test-0", secret, ["org:read"]);
+    const old = await validateApiKey("sk-test-0", secret, ["org:read"]);
     expect(old.valid).toBe(false);
   });
 
-  it("returns null for unknown key rotation", () => {
-    expect(rotateApiKey("nope", secret)).toBeNull();
+  it("returns null for unknown key rotation", async () => {
+    expect(await rotateApiKey("nope", secret)).toBeNull();
   });
 });
