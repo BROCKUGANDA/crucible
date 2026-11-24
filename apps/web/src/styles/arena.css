@@ -19,9 +19,13 @@
 
 .arena__act {
   position: relative;
+  /* vh first, svh second: iOS <15.4 discards an svh-only declaration and the act
+     collapses to its content height. Same pattern on every viewport-relative rule. */
+  min-height: 100vh;
   min-height: 100svh;
   display: grid;
   align-content: end;
+  padding-block: clamp(5rem, 18vh, 12rem) var(--s-6);
   padding-block: clamp(5rem, 18svh, 12rem) var(--s-6);
   padding-inline: var(--pad);
 }
@@ -143,11 +147,28 @@
 .arena__nav {
   position: absolute;
   inset: calc(var(--pad) + 1.6rem) auto auto var(--pad);
+  /* Five nowrap links overflowed a 320px phone and handed the whole page a horizontal
+     scrollbar. Wrap the rail and let it use the space the centred hero leaves free. */
   display: flex;
-  gap: var(--s-4);
+  flex-wrap: wrap;
+  max-width: calc(100% - var(--pad) * 2);
+  gap: var(--s-2) var(--s-4);
   font-size: var(--fs-micro);
   letter-spacing: var(--track-micro);
   text-transform: uppercase;
+}
+
+@supports (padding: env(safe-area-inset-left)) {
+  .arena__nav {
+    left: max(var(--pad), env(safe-area-inset-left));
+  }
+}
+
+@media (max-width: 480px) {
+  .arena__nav {
+    gap: var(--s-1) var(--s-3);
+    letter-spacing: 0.1em;
+  }
 }
 
 .arena__nav a {
@@ -308,12 +329,14 @@
 /* ------------------------------------------------------------------ the hero (act 0) */
 
 .arena__hero {
+  min-height: 100vh;
   min-height: 100svh;
   display: grid;
   align-content: center;
   justify-items: center;
   text-align: center;
   padding-inline: var(--pad);
+  padding-block: clamp(7rem, 22vh, 14rem) 6rem;
   padding-block: clamp(7rem, 22svh, 14rem) 6rem;
 }
 
@@ -380,6 +403,7 @@
 }
 
 .arena__scroll {
+  margin: clamp(3rem, 9vh, 6rem) 0 0;
   margin: clamp(3rem, 9svh, 6rem) 0 0;
   display: grid;
   justify-items: center;
@@ -493,6 +517,7 @@
 @media (max-width: 700px) {
   .arena__act {
     min-height: auto;
+    padding-block: clamp(4rem, 14vh, 7rem) var(--s-5);
     padding-block: clamp(4rem, 14svh, 7rem) var(--s-5);
   }
 

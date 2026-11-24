@@ -6,6 +6,31 @@
   box-sizing: border-box;
 }
 
+/* A raster asset wider than its column must shrink, not widen the page. This is the
+   mobile/tablet overflow backstop: every grid and flex child below can now rely on an
+   image or canvas never contributing a scrollbar. `height: auto` keeps the intrinsic
+   ratio after `next/image` has written its width/height attributes. */
+img,
+video,
+canvas {
+  max-width: 100%;
+  height: auto;
+}
+
+svg {
+  max-width: 100%;
+}
+
+/* Legacy iOS Safari waits ~300ms before synthesising a click on a non-button element and
+   paints a grey flash on tap. Buttons and links are the interactive surface here; leaving
+   form controls alone keeps text selection and long-press behaviour intact. */
+a,
+button,
+[role="button"] {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
 .indent-sm {
   margin-left: 1rem;
 }
@@ -41,12 +66,17 @@ body::after {
 }
 
 body::before {
+  /* --ember (#e2612f) at 22% — the fallback keeps the heat visible where color-mix is
+     unsupported; without it the whole page reads flat and cold. */
+  background: radial-gradient(circle, rgba(226, 97, 47, 0.22), transparent 65%);
   background: radial-gradient(circle, color-mix(in srgb, var(--ember) 22%, transparent), transparent 65%);
   animation: bellows 17s var(--ease-cool) infinite;
 }
 
 body::after {
   inset: auto auto -30% -20%;
+  /* --gold (#e3b25c) at 14%. */
+  background: radial-gradient(circle, rgba(227, 178, 92, 0.14), transparent 60%);
   background: radial-gradient(circle, color-mix(in srgb, var(--gold) 14%, transparent), transparent 60%);
   animation: bellows 23s var(--ease-cool) infinite reverse;
 }
@@ -167,6 +197,9 @@ p {
 /* ── layout ───────────────────────────────────────────────── */
 
 .shell {
+  /* iOS <15.4 does not know svh; the earlier declaration is the fallback the later one
+     overrides on browsers that do. Never write svh alone. */
+  min-height: 100vh;
   min-height: 100svh;
   display: flex;
   flex-direction: column;
@@ -177,6 +210,15 @@ p {
   max-width: 1180px;
   margin: 0 auto;
   padding-inline: var(--pad);
+}
+
+/* The root viewport opts into viewport-fit=cover, so these insets are real on notched
+   devices. Kept inside @supports so a browser without env() keeps the --pad above. */
+@supports (padding: env(safe-area-inset-left)) {
+  .container {
+    padding-left: max(var(--pad), env(safe-area-inset-left));
+    padding-right: max(var(--pad), env(safe-area-inset-right));
+  }
 }
 
 .stack {

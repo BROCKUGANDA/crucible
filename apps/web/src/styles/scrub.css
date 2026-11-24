@@ -49,6 +49,26 @@
   color: var(--marble);
 }
 
+/* The HUD pins to all four viewport edges, so on a notched phone its ruler and live
+   stats landed underneath hardware. The base padding above is the fallback; this only
+   applies where the root viewport has opted into viewport-fit=cover. */
+@supports (padding: env(safe-area-inset-left)) {
+  .scrub-hud {
+    padding: max(var(--pad), env(safe-area-inset-top))
+      max(var(--pad), env(safe-area-inset-right))
+      max(var(--pad), env(safe-area-inset-bottom))
+      max(var(--pad), env(safe-area-inset-left));
+  }
+
+  .scrub-hud::before {
+    height: calc(var(--pad) + env(safe-area-inset-top) + 5.5rem);
+  }
+
+  .scrub-hud::after {
+    height: calc(var(--pad) + env(safe-area-inset-bottom) + 3.5rem);
+  }
+}
+
 /* A scrim behind the top strip so content scrolling beneath the HUD fades out
  * instead of colliding with the ruler and the live stats. Same night tone the
  * act scrims use, so the fade reads as depth, not as a bar. */

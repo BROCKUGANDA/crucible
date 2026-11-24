@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { ScrubStage } from "@/components/scrub/ScrubStage";
 import { LiveFeedInner, HeroBoardPreview } from "@/components/LiveFeed";
 import { actByKey } from "@/lib/scrub/timeline";
@@ -131,13 +132,18 @@ export default function HomePage() {
           </div>
 
           <div className="arena__hero__art" aria-label="Architectural artwork">
-            <img
+            {/* The only raster-shaped call site in the app is this vector hero. Next leaves
+                SVG unoptimized by design (it is already resolution-independent), so
+                `unoptimized` is explicit here: the size contract, lazy-loading contract and
+                layout-stability guarantee come from <Image>, while the art stays vector. */}
+            <Image
               src="/brand/illustrations/architectural-hero.svg"
               alt="Crucible arena section: Colosseum-inspired tiered seating with a central crucible"
-              width="720"
-              height="480"
+              width={720}
+              height={480}
+              sizes="(max-width: 700px) 100vw, 720px"
               loading="eager"
-              decoding="async"
+              unoptimized
             />
           </div>
 

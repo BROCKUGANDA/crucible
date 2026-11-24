@@ -290,6 +290,8 @@
 .hall-receipt {
   color: var(--faint);
   font-size: 0.78rem;
+  /* A receipt hash is one unbroken token; let it split rather than widen the column. */
+  overflow-wrap: anywhere;
 }
 
 .hall-receipt__hash {

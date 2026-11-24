@@ -2772,3 +2772,30 @@ Report a vulnerability as described in [`SECURITY.md`](SECURITY.md), not in a pu
   **Still open, and named.** The surface is two routes — the sponsor's funding ledger, the trials, the
   publications and the disputes are still wallet-only — and an endpoint that spends ~80 ms verifying a secret
   needs a rate limit before it is exposed.
+
+## Responsive, image and cross-browser pass — 2026-11-25
+
+**Verified.** The web app now has a measurable mobile/tablet contract rather than a set of
+breakpoints nobody could fail. `apps/web/test/responsive-images.test.ts` reads the real
+`next.config.mjs`, the real stylesheets and the real components: 16 checks on the viewport
+contract (safe-area inset on, pinch zoom left on), the image format contract (AVIF then WebP,
+phone/tablet/desktop widths), fallback pairs (`vh` before every `svh`, `vh` before `dvh` on
+the mobile sheet), rgba fallbacks before the five critical `color-mix()` declarations, blurred
+scrims with their `-webkit-` prefix, safe-area padding in four stylesheets, the restored board
+footer wrap, the guarded hall grid, thumb-sized coarse-pointer targets, and the sponsor page's
+paragraph nesting.
+
+Three mutations were each shown to turn the gate red and were reverted: `viewportFit` →
+`narrow`, removal of `.board-foot`'s `flex-wrap`, and dropping `image/avif` from the config.
+Web typecheck clean; 701 web tests pass (16 new); `next build --webpack` green on all 66 pages.
+Browser-verified at the real URL in Chromium at 390px and 768px, including that the hero rail
+fits inside the viewport and the `/trials` chips and search wrap rather than overflowing.
+
+**Still open, and named.** The cross-browser fixes are fallback *declarations* checked by a
+source gate, not measurements in WebKit or Gecko; Safari and Firefox were not run here. The
+`.chrome__main` top padding at ≤520px still guesses the wrapped header's height with `vh`
+(`styles/components.css`), and was left alone because its purpose was not established well
+enough to change safely — it needs a browser measurement at 320px before removal. The full
+`npm run verify:all` was red locally on two failures in the **uncommitted** sponsor-tenancy
+work owned by another agent (`no-such-program` undocumented in the API contract and
+`sponsor-funding-tenant.test.ts` returning 500); none of the files shipped here are involved.

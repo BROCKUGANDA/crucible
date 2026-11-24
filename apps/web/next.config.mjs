@@ -299,6 +299,18 @@ const nextConfig = {
   // see the report on what that means for stack disclosure.
   poweredByHeader: false,
 
+  // Images: prefer AVIF, then WebP, then the source format. Most of public/ is SVG — already
+  // resolution-independent and a few hundred bytes — and the raster social cards come from the
+  // /og route, so this is not a bulk asset conversion. It is the contract that makes every
+  // present and future <Image> call site serve a modern format and a device-appropriate size,
+  // instead of shipping a 720px source to a 360px phone. `unoptimized` stays only on the SVG
+  // hero (the optimizer does not transcode vector input); see src/app/page.tsx.
+  images: {
+    formats: ["image/avif", "image/webp"],
+    deviceSizes: [320, 420, 640, 768, 1024, 1280, 1536, 1920],
+    imageSizes: [16, 32, 64, 96, 128, 256, 384],
+  },
+
   // TypeScript 7 ships no compiler API, so Next's in-process tsconfig reader cannot load
   // the `paths` aliases; CLI mode reads them back through `tsc --showConfig`.
   experimental: {
