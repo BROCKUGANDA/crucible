@@ -18,6 +18,7 @@ process.env.AUTH_ORIGIN = "http://localhost:3000";
 import { describe, it, expect } from "vitest";
 import { createHmac } from "node:crypto";
 import { createStudioRoutes } from "../src/studio-routes.js";
+import { listReplaysByManifest } from "../src/replay-manifest.js";
 
 const DEV_SECRET = "crucible-local-dev-secret-not-for-production";
 const CALLER = "0x" + "44".repeat(20);
@@ -98,7 +99,7 @@ describe("POST /studio/reproducibility", () => {
 
   it("refuses a caller-supplied verdict", async () => {
     const res = await post({
-      verdict: "REPRODUCIBLE",
+      verdict: "AGREED",
       replays: [1, 2, 3].map(() => ({ evidence: evidence("a") })),
     });
     expect(res.status).toBe(400);
@@ -126,7 +127,7 @@ describe("POST /studio/reproducibility", () => {
     expect(Array.isArray(body.details)).toBe(true);
   });
 
-  it("says REPRODUCIBLE when three replays produce the same evidence", async () => {
+  it("says AGREED when three replays produce the same evidence", async () => {
     const res = await post({
       profile: "SOFTWARE_ENGINEERING",
       task: TASK,
@@ -134,10 +135,76 @@ describe("POST /studio/reproducibility", () => {
     });
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.verdict).toBe("REPRODUCIBLE");
+    expect(body.verdict).toBe("AGREED");
     expect(body.comparable).toBe(3);
     expect(body.distinctFingerprints).toBe(1);
     expect(body.replays).toHaveLength(3);
+  });
+
+  it("says the agreement was NOT independent, because the three replays came from one worker", async () => {
+    // The Studio runs the three replays here, on the caller's
+    // observations. They agree — and that agreement is not independent
+    // reproduction, and the response has to say so: the rule the network
+    // quotes is about independent replays.
+    const res = await post({
+      profile: "SOFTWARE_ENGINEERING",
+      task: TASK,
+      replays: [1, 2, 3].map(() => ({ label: "worker", evidence: evidence("acceptance") })),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.independence.workers).toBe(1);
+    expect(body.independence.required).toBe(3);
+    expect(body.independence.independent).toBe(false);
+    expect(body.independence.reason).toContain("not independent reproduction");
+    // And it says so in the explanation, where a reader will see it.
+    expect(body.explanation).toContain("not independent reproduction");
+  });
+
+  it("records the measurement with the SAME worker identity it answered with", async () => {
+    // The response says the replays came from one worker. The RECORDED
+    // measurement has to say the same, because the published card is built
+    // from the records — a card that claims three workers while the answer
+    // said one would be a card that lies.
+    const res = await post({
+      profile: "SOFTWARE_ENGINEERING",
+      task: TASK,
+      replays: [
+        { label: "worker-a", evidence: evidence("acceptance") },
+        { label: "worker-b", evidence: evidence("acceptance") },
+        { label: "worker-c", evidence: evidence("acceptance") },
+      ],
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    const records = await listReplaysByManifest(body.measurement.manifestId);
+    expect(records).toHaveLength(3);
+    for (const record of records) {
+      expect(record.workerIdentity).toBe(CALLER.toLowerCase());
+      expect(record.workerIdentity).not.toBe(record.label);
+    }
+    // Every replay is attributed to the caller, and the caller's names for
+    // them are kept beside it.
+    expect(new Set(records.map((r) => r.workerIdentity)).size).toBe(1);
+    expect(records.map((r) => r.label).sort()).toEqual(["worker-a", "worker-b", "worker-c"]);
+  });
+
+  it("does not count the label the caller gave a replay as a different worker", async () => {
+    // Three different labels, one worker. If the rule were decided on
+    // labels, a caller could satisfy it by naming things differently.
+    const res = await post({
+      profile: "SOFTWARE_ENGINEERING",
+      task: TASK,
+      replays: [
+        { label: "worker-a", evidence: evidence("acceptance") },
+        { label: "worker-b", evidence: evidence("acceptance") },
+        { label: "worker-c", evidence: evidence("acceptance") },
+      ],
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.independence.workers).toBe(1);
+    expect(body.independence.independent).toBe(false);
   });
 
   it("says INCONCLUSIVE when the replays produced no evidence at all", async () => {
@@ -153,7 +220,7 @@ describe("POST /studio/reproducibility", () => {
     expect(body.explanation).toContain("no evidence");
   });
 
-  it("says NOT_REPRODUCIBLE when the replays disagree", async () => {
+  it("says NOT_AGREED when the replays disagree", async () => {
     const res = await post({
       profile: "SOFTWARE_ENGINEERING",
       task: TASK,
@@ -165,7 +232,7 @@ describe("POST /studio/reproducibility", () => {
     });
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.verdict).toBe("NOT_REPRODUCIBLE");
+    expect(body.verdict).toBe("NOT_AGREED");
     expect(body.distinctFingerprints).toBe(2);
   });
 

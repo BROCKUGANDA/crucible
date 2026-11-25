@@ -10,8 +10,12 @@
  *   - three replays that all produced NO evidence. They agree — about
  *     nothing. That is INCONCLUSIVE, not REPRODUCIBLE.
  *   - three replays where two agree and one differs. That is
- *     NOT_REPRODUCIBLE: publishing the majority as "the" result would be
+ *     NOT_AGREED: publishing the majority as "the" result would be
  *     reporting the measurement that was easiest to get.
+ *   - three replays that agree but came from ONE worker. They agree, so
+ *     the verdict is AGREED — and the INDEPENDENCE block says the rule for
+ *     independent reproduction was not met, because one worker can be
+ *     wrong the same way three times.
  *   - two replays only. The rule needs three.
  */
 
@@ -32,6 +36,9 @@ function replay(overrides: Partial<ReplayResult> = {}): ReplayResult {
   return {
     replayNumber: 1,
     label: "worker-a",
+    // The worker the observation came from. The PLATFORM derives it; the
+    // caller's label above is a name and is never counted.
+    workerIdentity: "0xworker",
     status: "PASS",
     checksAnswered: 2,
     fingerprint: "fp_aaaaaaaa",
@@ -73,7 +80,7 @@ describe("decideReproducibility", () => {
       replay({ replayNumber: 3, fingerprint: "fp_same" }),
     ]);
 
-    expect(decision.verdict).toBe("REPRODUCIBLE");
+    expect(decision.verdict).toBe("AGREED");
     expect(decision.comparable).toBe(3);
     expect(decision.distinctFingerprints).toBe(1);
   });
@@ -90,14 +97,14 @@ describe("decideReproducibility", () => {
     expect(decision.comparable).toBe(0);
   });
 
-  it("says NOT_REPRODUCIBLE when the replays disagree", () => {
+  it("says NOT_AGREED when the replays disagree", () => {
     const decision = decideReproducibility([
       replay({ replayNumber: 1, fingerprint: "fp_a" }),
       replay({ replayNumber: 2, fingerprint: "fp_a" }),
       replay({ replayNumber: 3, fingerprint: "fp_b" }),
     ]);
 
-    expect(decision.verdict).toBe("NOT_REPRODUCIBLE");
+    expect(decision.verdict).toBe("NOT_AGREED");
     expect(decision.distinctFingerprints).toBe(2);
     expect(decision.explanation).toContain("does not follow");
   });

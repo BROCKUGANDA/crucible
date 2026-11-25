@@ -259,7 +259,12 @@
   display: grid;
   place-items: center;
   padding: var(--pad);
+  /* iOS <16.2 drops the whole color-mix declaration; without the line above it the
+     modal backdrop becomes fully transparent over scrolling text. The rgba literal is
+     the srgb mix of --bg0 (#0b0a09) at 74%, so both paths describe the same veil. */
+  background: rgba(11, 10, 9, 0.74);
   background: color-mix(in srgb, var(--bg0) 74%, transparent);
+  -webkit-backdrop-filter: blur(3px);
   backdrop-filter: blur(3px);
   animation: scrimIn var(--t-state) var(--ease-cool) both;
 }
@@ -365,6 +370,9 @@
   gap: 16px;
   padding: 12px var(--pad);
   border-bottom: 1px solid color-mix(in srgb, var(--bg2) 90%, transparent);
+  /* Legacy fallback first: the sticky band must stay opaque enough to read the wordmark
+     over scrolling content even where color-mix is unsupported. rgba is --bg0 at 82%. */
+  background: rgba(11, 10, 9, 0.82);
   background: color-mix(in srgb, var(--bg0) 82%, transparent);
   backdrop-filter: blur(12px) saturate(1.1);
   -webkit-backdrop-filter: blur(12px) saturate(1.1);
@@ -1091,7 +1099,9 @@
 /* The receipts are the reason the row exists, so they get their own band, not a footnote. */
 .hall-row__proofs {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  /* Without min(100%,…) a 240px column is wider than a 320px phone minus its gutters,
+     so the receipts pushed the whole page sideways. Every other grid here has the guard. */
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
   gap: 1px;
   background: var(--bg2);
   border-block: 1px solid var(--bg2);
@@ -1266,6 +1276,15 @@
   color: var(--text);
 }
 
+/* Notched devices: keep the pill clear of the home indicator and the notch in landscape.
+   The base offsets above are the fallback for engines without env(). */
+@supports (inset: env(safe-area-inset-bottom)) {
+  .frenchy-widget {
+    bottom: max(var(--s-5), env(safe-area-inset-bottom));
+    right: max(var(--s-5), env(safe-area-inset-right));
+  }
+}
+
 /* Trigger and its dismissal sit together: the pill opens the chat, the small × sends
    the whole widget away for this visit (session storage), because a floating pill is
    allowed to overlap dense tables exactly once — after that it is the visitor's call. */
@@ -1345,6 +1364,8 @@
   position: fixed;
   inset: 0;
   z-index: var(--z-modal);
+  /* --bg0 at 60%: the side-chat scrim must still dim the page on legacy iOS. */
+  background: rgba(11, 10, 9, 0.6);
   background: color-mix(in srgb, var(--bg0) 60%, transparent);
   backdrop-filter: blur(2px);
   -webkit-backdrop-filter: blur(2px);
@@ -1358,8 +1379,13 @@
   right: 0;
   z-index: var(--z-modal);
   width: min(420px, 92vw);
+  /* iOS Safari's 100vh includes the collapsible URL bar, so the bottom of the sheet —
+     the input and the last message — was clipped below the visible viewport. dvh tracks
+     the visible area; the vh line stays as the fallback for older engines. */
   height: 100vh;
+  height: 100dvh;
   max-height: 100vh;
+  max-height: 100dvh;
   background: var(--bg0);
   border-left: 1px solid var(--bg2);
   box-shadow: -20px 0 60px rgba(0, 0, 0, 0.35);

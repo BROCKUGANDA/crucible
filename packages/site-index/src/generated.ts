@@ -238,6 +238,18 @@ export const SITE_INDEX: SiteEntry[] = [
     ]
   },
   {
+    "path": "/disputes/[trialId]",
+    "label": "Dispute evidence",
+    "purpose": "The frozen evidence of a dispute: what the chain said, what was measured, and what is missing.",
+    "can": [
+      "read what a dispute bundle does not contain",
+      "check whether a bundle was sealed before the trial was broken"
+    ],
+    "points": [
+      "dispute-evidence-panel"
+    ]
+  },
+  {
     "path": "/docs",
     "label": "Docs",
     "purpose": "The written rules: the money, the windows, the fees, and what the platform refuses to do.",
@@ -454,6 +466,30 @@ export const SITE_INDEX: SiteEntry[] = [
     "needs": "a signed-in wallet on the host's reviewer list"
   },
   {
+    "path": "/publications",
+    "label": "Published methods",
+    "purpose": "Read what a published score was measured against, and what it does not establish.",
+    "can": [
+      "read the limits a published score carries",
+      "find out whether two scores may be compared at all"
+    ],
+    "points": [
+      "publications-panel"
+    ]
+  },
+  {
+    "path": "/publications/[id]",
+    "label": "Published method",
+    "purpose": "One published score with the method it was measured against, and the limits it carries.",
+    "can": [
+      "read what a published score does not establish",
+      "see the suite, rubric, judge and repetitions behind it"
+    ],
+    "points": [
+      "publication-card"
+    ]
+  },
+  {
     "path": "/replay/[id]",
     "label": "Replay Theater",
     "purpose": "Re-enact any settled trial on a scrubbable timeline.",
@@ -463,6 +499,18 @@ export const SITE_INDEX: SiteEntry[] = [
       "replay commentary"
     ],
     "needs": "a settled trial id"
+  },
+  {
+    "path": "/reviews",
+    "label": "Review queue",
+    "purpose": "Take a case waiting for a reviewer, or step away from one.",
+    "can": [
+      "see what is waiting for a reviewer",
+      "declare a conflict of interest with a case"
+    ],
+    "points": [
+      "reviews-panel"
+    ]
   },
   {
     "path": "/rewards",

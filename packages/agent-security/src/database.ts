@@ -133,11 +133,41 @@ export async function runMigrations(migrationsDir?: string): Promise<void> {
   const dir = resolveMigrationsDir(migrationsDir);
   const client = await activePool().connect();
   try {
-    await runMigrationsImpl(client, dir);
+    // Two callers must not run the same DDL at the same time.
+    //
+    // Migrations here are idempotent by convention (CREATE TABLE IF NOT
+    // EXISTS and friends), but "idempotent" is not "safe": two sessions
+    // creating the same table concurrently deadlock, and altering the same
+    // relation concurrently raises "tuple concurrently updated". A
+    // multi-worker boot, or two test files that both migrate, is enough to
+    // hit it — and the failure lands on BOOT, which is the worst place to
+    // discover it.
+    //
+    // The advisory lock is session-scoped, so it is taken and released on
+    // this one client, and it serialises migrators across processes rather
+    // than just inside this one.
+    await client.query('SELECT pg_advisory_lock($1)', [MIGRATION_LOCK_KEY]);
+    try {
+      await runMigrationsImpl(client, dir);
+    } finally {
+      await client.query('SELECT pg_advisory_unlock($1)', [MIGRATION_LOCK_KEY]).catch(() => {
+        // The lock is released when the session ends anyway; a failure here
+        // must not mask the migration's own outcome.
+      });
+    }
   } finally {
     client.release();
   }
 }
+
+/**
+ * The lock key every migrator takes.
+ *
+ * An arbitrary but fixed number. It only has to be the same for every
+ * process that migrates THIS database, and different from anything else
+ * that uses advisory locks in the same database.
+ */
+const MIGRATION_LOCK_KEY = 0x43525543; // "CRUC"
 
 async function runMigrationsImpl(
   client: PoolClient,

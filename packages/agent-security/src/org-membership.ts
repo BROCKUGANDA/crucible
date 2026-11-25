@@ -52,8 +52,8 @@ export async function inviteMember(
   const id = `inv-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
   const invitation = newInvitation(id, orgId, parsedRole, actorId, ttlMs, projectId, email, domain);
   await createInvitationDurable(invitation);
-  createAuditEntry(
-    newAuditEntry(
+  await createAuditEntry(
+    await newAuditEntry(
       `audit-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
       actorId,
       "org:member:invite",
@@ -75,8 +75,8 @@ export async function acceptMember(
     throw new Error("membership: invitation cannot be accepted (expired, revoked, used, or domain mismatch)");
   }
   const { membership, invitation } = result;
-  createAuditEntry(
-    newAuditEntry(
+  await createAuditEntry(
+    await newAuditEntry(
       `audit-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
       acceptedBy,
       "org:member:accept",
@@ -131,8 +131,8 @@ export async function removeMember(
   if (!m) throw new Error(`membership: membership not found: ${principalId}`);
   const revoked = await revokeMembershipDurable(m.id);
   if (revoked) {
-    createAuditEntry(
-      newAuditEntry(
+    await createAuditEntry(
+      await newAuditEntry(
         `audit-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
         actorId,
         "org:member:remove",
@@ -165,8 +165,8 @@ export async function changeRole(
   const stored = getMembershipByPrincipalAndOrg(principalId, orgId);
   if (!stored) throw new Error("membership: membership not found");
   stored.role = parsed;
-  createAuditEntry(
-    newAuditEntry(
+  await createAuditEntry(
+    await newAuditEntry(
       `audit-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
       actorId,
       "org:role:change",
@@ -195,8 +195,8 @@ export async function transferOwnership(
   const previous = org.ownerId;
   const updated = await updateOrganisationDurable(orgId, { ownerId: newOwnerId });
   if (!updated) throw new Error("membership: organisation not found");
-  createAuditEntry(
-    newAuditEntry(
+  await createAuditEntry(
+    await newAuditEntry(
       `audit-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
       actorId,
       "org:transfer:ownership",
@@ -219,6 +219,6 @@ export function listOrgMemberships(orgId: string): Membership[] {
 }
 
 /** List the audit history for an org. */
-export function listOrgAudit(orgId: string, limit?: number) {
+export async function listOrgAudit(orgId: string, limit?: number) {
   return listAuditForOrg(orgId, limit);
 }

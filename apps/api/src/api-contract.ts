@@ -57,6 +57,46 @@ export const ERROR_CATALOGUE: ErrorCodeEntry[] = [
     whatToDo: "Read the `error` field: it names the field. Fix it and send it again.",
   },
   {
+    code: "no-such-case",
+    status: 404,
+    meaning: "The review queue was asked for a case that does not exist: no trial carries that id.",
+    whatToDo: "Read the queue and take an id from it. A trial id is the chain's own number.",
+  },
+  {
+    code: "case-closed",
+    status: 403,
+    meaning: "The trial is settled, so there is nothing left to review: the chain has already decided it.",
+    whatToDo: "Read the trial's own page. A settled trial's verdict is a fact, not an open question.",
+  },
+  {
+    code: "conflicted",
+    status: 403,
+    meaning:
+      "The reviewer has a recorded conflict of interest with the trial's sponsor, so the platform refuses " +
+      "the case to them.",
+    whatToDo:
+      "Do not dispute the refusal. A conflict that is merely displayed is one a reviewer in a hurry ignores; " +
+      "another reviewer without the conflict may take the case.",
+  },
+  {
+    code: "abstained",
+    status: 403,
+    meaning: "The reviewer already stepped away from this case, so the platform will not hand it back.",
+    whatToDo: "Read the abstention reason on the queue page. It is the reviewer's own words.",
+  },
+  {
+    code: "already-yours",
+    status: 403,
+    meaning: "The reviewer already holds this case. A hold is not re-taken; it is released by stepping away.",
+    whatToDo: "Read the sealed evidence for the case. To hand it back, step away from it with a reason.",
+  },
+  {
+    code: "already-held",
+    status: 403,
+    meaning: "Another reviewer holds this case; a case is held by one reviewer at a time.",
+    whatToDo: "Take another case from the queue, or wait for the holder to step away from it.",
+  },
+  {
     code: "no-credential",
     status: 401,
     meaning: "The request carried no credential the server accepts.",
@@ -73,6 +113,33 @@ export const ERROR_CATALOGUE: ErrorCodeEntry[] = [
     status: 403,
     meaning: "The credential is valid but not allowed to do this.",
     whatToDo: "Ask for the scope you need. Each organisation role grants a different set.",
+  },
+  {
+    code: "revoked",
+    status: 401,
+    meaning: "The API key that was presented has been revoked. A revocation survives a restart.",
+    whatToDo: "Make another key in the organisation's console and use that. The old one will not come back.",
+  },
+  {
+    code: "expired",
+    status: 401,
+    meaning: "The API key that was presented has expired.",
+    whatToDo: "Make another key in the organisation's console. An expired key is not extended.",
+  },
+  {
+    code: "wrong-scope",
+    status: 403,
+    meaning:
+      "The API key that was presented does not carry the scope the request needs, or the secret did not match.",
+    whatToDo: "Read the key's scopes in the organisation's console and ask for one that carries what you need.",
+  },
+  {
+    code: "key-not-for-this-org",
+    status: 403,
+    meaning: "The API key that was presented belongs to another organisation, so it cannot read this one.",
+    whatToDo:
+      "Use the key of the organisation whose record you are reading. A key that reads another organisation would " +
+      "be a key with the wrong grant, not a key with a missing check.",
   },
   {
     code: "not-a-member",
@@ -289,6 +356,43 @@ export const ERROR_CATALOGUE: ErrorCodeEntry[] = [
     status: 400,
     meaning: "A client-supplied verdict was refused.",
     whatToDo: "Verdicts are signed by a binder, not asserted by the client.",
+  },
+  {
+    code: "caller-supplied-verdict-refused",
+    status: 400,
+    meaning:
+      "The caller tried to publish a score, a verdict, a status, the limits or the digest of a published method.",
+    whatToDo:
+      "Send only the subject (trialId or runId). A publication states what the platform measured; a caller that supplies the measurement is refused.",
+  },
+  {
+    code: "caller-supplied-evidence-refused",
+    status: 400,
+    meaning:
+      "The caller tried to supply the evidence, the gaps or the digest of a frozen dispute bundle.",
+    whatToDo:
+      "Send the trial id only. A bundle states what the platform saw; a caller that supplies the evidence is refused.",
+  },
+  {
+    code: "no-such-bundle",
+    status: 404,
+    meaning: "No frozen bundle carries that address.",
+    whatToDo:
+      "A bundle is content-addressed: it exists under exactly one address. List the bundles of the trial instead.",
+  },
+  {
+    code: "no-manifest",
+    status: 404,
+    meaning: "There is no replay manifest for that subject, so there is no method to publish.",
+    whatToDo:
+      "Run the evaluation first. A method exists only once a measurement has been recorded: the subject must have been run and its replay manifest written.",
+  },
+  {
+    code: "no-such-publication",
+    status: 404,
+    meaning: "No published method carries that address.",
+    whatToDo:
+      "A published method is content-addressed: it exists under exactly one address. Check the id, or list the publications of the subject.",
   },
   {
     code: "no-chain",

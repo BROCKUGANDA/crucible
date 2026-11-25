@@ -1,3 +1,25 @@
 /* @file globals.css — the design system is split under src/styles/ and imported by order
  * in src/app/layout.tsx: tokens, base, motion, components. This is the user tail.
+ *
+ * Imported last, so these are the rules that get the final say. Touch affordances live
+ * here rather than beside each component because a coarse pointer has no hover and no
+ * precision: the compact 24–36px controls that are fine with a mouse need a 44px target
+ * on a phone or tablet. Keeping that decision in one media query also stops a later
+ * stylesheet from quietly winning on equal specificity.
  */
+
+@media (pointer: coarse) {
+  .btn-sm,
+  .dialog-x,
+  .frenchy-widget__close,
+  .frenchy-widget__dismiss,
+  .chrome__menu-btn,
+  .search-panel__submit,
+  .search-panel__clear,
+  .filter-chip,
+  .sound-toggle {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+

@@ -146,7 +146,7 @@ describe("audit history", () => {
   it("records membership actions in audit", async () => {
     const { invitationId } = await inviteMember("org-1", "0xalice", "org.evaluator", "0xowner", 1000 * 60 * 60);
     await acceptMember(invitationId, "0xalice");
-    const audit = listOrgAudit("org-1");
+    const audit = await listOrgAudit("org-1");
     expect(audit.length).toBeGreaterThanOrEqual(2);
     const actions = audit.map((a) => a.action);
     expect(actions).toContain("org:member:invite");
