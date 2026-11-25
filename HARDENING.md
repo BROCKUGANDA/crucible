@@ -2798,4 +2798,4 @@ source gate, not measurements in WebKit or Gecko; Safari and Firefox were not ru
 enough to change safely — it needs a browser measurement at 320px before removal. The full
 `npm run verify:all` was red locally on two failures in the **uncommitted** sponsor-tenancy
 work owned by another agent (`no-such-program` undocumented in the API contract and
-`sponsor-funding-tenant.test.ts` returning 500); none of the files shipped here are involved.
+`sponsor-funding-tenant.test.ts` returning 500); none of the files shipped here are involved. The first CI run on `develop` also went red on the **Secrets (gitleaks)** job with four `generic-api-key` findings in published test fixtures (`sk-route-…`, `sk-pg-…`, `sk-wrong-…`, `sk-rotated-…`, commits af06b393 and 392ec73). These are the config's already-documented class of deterministic fixtures: exact literals, allowlisted one by one in `.gitleaks.toml` with the same reasoning used for the earlier entries, so every other key-shaped string still fails. Verified locally with the identical command (`gitleaks detect --source . --config .gitleaks.toml --redact --verbose --log-opts="--all"` → `no leaks found`).
