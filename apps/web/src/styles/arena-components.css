@@ -890,7 +890,11 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: var(--s-3);
   margin-top: var(--s-4);
+  /* This file is imported after pages.css, so omitting wrap here silently removed the
+     original mobile behaviour: the count and "Show more" stopped stacking at 320px. */
+  flex-wrap: wrap;
 }
 
 .board-foot__count {

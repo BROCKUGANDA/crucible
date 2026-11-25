@@ -38,6 +38,20 @@ way it does and what would have to change to revisit it.
 | [0024](0024-evaluation-evidence-pipeline.md) | Evaluation evidence pipeline: a parallel surface, adopted deliberately | Accepted |
 | [0025](0025-forge-watch-runtime-monitoring.md) | Forge Watch: runtime monitoring, misalignment detection and incident response | Accepted (architecture) |
 | [0026](0026-web3auth-safe-protocol-kit.md) | Optional Web3Auth EOA and draft-only Safe Protocol Kit | Accepted (limited integration scope) |
+| [0028](0028-evaluation-integrity-foundation.md) | Evaluation integrity: the suite registry, the scoring model and the replay manifest | Accepted |
+| [0029](0029-chain-environments-and-conversion-path.md) | Ethereum mainnet for the EVM track; Solana Devnet as a separate release; 1inch is an off-chain conversion path, never an escrow asset | Accepted |
+| [0030](0030-one-worker-one-process.md) | One worker entrypoint, one process, an explicit role at boot | Accepted |
+| [0031](0031-sponsor-funding-is-a-chain-fact.md) | A sponsor's funding is read from the chain — the fee is read, never recomputed, and "unverifiable" is not "mismatch" | Accepted |
+| [0032](0032-sponsor-ledger-is-durable.md) | The sponsor's ledger is durable: PostgreSQL, one store chosen at boot, wei never crossing a float | Accepted |
+| [0033](0033-tenancy-model-is-durable.md) | The tenancy model is durable; the store is a cache over PostgreSQL and the non-durable path is refused | Accepted |
+| [0034](0034-a-published-score-carries-its-method-and-its-limits.md) | A published score carries its method and its limits; comparability is keyed on the measurement, and a published method cannot be edited | Accepted |
+| [0035](0035-a-dispute-reads-a-frozen-bundle.md) | A dispute reads a frozen, content-addressed bundle; the bundle states what it does not contain, and the seal is compared with the break on the chain's clock | Accepted |
+| [0036](0036-the-three-replays-must-come-from-three-workers.md) | The three replays must come from three workers; the worker is derived, never a caller's label, and the measurement is durable | Accepted |
+| [0037](0037-the-audit-chain-is-durable-and-its-hash-is-a-real-one.md) | The audit chain is durable and its hash is a real sha256 over what is stored; the chain continues across a restart | Accepted |
+| [0038](0038-the-conflict-register-is-durable.md) | The conflict-of-interest register is durable; a withdrawal is not a deletion, and the interest key stays derived | Accepted |
+| [0039](0039-a-review-queue-bars-whoever-has-a-conflict.md) | A review queue bars whoever has a recorded conflict with a case; the cases are chain-derived, the reviewer's own state is durable | Accepted |
+| [0040](0040-a-revoked-key-must-not-come-back.md) | The organisation API keys are durable: a revoked key does not come back, and the hash is slow and salted | Accepted |
+| [0041](0041-an-api-key-reads-its-own-organisation-and-writes-nothing.md) | An API key reads its own organisation and writes nothing; a revoked key, a missing scope and another organisation are three different refusals | Accepted |
 
 **A numbering defect, recorded rather than papered over.** `0020` names two ADRs written a
 week apart by different sessions. The later one (treasury) is what most of the newer

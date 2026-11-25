@@ -123,7 +123,7 @@ export function createSuitesRoutes(): Hono {
     try {
       const version = usePg
         ? await pgCreateSuiteVersion(input)
-        : createSuiteVersion(input, { principalId: session.payload.address } as any);
+        : createSuiteVersion(input);
       return c.json(version, 201);
     } catch (e) {
       return c.json({ error: String(e) }, 400);

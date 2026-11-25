@@ -15,6 +15,20 @@
  */
 export const REQUIRED_REPLAYS = 3;
 
+/**
+ * How many DIFFERENT workers the replays must come from.
+ *
+ * The rule is about INDEPENDENCE, not about counting: one worker running
+ * the same verifier three times can agree three times and still be wrong
+ * three times — a sticky seed, a cached artefact, a bug in that worker.
+ * Two workers can lose the same way. So the number of replays and the
+ * number of workers are two separate thresholds, and the second one is the
+ * one that makes the first mean something.
+ *
+ * It equals the number of replays: three observations from three workers.
+ */
+export const REQUIRED_REPLAY_WORKERS = REQUIRED_REPLAYS;
+
 /** The repetition policy a spec gets when the caller names none. */
 export const DEFAULT_REPETITION_POLICY = {
   repetitions: 1,

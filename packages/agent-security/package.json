@@ -21,6 +21,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@crucible/crypto": "*",
     "@crucible/eval": "*",
     "bullmq": "^6.7.0",
     "ioredis": "^5.11.1",

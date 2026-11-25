@@ -73,4 +73,16 @@ describe('database module', () => {
   testLive('runMigrations throws on a directory that is not there', async () => {
     await expect(runMigrations('/nonexistent/path')).rejects.toThrow();
   });
+
+  testLive('two migrators at once do not deadlock', async () => {
+    // The failure this guards against is a BOOT crash: two sessions
+    // running the same DDL concurrently raise "tuple concurrently updated"
+    // or deadlock, and the API migrates on boot.
+    const [a, b] = await Promise.allSettled([runMigrations(), runMigrations()]);
+    const rejected = [a, b].filter((r) => r.status === 'rejected');
+    expect(
+      rejected.map((r) => (r as PromiseRejectedResult).reason?.message ?? String(r)),
+      'no migrator may fail',
+    ).toEqual([]);
+  });
 });

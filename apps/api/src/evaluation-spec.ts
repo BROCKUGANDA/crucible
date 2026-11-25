@@ -6,7 +6,8 @@
  * — changes create new revisions, matching the trial revision pattern.
  */
 
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
+import { hashCanonical } from "@crucible/crypto";
 import { getSuite, getSuiteVersion, getSuiteVersions } from "./suites.js";
 import type { EvaluationProtocol } from "./suites.js";
 import { ALL_DIMENSIONS, DEFAULT_DIMENSION_WEIGHTS, type ScoreDimension } from "./scoring.js";
@@ -207,6 +208,47 @@ function validateJudgeConfig(config: JudgeConfig): string[] {
 /* Digest calculation                                                 */
 /* ------------------------------------------------------------------ */
 
+/**
+ * The key that says what was MEASURED, with the agent left out.
+ *
+ * The spec digest covers the whole evaluation, agent included — which is
+ * right for identity, and wrong for comparison. Two agents measured against
+ * the same suite, the same rubric and the same judge have different spec
+ * digests, so a comparison keyed on the spec digest would refuse to compare
+ * exactly the two scores that are comparable.
+ *
+ * This key is the measurement without the subject: the suite version, the
+ * protocol, the fixtures, the environment, the judge, the scoring
+ * methodology, the repetition policy and the randomness configuration.
+ * Two scores with the same measurement key were measured the same way, and
+ * may be compared.
+ *
+ * The trial, the agent and the timestamps are excluded on purpose: they say
+ * WHO and WHEN, not WHAT.
+ */
+export function computeMeasurementKey(spec: EvaluationSpec): string {
+  const canonical = {
+    suite_id: spec.suiteId,
+    suite_version_id: spec.suiteVersionId,
+    evaluation_protocol: spec.evaluationProtocol,
+    task_category: spec.taskCategory,
+    task_specification: spec.taskSpecification,
+    input_fixtures: spec.inputFixtures,
+    execution_environment: spec.executionEnvironment,
+    runtime_config: spec.runtimeConfig,
+    resource_limits: spec.resourceLimits,
+    tool_permissions: spec.toolPermissions,
+    judge_config: spec.judgeConfig,
+    scoring_methodology: spec.scoringMethodology,
+    repetition_policy: spec.repetitionPolicy,
+    randomness_config: spec.randomnessConfig,
+    evidence_requirements: spec.evidenceRequirements,
+    dispute_rules: spec.disputeRules,
+    schema_version: spec.schemaVersion,
+  };
+  return hashCanonical(canonical);
+}
+
 export function computeSpecDigest(spec: EvaluationSpec): string {
   const canonical = {
     spec_id: spec.specId,
@@ -234,11 +276,12 @@ export function computeSpecDigest(spec: EvaluationSpec): string {
     schema_version: spec.schemaVersion,
   };
 
-  const canonicalJson = JSON.stringify(canonical, (_, value) =>
-    typeof value === "undefined" ? null : value,
-  );
-
-  return createHash("sha256").update(canonicalJson).digest("hex");
+  // ONE hashing door (gate 629): the spec digest is a hashed JSON object, so
+  // it goes through the repository's canonical JSON hash rather than a
+  // hand-rolled JSON.stringify. The two produce different strings for the
+  // same content, and a second convention inside this module is a second
+  // source of truth.
+  return hashCanonical(canonical);
 }
 
 /* ------------------------------------------------------------------ */

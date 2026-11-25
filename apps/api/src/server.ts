@@ -46,6 +46,109 @@ if (process.env.DATABASE_URL) {
   );
 }
 
+// The frozen evidence of a dispute is evidence in a proceeding, so it has
+// to outlive the process: a committee that comes back to the bundle next
+// week must find the same one the parties saw.
+if (process.env.DATABASE_URL) {
+  const { configureEvidenceBundleStore } = await import("./evidence-bundle-store.js");
+  const { pgEvidenceBundleStore } = await import("./evidence-bundle-pg.js");
+  configureEvidenceBundleStore(pgEvidenceBundleStore(), "postgresql");
+  console.log("[crucible] evidence bundles: postgresql (a frozen bundle survives a restart)");
+} else {
+  console.log(
+    "[crucible] evidence bundles: in memory — a frozen bundle is lost on restart. Configure DATABASE_URL for a durable record.",
+  );
+}
+
+// The REVIEWER'S OWN STATE is durable: who holds a case, who stepped away
+// from one. The cases themselves are chain-derived — the indexer re-reads
+// them — but a queue that forgets its claims after a restart is a queue
+// where two reviewers believe they hold the same case.
+if (process.env.DATABASE_URL) {
+  const { configureReviewStore } = await import("./review-store.js");
+  const { pgReviewStore } = await import("./review-pg.js");
+  configureReviewStore(pgReviewStore());
+  console.log("[crucible] review queue: postgresql (a claim survives a restart)");
+} else {
+  console.log(
+    "[crucible] review queue: in memory — a claim is lost on restart. Configure DATABASE_URL for a durable record.",
+  );
+}
+
+// The CONFLICT-OF-INTEREST REGISTER is durable. A conflict declared on
+// Monday and forgotten by Tuesday — because the process restarted — is a
+// conflict that stopped being checked on Tuesday.
+if (process.env.DATABASE_URL) {
+  const { configureCOIStore } = await import("@crucible/agent-security");
+  const { pgCOIStore } = await import("@crucible/agent-security");
+  configureCOIStore(pgCOIStore());
+  console.log("[crucible] conflict register: postgresql (a declaration survives a restart)");
+} else {
+  console.log(
+    "[crucible] conflict register: in memory — a declaration is lost on restart. Configure DATABASE_URL for a durable record.",
+  );
+}
+
+// The ORGANISATION API KEYS are durable. The revocation is the reason: a
+// revocation that lives in process memory is undone by the next restart,
+// and the moment a credential is most likely to be tried again is right
+// after somebody rotated it in a hurry.
+if (process.env.DATABASE_URL) {
+  const { configureApiKeyStore } = await import("@crucible/agent-security");
+  const { pgApiKeyStore } = await import("@crucible/agent-security");
+  configureApiKeyStore(pgApiKeyStore());
+  console.log("[crucible] api keys: postgresql (a revocation survives a restart)");
+} else {
+  console.log(
+    "[crucible] api keys: in memory — a revocation is undone by a restart. Configure DATABASE_URL for a durable record.",
+  );
+}
+
+// The AUDIT CHAIN is durable, and its hash is a real one (ADR-0037). The
+// chain is what a buyer's compliance review reads, and it has to survive
+// a restart AND continue across one — a chain that restarted at "genesis"
+// would orphan every entry written before it.
+if (process.env.DATABASE_URL) {
+  const { configureAuditStore } = await import("@crucible/agent-security");
+  const { pgAuditStore } = await import("@crucible/agent-security");
+  configureAuditStore(pgAuditStore());
+  console.log("[crucible] audit chain: postgresql (an audit entry survives a restart)");
+} else {
+  console.log(
+    "[crucible] audit chain: in memory — an audit entry is lost on restart. Configure DATABASE_URL for a durable record.",
+  );
+}
+
+// The MEASUREMENT is durable. A replay manifest is what was run, in which
+// environment, by which worker, and what each replay produced; a published
+// card and a frozen dispute bundle are both built from it, so a manifest
+// that evaporates on restart leaves them describing something that can no
+// longer be re-derived.
+if (process.env.DATABASE_URL) {
+  const { configureReplayStore } = await import("./replay-store.js");
+  const { pgReplayStore } = await import("./replay-pg.js");
+  configureReplayStore(pgReplayStore());
+  console.log("[crucible] replay manifests: postgresql (a measurement survives a restart)");
+} else {
+  console.log(
+    "[crucible] replay manifests: in memory — a measurement is lost on restart. Configure DATABASE_URL for a durable record.",
+  );
+}
+
+// Published methods — the method card of a score — are audit artifacts, and
+// an audit artifact that evaporates on restart is a claim with no record.
+// The store is chosen once, here, and never per request (ADR-0033).
+if (process.env.DATABASE_URL) {
+  const { configurePublicationStore } = await import("./publication-store.js");
+  const { pgPublicationStore } = await import("./publication-pg.js");
+  configurePublicationStore(pgPublicationStore(), "postgresql");
+  console.log("[crucible] published methods: postgresql (a published method survives a restart)");
+} else {
+  console.log(
+    "[crucible] published methods: in memory — a published method is lost on restart. Configure DATABASE_URL for a durable record.",
+  );
+}
+
 // The tenancy model — organisations, memberships, invitations — is durable
 // too (ADR-0033). The store is a cache over PostgreSQL: it is filled from
 // there at boot and every write goes to the database before it is visible.

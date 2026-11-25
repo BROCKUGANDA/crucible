@@ -230,6 +230,14 @@ export const viewport: Viewport = {
   colorScheme: "dark",
   width: "device-width",
   initialScale: 1,
+  // The web app declares statusBarStyle "black-translucent", which puts content under the
+  // notch and the home indicator. Without viewportFit=cover the browser reserves a solid
+  // band instead and every env(safe-area-inset-*) evaluates to zero, so the HUD and the
+  // Frenchy trigger sit underneath hardware — on both iOS and Android notch devices.
+  viewportFit: "cover",
+  // Never trade zoom for layout stability. Pinching is an accessibility control, and a
+  // maximum-scale below 5 is a WCAG 1.4.4 failure on every browser that honours it.
+  maximumScale: 5,
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

@@ -66,14 +66,16 @@ export default function SponsorConsolePage() {
         disagree.
       </p>
 
+      {/* A paragraph cannot contain another paragraph: the parser closes the outer
+          one before the hint, so the panel and its contents diverge between browsers. */}
       {!auth.isAuthenticated ? (
-        <p className="surface detail-panel">
+        <div className="surface detail-panel">
           <strong>Not signed in.</strong>
           <p className="hint">
             The console shows a wallet&apos;s own programmes. Connect and sign in to
             see yours; nothing here is public.
           </p>
-        </p>
+        </div>
       ) : null}
 
       {auth.isAuthenticated ? (
@@ -365,7 +367,7 @@ function FundingPanel({
       )}
 
       <h3 className="section-title">Record what you funded</h3>
-      <p className="surface detail-panel">
+      <div className="surface detail-panel">
         <p className="hint">
           A claim says which trial a programme funded and how much. It is
           checked against the chain the moment you record it, and it counts
@@ -411,10 +413,10 @@ function FundingPanel({
         >
           {busy ? "Recording…" : "Record the claim and check the chain"}
         </button>
-      </p>
+      </div>
 
       <h3 className="section-title">Check again</h3>
-      <p className="surface detail-panel">
+      <div className="surface detail-panel">
         <p className="hint">
           The platform checks claims every ten minutes. You can ask it to check
           now — it reads the chain and writes down what it found.
@@ -422,7 +424,7 @@ function FundingPanel({
         <button type="button" className="btn btn-primary" onClick={verifyNow} disabled={busy}>
           {busy ? "Checking…" : "Check the chain now"}
         </button>
-      </p>
+      </div>
 
       {message ? <p className="hint hint--block">{message}</p> : null}
     </>

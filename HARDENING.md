@@ -2550,3 +2550,252 @@ Report a vulnerability as described in [`SECURITY.md`](SECURITY.md), not in a pu
   **The membership constraint was corrected against the domain.** The old one was UNIQUE over `(org_id, principal_id)` — ANY second membership for a principal in an organisation, *including a revoked one* — so a member who was removed and came back could not be recorded, even though the domain says revocation takes effect and a membership can be granted again. It is now a partial unique index over the **active** memberships: one live membership per principal per organisation, with the history kept.
   **Proven against a real PostgreSQL, not inferred:** 15 tests in `packages/agent-security/test/org-store-pg.test.ts`, including the restart (an organisation written through the API, the process killed, a new one started: `tenancy: postgresql — 1 organisation(s), 1 membership(s)`), the refusal of a write the database rejects (the cache must not be ahead of the database), and the forgetting of a record deleted behind the cache's back. **Five mutations proven red and reverted** — the cache updated before the database, hydration not clearing the cache, a revocation never written to the database, the guard removed, the owner's membership not written with the organisation. **Two of them were green on the first attempt** (the ordering and the clearing) and both gaps were closed with tests that fail for the right reason: a membership inserted straight into the database so the write reaches the database and is refused there, and an organisation deleted behind the cache's back.
   **Still open, and named:** the row-level policies are still INERT — PostgreSQL does not apply RLS to a table's owner and the API connects as the owner, so the policies in migrations 0002–0013 mean nothing until the API connects as a separate non-owning role AND the principal is set per request. That is a deployment change (two roles: one that owns the schema and migrates it, one the application connects as) and it is the next step of ADR-0033, not a code change; until it lands the tenant boundary is enforced in the route layer, as it always was. The org-scoped SIDE models are still in memory: budgets, audit entries, conflict-of-interest declarations, webhooks and API keys. They hang off an organisation that is now durable, which is the precondition for making them durable too.
+
+- **A published score was a claim with no record behind it (2026-11-20, last).** The Evaluation Studio runs a pinned task three times and says whether the result would repeat — and then the verdict was a body in a response. It was never recorded, so it could never be published, compared with another verdict, or audited; and a score that says nothing about what it was measured against, against which rubric, and what it does not establish, is a number a buyer's risk committee cannot be given.
+  **A publication is now a content-addressed METHOD CARD (ADR-0034).** It carries the suite version by that version's own digest, the rubric with each dimension's weight and methodology, the judge, the repetitions and whether they agreed, the score with its uncertainty — and **the LIMITS, derived from the measurement rather than written by hand**: that it establishes only what the pinned measurement covered, the suite's own published limitations in its author's words, a dimension with no methodology (with the share of the score it leaves unexplained), a provisional, disputed or revoked score, a missing confidence interval, too few repetitions, and repetitions that did not agree. Each line is the consequence of something a reader would otherwise have to know to interpret the number. A hand-written limit is a promise; a derived limit cannot disagree with the data it describes.
+  **Comparability is keyed on the MEASUREMENT, with the subject left out** (`computeMeasurementKey`). Two agents measured against the same suite, rubric and judge must be comparable — that is the comparison the product exists for. The spec digest cannot be the key because it includes the agent, so it would refuse exactly that comparison; the subject cannot be the key for the same reason. Two measurements that were not made the same way get an explicit **"not comparable"** with the reason, and the comparison is recorded rather than performed silently.
+  **The card is durable and append-only** (PostgreSQL, migration 0014). The address is the digest of the card's own contents, so publishing the same card twice is the same row and a published method cannot be edited: any change produces a different address. The store is chosen ONCE at boot, never per request (ADR-0033's rule — a record written to one store and read from another is a record that lies); without `DATABASE_URL` the API runs on the in-memory store and says so in the boot log and in every publish response. **A caller may not state the measurement**: `POST /v1/publications` refuses a body carrying `score`, `verdict`, `status`, `limits`, `digest`, `comparabilityKey`, `aggregateBps`, `scoreBps` or `publishedAt`, by name and whatever the value.
+  **The Studio records a measurement, so it can be published.** A Studio run now writes a replay manifest (the pinned task's digest, the profile, the judge, the environment) and one replay record per replay — including the replays that produced no evidence, because "this replay reported no evidence" is part of the finding, not a gap in it. The response carries the identifiers needed to publish, look up and compare the measurement.
+  **Proven, not asserted.** 15 domain tests, 9 route tests and 8 tests against a real PostgreSQL (the card survives a fresh read, a later write with the same id cannot rewrite it, the comparison is recorded). **Eight mutations proven red and reverted** (`.scratch/mutate_publication.py`): dropping the "did not agree" limit, dropping the "not enough repetitions" limit, ignoring a different measurement, assuming the repetitions agreed, keying the suite digest instead of the suite version's own digest, accepting a caller-supplied score, overwriting a published card, and leaving the suite version's digest uncomputed. Browser-verified at the real URL against the running API and a live PostgreSQL: `/publications` shows the cards with their repetitions and their stated limits, and `/publications/<id>` shows the card — an em dash where nothing is published, never a zero.
+  **Three defects were found on the way and fixed.** (1) The suite version's "digest" was **not a digest**: the in-memory route passed a principal OBJECT where the field asks for a content address (`createSuiteVersion(input, { principalId } as any)`), and the PostgreSQL route did not write the column at all — `spec_digest` is NOT NULL with no default, so `pgCreateSuiteVersion` could not insert at all. `computeSuiteVersionDigest()` now hashes the version's own content through the repository's one hashing door. Without this the comparability key would have compared an object against a string. (2) The evaluation spec hashed with a hand-rolled `JSON.stringify`, a second hashing convention beside the canonical JSON hash (gate 629); it now uses the one door. (3) **`runMigrations()` took no lock**, so two processes migrating at once deadlocked or raised "tuple concurrently updated" — and the API migrates on boot, so a multi-worker boot could crash-loop. The migration run now takes a PostgreSQL advisory lock and releases it on the same session; found by running two database-backed suites at once, and proven by a test that migrates twice concurrently.
+  **Still open, and named:** the replay manifest store is STILL in process memory (REPL-D1), so a measurement can be lost on restart even though its published card survives — the card is then a record of something that cannot be re-derived. The Studio's three replays are still three runs of one verifier in one process, so "independent" is a claim about the harness and not yet about the infrastructure. The row-level policies are still inert (ADR-0033's next step), and the org-scoped side models — budgets, audit, conflict-of-interest, webhooks, API keys — are still in memory.
+
+- **Nothing froze the evidence a dispute is decided on (2026-11-20, last).** The chain records who broke a trial, what they staked and the proof they filed, but the evidence those facts point to lived in three places that each moved on their own: the disclosure log (written by whichever process pinned the files), the off-chain stores (the pinned spec, the replay manifest, the scores — all process memory), and the content store. A committee that read the evidence on Tuesday and again on Thursday could read two different sets of facts, and neither read said which one was the evidence the parties broke the trial over. An omission was indistinguishable from a completeness, which is the failure a bundle exists to end.
+  **A dispute now reads a frozen bundle** (ADR-0035). The bundle carries what the chain said (the committed spec and tests digests, the disclosure CIDs, the break, its stake and its proof) and what the platform measured (the pinned spec digest, the measurement key, the replay manifest and its records, whether the replays agreed, the dimension scores and the aggregate), and it is **content-addressed and append-only**: sealing the same evidence twice is the same bundle, and a bundle cannot be edited — any change produces a different address and a different row, and the old row keeps saying what it said.
+  **The gaps are inside the bundle's own digest.** The bundle states what it does NOT contain: the chain's facts are absent; the chain committed to no spec digest; the sponsor has not disclosed the suite; no break was filed, or one was filed without its proof; no replay manifest was recorded, so the bundle carries no measurement at all; fewer than the three required replays were recorded; the replays did not agree; no aggregate score was recorded, so none of the numbers is a grade. A gap list that was edited afterwards to look tidier would be a gap list that lied, so it is inside the address.
+  **The seal is compared with the break on the CHAIN's clock.** `predatesDispute` answers the question that decides whether a bundle is usable at all — was it sealed before the trial was broken? A bundle sealed afterwards may hold evidence the parties never saw. The comparison is chain-seconds against chain-seconds, because the chain's clock and the host's wall clock are two clocks (the indexer's own rule is that a client anchors on `max(headTimestamp + 1, now)`), and when this host cannot read the chain's clock the answer is **unknown** — never a guess across two clocks. A guess here decides whether a committee is reading the parties' evidence.
+  **Proven.** 12 domain tests (what it carries, what it says it does not contain, its identity, the clock comparison), 8 route tests (a caller-supplied bundle refused by name, an unauthenticated seal refused, a non-numeric trial id refused, the same evidence sealed twice is one bundle, the read side returns what was sealed) and 5 tests against a real PostgreSQL (the bundle survives a fresh read and still verifies; a later write with the same id cannot rewrite it; the bundles of a trial are listed oldest first). **Nine mutations proven red** (`.scratch/mutate_evidence_bundle.py`): dropping the "the suite was not disclosed" gap, dropping the "no replay manifest" gap, assuming the replays agreed, ignoring the timestamps, comparing against the host's clock, comparing when the chain's clock is unreadable, a digest verification that always passes, a route that accepts a caller's bundle, and a store that lets a later bundle overwrite a frozen one. **One was green on the first attempt** — the "the suite was not disclosed" assertion matched a substring that ANOTHER gap also contained ("the break's proof was not disclosed"), so the mutation was invisible to it; the assertions now name the exact sentence.
+  **Proven end to end over HTTP against the live chain**: trial 1's real facts — sponsor `0x976EA74026E726554dB657fA54763abd0C3a0aa9`, status settled, verdict paid, the committed spec digest `0xcfeedaa2…`, the break by `0x14dC7996…` with its proof — sealed into a bundle with three stated gaps, re-sealed to the same address, read back, and a caller-supplied bundle refused with `caller-supplied-evidence-refused`. Browser-verified at `/disputes/1`: the gaps are shown BEFORE the contents, the score that was never recorded shows an em dash and not a zero, and the bundle that was sealed after the break says so.
+  **Still open, and named:** the off-chain stores the bundle reads are still in process memory (REPL-D1) — a measurement can be lost on restart even though its bundle survives, so the bundle is then a record of something that cannot be re-derived; and the content store is a host-local directory in this deployment, so the bytes behind a CID are available only on the host that pinned them.
+
+- **The headline rule was never checked, and the measurement was in memory (2026-11-20, last).** The
+  network quotes one rule above every score: three INDEPENDENT replays of the same pinned task must
+  produce the same result. Two things made the quotation decorative.
+  **Independence was never checked.** The reproducibility state machine counted completed replays and
+  compared their output hashes; it never looked at who ran them. And the Studio filled each replay's
+  `workerIdentity` with the CALLER's own label for that replay — so a caller could satisfy any
+  independence check by naming its three replays `worker-a`, `worker-b` and `worker-c`, and the
+  published card quoted the rule while listing those labels as though they were workers. One worker
+  running the same verifier three times can agree three times and still be wrong three times: a
+  sticky seed, a cached artefact, a bug in that worker, a shared environment that fails the same
+  way. **The measurement was a module map.** The replay manifest — what was run, in which
+  environment, by which worker, and what each replay produced — lived in process memory, so a
+  restart erased it, and a published card and a frozen dispute bundle were left describing a
+  measurement that could no longer be re-derived.
+  **Now (ADR-0036).** Independence is decided on the WORKER, and the worker is DERIVED: the party
+  the observation came from, as the platform knows it. The caller's name for a replay is kept, shown
+  and never consulted — `label` is a name, `workerIdentity` is who ran it. `REPRODUCIBLE` now
+  requires three agreeing replays from three DIFFERENT workers, and the manifest says WHICH of the
+  two reasons it is not: the replays disagreed, or they agreed and did not come from enough
+  different workers. "INCONCLUSIVE" alone is a shrug; a reader should not have to guess which. The
+  published card carries the worker count, the independence verdict and a derived limit — and that
+  limit is INSIDE the digest, so two cards that differ only in independence have different addresses.
+  The Studio's verdict names changed to `AGREED` and `NOT_AGREED`: a verdict must not claim more
+  than the decision established, and this surface decides agreement and nothing else. It reports the
+  independence separately — the Studio runs the three replays in one process on the caller's
+  observations, so they come from one worker and the agreement is not independent reproduction —
+  and the page says so next to the verdict rather than in a footnote.
+  The measurement is durable: `replay_measurements` and `replay_measurement_records` (migration
+  0016), the store chosen once at boot, and the replay API asynchronous — a write that cannot be
+  awaited cannot be durable. The worker identity is a column of its own, because the rule is decided
+  on it; and a replay record's identity — which manifest, which number, which worker — can never be
+  rewritten, only its status and output can move. The rule itself lives in one place
+  (`replay-policy.ts`), so the replay-number bound and the completeness threshold no longer carry a
+  second, literal `3`.
+  **Proven.** 21 manifest tests, 19 publication tests, 12 studio-route tests, the decision on its
+  own, and 8 tests against a real PostgreSQL (the manifest survives a fresh read; the worker
+  identity survives it as a column; a caller's label is kept without being mistaken for a worker;
+  two replays with the same number are refused; a replay's status moves as it completes while its
+  identity does not). **Nine mutations proven red** (`.scratch/mutate_independence.py`): the state
+  machine ignoring the worker count, the worker count taken from the labels, the rule needing only
+  one worker, the manifest not saying why, the card stopping to say anything about independence, the
+  derived limit dropped, the card claiming independence whatever the replays came from, the Studio
+  attributing a replay to the label, and the Studio's answer claiming independence whatever it was.
+  **One was green on the first attempt** — the mutation that made the card stop saying anything
+  about independence, because the card's *limits* also carried the distinction and masked it; the
+  mutation now removes both, and the two cards' addresses then collide, which is what the mutation
+  was about.
+  **Proven end to end.** Repo-wide: `npm run typecheck` clean, `npm test` → 4,233 tests passed,
+  0 FAIL; `apps/api` against a real PostgreSQL → 78 files / 1,197 tests.
+  **Still open, and named.** The multi-worker fleet that would make independent replays possible
+  does not exist (ADR-0030), so no surface can yet claim independent reproduction — the Studio
+  reports the agreement and says plainly that it was not independent. And migration 0008 defines
+  `replay_manifests` and `replay_records` in a different, spec-bound shape that no code writes
+  (REPL-D2): the durable store has its own tables rather than filling the 0008 ones with invented
+  values, and the two schemas are reconciled in a later change.
+
+- **The audit log claimed to be tamper-evident and was neither (2026-11-20, last).** The organisation
+  audit trail is what a buyer's compliance review reads: who did what, in which organisation, on whose
+  authority. It was written to be hash-chained and append-only, and it was neither — in two ways, both
+  found while making it durable.
+  **The hash was not cryptographic.** The module asked for `sha256` through `require()`. `require` does
+  not exist in an ES module: the `try` threw, the `catch` swallowed it, and the chain was linked with a
+  31-multiplier rolling hash — eight hex characters long, with a comment saying it was "not cryptographic
+  but stable". A chain that is tamper-evident only because nobody read the code is not tamper-evident:
+  anybody can recompute a forged chain. The stored hashes really were eight characters long.
+  **The chain broke on its own redaction.** The write-time hash covered the RAW metadata while the entry
+  stored the REDACTED metadata. The redaction list covers any key containing "key", so an ordinary
+  `api_key:create` entry — `{ keyId: "k-1" }` — was masked, the hash no longer matched what was stored,
+  and `verifyChain` reported the chain as **tampered after an entirely innocent write**. The raw metadata
+  inside the hash was a third, quieter problem: a digest of a secret is an oracle for that secret. This
+  was reproduced against the built package before the fix — `verifyChain()` returned
+  `{ valid: false, brokenAt: "e2", reason: "hash_mismatch" }` on a chain of two perfectly ordinary
+  entries.
+  **Now (ADR-0037).** The entry hash is `hashCanonical` from `@crucible/crypto` — the repository's one
+  hashing door — over exactly what is stored: a real sha256 over canonical JSON, so it depends on the
+  CONTENT and not on the order the metadata's keys happen to be in, and over the REDACTED metadata, so the
+  redaction cannot break the chain and no secret reaches a digest. The chain is durable
+  (`org_audit_entries`, migration 0017), ordered by a sequence rather than by the clock — two entries
+  written in the same millisecond still have a defined order — and it CONTINUES across a restart, because
+  the head is the last row in the table and not a field in a process's memory; a chain that restarted at
+  "genesis" would orphan every entry written before it. The append takes a transaction-scoped advisory
+  lock and checks the link INSIDE the transaction: two writers that both read the same head would
+  otherwise both link to it and fork the chain, and a forked chain verifies as broken — which is exactly
+  what a tamper must look like. The domain layer checks the link too, before the store is called; the
+  store's check is the one that stops the fork.
+  **Proven.** The audit tests, plus eight tests against a real PostgreSQL: an entry survives a fresh
+  read; the chain continues across a restart (the next entry's `prevHash` is the previous entry's hash,
+  read from the table); the entries are ordered by insertion; an entry that does not link is refused; two
+  writers cannot fork the chain; a row changed directly in the database is detected; the chain verifies
+  after all of it. **Six mutations proven red** (`.scratch/mutate_audit.py`): the trivial rolling hash,
+  the hash over the raw metadata, a hash that depends on the key order, a volatile chain head, an append
+  that does not check the link inside the transaction, and a verifier that accepts a changed entry.
+  **Two of them were green on the first attempt and had to be made honest before they proved anything** —
+  the key-order mutation was defeated by `hashCanonical` itself (so the mutation now hashes a plain
+  `JSON.stringify`, which is what the old code did), and the transaction-check mutation was still caught
+  by the domain layer's check (so the test now writes straight to the store, which is the only way to
+  reach the check that stops the fork).
+  **Still open, and named.** Budgets, conflict-of-interest declarations, webhooks and API keys are still
+  in process memory, and the row-level-security policy on the audit table follows the organisation
+  tables' pattern — it only bites for a connection that does not own the table, and the role split is
+  still to come.
+
+- **The conflict register was a memory, and nothing consulted it (2026-11-20, last).** The
+  conflict-of-interest register records the affiliations between principals and organisations, model
+  providers, cloud accounts and other economic interests, and it is consulted before an Argus seat is
+  assigned and before a reviewer grades a submission from an affiliated principal. It lived in process
+  memory: a conflict declared on Monday and forgotten by Tuesday — because the process restarted — is a
+  conflict that stopped being checked on Tuesday, and the check is the whole point of the register. The
+  failure compounded, because the audit record of the declaration was itself in memory (ADR-0037).
+  **Now (ADR-0038).** `org_coi_entries` (migration 0018) holds the declarations, the store is chosen once
+  at boot, and the boot log says which. A **withdrawal is not a deletion** — `revoke` sets `active =
+  false`, because the fact that a conflict was declared and then withdrawn is part of the history a
+  reviewer may need, and a register that erases its own declarations is a register that cannot be audited.
+  The durable store says the same things the in-memory store says (a duplicate declaration is refused in
+  the same words), and the interest key stays **derived** — `${type}:${orgId}` or
+  `${type}:${description}` — so two declarations of the same interest cannot be recorded in two spellings
+  and then fail to match.
+  **Proven.** The register's tests and eight against a real PostgreSQL: a declaration survives a fresh
+  read; the conflict is still found after a restart (a fresh store over the same table); a duplicate is
+  refused in the same words; a withdrawal leaves the entry in place but stops it counting; the
+  principal's declarations and the organisation's are listed; the seat check says which side a candidate
+  is conflicted against. **Four mutations proven red** — the store forgetting a declaration, a withdrawn
+  declaration still counting, the check comparing principals instead of interests, and the store
+  forgetting the interest an entry belongs to. **One of them was green on the first attempt because the
+  anchor no longer matched the code**: the mutation was skipping its own test rather than passing it,
+  which is the same shape of failure as a wiring check that reads the wrong file.
+  **Still open, and named.** The register is durable but **nothing yet calls it from a route**, so no seat
+  assignment or review is actually screened by it: the reviewer surface — the seat assignment, the review
+  queue, the conflict declaration and the abstention — is still to come. And budgets and quotas, webhook
+  endpoints, and API keys (with their revocations) are still in process memory.
+
+- **2026-11-20 — the review queue, and the bar a conflict puts on it** (ADR-0039). The register and the
+  audit chain now have a consumer: a reviewer takes a case, steps away from one, or declares a conflict
+  of interest with one, and the declaration **bars** them from that case — it is not a warning, because a
+  warning is advice a reviewer in a hurry ignores. The cases are chain-derived (a trial `judging` or
+  `challenged`); the reviewer's own state is durable (migration `0019`), so a hold survives a restart and
+  the boot log says which store is in use. One case, one holder: the uniqueness is on the case, not on
+  the pair. The three actions are appended to the durable audit chain.
+  **Ten mutations proven red** — the bar removed, the queue offering a barred case, the hold ignored, the
+  abstention not releasing the claim, the reason not required, the audit entry not written, the conflict
+  not releasing the claim, the durable store not holding, the store forgetting it is durable, and a settled
+  trial offered for review. Two of them were green on the first attempt and had to be made honest: one
+  because its anchor no longer matched the code (the mutation was skipping its own test), and one because
+  the test was asserting a consequence that did not depend on the decision — a claim that stayed held by a
+  conflicted reviewer was invisible until another reviewer was blocked by it, so the test now claims the
+  case as a second reviewer does.
+  **Three defects the browser proof found that the tests did not.** The page fetched the queue once, at
+  mount, and never read it again — a reviewer who took a case watched the button stay on "Working…" and
+  could not tell whether the platform had taken the case or refused it. The audit entry's id was derived
+  from the action alone while the chain is append-only, so the second claim of the same case collided with
+  the first and the API answered **HTTP 500** instead of a sentence. And reading `disputeOpenedAt` as "the
+  dispute is still open" put every settled-and-disputed trial back on the queue — a question the chain has
+  already answered. All three are fixed, and the last one names the chain's own status instead.
+  **Still open, and named.** A reviewer who takes a case and then stops leaves it held: there is no
+  timeout on a hold, because a timeout would push work back onto the queue with no way for the platform to
+  know whether the reviewer was slow or gone. The review verdict itself is not modelled yet — what exists
+  is the queue, the hold, the abstention and the conflict.
+
+- **2026-11-20 — a revoked key must not come back** (ADR-0040). The organisation API keys were created,
+  listed and revoked, and **nothing authenticated with them** (`validateApiKey` had no caller outside its
+  own tests). They also lived in process memory, so the defect was not that a key was lost: it was that
+  **a revoked key came back**. The revocation was a field in a `globalThis` map, the process restarted, and
+  the key was valid again — at exactly the moment somebody asks whether the old key really stopped working.
+  The keys are now durable (`org_api_keys`, migration 0020), the revocation survives a restart, and the API
+  is asynchronous throughout, because a write that cannot be awaited cannot be durable. The durable store
+  says the same things the in-memory store says, in the same words (PostgreSQL's `23505` is translated, not
+  leaked), and a second revocation has nothing to revoke and says so in both stores.
+  The hash was also **fast and unsalted** — a stolen table of digests is a gift to a GPU — so it is now
+  **scrypt with a per-key salt** in a self-describing format (`scrypt$16384$8$1$<salt>$<hash>`), and a
+  hash in another format is refused rather than guessed at.
+  **Eleven mutations proven red** — the store forgetting a revocation, the revocation unscoped to its
+  organisation, a duplicate id accepted, a colliding prefix accepted, the secret stored in the clear, a fast
+  unsalted hash, a rotation that does not invalidate the old secret, the scope grant unchecked, an expired
+  key that still authenticates, the store forgetting it is durable, and the in-memory store revoking across
+  organisations. One of them was **green on the first attempt** because the test that should have caught it
+  did not exist: the cross-organisation revocation was only tested against the durable store, so the
+  in-memory guard was unmeasured. The test now exists.
+  **Still open, and named.** Nothing yet AUTHENTICATES with a key — the door that would accept one is not
+  written, so the commercial promise ("your team polls the API with a key") is not yet true. There is no
+  server-side pepper, so an attacker with the table still attacks the secret alone. And scrypt's ~80 ms per
+  verification is a denial-of-service surface on any endpoint that verifies a key without a rate limit.
+
+- **2026-11-20 — the door that accepts a key** (ADR-0041). An organisation's key reads its OWN organisation
+  (`GET /orgs/:id` and `GET /orgs/:id/api-keys`) and writes nothing: creating a credential, revoking one and
+  inviting a member all still need a wallet signature (ADR-0006), because a key that could change who holds
+  credentials is a key that could, one permission change later, move money. A key presented for ANOTHER
+  organisation is refused by name (`key-not-for-this-org`) — a key that reads another organisation would be a
+  key with the wrong grant, not a key with a missing check. The three refusals are distinct on purpose: a
+  revoked key, an expired key and a missing scope are 401s with their own reasons, and a missing scope is a
+  403 that names the scope.
+  **Six mutations proven red** — a key reading another organisation, the scope unchecked, a revoked key
+  authenticating, any bearer token treated as a key, a key creating a credential, and a wrong secret
+  accepted. One of them was green on the first attempt for a reason worth recording: the test presented a
+  secret with a DIFFERENT PREFIX, which is never found at all, so it passed without ever comparing the secret.
+  The test now presents one with the SAME prefix and a different body — the key is found, and the SECRET is
+  what refuses it.
+  **And a lesson about the instrument.** The mutation that disables the secret comparison lives in the
+  PACKAGE, and the API's tests import the BUILT package — so a mutation there is invisible until the
+  package is rebuilt. The script now rebuilds before the test **and again after restoring the source**: a
+  restore that leaves the build mutated turns the next plain run into a red test that is not there, and a
+  red test that is not there is an instrument lying about a product.
+  **Still open, and named.** The surface is two routes — the sponsor's funding ledger, the trials, the
+  publications and the disputes are still wallet-only — and an endpoint that spends ~80 ms verifying a secret
+  needs a rate limit before it is exposed.
+
+## Responsive, image and cross-browser pass — 2026-11-25
+
+**Verified.** The web app now has a measurable mobile/tablet contract rather than a set of
+breakpoints nobody could fail. `apps/web/test/responsive-images.test.ts` reads the real
+`next.config.mjs`, the real stylesheets and the real components: 16 checks on the viewport
+contract (safe-area inset on, pinch zoom left on), the image format contract (AVIF then WebP,
+phone/tablet/desktop widths), fallback pairs (`vh` before every `svh`, `vh` before `dvh` on
+the mobile sheet), rgba fallbacks before the five critical `color-mix()` declarations, blurred
+scrims with their `-webkit-` prefix, safe-area padding in four stylesheets, the restored board
+footer wrap, the guarded hall grid, thumb-sized coarse-pointer targets, and the sponsor page's
+paragraph nesting.
+
+Three mutations were each shown to turn the gate red and were reverted: `viewportFit` →
+`narrow`, removal of `.board-foot`'s `flex-wrap`, and dropping `image/avif` from the config.
+Web typecheck clean; 701 web tests pass (16 new); `next build --webpack` green on all 66 pages.
+Browser-verified at the real URL in Chromium at 390px and 768px, including that the hero rail
+fits inside the viewport and the `/trials` chips and search wrap rather than overflowing.
+
+**Still open, and named.** The cross-browser fixes are fallback *declarations* checked by a
+source gate, not measurements in WebKit or Gecko; Safari and Firefox were not run here. The
+`.chrome__main` top padding at ≤520px still guesses the wrapped header's height with `vh`
+(`styles/components.css`), and was left alone because its purpose was not established well
+enough to change safely — it needs a browser measurement at 320px before removal. The full
+`npm run verify:all` was red locally on two failures in the **uncommitted** sponsor-tenancy
+work owned by another agent (`no-such-program` undocumented in the API contract and
+`sponsor-funding-tenant.test.ts` returning 500); none of the files shipped here are involved. The first CI run on `develop` also went red on the **Secrets (gitleaks)** job with four `generic-api-key` findings in published test fixtures (`sk-route-…`, `sk-pg-…`, `sk-wrong-…`, `sk-rotated-…`, commits af06b393 and 392ec73). These are the config's already-documented class of deterministic fixtures: exact literals, allowlisted one by one in `.gitleaks.toml` with the same reasoning used for the earlier entries, so every other key-shaped string still fails. Verified locally with the identical command (`gitleaks detect --source . --config .gitleaks.toml --redact --verbose --log-opts="--all"` → `no leaks found`).

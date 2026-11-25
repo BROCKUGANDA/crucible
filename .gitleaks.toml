@@ -92,5 +92,17 @@ regexes = [
   # `--log-opts=--all`, so the published commit reddens every branch until the literal is
   # named here. Exception is the exact literal; any other key-shaped string still fails.
   '''keeper-key-0123456789abcdef0123456789abcdef''',
+  # Four more deterministic test fixtures from the API-key work in commits af06b393 and
+  # 392ec73: `sk-route-…` in apps/api/test/api-key-routes.test.ts and `sk-pg-…`,
+  # `sk-wrong-…` and `sk-rotated-…` in packages/agent-security/test/org-api-key-pg.test.ts.
+  # They seed in-memory stores that control nothing and sign nothing; the repeated
+  # 0123456789abcdef body is the giveaway that these are invented for assertions, not
+  # credentials. The commits are published and this job scans `--log-opts=--all`, so the
+  # old literals redden every branch until named. Exception is the exact literal only —
+  # any other key-shaped string still fails the gate.
+  '''sk-route-0123456789abcdef''',
+  '''sk-pg-0123456789abcdef''',
+  '''sk-wrong-0123456789abcdef''',
+  '''sk-rotated-0123456789ab''',
 ]
 

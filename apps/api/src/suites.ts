@@ -10,6 +10,7 @@
  */
 
 import { randomUUID } from "node:crypto";
+import { hashCanonical } from "@crucible/crypto";
 import type { OrganisationPrincipal } from "@crucible/agent-security";
 
 /* ------------------------------------------------------------------ */
@@ -362,9 +363,60 @@ export function updateSuiteStatus(id: string, status: SuiteStatus): Suite | null
 /* Suite version operations                                           */
 /* ------------------------------------------------------------------ */
 
+/**
+ * The content address of a suite version.
+ *
+ * A suite version says WHAT is measured: the task families, the protocol,
+ * the scoring rules, the fixtures, the limits. Two versions with the same
+ * content are the same measurement, so their digest is the same; a version
+ * whose content changed has a different digest, and a score published
+ * against the old digest can never be confused with one published against
+ * the new.
+ *
+ * The identity fields (id, timestamps, who created it) are NOT in the
+ * digest: they differ between two copies of identical content, and a
+ * content address that changes when nothing measured changes is not a
+ * content address.
+ */
+export function computeSuiteVersionDigest(input: {
+  suiteId: string;
+  version: string;
+  schemaVersion?: number;
+  taskFamilies?: string[];
+  capabilityDomains?: string[];
+  difficulty?: Difficulty;
+  evaluationProtocol?: EvaluationProtocol;
+  scoringRules?: Record<string, unknown>;
+  testFixtures?: Record<string, unknown>;
+  requiredTools?: unknown[];
+  runtimeConstraints?: Record<string, unknown>;
+  safetyRequirements?: Record<string, unknown>;
+  expectedArtifacts?: unknown[];
+  validationRules?: Record<string, unknown>;
+  knownLimitations?: string;
+}): string {
+  return hashCanonical({
+    suiteId: input.suiteId,
+    version: input.version,
+    schemaVersion: input.schemaVersion ?? 1,
+    taskFamilies: input.taskFamilies ?? [],
+    capabilityDomains: input.capabilityDomains ?? [],
+    difficulty: input.difficulty ?? "unknown",
+    evaluationProtocol: input.evaluationProtocol ?? "deterministic",
+    scoringRules: input.scoringRules ?? {},
+    testFixtures: input.testFixtures ?? {},
+    requiredTools: input.requiredTools ?? [],
+    runtimeConstraints: input.runtimeConstraints ?? {},
+    safetyRequirements: input.safetyRequirements ?? {},
+    expectedArtifacts: input.expectedArtifacts ?? [],
+    validationRules: input.validationRules ?? {},
+    knownLimitations: input.knownLimitations ?? "",
+  });
+}
+
 export function createSuiteVersion(
   input: CreateSuiteVersionInput,
-  specDigest: string,
+  specDigest?: string,
 ): SuiteVersion {
   const errors = validateCreateSuiteVersionInput(input);
   if (errors.length > 0) {
@@ -387,6 +439,14 @@ export function createSuiteVersion(
   const now = Date.now();
   const id = randomUUID();
 
+  // A caller may pin a digest; anything that is not a non-empty string is
+  // not a digest, and a version whose "digest" is, say, a principal object
+  // would be a card that lies about what was measured. Compute one instead.
+  const digest =
+    typeof specDigest === "string" && specDigest.length > 0
+      ? specDigest
+      : computeSuiteVersionDigest(input);
+
   const version: SuiteVersion = {
     id,
     suiteId: input.suiteId,
@@ -405,7 +465,7 @@ export function createSuiteVersion(
     validationRules: input.validationRules ?? {},
     knownLimitations: input.knownLimitations ?? "",
     changelog: input.changelog ?? "",
-    specDigest,
+    specDigest: digest,
     publishedAt: suite.status === "PUBLISHED" ? now : null,
     createdAt: now,
   };

@@ -80,7 +80,7 @@ dl.spec dd b{color:var(--gold);font-weight:500}
 .gallery figcaption b{display:block;color:var(--text);font-weight:500;font-size:12px}
 
 /* ---- probes ---- */
-.probes{display:grid;grid-template-columns:repeat(auto-fill,minmax(380px,1fr));gap:16px}
+.probes{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,380px),1fr));gap:16px}
 .probe{background:var(--bg1);border:1px solid var(--bg2);border-radius:10px;padding:14px;text-align:center}
 /* width/height attributes carry the true 10x magnification; do not stretch them */
 .probe img{display:block;margin:0 auto 10px;max-width:100%;height:auto;background:var(--bg0);border-radius:4px}
@@ -94,7 +94,7 @@ dl.spec dd b{color:var(--gold);font-weight:500}
 .note strong{color:var(--text)}
 
 /* ---- contexts ---- */
-.contexts{display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:22px}
+.contexts{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,330px),1fr));gap:22px}
 .ctx{background:var(--bg1);border:1px solid var(--bg2);border-radius:12px;padding:18px}
 /* fake browser tab strip */
 .browser{background:#26221f;border-radius:8px 8px 0 0;overflow:hidden;font-family:var(--font-mono)}
