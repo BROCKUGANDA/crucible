@@ -10,9 +10,15 @@ contract EngramDistributorTest is Test {
     EngramERC1155 public token;
     address admin = address(0xA11CE);
     address user = address(0xB0B);
+    address userB = address(0xC0DE);
 
     function _leaf(address who, uint256 amount, uint256 cid, uint256 tokenId) public view returns (bytes32) {
         return keccak256(abi.encodePacked(block.chainid, who, amount, cid, tokenId));
+    }
+
+    /// Two-leaf root using the same sorted-pair hashing as the distributor.
+    function _pairRoot(bytes32 a, bytes32 b) internal pure returns (bytes32) {
+        return a <= b ? keccak256(abi.encodePacked(a, b)) : keccak256(abi.encodePacked(b, a));
     }
 
     function setUp() public {
@@ -54,13 +60,24 @@ contract EngramDistributorTest is Test {
     }
 
     function testBudgetExhausted() public {
-        bytes32 leaf = _leaf(user, 1, 0, 1001);
+        bytes32 leafA = _leaf(user, 1, 0, 1001);
+        bytes32 leafB = _leaf(userB, 1, 0, 1001);
+        bytes32 root = _pairRoot(leafA, leafB);
         vm.prank(admin);
-        uint256 cid = d.createCampaign(leaf, 1001, 1, 0, type(uint64).max);
-        bytes32[] memory proof = new bytes32[](0);
+        uint256 cid = d.createCampaign(root, 1001, 1, 0, type(uint64).max);
+
+        bytes32[] memory proofA = new bytes32[](1);
+        proofA[0] = leafB;
         vm.prank(user);
-        d.claim(cid, 1, proof);
-        // another user with valid proof would be needed; budget already 1/1
+        d.claim(cid, 1, proofA);
+
+        // A second valid claimant must be refused once the budget is spent.
+        bytes32[] memory proofB = new bytes32[](1);
+        proofB[0] = leafA;
+        vm.prank(userB);
+        vm.expectRevert(EngramDistributor.BudgetExhausted.selector);
+        d.claim(cid, 1, proofB);
+
         (,,, uint256 claimed,,,) = d.campaigns(cid);
         assertEq(claimed, 1);
     }
